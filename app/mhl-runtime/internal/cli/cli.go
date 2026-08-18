@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/yanjustino/mhl-runtime/internal/parser"
+	"github.com/yanjustino/mhl-runtime/internal/runtime"
 	"github.com/yanjustino/mhl-runtime/internal/skills"
 )
 
@@ -20,14 +21,82 @@ import (
 // returns a non-nil error on failure.
 func Run(args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl <command> [args]\n  commands: skills")
+		return fmt.Errorf("usage: mhl <command> [args]\n  commands: run, skills")
 	}
 	switch args[0] {
 	case "skills":
 		return runSkills(args[1:], out)
+	case "run":
+		return runPipeline(args[1:], out)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+// runPipeline implements:
+//
+//	mhl run <pipeline.mhl> [--input key=value ...] [--resume]
+//
+// It executes a pipeline from the start, or resumes it from the last saved
+// checkpoint when --resume is given (IF-1).
+func runPipeline(args []string, out io.Writer) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: mhl run <pipeline.mhl> [--input key=value ...] [--resume]")
+	}
+	file := args[0]
+	resume := false
+	inputs := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--resume":
+			resume = true
+		case "--input":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--input requires a key=value argument")
+			}
+			i++
+			k, v, ok := strings.Cut(args[i], "=")
+			if !ok {
+				return fmt.Errorf("--input expects key=value, got %q", args[i])
+			}
+			inputs[k] = v
+		default:
+			return fmt.Errorf("unknown flag %q", args[i])
+		}
+	}
+
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", file, err)
+	}
+	prog, err := parser.Parse(string(src))
+	if err != nil {
+		return fmt.Errorf("parsing %s: %w", file, err)
+	}
+	pipeline, err := runtime.FindPipeline(prog, "")
+	if err != nil {
+		return err
+	}
+
+	runner := runtime.NewRunner(".")
+	exec := func(step string, ctx *runtime.RunContext) error {
+		for k, v := range inputs {
+			ctx.Vars[k] = v
+		}
+		ctx.Vars["__last_step"] = step
+		fmt.Fprintf(out, "step: %s\n", step)
+		return nil
+	}
+
+	res, err := runner.Run(pipeline, exec, resume)
+	if err != nil {
+		return err
+	}
+	if res.Resumed {
+		fmt.Fprintf(out, "resumed pipeline %q; skipped %d completed step(s)\n", pipeline.Name, len(res.Skipped))
+	}
+	fmt.Fprintf(out, "executed %d step(s)\n", len(res.Executed))
+	return nil
 }
 
 func runSkills(args []string, out io.Writer) error {
