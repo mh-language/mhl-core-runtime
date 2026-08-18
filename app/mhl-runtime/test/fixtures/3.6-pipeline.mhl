@@ -1,0 +1,47 @@
+pipeline AutoFixPipeline {
+    input issue_id: string
+    input target_file: string
+    checkpoint: {
+        enabled: true
+        strategy: "per_step"
+        storage: "file"
+        ttl: 7d
+    }
+    step AuditWithSkill {
+        var audit_res = ClaudeCoder.use_skill(CodeAuditorSkill, {
+            target_file: target_file,
+            strict_mode: true
+        })
+        if (audit_res.vulnerabilities_found > 0) {
+            session_mem.set("last_review", audit_res.report_markdown)
+        } else {
+            audit_log.append("Nenhuma vulnerabilidade encontrada no arquivo ${target_file}.")
+        }
+    }
+    step RefinementLoop {
+        var max_attempts = 3
+        var attempt = session_mem.get("attempt", 0)
+        var fixed = false
+        var last_error = session_mem.get("last_error", "")
+        while (!fixed && attempt < max_attempts) {
+            var fix = ClaudeCoder.run(
+                prompt: "Corrija o código baseado no feedback: ${session_mem.get('last_review')}"
+            )
+            execution.write_file(fix.file_path, fix.content)
+            var test_res = execution.run_tests()
+            if (test_res.exit_code == 0) {
+                fixed = true
+                checkpoint.clear()
+            } else {
+                attempt = attempt + 1
+                last_error = test_res.stderr
+                session_mem.set("attempt", attempt)
+                session_mem.set("last_error", last_error)
+                checkpoint.save()
+            }
+        }
+        if (!fixed) {
+            fail("Pipeline interrompido após ${max_attempts} tentativas.")
+        }
+    }
+}

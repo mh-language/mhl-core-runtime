@@ -1,0 +1,38 @@
+agent ClaudeCoder {
+    engine: "anthropic/claude-3-5-sonnet"
+    api_key: env("ANTHROPIC_API_KEY")
+    temperature: 0.2
+    timeout: 45s
+    skills: [CodeAuditorSkill]
+    retry: {
+        max_attempts: 3
+        backoff: "exponential"
+        delay: 2s
+        retry_on: [500, 503, "rate_limit", "timeout"]
+    }
+    fallback: [
+        agent {
+            engine: "openai/gpt-4o"
+            api_key: env("OPENAI_API_KEY")
+            timeout: 30s
+        }
+    ]
+    cache: {
+        strategy: "exact"
+        ttl: 24h
+        storage: "disk"
+    }
+    rate_limit: {
+        requests_per_minute: 100
+        concurrency: 5
+        on_exceeded: "queue"
+    }
+    mcp_servers: [PostgresDB, GitHubServer]
+    tools: [execution.read_file, execution.write_file]
+}
+agent LocalClaudeCLI {
+    engine: "cli/claude-code"
+    command: "claude"
+    args: ["--dangerously-skip-permissions", "--non-interactive"]
+    timeout: 60s
+}

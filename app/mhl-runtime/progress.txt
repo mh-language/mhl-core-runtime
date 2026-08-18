@@ -1,0 +1,17 @@
+# MHL Runtime — Development Progress
+
+Target: app/mhl-runtime (Go module github.com/yanjustino/mhl-runtime)
+Verification: ./verify-feature.sh <feature-id>  (go build + go vet + go test ./...)
+
+## Features
+- [x] 1. Participle v2 .mhl lexer/parser + Go AST (internal/parser, internal/ast)
+- [ ] 2. Skill resolution/injection sandbox (internal/skills)
+- [ ] 3. Stateless MCP client stdio + HTTP/SSE (internal/mcp)
+- [ ] 4. Per-step checkpoint + --resume (internal/runtime/state.go, cmd/mhl)
+- [ ] 5. Zero-trust credential resolution + redaction (internal/auth)
+- [ ] 6+. See .harness/feature_list.json
+
+## Log
+- init: scaffolded Go module, init.sh, verify-feature.sh on branch 202608181004-mhl-runtime
+- feat 1: Participle v2 lexer/parser + AST (internal/ast, internal/parser), fixtures for §3.1-3.6, parser_test.go conformance + failure-path tests. verify-feature.sh 1 PASS.
+[2026-08-18 11:11 UTC] Feature #1 - Establish the Participle v2-based .mhl lexer/parser and Go AST covering every documented language construct.: ?? ./. Verify with: ./verify-feature.sh. Result: PASS: verify-feature.sh 1 passed. Log: .harness/logs/verify-feature-1.log
