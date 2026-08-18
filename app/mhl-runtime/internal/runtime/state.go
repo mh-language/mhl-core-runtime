@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/yanjustino/mhl-runtime/internal/auth"
 )
 
 // StateDirName is the checkpoint storage directory, relative to a project root.
@@ -74,7 +76,12 @@ func (s *Store) Save(cp *Checkpoint) error {
 		return fmt.Errorf("runtime: creating state dir: %w", err)
 	}
 	cp.SavedAt = s.now()
-	data, err := json.MarshalIndent(cp, "", "  ")
+	redacted := *cp
+	redacted.Variables = make(map[string]string, len(cp.Variables))
+	for key, value := range cp.Variables {
+		redacted.Variables[key] = auth.Redact(value)
+	}
+	data, err := json.MarshalIndent(&redacted, "", "  ")
 	if err != nil {
 		return fmt.Errorf("runtime: encoding checkpoint: %w", err)
 	}

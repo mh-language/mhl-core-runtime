@@ -1,10 +1,10 @@
 package mcp
 
 import (
-	"os"
 	"sort"
 
 	"github.com/yanjustino/mhl-runtime/internal/ast"
+	"github.com/yanjustino/mhl-runtime/internal/auth"
 )
 
 // Registry is a catalog of declared mcp_servers, resolved into ServerConfigs
@@ -30,6 +30,68 @@ func BuildRegistry(prog *ast.Program) *Registry {
 		r.servers[d.MCPServer.Name] = serverFromAST(d.MCPServer)
 	}
 	return r
+}
+
+// BuildRegistryWithError is the fail-closed registry builder. It validates all
+// credential references before returning a registry, so missing credentials
+// cannot become empty command arguments or headers.
+func BuildRegistryWithError(prog *ast.Program) (*Registry, error) {
+	if err := validateCredentials(prog); err != nil {
+		return nil, err
+	}
+	return BuildRegistry(prog), nil
+}
+
+func validateCredentials(prog *ast.Program) error {
+	if prog == nil {
+		return nil
+	}
+	for _, d := range prog.Decls {
+		if d == nil || d.MCPServer == nil {
+			continue
+		}
+		for _, p := range d.MCPServer.Props {
+			if p == nil {
+				continue
+			}
+			if err := validateExpr(p.Value); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateExpr(e *ast.Expr) error {
+	if e == nil {
+		return nil
+	}
+	if pf := barePostfix(e); pf != nil {
+		if pf.Primary != nil && pf.Primary.Ident == "env" && len(pf.Ops) == 1 && pf.Ops[0].Call != nil {
+			args := pf.Ops[0].Call.Args
+			if len(args) == 1 {
+				if key, ok := literalString(args[0].Value); ok {
+					_, err := auth.Resolve(`env("` + key + `")`)
+					return err
+				}
+			}
+		}
+		if pf.Primary != nil && pf.Primary.Array != nil {
+			for _, item := range pf.Primary.Array.Items {
+				if err := validateExpr(item); err != nil {
+					return err
+				}
+			}
+		}
+		if pf.Primary != nil && pf.Primary.Object != nil {
+			for _, field := range pf.Primary.Object.Fields {
+				if err := validateExpr(field.Value); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // Get returns the resolved config for a named server.
@@ -177,7 +239,11 @@ func evalPostfixString(pf *ast.Postfix) (string, bool) {
 		args := pf.Ops[0].Call.Args
 		if len(args) == 1 {
 			if key, ok := literalString(args[0].Value); ok {
-				return os.Getenv(key), true
+				value, err := auth.Resolve(`env("` + key + `")`)
+				if err != nil {
+					return "", false
+				}
+				return value, true
 			}
 		}
 		return "", false
