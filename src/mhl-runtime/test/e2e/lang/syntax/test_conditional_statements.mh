@@ -1,0 +1,36 @@
+// This test verifies the behavior of conditional statements in MHL.
+test test_conditional_statements {
+    describe conditional_expression {
+        var result = if (true) "This is true" else "This is false"
+        are_equal(result, "This is true")
+    }
+    
+    describe if_statement {
+        var result = if (true) "This is true" else "This is false"
+        are_equal(result, "This is true")
+    }
+
+    describe if_else_statement {
+        var result = if (false) "This is true" else "This is false"
+        are_equal(result, "This is false")
+    }
+
+    describe if_else_if_statement {
+        var result = if (false) "This is true" else if (true) "This is true" else "This is false"
+        are_equal(result, "This is true")
+    }
+
+    describe classical_if_statement {
+        var valueA = 0
+        var valueB = 1
+        var result = ""
+
+        if (valueA > valueB) {
+            result = "Value A is greater than Value B"
+        } else {
+            result = "Value A is not greater than Value B"
+        }
+
+        are_equal(result, "Value A is not greater than Value B")
+    }
+}

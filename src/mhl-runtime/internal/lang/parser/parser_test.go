@@ -1,0 +1,453 @@
+package parser
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+)
+
+// fixturesDir points at the §3 example fixtures relative to this package.
+const fixturesDir = "../../../test/fixtures"
+
+// TestFixturesParse is the fixture-driven conformance suite (IC-1 / AC-1): it
+// parses every §3 example block (3.1-3.6) and asserts zero parse errors, with
+// a non-nil AST produced for each.
+func TestFixturesParse(t *testing.T) {
+	entries, err := os.ReadDir(fixturesDir)
+	if err != nil {
+		t.Fatalf("reading fixtures dir: %v", err)
+	}
+
+	var mhlFiles []string
+	for _, e := range entries {
+		if !e.IsDir() && filepath.Ext(e.Name()) == ".mh" {
+			mhlFiles = append(mhlFiles, e.Name())
+		}
+	}
+	if len(mhlFiles) < 6 {
+		t.Fatalf("expected at least 6 §3 fixtures, found %d", len(mhlFiles))
+	}
+
+	for _, name := range mhlFiles {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			src, err := os.ReadFile(filepath.Join(fixturesDir, name))
+			if err != nil {
+				t.Fatalf("reading fixture %s: %v", name, err)
+			}
+			prog, err := Parse(string(src))
+			if err != nil {
+				t.Fatalf("expected zero parse errors for %s, got: %v", name, err)
+			}
+			if prog == nil {
+				t.Fatalf("expected a non-nil AST for %s", name)
+			}
+			if len(prog.Decls) == 0 {
+				t.Fatalf("expected at least one declaration in %s", name)
+			}
+		})
+	}
+}
+
+// TestControlFlowParses guards RF-1's if/while/try-catch coverage using an
+// inline pipeline snippet (try/catch is not present in the §3 examples).
+func TestControlFlowParses(t *testing.T) {
+	src := `
+pipeline Flow {
+    step Work {
+        try {
+            var x = 1
+            if (x > 0) {
+                x = x + 1
+            } else {
+                x = 0
+            }
+            while (x < 10) {
+                x = x + 1
+            }
+        } catch (err) {
+            log.write(err)
+        } finally {
+            cleanup()
+        }
+    }
+}
+`
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("expected control-flow snippet to parse, got: %v", err)
+	}
+	if prog == nil || len(prog.Decls) != 1 {
+		t.Fatalf("expected exactly one pipeline declaration")
+	}
+}
+
+// TestInlineControlFlowBodyParses covers the brace-less inline form of
+// if/else, while, and for-in bodies (internal/lang/ast/pipeline.go): each
+// accepts a single bare statement in place of a `{ ... }` block, and both
+// forms populate the same []*Statement field with the same shape (one
+// statement either way), so nothing downstream needs to distinguish them.
+func TestInlineControlFlowBodyParses(t *testing.T) {
+	src := `
+pipeline InlineDemo {
+    step S {
+        if (true) log("yes") else log("no")
+        while (x < 3) x = x + 1
+        for (var i in items) log(i)
+    }
+}
+`
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("expected inline control-flow bodies to parse, got: %v", err)
+	}
+	if len(prog.Decls) != 1 || prog.Decls[0].Pipeline == nil {
+		t.Fatalf("expected exactly one pipeline declaration")
+	}
+	step := prog.Decls[0].Pipeline.Body[0].Step
+	if step == nil || len(step.Body) != 3 {
+		t.Fatalf("expected exactly 3 statements in step body, got: %#v", step)
+	}
+
+	ifStmt := step.Body[0].If
+	if ifStmt == nil || len(ifStmt.Then) != 1 || ifStmt.Then[0].Expr == nil {
+		t.Fatalf("expected if's Then to be a single inline expr statement, got: %#v", ifStmt)
+	}
+	if len(ifStmt.Else) != 1 || ifStmt.Else[0].Expr == nil {
+		t.Fatalf("expected if's Else to be a single inline expr statement, got: %#v", ifStmt)
+	}
+
+	whileStmt := step.Body[1].While
+	if whileStmt == nil || len(whileStmt.Body) != 1 || whileStmt.Body[0].Assign == nil {
+		t.Fatalf("expected while's Body to be a single inline assign statement, got: %#v", whileStmt)
+	}
+
+	forInStmt := step.Body[2].ForIn
+	if forInStmt == nil || len(forInStmt.Body) != 1 || forInStmt.Body[0].Expr == nil {
+		t.Fatalf("expected for-in's Body to be a single inline expr statement, got: %#v", forInStmt)
+	}
+}
+
+// exprPrimary drills down a *ast.Expr to its Primary, for tests that only
+// care about a single bare postfix expression (no operators).
+func exprPrimary(t *testing.T, e *ast.Expr) *ast.Primary {
+	t.Helper()
+	return e.Or.Head.Head.Head.Head.Head.Head.Operand.Primary
+}
+
+// TestLambdaVsParenExprDisambiguation is the one genuinely uncertain point
+// of Primary.Lambda|Sub (internal/ast/expr.go): a single-parameter lambda
+// like "(item) -> expr" starts identically to a parenthesized expression
+// "(item)", both beginning with "(". The grammar tries Lambda first, so it
+// only commits when the trailing "->" is actually present; otherwise it
+// backtracks to Sub. Zero-arg "()" and multi-arg "(a, b)" never collide
+// with Sub at all (Sub always holds exactly one Expr).
+func TestLambdaVsParenExprDisambiguation(t *testing.T) {
+	src := `
+pipeline P {
+    step S {
+        var singleParam = (item) -> item.passes == true
+        var parenOnly = (item)
+        var zeroArg = () -> 1
+        var multiArg = (a, b) -> a + b
+        var blockBody = (item) -> {
+            var x = item
+            return x
+        }
+        Linq.where(items, (item) -> item.passes == true)
+    }
+}
+`
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	stmts := prog.Decls[0].Pipeline.Body[0].Step.Body
+
+	singleParam := exprPrimary(t, stmts[0].Var.Value)
+	if singleParam.Lambda == nil || len(singleParam.Lambda.Params) != 1 {
+		t.Errorf("singleParam: expected a 1-param Lambda, got %+v", singleParam)
+	}
+
+	parenOnly := exprPrimary(t, stmts[1].Var.Value)
+	if parenOnly.Lambda != nil || parenOnly.Sub == nil {
+		t.Errorf("parenOnly: expected Sub (parenthesized expr), got Lambda=%v Sub=%v", parenOnly.Lambda, parenOnly.Sub)
+	}
+
+	zeroArg := exprPrimary(t, stmts[2].Var.Value)
+	if zeroArg.Lambda == nil || len(zeroArg.Lambda.Params) != 0 {
+		t.Errorf("zeroArg: expected a 0-param Lambda, got %+v", zeroArg)
+	}
+
+	multiArg := exprPrimary(t, stmts[3].Var.Value)
+	if multiArg.Lambda == nil || len(multiArg.Lambda.Params) != 2 {
+		t.Errorf("multiArg: expected a 2-param Lambda, got %+v", multiArg)
+	}
+
+	blockBody := exprPrimary(t, stmts[4].Var.Value)
+	if blockBody.Lambda == nil || blockBody.Lambda.Body != nil || len(blockBody.Lambda.Block) != 2 {
+		t.Errorf("blockBody: expected a block-bodied Lambda with 2 statements, got %+v", blockBody.Lambda)
+	}
+
+	// A lambda nested inside a call argument (the motivating Linq.where
+	// case) must parse too, not just at the top level of a var statement.
+	call := exprPrimary(t, stmts[5].Expr.Expr)
+	nested := stmts[5].Expr.Expr.Or.Head.Head.Head.Head.Head.Head.Operand
+	arg := nested.Ops[1].Call.Args[1].Value
+	nestedPrimary := exprPrimary(t, arg)
+	if nestedPrimary.Lambda == nil || nestedPrimary.Lambda.Body == nil {
+		t.Errorf("nested lambda in call args: expected a single-expr Lambda, got %+v (outer ident=%q)", nestedPrimary.Lambda, call.Ident)
+	}
+}
+
+func TestNullLiteralParses(t *testing.T) {
+	prog, err := Parse(`
+pipeline P {
+    step S {
+        var x = null
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	p := exprPrimary(t, prog.Decls[0].Pipeline.Body[0].Step.Body[0].Var.Value)
+	if !p.Null {
+		t.Errorf("expected Null to be true, got %+v", p)
+	}
+}
+
+// TestNullIsNotSwallowedAsIdent guards the alternation order in Primary
+// (internal/ast/expr.go): Null must be tried before Ident, or "null" would
+// parse as a plain identifier reference instead of the literal.
+func TestNullIsNotSwallowedAsIdent(t *testing.T) {
+	prog, err := Parse(`
+pipeline P {
+    step S {
+        var x = null
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	p := exprPrimary(t, prog.Decls[0].Pipeline.Body[0].Step.Body[0].Var.Value)
+	if p.Ident != "" {
+		t.Errorf("expected null to not be captured as Ident, got %q", p.Ident)
+	}
+}
+
+func TestForInParses(t *testing.T) {
+	src := `
+pipeline Flow {
+    step Work {
+        for (var item in items) {
+            log(item)
+        }
+    }
+}
+`
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("expected for-in snippet to parse, got: %v", err)
+	}
+	stmt := prog.Decls[0].Pipeline.Body[0].Step.Body[0]
+	if stmt.ForIn == nil {
+		t.Fatalf("expected a ForIn statement, got %+v", stmt)
+	}
+	if stmt.ForIn.VarName != "item" {
+		t.Errorf("VarName = %q, want %q", stmt.ForIn.VarName, "item")
+	}
+	if len(stmt.ForIn.Body) != 1 {
+		t.Errorf("Body length = %d, want 1", len(stmt.ForIn.Body))
+	}
+}
+
+// TestParseExprParsesASingleExpression covers ParseExpr, added for "${...}"
+// string interpolation (internal/engine/interpreter.interpolate): the snippet inside the
+// delimiters is one expression, not a whole .mh file, so it needs its own
+// entry point rooted at ast.Expr instead of ast.Program.
+func TestParseExprParsesASingleExpression(t *testing.T) {
+	expr, err := ParseExpr(`session_mem.get("cfg::retries") + 1`)
+	if err != nil {
+		t.Fatalf("ParseExpr: %v", err)
+	}
+	if expr == nil || expr.Or == nil {
+		t.Fatalf("expected a non-nil expression tree")
+	}
+}
+
+func TestParseExprMalformedYieldsError(t *testing.T) {
+	expr, err := ParseExpr(`1 +`)
+	if err == nil {
+		t.Fatalf("expected a parse error for malformed source, got nil")
+	}
+	if expr != nil {
+		t.Fatalf("expected nil AST on parse error, got: %#v", expr)
+	}
+}
+
+// TestToolMethodBodyVsBlockDisambiguation is the one genuinely uncertain
+// point of the ToolMethod.Body|Block grammar (internal/ast/program.go): a
+// `-> { ... }` tool method body could be either a single object-literal
+// expression or a statement block, both starting with the same "{" token.
+// The grammar tries Body (Expr) first, so object-shaped content still
+// parses as an expression — Block only wins when the content isn't shaped
+// like "key: value" pairs.
+func TestToolMethodBodyVsBlockDisambiguation(t *testing.T) {
+	src := `
+tool T {
+    obj_body() -> {a: 1, b: 2}
+    empty_body() -> {}
+    block_body(items) -> {
+        var count = 0
+        while (count < items.size()) {
+            count = count + 1
+        }
+        return count
+    }
+}
+`
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	var tool *ast.Tool
+	for _, decl := range prog.Decls {
+		if decl.Tool != nil {
+			tool = decl.Tool
+		}
+	}
+	if tool == nil {
+		t.Fatal("no tool declaration found")
+	}
+	for _, m := range tool.Methods {
+		switch m.Name {
+		case "obj_body", "empty_body":
+			if m.Body == nil || m.Block != nil {
+				t.Errorf("%s: expected an expression Body (object literal), got Body=%v Block=%v", m.Name, m.Body, m.Block)
+			}
+		case "block_body":
+			if m.Body != nil || len(m.Block) != 3 {
+				t.Errorf("block_body: expected a 3-statement Block, got Body=%v Block len=%d", m.Body, len(m.Block))
+			}
+		default:
+			t.Errorf("unexpected method %q", m.Name)
+		}
+	}
+}
+
+// TestTestBlockParses covers the `test { describe { ... } }` grammar
+// (internal/lang/ast/test.go): a describe block's Body reuses the exact
+// statement grammar a pipeline step's Body does, so both a flat assertion
+// call and a control-flow statement wrapping one parse into it.
+func TestTestBlockParses(t *testing.T) {
+	src := `
+test CodeAuditPipelineTest {
+    describe conditional_statements {
+        are_equal(1, 1)
+        is_true(true)
+        incomplete("pending")
+        if (true) log("yes") else log("no")
+    }
+}
+`
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("expected test block to parse, got: %v", err)
+	}
+	if len(prog.Decls) != 1 || prog.Decls[0].Test == nil {
+		t.Fatalf("expected exactly one test declaration, got: %#v", prog.Decls)
+	}
+	test := prog.Decls[0].Test
+	if test.Name != "CodeAuditPipelineTest" {
+		t.Errorf("expected test name %q, got %q", "CodeAuditPipelineTest", test.Name)
+	}
+	if len(test.Describes) != 1 {
+		t.Fatalf("expected exactly one describe block, got %d", len(test.Describes))
+	}
+	describe := test.Describes[0]
+	if describe.Name != "conditional_statements" {
+		t.Errorf("expected describe name %q, got %q", "conditional_statements", describe.Name)
+	}
+	if len(describe.Body) != 4 {
+		t.Fatalf("expected 4 statements, got %d", len(describe.Body))
+	}
+	if describe.Body[0].Expr == nil {
+		t.Errorf("expected first statement to be a bare expression statement (are_equal), got: %#v", describe.Body[0])
+	}
+	if describe.Body[3].If == nil {
+		t.Errorf("expected fourth statement to be an if statement, got: %#v", describe.Body[3])
+	}
+}
+
+// TestIfExprParses covers the ternary-like if-expression form (IfExpr,
+// internal/lang/ast/expr.go): `var result = if (cond) whenTrue else
+// whenFalse`, plus using it directly as a call argument and chaining via
+// `else if`.
+func TestIfExprParses(t *testing.T) {
+	src := `
+pipeline P {
+    step S {
+        var result = if (true) valorTrue else valorFalse
+        log(if (x > 10) "big" else "small")
+        var y = if (n < 0) 0 - 1 else if (n == 0) 0 else 1
+    }
+}
+`
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("expected if-expression to parse, got: %v", err)
+	}
+	step := prog.Decls[0].Pipeline.Body[0].Step
+	if step == nil || len(step.Body) != 3 {
+		t.Fatalf("expected exactly 3 statements in step body, got: %#v", step)
+	}
+
+	varDecl := step.Body[0].Var
+	if varDecl == nil {
+		t.Fatalf("expected first statement to be a var declaration")
+	}
+	ifExpr := exprPrimary(t, varDecl.Value).IfExpr
+	if ifExpr == nil {
+		t.Fatalf("expected var's value to be an if-expression, got: %#v", varDecl.Value)
+	}
+	if got := exprPrimary(t, ifExpr.Then).Ident; got != "valorTrue" {
+		t.Errorf("expected Then to be identifier %q, got %q", "valorTrue", got)
+	}
+	if got := exprPrimary(t, ifExpr.Else).Ident; got != "valorFalse" {
+		t.Errorf("expected Else to be identifier %q, got %q", "valorFalse", got)
+	}
+
+	// `else if` is just Else holding another bare IfExpr — no dedicated
+	// "else if" grammar needed.
+	chained := step.Body[2].Var
+	if chained == nil {
+		t.Fatalf("expected third statement to be a var declaration")
+	}
+	outer := exprPrimary(t, chained.Value).IfExpr
+	if outer == nil {
+		t.Fatalf("expected var's value to be an if-expression")
+	}
+	if got := exprPrimary(t, outer.Else).IfExpr; got == nil {
+		t.Errorf("expected outer if-expression's Else to itself be an if-expression (else if), got: %#v", outer.Else)
+	}
+}
+
+// TestMalformedYieldsError is the failure path: a syntactically invalid .mh
+// source must yield a descriptive error rather than a partial/incorrect AST.
+func TestMalformedYieldsError(t *testing.T) {
+	// `mcp_server` requires a name identifier and a body; this is truncated.
+	prog, err := Parse(`mcp_server {`)
+	if err == nil {
+		t.Fatalf("expected a parse error for malformed source, got nil")
+	}
+	if prog != nil {
+		t.Fatalf("expected nil AST on parse error, got: %#v", prog)
+	}
+	if err.Error() == "" {
+		t.Fatalf("expected a descriptive parse error message")
+	}
+}

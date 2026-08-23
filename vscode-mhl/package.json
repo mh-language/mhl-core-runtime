@@ -1,0 +1,75 @@
+{
+  "name": "mhl-language",
+  "displayName": "MHL Language Support",
+  "description": "Syntax highlighting and editor support for Meta-Harness Language files.",
+  "version": "0.1.5",
+  "publisher": "local-mhl",
+  "icon": "assets/mhl-icon.png",
+  "license": "MIT",
+  "engines": {
+    "vscode": ">=1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "mhl",
+        "aliases": [
+          "MHL",
+          "mhl"
+        ],
+        "extensions": [
+          ".mh"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mhl",
+        "scopeName": "source.mhl",
+        "path": "./syntaxes/mhl.tmLanguage.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "mhl-file-icons",
+        "label": "MHL File Icons",
+        "path": "./assets/mhl-file-icon-theme.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "mhl.restartLanguageServer",
+        "title": "MHL: Restart Language Server"
+      }
+    ],
+    "configuration": {
+      "title": "MHL",
+      "properties": {
+        "mhl.serverPath": {
+          "type": "string",
+          "default": "mhl",
+          "description": "Path to the mhl binary used to run the language server (`mhl lsp`). Defaults to `mhl` on PATH; supports ${workspaceFolder}."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node18",
+    "watch": "npm run compile -- --watch",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.5.0"
+  }
+}

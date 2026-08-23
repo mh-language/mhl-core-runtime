@@ -1,0 +1,145 @@
+{
+  "name": "MHL",
+  "scopeName": "source.mhl",
+  "fileTypes": [
+    "mh"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#control"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#properties"
+    },
+    {
+      "include": "#assertions"
+    },
+    {
+      "include": "#calls"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.mhl",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "storage.type.declaration.mhl",
+          "match": "\\b(import|use|export|module|mcp_server|agent|skill|memory|tool|loop|pipeline|prompt|step|input|test|describe)\\b"
+        }
+      ]
+    },
+    "control": {
+      "patterns": [
+        {
+          "name": "keyword.control.mhl",
+          "match": "\\b(if|else|while|try|catch|finally|fail|return|var|goto|break|self)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.mhl",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "contentName": "string.unquoted.multiline.mhl",
+          "patterns": [
+            {
+              "name": "variable.interpolation.mhl",
+              "match": "\\$\\{[^}]+\\}"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.mhl",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.mhl",
+              "match": "\\\\."
+            },
+            {
+              "name": "variable.interpolation.mhl",
+              "match": "\\$\\{[^}]+\\}"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.duration.mhl",
+          "match": "\\b\\d+(?:\\.\\d+)?(?:ms|s|m|h|d)\\b"
+        },
+        {
+          "name": "constant.numeric.mhl",
+          "match": "\\b\\d+(?:\\.\\d+)?\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.mhl",
+          "match": "\\b(true|false|null)\\b"
+        }
+      ]
+    },
+    "properties": {
+      "patterns": [
+        {
+          "name": "entity.name.tag.property.mhl",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*:)"
+        },
+        {
+          "name": "variable.other.mhl",
+          "match": "\\$\\{?[a-zA-Z_][a-zA-Z0-9_.]*\\}?"
+        }
+      ]
+    },
+    "assertions": {
+      "patterns": [
+        {
+          "name": "support.function.assertion.mhl",
+          "match": "\\b(are_equal|are_not_equal|not_equal|is_true|is_false|is_null|not_null|greater_than|less_than|greater_than_or_equal|less_than_or_equal|includes|incomplete)\\b(?=\\s*\\()"
+        }
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {
+          "name": "entity.name.function.mhl",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_.]*(?=\\s*\\()"
+        },
+        {
+          "name": "keyword.operator.mhl",
+          "match": "==|!=|<=|>=|&&|\\|\\||[+*/%<>=!-]"
+        }
+      ]
+    }
+  }
+}

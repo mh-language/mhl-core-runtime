@@ -1,0 +1,9 @@
+export memory SessionJsonMem {
+    type: "json"
+    path: ".mhl/session_mem.json"
+}
+
+export memory AuditLogMem {
+    type: "append_log"
+    path: ".mhl/logs/audit.log"
+}

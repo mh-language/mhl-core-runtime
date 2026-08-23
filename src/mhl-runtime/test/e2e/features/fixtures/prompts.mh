@@ -1,0 +1,24 @@
+export prompt SecurityExpertRole() {
+    "Você é um especialista em segurança de software."
+}
+
+export prompt SystemPrompt(role: prompt, task: string) {
+    """
+    ${role}
+
+    ${task}
+    """
+}
+
+export prompt SecurityAuditPrompt(file_path: string, code_content: string) {
+    """
+    Você é um especialista em segurança de software.
+    Analise o arquivo '${file_path}' abaixo:
+
+    ```
+    ${code_content}
+    ```
+
+    Identifique vulnerabilidades (OWASP Top 10) e retorne correções objetivas.
+    """
+}

@@ -1,0 +1,30 @@
+export agent Claude {
+    engine: "cli/claude-code"
+    command: "claude"
+    args: [
+        "-p", "${prompt}",
+        "--permission-mode", "bypassPermissions",
+        "--output-format", "json",
+        "--json-schema", "${schema}",
+        "--verbose"
+    ]
+}
+
+// `--ask-for-approval` doesn't exist on installed codex-cli versions (verified
+// against `codex exec --help`, codex-cli 0.147.0) -- `--approve-for-me`
+// ("route approval requests through automatic review using the
+// workspace-write sandbox") is the flag that actually exists for
+// non-interactive, still-sandboxed automation.
+export agent Codex {
+    engine: "cli/codex"
+    command: "codex"
+    log: ".mhl/logs/codex.log"
+    args: [
+        "exec",
+        //"--sandbox", "workspace-write",
+        "--approve-for-me",
+        //"--json",
+        "--output-schema", "${schema}",
+        "${prompt}"
+    ]
+}

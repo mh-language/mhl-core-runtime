@@ -1,2 +1,0 @@
-import "./agentes/qualidade.mhl" as qa
-use { SecurityAudit } from "./prompts/seguranca.mhl"

@@ -1,0 +1,103 @@
+use {RunConfig} from "runconfig.tool.mh"
+
+export memory FeatureStoreMemory {
+    type: "json"
+    path: ".mhl/feature_list.json"
+}
+
+export tool FeatureStore {
+    pending() -> {
+        var features = self.get()
+        if (features == null) {
+            return 0
+        }
+        var count = features.filter((f) -> f.status == "pending").size()
+        return count
+    }
+
+    get() -> FeatureStoreMemory.get("features", null)
+    set(features) -> FeatureStoreMemory.set("features", features)
+    reset() -> FeatureStoreMemory.set("features", null)
+}
+
+export tool PlanReader {
+    import() -> {
+        var docsFolder = RunConfig.get("docs_folder")
+        if (docsFolder == null) {
+            docsFolder = "specs/active"
+        }
+        var maxFeatures = RunConfig.get("max_features")
+        if (maxFeatures == null) {
+            maxFeatures = 10
+        }
+
+        var candidates = self.candidatePaths(docsFolder)
+        var i = 0
+        var found = false
+        var result = false
+        while (i < candidates.size() && found == false) {
+            var outcome = self.importFrom(candidates[i], maxFeatures)
+            if (outcome != null) {
+                found = true
+                result = outcome
+            }
+            i = i + 1
+        }
+        return result
+    }
+
+    candidatePaths(docsFolder) -> {
+        var raw = [
+            "${docsFolder}/40-development-plan.json",
+            "${docsFolder}/active/40-development-plan.json",
+            "specs/active/40-development-plan.json"
+        ]
+        var unique = []
+        for (var path in raw) {
+            if (!unique.contains(path)) {
+                unique = unique + [path]
+            }
+        }
+        return unique
+    }
+
+    importFrom(path, maxFeatures) -> {
+        var raw = null
+        try {
+            raw = fs.read(path)
+        } catch (err) {
+            return null
+        }
+
+        try {
+            var plan = json.parse(raw)
+            var features = self.capFeatures(plan.features, maxFeatures)
+            if (features.size() == 0) {
+                log("[dev] published handoff '${path}' was invalid or empty.")
+                return false
+            }
+            FeatureStore.set(features)
+            return true
+        } catch (err) {
+            log("[dev] failed to import published handoff '${path}': ${err}")
+            return false
+        }
+    }
+
+    capFeatures(features, maxFeatures) -> {
+        var sorted = features.sort_by((f) -> f.priority * 1000000 + f.id)
+        var capped = sorted[..maxFeatures]
+
+        var cappedIds = []
+        for (var f in capped) {
+            cappedIds = cappedIds + [f.id]
+        }
+
+        var result = []
+        for (var f in capped) {
+            var deps = f.dependsOn.filter((d) -> cappedIds.contains(d))
+            result = result + [{"id": f.id, "title": f.title, "priority": f.priority, "dependsOn": deps, "status": "pending"}]
+        }
+        return result
+    }
+}

@@ -1,0 +1,140 @@
+test test_array_statements {
+    describe array_statements {
+        var A = [1, 2, 3]
+        are_equal(A.size(), 3)
+        are_equal(A[0], 1)
+        are_equal(A[1], 2)
+        are_equal(A[2], 3)
+        are_equal(A.index_of(2), 1)
+
+        var B = ["a", "b", "c"]
+        are_equal(B.size(), 3)
+        are_equal(B[0], "a")
+        are_equal(B[1], "b")
+        are_equal(B[2], "c")
+        are_equal(B.index_of("b"), 1)
+
+        var C = [true, false, true]
+        are_equal(C.size(), 3)
+        are_equal(C[0], true)
+        are_equal(C[1], false)
+        are_equal(C[2], true)
+        are_equal(C.index_of(true), 0)
+    }
+
+    describe array_index_out_of_bounds {
+        var A = [1, 2, 3]
+        var result = ""
+        try {
+            var value = A[3]
+            result = "Value at index 3: ${value}"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: index 3 out of range (size 3)")
+    }
+
+    describe array_index_of_not_found {
+        var A = [1, 2, 3]
+        var index = A.index_of(4)
+        are_equal(index, -1)
+    }
+
+    describe array_concatenation {
+        var A = [1, 2, 3]
+        var B = [4, 5, 6]
+        var C = A + B
+        are_equal(C.size(), 6)
+        are_equal(C[0], 1)
+        are_equal(C[1], 2)
+        are_equal(C[2], 3)
+        are_equal(C[3], 4)
+        are_equal(C[4], 5)
+        are_equal(C[5], 6)
+    }
+
+    describe array_of_arrays {
+        var A = [1, 2, 3]
+        var B = ["a", "b", "c"]
+        var C = [A, B]
+        are_equal(C.size(), 2)
+        are_equal(C[0].size(), 3)
+        are_equal(C[1].size(), 3)
+        are_equal(C[0][0], 1)
+        are_equal(C[0][1], 2)
+        are_equal(C[0][2], 3)
+        are_equal(C[1][0], "a")
+        are_equal(C[1][1], "b")
+        are_equal(C[1][2], "c")
+    }
+
+    describe array_with_mixed_types {
+        var A = [1, "2", 0.03, false]
+        are_equal(A.size(), 4)
+        are_equal(A[0], 1)
+        are_equal(A[1], "2")
+        are_equal(A[2], 0.03)
+        are_equal(A[3], false)
+    }
+
+    describe set_array_element {
+        var A = [1, 2, 3]
+        A[1] = 20
+        are_equal(A[1], 20)
+    }
+
+    describe set_array_element_out_of_bounds {
+        var A = [1, 2, 3]
+        var result = ""
+        try {
+            A[3] = 4
+            result = "Set value at index 3"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: index 3 out of range (size 3)")
+    }
+
+    describe slice_array {
+        var numbers = [0, 10, 20, 30, 40, 50, 60]
+
+        // Extract items from index 1 to 4 (excludes index 4) -> [10, 20, 30]
+        var slice1 = numbers[1..4]
+        are_equal(slice1, [10, 20, 30])
+
+        // Extract from index 3 to the end -> [30, 40, 50, 60]
+        var slice2 = numbers[3..]
+        are_equal(slice2, [30, 40, 50, 60])
+
+        // Extract from the start up to index 3 -> [0, 10, 20]
+        var slice3 = numbers[..3]
+        are_equal(slice3, [0, 10, 20])
+
+        // Use the hat (^) operator to get the last 3 items -> [40, 50, 60]
+        var slice4 = numbers[^3..]
+        are_equal(slice4, [40, 50, 60])
+
+        // an out-of-range end bound clamps to the array's size rather than erroring
+        var slice5 = numbers[3..100]
+        are_equal(slice5, [30, 40, 50, 60])
+
+        // both bounds omitted copies the whole array
+        var slice6 = numbers[..]
+        are_equal(slice6, numbers)
+
+        // slicing does not mutate the source array
+        are_equal(numbers.size(), 7)
+    }
+
+    describe array_slice_assignment_is_rejected {
+        var numbers = [0, 10, 20, 30]
+        var result = ""
+        try {
+            numbers[1..3] = [99]
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: assignment target must be a plain variable or an array index, not a nested field")
+    }
+}

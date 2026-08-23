@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+defaults:
+  run:
+    working-directory: src/mhl-runtime
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/mhl-runtime/go.mod
+          cache: true
+          cache-dependency-path: src/mhl-runtime/go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Test
+        run: make test
+
+      - name: Build release binaries
+        run: make verify-release
+
+      - name: Package archives
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          mkdir -p out
+
+          tar -C dist/linux-amd64 -czf "out/mhl-${version}-linux-amd64.tar.gz" mhl
+          tar -C dist/darwin-arm64 -czf "out/mhl-${version}-darwin-arm64.tar.gz" mhl
+
+          (cd dist/windows-amd64 && zip -q "../../out/mhl-${version}-windows-amd64.zip" mhl.exe)
+
+      - name: Build VS Code extension
+        working-directory: vscode-mhl
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run compile
+          npx --yes @vscode/vsce package
+          cp -- *.vsix "../src/mhl-runtime/out/"
+
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd out
+          sha256sum * > checksums.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src/mhl-runtime/out/*
+          generate_release_notes: true

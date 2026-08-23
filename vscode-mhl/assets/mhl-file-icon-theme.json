@@ -1,0 +1,10 @@
+{
+  "iconDefinitions": {
+    "_mhl": {
+      "iconPath": "./mhl-icon.png"
+    }
+  },
+  "languageIds": {
+    "mhl": "_mhl"
+  }
+}

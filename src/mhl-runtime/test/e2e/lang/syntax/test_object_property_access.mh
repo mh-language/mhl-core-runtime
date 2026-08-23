@@ -1,0 +1,64 @@
+test test_object_property_access {
+    describe object_property_access {
+        var obj = {"key1": "value1", "key2": "value2"}
+        are_equal(obj.key1, "value1")
+        are_equal(obj.key2, "value2")
+    }
+
+    describe object_property_access_with_exception {
+        var obj = {"key1": "value1"}
+        try {
+            var value = obj.key2 // Accessing a non-existent key throws an exception
+        } catch (e) {
+            are_equal(e, "field \"key2\" not found")
+        }
+    }
+
+    describe object_property_access_with_nested_objects {
+        var obj = {"key1": {"nestedKey1": "nestedValue1"}, "key2": "value2"}
+        are_equal(obj.key1.nestedKey1, "nestedValue1")
+        are_equal(obj.key2, "value2")
+    }
+
+    describe object_property_access_with_arrays {
+        var obj = {"key1": [1, 2, 3], "key2": "value2"}
+        are_equal(obj.key1[0], 1)
+        are_equal(obj.key1[1], 2)
+        are_equal(obj.key1[2], 3)
+        are_equal(obj.key2, "value2")
+    }
+
+    describe object_property_access_with_complex_structure {
+        var obj = {"key1": {"nestedKey1": [1, 2, 3]}, "key2": "value2"}
+        are_equal(obj.key1.nestedKey1[0], 1)
+        are_equal(obj.key1.nestedKey1[1], 2)
+        are_equal(obj.key1.nestedKey1[2], 3)
+        are_equal(obj.key2, "value2")
+    }
+
+    describe object_property_access_with_non_existent_nested_key {
+        var obj = {"key1": {"nestedKey1": "nestedValue1"}}
+
+        try {
+            var value = obj.key1.nestedKey2 // Accessing a non-existent nested key throws an exception
+        } catch (e) {
+            are_equal(e, "field \"nestedKey2\" not found")
+        }
+    }
+
+    describe object_property_access_with_non_existent_array_index {
+        var obj = {"key1": [1, 2, 3]}
+
+        try {
+            var value = obj.key1[3] // Accessing a non-existent array index throws an exception
+        } catch (e) {
+            are_equal(e, "index 3 out of range (size 3)")
+        }
+    }
+
+    describe object_get_keys_and_values {
+        var obj = {"key1": "value1", "key2": "value2", "key3": "value3"}
+        are_equal(obj.keys(), ["key1", "key2", "key3"])
+        are_equal(obj.values(), ["value1", "value2", "value3"])
+    }
+}

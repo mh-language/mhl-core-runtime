@@ -1,0 +1,63 @@
+use {MockClaudeCLI, ClaudeCLI, GeminiAPI, GeminiStructuredAPI, MockGeminiStructuredAPI, OllamaCLI} from "fixtures/agents.mh"
+
+test test_agents {
+    describe claude_cli_places_prompt_after_dash_p_flag {
+        var response = MockClaudeCLI.run(prompt: "Revise a PR #42")
+        are_equal(response, "-p Revise a PR #42 --agent security-audit --permission-mode bypassPermissions --output-format stream-json --json-schema {\"type\": \"object\", \"properties\": {\"message\": {\"type\": \"string\"}}, \"required\": [\"message\"]} --verbose")
+    }
+
+    describe claude_cli_calls_the_real_api {
+        if (env("ENABLE_LLM_CALL") == "1") {
+            var response = ClaudeCLI.run(prompt: "Ping")
+            log("Response from ClaudeCLI: ${response}")
+            not_null(response)
+        } else {
+            incomplete("set ENABLE_LLM_CALL=1 to run this against the real claude CLI")
+        }
+    }
+
+    describe json_parse_extracts_structured_output_message {
+        var raw = "{\"type\":\"result\",\"structured_output\":{\"message\":\"Pong! What can I help you with?\"}}"
+        var parsed = json.parse(raw)
+        are_equal(parsed.structured_output.message, "Pong! What can I help you with?")
+    }
+
+    describe gemini_api_calls_the_real_api {
+        if (env("ENABLE_LLM_CALL") == "1") {
+            var response = GeminiAPI.run(prompt: "Ping")
+            log("Response from GeminiAPI: ${response}")
+            not_null(response)
+        } else {
+            incomplete("set ENABLE_LLM_CALL=1 to run this against the real Gemini API")
+        }
+    }
+
+    describe gemini_structured_api_splices_schema_as_a_json_object {
+        var response = MockGeminiStructuredAPI.run(prompt: "Ping", schema: "{\"type\": \"object\", \"properties\": {\"message\": {\"type\": \"string\"}}, \"required\": [\"message\"]}")
+        var parsed = json.parse(response)
+        are_equal(parsed.contents[0].parts[0].text, "Ping")
+        are_equal(parsed.generationConfig.responseMimeType, "application/json")
+        are_equal(parsed.generationConfig.responseSchema.type, "object")
+        are_equal(parsed.generationConfig.responseSchema.required[0], "message")
+    }
+
+    describe gemini_structured_api_calls_the_real_api {
+        if (env("ENABLE_LLM_CALL") == "1") {
+            var response = GeminiStructuredAPI.run(prompt: "Ping", schema: "{\"type\": \"object\", \"properties\": {\"message\": {\"type\": \"string\"}}, \"required\": [\"message\"]}")
+            log("Response from GeminiStructuredAPI: ${response}")
+            not_null(response)
+        } else {
+            incomplete("set ENABLE_LLM_CALL=1 to run this against the real Gemini API")
+        }
+    }
+
+    describe ollama_cli_calls_the_real_api {
+        if (env("ENABLE_LLM_CALL") == "1") {
+            var response = OllamaCLI.run(prompt: "Ping")
+            log("Response from OllamaCLI: ${response}")
+            not_null(response)
+        } else {
+            incomplete("set ENABLE_LLM_CALL=1 to run this against the real Ollama API")
+        }
+    }
+}

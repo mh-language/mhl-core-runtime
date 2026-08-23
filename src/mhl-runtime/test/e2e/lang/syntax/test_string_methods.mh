@@ -1,0 +1,75 @@
+test test_string_methods {
+    describe split {
+        var parts = "a,b,c".split(",")
+        are_equal(parts.size(), 3)
+        are_equal(parts[0], "a")
+        are_equal(parts[1], "b")
+        are_equal(parts[2], "c")
+    }
+
+    describe split_on_missing_separator_returns_the_whole_string {
+        var parts = "abc".split(",")
+        are_equal(parts.size(), 1)
+        are_equal(parts[0], "abc")
+    }
+
+    describe replace {
+        are_equal("feat: complete feature #1".replace(":", " -"), "feat - complete feature #1")
+        are_equal("aaa".replace("a", "b"), "bbb")
+    }
+
+    describe contains_on_string {
+        is_true("hello world".contains("world"))
+        is_false("hello world".contains("xyz"))
+    }
+
+    describe contains_on_array {
+        var A = [1, 2, 3]
+        is_true(A.contains(2))
+        is_false(A.contains(9))
+    }
+
+    describe starts_with_and_ends_with {
+        is_true("verify-feature.sh".starts_with("verify"))
+        is_false("verify-feature.sh".starts_with("feature"))
+        is_true("verify-feature.sh".ends_with(".sh"))
+        is_false("verify-feature.sh".ends_with(".txt"))
+    }
+
+    describe trim {
+        are_equal("  hello  ".trim(), "hello")
+        are_equal("no-padding".trim(), "no-padding")
+    }
+
+    describe to_upper_and_to_lower {
+        are_equal("Hello".to_upper(), "HELLO")
+        are_equal("Hello".to_lower(), "hello")
+    }
+
+    describe substring {
+        are_equal("hello world".substring(0, 5), "hello")
+        are_equal("hello world".substring(6, 11), "world")
+        are_equal("hello".substring(0, 0), "")
+    }
+
+    describe substring_out_of_range_errors {
+        var result = ""
+        try {
+            var s = "hi".substring(0, 5)
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: substring(0, 5) out of range (length 2)")
+    }
+
+    describe chained_string_methods {
+        // "-" alone as a full string literal is avoided here: a known,
+        // pre-existing parser bug (unrelated to these new methods) matches
+        // a bare "-"/"!" string token against the unary-operator literal
+        // instead of the string primary wherever an expression could
+        // start — see docs/flows-development-mhl-gap-plan.md.
+        var cleaned = "  Feature Title  ".trim().to_lower().replace(" ", "_")
+        are_equal(cleaned, "feature_title")
+    }
+}

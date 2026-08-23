@@ -1,0 +1,17 @@
+# IAO folders
+
+.claude/
+.codex/
+.harness/
+.kimi/
+
+# files
+harness*.json
+.env
+
+# folders
+specs/
+dotnet/
+
+# build artifacts (built by release.yml on tag push, not committed)
+*.vsix
