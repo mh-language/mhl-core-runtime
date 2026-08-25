@@ -12,6 +12,20 @@ import "github.com/alecthomas/participle/v2/lexer"
 // top-level declarations.
 type Program struct {
 	Decls []*Declaration `parser:"@@*"`
+	// Aliases is populated while imports are resolved. It is intentionally
+	// outside the source grammar: aliases are bindings for the flattened
+	// program namespace, not declarations in the source AST.
+	aliases map[string]string
+}
+
+// AliasMap returns the resolved local aliases attached to the program. The
+// map is runtime metadata and is therefore deliberately not parsed from
+// source.
+func (p *Program) AliasMap() map[string]string {
+	if p.aliases == nil {
+		p.aliases = map[string]string{}
+	}
+	return p.aliases
 }
 
 // Declaration is any top-level construct. An optional leading `export`
@@ -39,13 +53,30 @@ type Import struct {
 	Alias string `parser:"'as' @Ident"`
 }
 
-// Use selectively imports named symbols from another module:
+// Use selectively imports named symbols from another module. Each imported
+// symbol may optionally receive a local alias:
 //
-//	use { SecurityAudit } from "./prompts/seguranca.mh"
+//	use { SecurityAudit as audit } from "./prompts/seguranca.mh"
 type Use struct {
 	Pos   lexer.Position
-	Names []string `parser:"'use' '{' @Ident ( ',' @Ident )* '}'"`
-	Path  string   `parser:"'from' @String"`
+	Items []*UseItem `parser:"'use' '{' @@ ( ',' @@ )* '}'"`
+	Path  string     `parser:"'from' @String"`
+}
+
+// UseItem is one selectively imported symbol and its optional local alias.
+type UseItem struct {
+	Name  string `parser:"@Ident"`
+	Alias string `parser:"( 'as' @Ident )?"`
+}
+
+// Names returns the source names in a use clause. Keeping this helper avoids
+// making import diagnostics and resolution logic depend on the AST layout.
+func (u *Use) Names() []string {
+	names := make([]string, 0, len(u.Items))
+	for _, item := range u.Items {
+		names = append(names, item.Name)
+	}
+	return names
 }
 
 // MCPServer declares a stateless MCP server endpoint.

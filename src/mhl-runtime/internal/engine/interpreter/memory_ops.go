@@ -8,6 +8,7 @@ import (
 )
 
 func findMemory(prog *ast.Program, name string) (*ast.Memory, bool) {
+	name = resolveName(prog, name)
 	for _, decl := range prog.Decls {
 		if decl.Memory != nil && decl.Memory.Name == name {
 			return decl.Memory, true

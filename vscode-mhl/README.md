@@ -1,6 +1,8 @@
 # MHL Language Support for VS Code
 
 Provides syntax highlighting, diagnostics, and completion for `.mh` files.
+It also highlights MHL code blocks inside Markdown files when the fence is
+tagged as `mhl` or `mh`.
 Diagnostics and completion are served by `mhl lsp` (a Language Server
 Protocol server built into the `mhl` binary, see `../src/mhl-runtime`) —
 this extension is just its client.
@@ -33,3 +35,26 @@ Then install it in VS Code with **Extensions → ⋯ → Install from VSIX...**
 
 For development, run `npm install` here, then open this directory in VS
 Code and press `F5` to launch an Extension Development Host.
+
+## MHL in Markdown
+
+Use a fenced code block tagged with `mhl` (or `mh`):
+
+````markdown
+```mhl
+agent Local {
+    command: "echo"
+}
+
+pipeline Example {
+    step Run {
+        log(Local.run(prompt: "Olá"))
+    }
+}
+```
+````
+
+The Markdown document keeps its normal Markdown highlighting, while the
+contents of the MHL fence use the same grammar as `.mh` files. This is
+syntax highlighting only; the MHL language server currently targets `.mh`
+documents, not embedded Markdown regions.

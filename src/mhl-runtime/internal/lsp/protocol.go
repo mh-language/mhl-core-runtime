@@ -64,6 +64,7 @@ const (
 	kindMethod   = 2
 	kindFunction = 3
 	kindClass    = 7
+	kindModule   = 9
 	kindProperty = 10
 	kindKeyword  = 14
 )

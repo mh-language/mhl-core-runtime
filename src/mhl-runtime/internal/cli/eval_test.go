@@ -48,6 +48,59 @@ func TestEvalArithmeticOperators(t *testing.T) {
 	}
 }
 
+func TestEvalLogLevels(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        log("no level")
+        log.info("info msg")
+        log.warn("warn msg")
+        log.error("error msg")
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"no level\n", "[INFO] info msg\n", "[WARN] warn msg\n", "[ERROR] error msg\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q, got: %s", want, out)
+		}
+	}
+}
+
+func TestEvalFailStopsRunWithError(t *testing.T) {
+	_, err := run(t, wrapStep(`fail("something went fatally wrong")`))
+	if err == nil || !strings.Contains(err.Error(), "something went fatally wrong") {
+		t.Fatalf("expected an error containing the fail message, got: %v", err)
+	}
+}
+
+func TestEvalFailStopsBeforeLaterStatements(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        fail("stop here")
+        log("should never run")
+    `))
+	if err == nil {
+		t.Fatal("expected fail to stop the step with an error")
+	}
+	if strings.Contains(out, "should never run") {
+		t.Errorf("statement after fail(...) must not execute: %s", out)
+	}
+}
+
+func TestEvalFailIsCatchableByTry(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        try {
+            fail("boom")
+        } catch (e) {
+            log("caught: ${e}")
+        }
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "caught: boom") {
+		t.Errorf("expected fail(...) to be catchable, got: %s", out)
+	}
+}
+
 func TestEvalDivisionByZero(t *testing.T) {
 	_, err := run(t, wrapStep(`log(1 / 0)`))
 	if err == nil || !strings.Contains(err.Error(), "division by zero") {
@@ -601,6 +654,7 @@ func TestEvalInterpolationInPromptArgument(t *testing.T) {
 agent LocalEcho {
     command: "echo"
     args: []
+    trace: true
 }
 
 pipeline P {
@@ -670,6 +724,7 @@ func TestEvalAgentRunAsExpressionValue(t *testing.T) {
 agent LocalEcho {
     command: "echo"
     args: []
+    trace: true
 }
 
 pipeline P {
@@ -1014,6 +1069,59 @@ func TestEvalBracketIndexChained(t *testing.T) {
 	}
 }
 
+// TestEvalBracketIndexReadsObjectByDynamicKey proves `obj[key]` reads a
+// field by a runtime-computed string key — unlike the static `.field`
+// trailer, key here is a variable, not a literal identifier fixed at parse
+// time. This is what makes dynamic field access on config-shaped objects
+// possible at all.
+func TestEvalBracketIndexReadsObjectByDynamicKey(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var obj = {a: 1, b: 2}
+        var key = "b"
+        log(obj[key])
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "2\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+// TestEvalBracketIndexChainedNestedObjects proves dynamic-key indexing
+// composes across nesting levels — `config[section][field]`, both keys
+// runtime variables — the same chaining TestEvalBracketIndexChained already
+// covers for arrays, now for a nested object.
+func TestEvalBracketIndexChainedNestedObjects(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var config = {agent: {model: "gpt-5", retries: 3}}
+        var section = "agent"
+        var field = "retries"
+        log(config[section][field])
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "3\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+// TestEvalBracketIndexMissingFieldErrors proves a missing key surfaces the
+// same "field not found" error the static `.field` trailer already gives
+// for a missing member (eval.go's Member case), rather than silently
+// returning null.
+func TestEvalBracketIndexMissingFieldErrors(t *testing.T) {
+	_, err := run(t, wrapStep(`
+        var obj = {a: 1}
+        var key = "missing"
+        log(obj[key])
+    `))
+	if err == nil || !strings.Contains(err.Error(), `field "missing" not found`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestEvalBracketIndexOutOfRangeErrors(t *testing.T) {
 	_, err := run(t, wrapStep(`
         var arr = [1, 2]
@@ -1026,10 +1134,25 @@ func TestEvalBracketIndexOutOfRangeErrors(t *testing.T) {
 
 func TestEvalBracketIndexOnNonArrayErrors(t *testing.T) {
 	_, err := run(t, wrapStep(`
+        var notacontainer = "hello"
+        log(notacontainer[0])
+    `))
+	if err == nil || !strings.Contains(err.Error(), "cannot index a string value") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestEvalBracketIndexOnObjectWithNonStringKeyErrors proves an object is
+// indexable (unlike a plain scalar), but only by a string key — a numeric
+// key gets its own clear error rather than the generic "cannot index"
+// one, since `obj[0]` is a type mismatch on the key, not an attempt to
+// index something unindexable.
+func TestEvalBracketIndexOnObjectWithNonStringKeyErrors(t *testing.T) {
+	_, err := run(t, wrapStep(`
         var obj = {a: 1}
         log(obj[0])
     `))
-	if err == nil || !strings.Contains(err.Error(), "cannot index a object value") {
+	if err == nil || !strings.Contains(err.Error(), "object key must be a string, got number") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -1058,6 +1181,28 @@ func TestEvalBracketIndexAssignChained(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	if !strings.Contains(out, "[[1,2],[100,4]]") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+// TestEvalBracketIndexAssignChainedNestedObjects is
+// TestEvalBracketIndexAssignChained's object counterpart: writing through a
+// chain of dynamic keys (`config[section][field] = value`) mutates the
+// inner object in place, visible through the outer variable with no
+// reassignment step at either level — the same reference-sharing behavior
+// arrays already had, now for nested objects.
+func TestEvalBracketIndexAssignChainedNestedObjects(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var config = {agent: {model: "gpt-5", retries: 3}}
+        var section = "agent"
+        var field = "retries"
+        config[section][field] = 5
+        log(config)
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, `{"agent":{"model":"gpt-5","retries":5}}`) {
 		t.Errorf("unexpected output: %s", out)
 	}
 }
@@ -1103,11 +1248,31 @@ func TestEvalBracketIndexAssignNonIntegerErrors(t *testing.T) {
 
 func TestEvalBracketIndexAssignOnNonArrayErrors(t *testing.T) {
 	_, err := run(t, wrapStep(`
-        var notarray = {a: 1}
-        notarray[0] = 1
+        var notacontainer = "hello"
+        notacontainer[0] = 1
     `))
-	if err == nil || !strings.Contains(err.Error(), "cannot index a object value") {
+	if err == nil || !strings.Contains(err.Error(), "cannot index a string value") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestEvalBracketIndexAssignOnObjectWritesDynamicField proves `obj[key] =
+// value` (key evaluated at runtime, unlike the static `obj.field = value`
+// which was never supported at all) sets/overwrites a field on an object,
+// the write-side counterpart of TestEvalBracketIndexReadsObjectByDynamicKey.
+func TestEvalBracketIndexAssignOnObjectWritesDynamicField(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var obj = {a: 1}
+        var key = "b"
+        obj[key] = 2
+        obj["a"] = 99
+        log(obj)
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, `{"a":99,"b":2}`) {
+		t.Errorf("unexpected output: %s", out)
 	}
 }
 

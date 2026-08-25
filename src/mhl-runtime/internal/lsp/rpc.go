@@ -21,13 +21,22 @@ import (
 )
 
 // rpcMessage is the generic envelope for every JSON-RPC message this server
-// reads or writes. id is omitted (nil) on notifications.
+// reads or writes. id is omitted (nil) on notifications. Result is a
+// json.RawMessage, not `any`, specifically so a legitimate null result (the
+// spec-mandated response to e.g. "shutdown") still serializes as a present
+// "result":null key: an `any` field holding a boxed untyped nil is itself a
+// nil *interface*, which `omitempty` strips entirely — producing a response
+// with neither "result" nor "error", which a strict client (vscode's
+// jsonrpc) rejects with "the received response has neither a result nor an
+// error property". A json.RawMessage set to the 4-byte literal "null" has
+// len 4, so omitempty (which keys off len==0 for slice-kind fields) leaves
+// it in place.
 type rpcMessage struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id,omitempty"`
 	Method  string          `json:"method,omitempty"`
 	Params  json.RawMessage `json:"params,omitempty"`
-	Result  any             `json:"result,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
 	Error   *rpcError       `json:"error,omitempty"`
 }
 
@@ -107,7 +116,11 @@ func (wr *writer) send(msg rpcMessage) error {
 }
 
 func (wr *writer) respond(id json.RawMessage, result any) error {
-	return wr.send(rpcMessage{ID: id, Result: result})
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	return wr.send(rpcMessage{ID: id, Result: raw})
 }
 
 func (wr *writer) respondError(id json.RawMessage, code int, message string) error {

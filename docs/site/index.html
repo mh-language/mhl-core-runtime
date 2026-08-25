@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Interactive manual for the Meta-Harness Language (MHL)." data-i18n-attr="content" data-pt="Manual interativo da Meta-Harness Language (MHL)." />
+    <meta name="theme-color" content="#10161f" />
+    <link rel="icon" href="assets/mhl-logo-rebrand.png" />
+    <title data-pt="Manual MHL — Meta-Harness Language">MHL Manual — Meta-Harness Language</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="MHL Manual, home" data-i18n-attr="aria-label" data-pt="Manual MHL, início">
+        <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
+        <span><strong>MHL</strong><small>Meta-Harness Language</small></span>
+      </a>
+      <div class="top-actions">
+        <label class="search" for="site-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="site-search" type="search" placeholder="Search the manual" data-i18n-attr="placeholder" data-pt="Buscar no manual" autocomplete="off" />
+          <kbd>/</kbd>
+        </label>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme" data-i18n-attr="aria-label" data-pt="Alternar tema">☼</button>
+        <button class="icon-button lang-toggle" id="lang-toggle" type="button" aria-label="Switch to Portuguese">PT-BR</button>
+        <a class="github-link" href="reference.html">Reference</a>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </div>
+    </header>
+
+    <div class="layout" id="top">
+      <aside class="sidebar" aria-label="Manual navigation" data-i18n-attr="aria-label" data-pt="Navegação do manual">
+        <p class="eyebrow" data-pt="MANUAL DA LINGUAGEM">LANGUAGE MANUAL</p>
+        <nav id="toc">
+          <a class="nav-link active" href="#inicio" data-pt="Início">Home</a>
+          <a class="nav-link" href="#primeiro-programa" data-pt="Primeiro programa">First program</a>
+          <a class="nav-link" href="#sintaxe" data-pt="Sintaxe">Syntax</a>
+          <a class="nav-link" href="#expressoes" data-pt="Expressões">Expressions</a>
+          <a class="nav-link" href="#controle-fluxo" data-pt="Controle de fluxo">Control flow</a>
+          <a class="nav-link" href="#agentes" data-pt="Agentes">Agents</a>
+          <a class="nav-link" href="#prompts" data-pt="Prompts e módulos">Prompts &amp; modules</a>
+          <a class="nav-link" href="#memoria-tools" data-pt="Memória e tools">Memory &amp; tools</a>
+          <a class="nav-link" href="#pipelines">Pipelines</a>
+          <a class="nav-link" href="#mcp" data-pt="MCP e resiliência">MCP &amp; resilience</a>
+          <a class="nav-link" href="#cli" data-pt="CLI e diagnóstico">CLI &amp; diagnostics</a>
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <span data-pt="Runtime Go&lt;br /&gt;&lt;small&gt;documentação baseada na implementação atual&lt;/small&gt;">Go runtime<br /><small>docs based on the current implementation</small></span>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section class="hero doc-section" id="inicio" data-title="Home overview MHL Início visão geral">
+          <div class="hero-copy">
+            <p class="eyebrow accent">META-HARNESS LANGUAGE · v0.2</p>
+            <h1 data-pt="Orquestre agentes&lt;br /&gt;&lt;em&gt;com intenção.&lt;/em&gt;">Orchestrate agents<br /><em>with intent.</em></h1>
+            <p class="lead" data-pt="MHL é uma linguagem declarativa para descrever agentes de IA, prompts, ferramentas, memória e pipelines executáveis.">MHL is a declarative language for describing AI agents, prompts, tools, memory, and executable pipelines.</p>
+            <div class="hero-actions">
+              <a class="button primary" href="#primeiro-programa" data-pt="Começar agora &lt;span&gt;→&lt;/span&gt;">Get started <span>→</span></a>
+              <a class="button secondary" href="https://github.com/mh-language/mhl-core-runtime/tree/main/docs/wiki" target="_blank" rel="noreferrer" data-pt="Ver wiki Markdown ↗">View Markdown wiki ↗</a>
+            </div>
+          </div>
+          <div class="hero-card">
+            <div class="window-bar"><span></span><span></span><span></span><b>hello.mh</b></div>
+            <pre class="code-block"><code class="language-mhl">agent Local {
+    command: "echo"
+}
+
+pipeline Hello {
+    step Run {
+        log(Local.run(prompt: "Olá, MHL"))
+    }
+}</code></pre>
+            <div class="hero-card-foot"><span class="pulse"></span> <span data-pt="declarativo · local · componível">declarative · local · composable</span></div>
+          </div>
+        </section>
+
+        <section class="section-grid doc-section" id="primeiro-programa" data-title="First program getting started install Primeiro programa começar instalação">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="01 · COMEÇAR">01 · GET STARTED</p>
+            <h2 data-pt="Seu primeiro pipeline">Your first pipeline</h2>
+            <p data-pt="Um programa MHL combina declarações de configuração com steps executáveis. Salve o arquivo como &lt;code&gt;main.mh&lt;/code&gt; e execute com o CLI.">An MHL program combines configuration declarations with executable steps. Save the file as <code>main.mh</code> and run it with the CLI.</p>
+          </div>
+          <div class="section-body">
+            <div class="callout"><strong data-pt="Instale o runtime">Install the runtime</strong><span>macOS / Linux</span><code>curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | sh</code></div>
+            <div class="code-wrap">
+              <button class="copy-button" type="button" data-copy="copy" data-pt="Copiar">Copy</button>
+              <pre class="code-block"><code class="language-mhl">agent Local {
+    command: "echo"
+    args: ["resposta local"]
+}
+
+pipeline Hello {
+    input name: string
+
+    step Greet {
+        var message = "Olá, ${name}!"
+        log(message)
+        var answer = Local.run(prompt: message)
+        log(answer)
+    }
+}</code></pre>
+            </div>
+            <div class="inline-code"><span data-pt="execute">run</span><code>mhl run main.mh --input name="Ana"</code></div>
+          </div>
+        </section>
+
+        <section class="doc-section" id="sintaxe" data-title="Syntax declarations strings comments duration Sintaxe declarações strings comentários duração">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="02 · FUNDAMENTOS">02 · FUNDAMENTALS</p>
+            <h2 data-pt="Sintaxe sem ruído">Syntax without the noise</h2>
+            <p data-pt="A gramática é pequena, legível e orientada a blocos. Comentários usam &lt;code&gt;//&lt;/code&gt;; objetos e configurações aceitam campos separados por vírgulas ou quebras de linha.">The grammar is small, readable, and block-oriented. Comments use <code>//</code>; objects and config accept fields separated by commas or line breaks.</p>
+          </div>
+          <div class="card-grid three">
+            <article class="info-card"><span class="card-icon">✦</span><h3 data-pt="Declarações">Declarations</h3><p data-pt="&lt;code&gt;agent&lt;/code&gt;, &lt;code&gt;prompt&lt;/code&gt;, &lt;code&gt;skill&lt;/code&gt;, &lt;code&gt;memory&lt;/code&gt;, &lt;code&gt;tool&lt;/code&gt;, &lt;code&gt;mcp_server&lt;/code&gt; e &lt;code&gt;pipeline&lt;/code&gt;."><code>agent</code>, <code>prompt</code>, <code>skill</code>, <code>memory</code>, <code>tool</code>, <code>mcp_server</code>, and <code>pipeline</code>.</p></article>
+            <article class="info-card"><span class="card-icon">{} </span><h3 data-pt="Valores">Values</h3><p data-pt="&lt;code&gt;null&lt;/code&gt;, booleanos, números, strings, arrays, objetos e closures."><code>null</code>, booleans, numbers, strings, arrays, objects, and closures.</p></article>
+            <article class="info-card"><span class="card-icon">↗</span><h3 data-pt="Composição">Composition</h3><p data-pt="Use &lt;code&gt;import&lt;/code&gt; para namespaces e &lt;code&gt;use&lt;/code&gt; para imports seletivos com alias.">Use <code>import</code> for namespaces and <code>use</code> for selective imports with an alias.</p></article>
+          </div>
+          <div class="syntax-columns">
+            <div><h3 data-pt="Strings e durações">Strings and durations</h3><pre class="code-block"><code class="language-mhl">prompt Review(file: string) {
+    """
+    Revise o arquivo ${file}.
+    Retorne problemas objetivos.
+    """
+}
+
+pipeline Deploy {
+    checkpoint: { ttl: 7d }
+}</code></pre></div>
+            <div><h3 data-pt="Declarações de módulo">Module declarations</h3><pre class="code-block"><code class="language-mhl">import "./agents.mh" as agents
+use { ReviewPrompt as Review }
+    from "./prompts.mh"
+
+export agent Local { command: "echo" }</code></pre></div>
+          </div>
+        </section>
+
+        <section class="doc-section" id="expressoes" data-title="Expressions operators arrays objects lambdas Expressões operadores arrays objetos lambdas">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="03 · LINGUAGEM">03 · LANGUAGE</p>
+            <h2 data-pt="Expressões que fazem o trabalho">Expressions that do the work</h2>
+            <p data-pt="O interpretador suporta operadores, acesso a objetos e arrays, slices, métodos de valores e funções anônimas.">The interpreter supports operators, object and array access, slices, value methods, and anonymous functions.</p>
+          </div>
+          <div class="reference-table">
+            <div class="table-row table-head"><span data-pt="Construção">Construct</span><span data-pt="Exemplo">Example</span><span data-pt="Uso">Use</span></div>
+            <div class="table-row"><span data-pt="Operadores">Operators</span><code>a + b * 2</code><span data-pt="aritmética e lógica">arithmetic and logic</span></div>
+            <div class="table-row"><span data-pt="Acesso">Access</span><code>record.status</code><span data-pt="campos estáticos">static fields</span></div>
+            <div class="table-row"><span data-pt="Índice">Index</span><code>items[i]</code><span data-pt="arrays e chaves dinâmicas">arrays and dynamic keys</span></div>
+            <div class="table-row"><span>Slice</span><code>items[1..^1]</code><span data-pt="cópia de intervalos">range copies</span></div>
+            <div class="table-row"><span>Closure</span><code>(item) -&gt; item.active</code><span data-pt="filter, find e sort_by">filter, find, and sort_by</span></div>
+          </div>
+          <pre class="code-block"><code class="language-mhl">var ready = retries < 3 && items.size() > 0
+var active = items.filter((item) -> item.enabled)
+var first = active[0]
+var result = if (ready) "continue" else "stop"
+
+log.info("itens ativos:", active.size())
+fail("interromper com erro tratável")</code></pre>
+        </section>
+
+        <section class="doc-section" id="controle-fluxo" data-title="Control flow statements if while for break return try catch finally Controle de fluxo">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="04 · LINGUAGEM">04 · LANGUAGE</p>
+            <h2 data-pt="Statements dentro de um step">Statements inside a step</h2>
+            <p data-pt="Além de expressões, o corpo de um &lt;code&gt;step&lt;/code&gt; ou de um método de &lt;code&gt;tool&lt;/code&gt; aceita statements imperativos: condicionais, laços, atribuição, &lt;code&gt;return&lt;/code&gt;/&lt;code&gt;break&lt;/code&gt; e &lt;code&gt;try/catch/finally&lt;/code&gt;.">Besides expressions, the body of a <code>step</code> or a <code>tool</code> method accepts imperative statements: conditionals, loops, assignment, <code>return</code>/<code>break</code>, and <code>try/catch/finally</code>.</p>
+          </div>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Statement</span><span data-pt="Exemplo">Example</span><span data-pt="Uso">Use</span></div>
+            <div class="table-row"><span>If/else</span><code>if (cond) { ... } else { ... }</code><span data-pt="bloco condicional (não expressão)">conditional block (not an expression)</span></div>
+            <div class="table-row"><span>While</span><code>while (cond) { ... }</code><span data-pt="laço condicional">conditional loop</span></div>
+            <div class="table-row"><span>For..in</span><code>for (var item in items) { ... }</code><span data-pt="itera um array">iterates an array</span></div>
+            <div class="table-row"><span>Break</span><code>break "motivo"</code><span data-pt="interrompe o laço, com motivo opcional">stops the loop, with an optional reason</span></div>
+            <div class="table-row"><span>Return</span><code>return valor</code><span data-pt="encerra o step ou método">exits the step or method</span></div>
+            <div class="table-row"><span>Try/catch</span><code>try { } catch (err) { } finally { }</code><span data-pt="captura erro como string">captures the error as a string</span></div>
+          </div>
+          <div class="section-body">
+            <pre class="code-block"><code class="language-mhl">tool Counter {
+    count(items) -> {
+        var n = 0
+        while (n < items.size()) { n = n + 1 }
+        return n
+    }
+}
+
+pipeline Sync {
+    step Check {
+        for (var file in changed_files) {
+            if (file.size > max_size) break "arquivo grande demais"
+        }
+
+        try {
+            var config = fs.read("config.json")
+        } catch (err) {
+            log.warn("config ausente:", err)
+        } finally {
+            log.info("verificação concluída")
+        }
+    }
+}</code></pre>
+          </div>
+          <div class="tip-row"><span>NOTE</span><p data-pt="&lt;code&gt;catch (err)&lt;/code&gt; liga &lt;code&gt;err&lt;/code&gt; à mensagem do erro (string); &lt;code&gt;finally&lt;/code&gt; sempre roda, mesmo quando o &lt;code&gt;try&lt;/code&gt; ou o &lt;code&gt;catch&lt;/code&gt; propaga um &lt;code&gt;return&lt;/code&gt;, &lt;code&gt;break&lt;/code&gt; ou &lt;code&gt;goto&lt;/code&gt;."><code>catch (err)</code> binds <code>err</code> to the error's message (a string); <code>finally</code> always runs, even when the <code>try</code> or <code>catch</code> propagates a <code>return</code>, <code>break</code>, or <code>goto</code>.</p></div>
+        </section>
+
+        <section class="doc-section split-section" id="agentes" data-title="Agents CLI Ollama fallback retry cache Agentes">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="05 · IA">05 · AI</p>
+            <h2 data-pt="Agentes, sem acoplamento">Agents, without coupling</h2>
+            <p data-pt="A mesma abstração pode chamar um processo CLI local ou um modelo Ollama. A configuração fica separada do fluxo.">The same abstraction can call a local CLI process or an Ollama model. Configuration stays separate from the flow.</p>
+          </div>
+          <div class="section-body">
+            <pre class="code-block"><code class="language-mhl">agent LocalModel {
+    engine: "ollama/qwen2.5-coder"
+    endpoint: "http://localhost:11434"
+    temperature: 0.2
+    retry: {
+        max_attempts: 3
+        delay: 2s
+        retry_on: ["timeout", 503]
+    }
+}</code></pre>
+            <p class="muted" data-pt="A chamada é sempre uma expressão:">The call is always an expression:</p>
+            <pre class="code-block"><code class="language-mhl">var answer = LocalModel.run(
+    prompt: Review(file: "main.go", code: source),
+    schema: schema_text
+)</code></pre>
+          </div>
+        </section>
+
+        <section class="doc-section" id="prompts" data-title="Prompts modules imports interpolation Markdown Prompts módulos imports interpolação">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="06 · CONTEXTO">06 · CONTEXT</p>
+            <h2 data-pt="Prompts como código reutilizável">Prompts as reusable code</h2>
+            <p data-pt="Templates são cidadãos de primeira classe: recebem parâmetros nomeados, interpolam expressões e podem viver em arquivos Markdown externos.">Templates are first-class citizens: they take named parameters, interpolate expressions, and can live in external Markdown files.</p>
+          </div>
+          <div class="prompt-demo">
+            <div class="prompt-label">review.prompt.md</div>
+            <pre class="code-block"><code class="language-mhl">prompt Review(file: string, code: string) from "./review.prompt.md"
+
+// review.prompt.md
+# Revisão técnica
+
+Arquivo: ${file}
+
+${code}</code></pre>
+          </div>
+          <div class="tip-row"><span>TIP</span><p data-pt="Use &lt;code&gt;\${PLACEHOLDER}&lt;/code&gt; quando a variável pertence ao shell ou a outro template e deve ser mantida literalmente.">Use <code>\${PLACEHOLDER}</code> when the variable belongs to the shell or another template and must be kept literal.</p></div>
+        </section>
+
+        <section class="doc-section" id="memoria-tools" data-title="Memory tools cmd fs git http json Memória tools">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="07 · CAPACIDADES">07 · CAPABILITIES</p>
+            <h2 data-pt="Memória e ferramentas nativas">Memory and native tools</h2>
+            <p data-pt="Encapsule I/O em tools e escolha o tipo de memória de acordo com a duração e a forma dos dados.">Wrap I/O in tools and pick the memory type based on how long the data lives and its shape.</p>
+          </div>
+          <div class="card-grid three">
+            <article class="info-card accent-card"><span class="card-icon">⌁</span><h3>KV</h3><p data-pt="Efêmera, rápida e isolada por execução com &lt;code&gt;set&lt;/code&gt; e &lt;code&gt;get&lt;/code&gt;.">Ephemeral, fast, and isolated per run, with <code>set</code> and <code>get</code>.</p></article>
+            <article class="info-card"><span class="card-icon">▣</span><h3>JSON</h3><p data-pt="Persistente em arquivo, ideal para estado entre execuções.">Persisted to file, ideal for state across runs.</p></article>
+            <article class="info-card"><span class="card-icon">≋</span><h3>Append log</h3><p data-pt="Histórico textual ou JSONL somente para anexação.">Append-only text or JSONL history.</p></article>
+          </div>
+          <pre class="code-block"><code class="language-mhl">memory session {
+    type: "kv"
+    store: "memory"
+}
+
+tool project {
+    read(path: string) -> fs.read(path)
+    test() -> cmd.exec(["go", "test", "./..."], timeout: 120s)
+}
+
+session.set("attempt", 1)
+var attempt = session.get("attempt", 0)</code></pre>
+          <div class="native-list"><span><b>cmd</b> exec · exec_all</span><span><b>fs</b> read · write · list</span><span><b>git</b> diff · status · commit</span><span><b>json</b> parse · stringify</span><span><b>http</b> post</span></div>
+        </section>
+
+        <section class="doc-section" id="pipelines" data-title="Pipelines steps checkpoint resume loop">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="08 · ORQUESTRAÇÃO">08 · ORCHESTRATION</p>
+            <h2 data-pt="Fluxos que continuam">Flows that keep going</h2>
+            <p data-pt="Steps são executados em ordem, podem redirecionar com &lt;code&gt;goto&lt;/code&gt; e persistir progresso com checkpoints por step.">Steps run in order, can redirect with <code>goto</code>, and persist progress with per-step checkpoints.</p>
+          </div>
+          <pre class="code-block"><code class="language-mhl">pipeline Recoverable {
+    checkpoint: {
+        enabled: true
+        strategy: "per_step"
+        storage: "file"
+        ttl: 7d
+    }
+
+    step Verify {
+        var result = project.test()
+        if (result.exit_code != 0) goto Repair
+    }
+
+    step Repair {
+        log.warn("corrigir e tentar novamente")
+    }
+}</code></pre>
+          <div class="flow-diagram"><span>input</span><i>→</i><strong>step</strong><i>→</i><span>checkpoint</span><i>→</i><strong>resume</strong></div>
+          <div class="tip-row"><span>NOTE</span><p data-pt="O estado fica em &lt;code&gt;.mhl/state/&lt;/code&gt;. Uma execução concluída limpa o checkpoint; uma falha permite &lt;code&gt;mhl run file.mh --resume&lt;/code&gt;.">State lives in <code>.mhl/state/</code>. A completed run clears the checkpoint; a failure lets you <code>mhl run file.mh --resume</code>.</p></div>
+          <p class="muted" data-pt="Prefixar com &lt;code&gt;loop&lt;/code&gt; repete o pipeline inteiro segundo uma política de &lt;code&gt;repeat&lt;/code&gt;:">Prefixing with <code>loop</code> repeats the whole pipeline according to a <code>repeat</code> policy:</p>
+          <pre class="code-block"><code class="language-mhl">memory poll {
+    type: "kv"
+    store: "memory"
+}
+
+loop pipeline Poll {
+    repeat: {
+        stop_when: poll.get("status") == "done"
+        max_iterations: 20
+    }
+
+    step Check {
+        var status = if (project.test().exit_code == 0) "done" else "pending"
+        poll.set("status", status)
+    }
+}</code></pre>
+          <div class="tip-row"><span>NOTE</span><p data-pt="&lt;code&gt;stop_when&lt;/code&gt; roda num ambiente próprio, fora de qualquer step — &lt;code&gt;var&lt;/code&gt; de step não é visível ali, então o estado observado entre iterações precisa passar por &lt;code&gt;memory&lt;/code&gt;. &lt;code&gt;max_iterations&lt;/code&gt; é um teto rígido; ambos os campos são opcionais."><code>stop_when</code> runs in its own environment, outside any step — a step's <code>var</code> isn't visible there, so state observed across iterations has to go through <code>memory</code>. <code>max_iterations</code> is a hard ceiling; both fields are optional.</p></div>
+        </section>
+
+        <section class="doc-section split-section" id="mcp" data-title="MCP servers retry cache rate limit servidores resiliência">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="09 · INTEGRAÇÕES">09 · INTEGRATIONS</p>
+            <h2 data-pt="MCP e resiliência">MCP and resilience</h2>
+            <p data-pt="Declare servidores MCP stateless via stdio ou HTTP, injete credenciais com ambiente e controle tráfego.">Declare stateless MCP servers over stdio or HTTP, inject credentials via the environment, and control traffic.</p>
+          </div>
+          <div class="section-body">
+            <pre class="code-block"><code class="language-mhl">mcp_server RemoteTools {
+    transport: "http"
+    url: "https://example.test/mcp"
+    headers: {
+        "Authorization": "Bearer " + env("MCP_TOKEN")
+    }
+}</code></pre>
+            <div class="mini-stats"><div><strong>SHA-256</strong><span data-pt="cache exato">exact-match cache</span></div><div><strong>TTL</strong><span data-pt="expiração explícita">explicit expiration</span></div><div><strong>RPM</strong><span data-pt="limite de chamadas">call rate limit</span></div></div>
+          </div>
+        </section>
+
+        <section class="doc-section" id="cli" data-title="CLI lint test diagnostics security diagnóstico segurança">
+          <div class="section-heading">
+            <p class="eyebrow" data-pt="10 · OPERAR">10 · OPERATE</p>
+            <h2 data-pt="CLI e diagnóstico">CLI and diagnostics</h2>
+            <p data-pt="O binário &lt;code&gt;mhl&lt;/code&gt; concentra execução, testes, lint e a integração LSP.">The <code>mhl</code> binary handles execution, tests, lint, and LSP integration.</p>
+          </div>
+          <div class="cli-grid">
+            <div class="cli-command"><code>mhl run main.mh</code><span data-pt="executar pipeline">run pipeline</span></div>
+            <div class="cli-command"><code>mhl run main.mh --resume</code><span data-pt="retomar estado">resume state</span></div>
+            <div class="cli-command"><code>mhl test tests/</code><span data-pt="rodar blocos test">run test blocks</span></div>
+            <div class="cli-command"><code>mhl lint .</code><span data-pt="validar fonte e imports">validate source and imports</span></div>
+            <div class="cli-command"><code>mhl skills list</code><span data-pt="listar skills">list skills</span></div>
+            <div class="cli-command"><code>mhl lsp</code><span data-pt="servidor de linguagem">language server</span></div>
+          </div>
+          <div class="security-banner"><span>!</span><div><strong data-pt="Zero-trust por padrão">Zero-trust by default</strong><p data-pt="Não versione tokens. Use &lt;code&gt;env(&amp;quot;API_TOKEN&amp;quot;)&lt;/code&gt;, prefira argv a comandos concatenados e revise logs/trace antes de habilitar em produção.">Don't commit tokens. Use <code>env("API_TOKEN")</code>, prefer argv over concatenated commands, and review logs/trace before enabling in production.</p></div></div>
+        </section>
+
+        <footer class="site-footer"><span>© MHL · Meta-Harness Language</span><a href="https://github.com/mh-language/mhl-core-runtime/tree/main/docs/wiki" target="_blank" rel="noreferrer" data-pt="Manual completo em Markdown →">Full manual in Markdown →</a></footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

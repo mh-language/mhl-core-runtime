@@ -5,10 +5,12 @@ import "github.com/alecthomas/participle/v2/lexer"
 // Pipeline declares an execution pipeline: typed inputs, optional properties
 // (e.g. checkpoint config), and ordered steps. An optional leading `loop`
 // keyword marks it as self-repeating: runtime.LoopRunner (not a plain
-// runtime.Runner) drives it, reading its `stop_when`/`max_iterations` body
-// Props the same generic way `checkpoint` is already read (see
-// runtime.PipelineFromAST) — no separate grammar for them. A pipeline with
-// no `loop` prefix still runs exactly once, unchanged.
+// runtime.Runner) drives it, reading its `repeat { stop_when,
+// max_iterations }` body Prop the same generic way `checkpoint { ... }` is
+// already read (see runtime.PipelineFromAST) — no separate grammar for
+// either. Named `repeat`, not `loop`, so it doesn't repeat the `loop`
+// keyword that already precedes `pipeline`. A pipeline with no `loop` prefix
+// still runs exactly once, unchanged.
 type Pipeline struct {
 	Loop bool              `parser:"@'loop'?"`
 	Name string            `parser:"'pipeline' @Ident"`

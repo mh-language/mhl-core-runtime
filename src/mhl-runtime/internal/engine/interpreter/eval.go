@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -334,6 +335,21 @@ func evalIfExpr(ctx *evalCtx, e *ast.IfExpr, depth int) (any, error) {
 // access, so a variable holding an object (e.g. from memory.get()) can
 // have its fields read with `.field`.
 //
+// A bare `Name(...)` call — no member trailer at all — whose Name matches a
+// declared `prompt Name(...) { "..." }` template is also recognized here,
+// rendering it into a plain string via renderPromptCallDynamic
+// (prompt_ops.go). This is what lets a prompt reference be used anywhere an
+// expression can (assigned to a `var`, passed as an ordinary argument to a
+// tool method, concatenated, ...) and not just inside the one special
+// `prompt:` position `<Agent>.run(prompt: Name(...))` already recognized
+// via resolvePromptArgument — the two share this same rendering function,
+// so `Name(...)`'s own arguments are ordinary expressions in both places
+// (a variable, `current.title`, another prompt call, ...), not just a
+// literal string token. When Name doesn't match any declared prompt, this
+// falls through to the generic path below exactly like the `member ==
+// "run"` agent case just above does for an unknown agent name — so calling
+// an actual closure-holding variable (`predicate(item)`) is unaffected.
+//
 // Memory vs. tool is decided by what `name` actually is, not by whether
 // `member` happens to spell one of the four memory op names — a `tool`
 // method is free to be named get/set/append/remove (as e.g. a caching
@@ -344,8 +360,20 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	if p.Primary.Ident == "log" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalLogCall(ctx, p.Ops[0].Call.Args, depth)
 	}
+	if p.Primary.Ident == "fail" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
+		return evalFailCall(ctx, p.Ops[0].Call.Args, depth)
+	}
 	if p.Primary.Ident == "env" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalEnvCall(ctx, p.Ops[0].Call.Args, depth)
+	}
+	if p.Primary.Ident != "" && len(p.Ops) >= 1 && p.Ops[0].Call != nil {
+		if _, ok := findPrompt(ctx.prog, p.Primary.Ident); ok {
+			rendered, err := renderPromptCallDynamic(ctx, p.Primary.Ident, p.Ops[0].Call, depth)
+			if err != nil {
+				return nil, err
+			}
+			return applyTrailers(ctx, rendered, p.Ops[1:], depth)
+		}
 	}
 	if p.Primary.Ident != "" && len(p.Ops) >= 2 && p.Ops[0].Member != "" && p.Ops[1].Call != nil {
 		name := p.Primary.Ident
@@ -405,24 +433,82 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	return applyTrailers(ctx, base, p.Ops, depth)
 }
 
-// evalLogCall implements the log(...) builtin as a real expression — not
-// just a top-level statement — so it can appear anywhere an expression can,
-// including a `tool` method body (`print_json(json: any) -> log(json)`).
-// It prints its evaluated, space-joined arguments to ctx.out and always
-// evaluates to nil. This is the one place this interpreter prints a value
-// the .mh author explicitly asked to see; memory.get() itself stays
-// silent unless wrapped in log(...).
+// evalLogCall implements the bare log(...) builtin as a real expression —
+// not just a top-level statement — so it can appear anywhere an expression
+// can, including a `tool` method body (`print_json(json: any) -> log(json)`).
+// It always evaluates to nil. This is the one place this interpreter prints
+// a value the .mh author explicitly asked to see; memory.get() itself stays
+// silent unless wrapped in log(...). Bare log(...) carries no level — it
+// predates log.info/log.warn/log.error (nativeOpCall, tool.go) and keeps
+// printing unprefixed for backward compatibility with existing .mh scripts
+// and their test assertions.
 func evalLogCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
-	parts := make([]string, 0, len(args))
+	values, err := evalLogArgs(ctx, args, depth)
+	if err != nil {
+		return nil, err
+	}
+	writeLog(ctx, "", values)
+	return nil, nil
+}
+
+// evalLogArgs evaluates a log call's arguments in order, shared by bare
+// log(...) (evalLogCall) and the leveled log.info/warn/error ops
+// (nativeOpCall, tool.go).
+func evalLogArgs(ctx *evalCtx, args []*ast.Argument, depth int) ([]any, error) {
+	values := make([]any, 0, len(args))
 	for _, arg := range args {
 		v, err := evalExprAt(ctx, arg.Value, depth)
 		if err != nil {
 			return nil, err
 		}
-		parts = append(parts, formatValue(v))
+		values = append(values, v)
 	}
-	fmt.Fprintln(ctx.out, strings.Join(parts, " "))
-	return nil, nil
+	return values, nil
+}
+
+// writeLog formats values the same space-joined way for every log variant
+// and writes one line to ctx.out, prefixing it with "[LEVEL] " when level is
+// non-empty (log.info/warn/error) and leaving it bare when not (log(...)).
+func writeLog(ctx *evalCtx, level string, values []any) {
+	line := joinValues(values)
+	if level != "" {
+		line = "[" + level + "] " + line
+	}
+	fmt.Fprintln(ctx.out, line)
+}
+
+// joinValues formats values the same space-joined way every log/fail
+// variant does — the one formatting rule shared by writeLog and
+// evalFailCall's error message.
+func joinValues(values []any) string {
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = formatValue(v)
+	}
+	return strings.Join(parts, " ")
+}
+
+// evalFailCall implements the fail(...) builtin: unlike log(...), which
+// only traces to ctx.out and always evaluates to nil, fail(...) evaluates
+// its space-joined arguments into a message and returns a real Go error in
+// place of a value. That error unwinds exactly like any other expression
+// evaluation error (division by zero, a missing agent, an unhandled
+// fs.read failure, ...) — up through execBlock/execIf/execTry, RunStep, the
+// pipeline Runner, and cli.Run — so an uncaught fail(...) makes `mhl run`
+// report it and cmd/mhl's main() os.Exit(1). A `try { fail(...) } catch
+// (e) { ... }` catches it the same way it already catches any other
+// error (execTry, exec.go), since fail(...) is a plain error, not a
+// control-flow signal like break/return/goto (isControlSignal, exec.go).
+// This is the deliberate counterpart to a pipeline failing by accident: a
+// `break "reason"` always exits 0 (runPipeline, cli.go) even with a
+// reason, so fail(...) is what a .mh author reaches for when a run must be
+// reported as failed to whatever invoked `mhl run`.
+func evalFailCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
+	values, err := evalLogArgs(ctx, args, depth)
+	if err != nil {
+		return nil, err
+	}
+	return nil, errors.New(joinValues(values))
 }
 
 // evalEnvCall implements the env(name) builtin: it reads the OS environment
@@ -457,9 +543,12 @@ func evalEnvCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 // invokes v as a closure when it is one (see callClosure) — that's what
 // makes `predicate(item)` work when predicate is a variable holding a
 // Lambda's value — and is an error for any other value, since there's
-// nothing else callable. An Index trailer is `array[i]` — sugar for
-// get_index(i) that also, unlike the method form, doubles as an assignable
-// target (see execAssign, exec.go).
+// nothing else callable. An Index trailer is `container[i]` — for an
+// array, sugar for get_index(i); for an object, a *dynamic* field read by
+// a runtime-computed string key (unlike the static Member trailer above,
+// which only ever accepts a literal identifier known at parse time) — see
+// indexRead/resolveIndexKey below. Either form, unlike the method form,
+// also doubles as an assignable target (see execAssign, exec.go).
 func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, error) {
 	v := base
 	for i := 0; i < len(ops); i++ {
@@ -496,11 +585,11 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 			}
 			v = result
 		case op.Index != nil:
-			arr, idx, err := indexArray(ctx, v, op.Index, depth)
+			next, err := indexRead(ctx, v, op.Index, depth)
 			if err != nil {
 				return nil, err
 			}
-			v = arr[idx]
+			v = next
 		case op.Slice != nil:
 			sliced, err := sliceArray(ctx, v, op.Slice, depth)
 			if err != nil {
@@ -512,33 +601,89 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 	return v, nil
 }
 
-// indexArray evaluates indexExpr against ctx and validates it as an
-// in-range integer index into receiver (a []any) — the shared "number,
-// integer, in bounds" check behind both `array[i]` reads (the Index case
-// above) and `array[i] = value` writes (execAssign, exec.go). It has its
-// own error text rather than reusing get_index()'s (callValueMethod) so
-// that method's existing, test-asserted error strings stay untouched.
-func indexArray(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int) (arr []any, idx int, err error) {
-	arr, ok := receiver.([]any)
-	if !ok {
-		return nil, 0, fmt.Errorf("cannot index a %s value", typeName(receiver))
-	}
+// resolveIndexKey evaluates indexExpr and validates it against receiver's
+// type, returning a key ready to use against that receiver: an in-bounds
+// int for a []any, or a string for a map[string]any — the shared
+// "right key type, and in range for an array" check behind both
+// `container[i]` reads (indexRead) and `container[i] = value` writes
+// (indexWrite / execAssign, exec.go). It has its own error text rather than
+// reusing get_index()'s (callValueMethod) so that method's existing,
+// test-asserted error strings stay untouched.
+func resolveIndexKey(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int) (any, error) {
 	idxVal, err := evalExprAt(ctx, indexExpr, depth)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	idxF, ok := idxVal.(float64)
-	if !ok {
-		return nil, 0, fmt.Errorf("array index must be a number, got %s", typeName(idxVal))
+	switch r := receiver.(type) {
+	case []any:
+		idxF, ok := idxVal.(float64)
+		if !ok {
+			return nil, fmt.Errorf("array index must be a number, got %s", typeName(idxVal))
+		}
+		idx := int(idxF)
+		if float64(idx) != idxF {
+			return nil, fmt.Errorf("array index must be an integer, got %v", idxF)
+		}
+		if idx < 0 || idx >= len(r) {
+			return nil, fmt.Errorf("index %d out of range (size %d)", idx, len(r))
+		}
+		return idx, nil
+	case map[string]any:
+		key, ok := idxVal.(string)
+		if !ok {
+			return nil, fmt.Errorf("object key must be a string, got %s", typeName(idxVal))
+		}
+		return key, nil
+	default:
+		return nil, fmt.Errorf("cannot index a %s value", typeName(receiver))
 	}
-	idx = int(idxF)
-	if float64(idx) != idxF {
-		return nil, 0, fmt.Errorf("array index must be an integer, got %v", idxF)
+}
+
+// indexRead resolves `container[i]` for a read — an array element by
+// integer index, or an object field by a dynamic (runtime-computed) string
+// key, unlike the static `.field` trailer which only accepts a literal
+// identifier known at parse time. See resolveIndexKey for key validation.
+func indexRead(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int) (any, error) {
+	key, err := resolveIndexKey(ctx, receiver, indexExpr, depth)
+	if err != nil {
+		return nil, err
 	}
-	if idx < 0 || idx >= len(arr) {
-		return nil, 0, fmt.Errorf("index %d out of range (size %d)", idx, len(arr))
+	switch r := receiver.(type) {
+	case []any:
+		return r[key.(int)], nil
+	case map[string]any:
+		k := key.(string)
+		v, ok := r[k]
+		if !ok {
+			return nil, fmt.Errorf("field %q not found", k)
+		}
+		return v, nil
+	default:
+		panic("resolveIndexKey validated receiver type")
 	}
-	return arr, idx, nil
+}
+
+// indexWrite resolves `container[i] = value` for a write — mutating an
+// array element in place or setting/overwriting an object field by a
+// dynamic key. Both []any and map[string]any are Go reference types, so
+// mutating through receiver here is visible through every alias of the
+// same value, exactly like the array-only behavior this generalizes (see
+// execAssign, exec.go).
+func indexWrite(ctx *evalCtx, receiver any, indexExpr *ast.Expr, value any, depth int) error {
+	key, err := resolveIndexKey(ctx, receiver, indexExpr, depth)
+	if err != nil {
+		return err
+	}
+	switch r := receiver.(type) {
+	case []any:
+		r[key.(int)] = value
+		return nil
+	case map[string]any:
+		r[key.(string)] = value
+		return nil
+	default:
+		panic("resolveIndexKey validated receiver type")
+	}
 }
 
 // sliceArray evaluates a range-index trailer (`numbers[lo..hi]`) against

@@ -5,6 +5,8 @@ pipelines: agents, skills, tools, memory, MCP servers, prompts, and the pipeline
 them together. See [`src/mhl-runtime`](src/mhl-runtime) for the Go implementation of the `mhl`
 CLI and [`vscode-mhl`](vscode-mhl) for editor support.
 
+The language manual is available as a Markdown wiki in [`docs/wiki`](docs/wiki/README.md).
+
 ## Install
 
 The install scripts download the `mhl` binary and, if VS Code is installed, the `mhl-language`

@@ -17,6 +17,9 @@ import "./tools/system.mhl" as sys
 use { ClaudeCoder, KimiArchitect } from "./agentes/llms.mhl"
 use { SecurityAuditPrompt } from "./prompts/seguranca.mhl"
 
+// Cada símbolo seletivo também pode receber um alias local
+use { FeatureStore as store, RunConfig as config, PlanReader as planner } from "./tools/feature.mhl"
+
 // Exportação de componentes para uso em outros arquivos .mhl
 export agent CustomAuditor {
     engine: "anthropic/claude-3-5-sonnet"
@@ -54,6 +57,20 @@ prompt ArchitectureDesignPrompt(task_description: string) {
     """
 }
 
+```
+
+O corpo de um `prompt` também pode vir de um arquivo Markdown externo, resolvido em relação ao diretório do arquivo `.mh` que o declara — a mesma regra de resolução usada por `import`/`use`. Isso permite escrever o prompt como Markdown comum (com front-matter, headings, blocos de código) em vez de escapá-lo dentro de uma string:
+
+```mhl
+prompt SecurityAuditPrompt(file_path: string, code_content: string) from "./security-audit.prompt.md"
+```
+
+O arquivo carregado é tratado exatamente como um corpo `"""..."""` inline a partir daí: `${param}` continua interpolando normalmente. Como um Markdown trazido de fora tende a conter `${...}` incidental que não é parâmetro nenhum (exemplos de shell, JSON, variáveis de ambiente), um `${...}` pode ser escapado com `\${...}` para renderizar como texto literal em vez de ser validado como parâmetro declarado:
+
+```mhl
+prompt DeployRunbook() from "./deploy.prompt.md"
+// dentro de deploy.prompt.md: "defina \${TARGET_DIR} antes de rodar o script"
+// renderiza como texto literal "${TARGET_DIR}", sem exigir um parâmetro TARGET_DIR
 ```
 
 ---

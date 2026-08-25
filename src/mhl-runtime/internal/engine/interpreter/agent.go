@@ -16,6 +16,7 @@ import (
 )
 
 func findAgent(prog *ast.Program, name string) (*ast.Agent, bool) {
+	name = resolveName(prog, name)
 	for _, decl := range prog.Decls {
 		if decl.Agent != nil && decl.Agent.Name == name {
 			return decl.Agent, true
@@ -29,9 +30,12 @@ func findAgent(prog *ast.Program, name string) (*ast.Agent, bool) {
 // `Agent.run(...)` statement and for `Agent.run(...)` used as a
 // sub-expression (e.g. `var x = Agent.run(...)`) — so tracing
 // ("agent %s response:\n%s\n" on ctx.out) and error behavior are identical
-// either way.
+// either way. Tracing itself is opt-in per agent (see agentTrace): each leg
+// that actually ran — the primary agent, or whichever fallback ended up
+// succeeding — gates its own "response:" line on its own `trace` property,
+// the same way it already has its own independent cache/retry/rate_limit.
 func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, depth int) (string, error) {
-	promptText, ok, err := resolvePromptArgument(ctx, call)
+	promptText, ok, err := resolvePromptArgument(ctx, call, depth)
 	if err != nil {
 		return "", fmt.Errorf("%s.run: %w", agentName, err)
 	}
@@ -45,7 +49,9 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 
 	response, err := runAgentAttempt(ctx, agentName, agent, promptText, schemaText)
 	if err == nil {
-		fmt.Fprintf(ctx.out, "agent %s response:\n%s\n", agentName, response)
+		if agentTrace(agent) {
+			fmt.Fprintf(ctx.out, "agent %s response:\n%s\n", agentName, response)
+		}
 		return response, nil
 	}
 
@@ -60,7 +66,9 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 		}
 		response, fbAttemptErr := runAgentAttempt(ctx, fbName, fb, promptText, schemaText)
 		if fbAttemptErr == nil {
-			fmt.Fprintf(ctx.out, "agent %s response (via %s):\n%s\n", agentName, fbName, response)
+			if agentTrace(fb) {
+				fmt.Fprintf(ctx.out, "agent %s response (via %s):\n%s\n", agentName, fbName, response)
+			}
 			return response, nil
 		}
 		err = fbAttemptErr // report the last fallback's error if every leg fails
@@ -176,8 +184,9 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 		// is ever invoked, and once per retry attempt if the agent's
 		// `retry:` config causes more than one). ctx is nil only in
 		// agent_test.go's direct runAgentAttempt calls, which don't care
-		// about trace output.
-		if ctx != nil {
+		// about trace output. Gated on agentTrace like every other trace
+		// line — off unless this agent declares `trace: true`.
+		if ctx != nil && agentTrace(agent) {
 			fmt.Fprintf(ctx.out, "agent %s: calling...\n", agentName)
 		}
 
@@ -317,6 +326,25 @@ func agentLogPath(agent *ast.Agent) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// agentTrace reads an agent's `trace` property — when true, runAgent and
+// runAgentAttempt narrate that agent's "calling..." / "response:" lines to
+// ctx.out for every `.run()` against it (language-design.md §5's other
+// agent properties — cache/retry/rate_limit/fallback — are all opt-in the
+// same declarative way). Off by default: an agent that never declares
+// `trace` runs silently on stdout, same as before this property existed —
+// only its return value reaches the calling .mh code either way. ok is
+// deliberately not returned (unlike agentLogPath): "absent" and "false" mean
+// exactly the same thing here, so callers don't need to tell them apart.
+func agentTrace(agent *ast.Agent) bool {
+	for _, prop := range agent.Props {
+		if prop.Name == "trace" {
+			v, _ := ast.BoolValue(prop.Value)
+			return v
+		}
+	}
+	return false
 }
 
 // agentOllamaConfig reads the endpoint/temperature configuration for an

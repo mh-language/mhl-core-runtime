@@ -1,0 +1,11 @@
+export agent Claude {
+    engine: "cli/claude-code"
+    command: "claude"
+    args: [
+        "-p", "${prompt}",
+        "--permission-mode", "bypassPermissions",
+        "--output-format", "json",
+        "--json-schema", "${schema}",
+        "--verbose"
+    ]
+}

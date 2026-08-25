@@ -88,3 +88,71 @@ func TestAppendCreatesMissingParentDirs(t *testing.T) {
 		t.Fatalf("expected file to exist: %v", err)
 	}
 }
+
+func TestDeleteRemovesExistingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.txt")
+	if _, err := nativeops.Write(path, "hello"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	ok, err := nativeops.Delete(path)
+	if err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if !ok {
+		t.Errorf("Delete returned false")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("expected file to be gone, stat err = %v", err)
+	}
+}
+
+func TestDeleteMissingFileErrors(t *testing.T) {
+	_, err := nativeops.Delete(filepath.Join(t.TempDir(), "missing.txt"))
+	if err == nil {
+		t.Fatal("expected an error deleting a missing file")
+	}
+}
+
+func TestListReturnsJoinedPathsSortedByName(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"b.txt", "a.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	got, err := nativeops.List(dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	want := []string{
+		filepath.Join(dir, "a.txt"),
+		filepath.Join(dir, "b.txt"),
+		filepath.Join(dir, "sub"),
+	}
+	if len(got) != len(want) {
+		t.Fatalf("List = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("List[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestListMissingDirErrors(t *testing.T) {
+	_, err := nativeops.List(filepath.Join(t.TempDir(), "missing"))
+	if err == nil {
+		t.Fatal("expected an error listing a missing directory")
+	}
+}
+
+func TestJoinMatchesFilepathJoin(t *testing.T) {
+	got := nativeops.Join("a", "b", "c.txt")
+	want := filepath.Join("a", "b", "c.txt")
+	if got != want {
+		t.Errorf("Join = %q, want %q", got, want)
+	}
+}

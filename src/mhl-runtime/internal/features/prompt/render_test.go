@@ -119,6 +119,52 @@ prompt Review(code: string) {
 	}
 }
 
+func TestRenderEscapedPlaceholderStaysLiteral(t *testing.T) {
+	src := `
+prompt Review(code: string) {
+    """
+    review ${code}: run with \${code}
+    """
+}
+`
+	prog, err := parser.Parse(src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	decl := prog.Decls[0].Prompt
+
+	got, err := prompt.Render(decl, map[string]string{"code": "x = 1"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if got != "review x = 1: run with ${code}" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestRenderEscapedUndeclaredPlaceholderIsNotAnError(t *testing.T) {
+	src := `
+prompt Review(code: string) {
+    """
+    review ${code} — shell example: \${TARGET_DIR}
+    """
+}
+`
+	prog, err := parser.Parse(src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	decl := prog.Decls[0].Prompt
+
+	got, err := prompt.Render(decl, map[string]string{"code": "x"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(got, "${TARGET_DIR}") {
+		t.Errorf("got %q", got)
+	}
+}
+
 func TestRenderNoParams(t *testing.T) {
 	src := `
 prompt Greeting() {

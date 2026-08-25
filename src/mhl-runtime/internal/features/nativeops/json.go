@@ -3,6 +3,7 @@ package nativeops
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // Parse decodes text as JSON into MHL's native value representation:
@@ -17,6 +18,33 @@ func Parse(text string) (any, error) {
 		return nil, fmt.Errorf("json.parse: %w", err)
 	}
 	return v, nil
+}
+
+// ParseLines decodes text as newline-delimited JSON (NDJSON) — the format
+// streaming CLI agents (e.g. `claude ... --output-format stream-json`,
+// `codex exec --json`) emit one progress/result event per line. A
+// caller can't hand that whole blob to Parse: encoding/json only ever
+// decodes the first top-level value and errors on whatever follows, so a
+// multi-line stream needs each line decoded on its own. Each line is
+// decoded independently and appended to the result in order; a line that
+// isn't valid JSON on its own (blank, or plain non-JSON log text some
+// CLIs interleave into the stream) is skipped rather than failing the
+// whole call, since the caller has no way to filter those out beforehand.
+func ParseLines(text string) ([]any, error) {
+	lines := strings.Split(text, "\n")
+	out := make([]any, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var v any
+		if err := json.Unmarshal([]byte(line), &v); err != nil {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out, nil
 }
 
 // Stringify encodes an already-evaluated MHL value (the same shapes Parse

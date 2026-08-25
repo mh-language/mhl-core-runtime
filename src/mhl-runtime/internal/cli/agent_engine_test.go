@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,6 +34,7 @@ agent Local {
     engine: "ollama/qwen2.5-coder"
     endpoint: "` + srv.URL + `"
     temperature: 0.2
+    trace: true
 }
 
 pipeline P {
@@ -156,6 +158,7 @@ func TestRunCLIAgentPromptPlacedByPlaceholder(t *testing.T) {
 agent LocalEcho {
     command: "echo"
     args: ["-p", "${prompt}", "--agent", "flow", "--verbose"]
+    trace: true
 }
 
 pipeline P {
@@ -186,6 +189,7 @@ func TestRunCLIAgentPromptAppendedWithoutPlaceholder(t *testing.T) {
 agent LocalEcho {
     command: "echo"
     args: ["-p", "--dangerously-skip-permissions"]
+    trace: true
 }
 
 pipeline P {
@@ -236,6 +240,7 @@ agent ClaudeCLI {
         "--output-format", "stream-json",
         "--verbose"
     ]
+    trace: true
 }
 
 pipeline P {
@@ -269,6 +274,7 @@ agent LocalEcho {
     engine: "cli/claude-code"
     command: "echo"
     args: ["--non-interactive"]
+    trace: true
 }
 
 pipeline P {
@@ -337,5 +343,57 @@ pipeline P {
 	}
 	if want := "first\nsecond\n"; string(got) != want {
 		t.Errorf("log content = %q, want %q", string(got), want)
+	}
+}
+
+// TestRunCLIAgentReturnsRawStreamVerbatimRegardlessOfEngine is a regression
+// test: `.run()` must never parse or reshape a cli/* agent's stdout on the
+// runtime's own initiative — not even for engines matching a real CLI's
+// name like "cli/codex" or "cli/claude-code", whose streaming NDJSON output
+// format is that CLI's contract, not mhl's. Baking a per-engine "which
+// field of which event is the real answer" rule into the Go runtime would
+// mean a new mhl release is needed every time Claude or Codex changes that
+// shape; TestToolJSONParseLinesExtractsFinalCodexAgentMessage (tool_test.go)
+// is the intended replacement — that contract lives in ordinary .mh code
+// (json.parse_lines + filter + indexing), editable without recompiling
+// anything.
+func TestRunCLIAgentReturnsRawStreamVerbatimRegardlessOfEngine(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	fixture, err := filepath.Abs("testdata/codex_json_stream_response.ndjson")
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+	src := `
+agent CodexCLI {
+    engine: "cli/codex"
+    command: "sh"
+    args: ["-c", "cat '` + filepath.ToSlash(fixture) + `'", "codex", "${prompt}"]
+}
+
+pipeline P {
+    step S {
+        var response = CodexCLI.run(prompt: "setup")
+        log("lines=${response.split(\"\n\").size()}")
+    }
+}
+`
+	if err := os.WriteFile(main, []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	fixtureContent, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	wantLines := len(strings.Split(strings.TrimRight(string(fixtureContent), "\n"), "\n"))
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", main}, &buf); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	want := fmt.Sprintf("lines=%d", wantLines)
+	if !strings.Contains(buf.String(), want) {
+		t.Errorf("expected %q (the untouched multi-line stream) in output, got: %s", want, buf.String())
 	}
 }

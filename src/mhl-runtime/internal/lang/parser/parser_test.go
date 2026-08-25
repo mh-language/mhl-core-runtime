@@ -51,6 +51,26 @@ func TestFixturesParse(t *testing.T) {
 	}
 }
 
+func TestUseParsesOptionalAliases(t *testing.T) {
+	prog, err := Parse(`use {FeatureStore as store, RunConfig as config, PlanReader as planner} from "modules/tools/feature.tool.mh"`)
+	if err != nil {
+		t.Fatalf("parse use aliases: %v", err)
+	}
+	if got := len(prog.Decls); got != 1 || prog.Decls[0].Use == nil {
+		t.Fatalf("expected one use declaration, got %d", got)
+	}
+	items := prog.Decls[0].Use.Items
+	if len(items) != 3 {
+		t.Fatalf("use items = %d, want 3", len(items))
+	}
+	want := [][2]string{{"FeatureStore", "store"}, {"RunConfig", "config"}, {"PlanReader", "planner"}}
+	for i, item := range items {
+		if item.Name != want[i][0] || item.Alias != want[i][1] {
+			t.Errorf("item %d = {%q as %q}, want {%q as %q}", i, item.Name, item.Alias, want[i][0], want[i][1])
+		}
+	}
+}
+
 // TestControlFlowParses guards RF-1's if/while/try-catch coverage using an
 // inline pipeline snippet (try/catch is not present in the §3 examples).
 func TestControlFlowParses(t *testing.T) {
@@ -433,6 +453,56 @@ pipeline P {
 	}
 	if got := exprPrimary(t, outer.Else).IfExpr; got == nil {
 		t.Errorf("expected outer if-expression's Else to itself be an if-expression (else if), got: %#v", outer.Else)
+	}
+}
+
+// TestPromptFromSourceParses covers the Body|Source alternation
+// (internal/lang/ast/prompt.go): a `prompt ... from "path"` declaration
+// parses with Source set to the raw path and Body left nil — the file it
+// points at is loaded and Body populated later, during import resolution
+// (internal/engine/interpreter/imports.go, internal/lang/lint/imports.go),
+// not here.
+func TestPromptFromSourceParses(t *testing.T) {
+	prog, err := Parse(`export prompt SetupPrompt(name: string) from "./setup.prompt.md"`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(prog.Decls) != 1 || prog.Decls[0].Prompt == nil {
+		t.Fatalf("expected exactly one prompt declaration, got: %#v", prog.Decls)
+	}
+	p := prog.Decls[0].Prompt
+	if p.Source != "./setup.prompt.md" {
+		t.Errorf("Source = %q, want %q", p.Source, "./setup.prompt.md")
+	}
+	if p.Body != nil {
+		t.Errorf("expected Body to be nil for a from-sourced prompt, got: %#v", p.Body)
+	}
+	if len(p.Params) != 1 || p.Params[0].Name != "name" {
+		t.Errorf("expected one param %q, got: %#v", "name", p.Params)
+	}
+}
+
+// TestPromptInlineBodyStillParses guards the other side of the Body|Source
+// alternation: a plain inline body must keep parsing exactly as before,
+// with Source left empty.
+func TestPromptInlineBodyStillParses(t *testing.T) {
+	prog, err := Parse(`
+prompt Greeting(name: string) {
+    "hello ${name}"
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	p := prog.Decls[0].Prompt
+	if p == nil {
+		t.Fatalf("expected a prompt declaration")
+	}
+	if p.Source != "" {
+		t.Errorf("expected empty Source for an inline-body prompt, got %q", p.Source)
+	}
+	if p.Body == nil {
+		t.Errorf("expected a non-nil Body for an inline-body prompt")
 	}
 }
 

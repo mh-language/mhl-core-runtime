@@ -231,6 +231,71 @@ func TestToolJSONStringifyThenParseRoundTrips(t *testing.T) {
 	}
 }
 
+// --- json.parse_lines ------------------------------------------------------
+
+// TestToolJSONParseLinesSkipsBlankAndInvalidLines proves json.parse_lines'
+// forgiving-by-design behavior: unlike json.parse, a line that isn't valid
+// JSON on its own doesn't fail the whole call — it's silently skipped,
+// since a real NDJSON stream from an external CLI can interleave blank
+// lines or plain log text mhl has no way to filter out beforehand.
+func TestToolJSONParseLinesSkipsBlankAndInvalidLines(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var events = json.parse_lines("{\"a\":1}\n\nnot json\n{\"a\":2}\n")
+        log(events.size())
+        log(events[0].a)
+        log(events[1].a)
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "2\n1\n2\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+// TestToolJSONParseLinesExtractsFinalCodexAgentMessage proves the pattern
+// this project settled on after a real failure: `codex exec --json` streams
+// one NDJSON event per line, and handing that whole multi-line blob to
+// json.parse broke with "invalid character '{' after top-level value"
+// (encoding/json only ever decodes the first top-level value). The runtime
+// deliberately does NOT special-case Codex's (or Claude's) stream shape
+// itself — that contract belongs to the CLI, not to mhl, and hard-coding it
+// into the Go runtime would mean a new mhl release every time the CLI
+// changes its event shape. Instead json.parse_lines is a generic building
+// block, and the actual "which event/field is the real answer" rule is
+// ordinary .mh code (here, a tool method) — inspectable and editable
+// without recompiling anything. Mirrors a real handoff pipeline's
+// CodexAgentAdapter.extractResult(...) tool method.
+func TestToolJSONParseLinesExtractsFinalCodexAgentMessage(t *testing.T) {
+	fixture, err := filepath.Abs("testdata/codex_json_stream_response.ndjson")
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+	out, err := run(t, `
+tool CodexAgentAdapter {
+    extractResult(raw) -> {
+        var events = json.parse_lines(raw)
+        var completed = events.filter((e) -> e.type == "item.completed")
+        var agentMessages = completed.filter((e) -> e.item.type == "agent_message")
+        return agentMessages[agentMessages.size() - 1].item.text
+    }
+}
+
+`+wrapStep(`
+        var raw = fs.read("`+filepath.ToSlash(fixture)+`")
+        var text = CodexAgentAdapter.extractResult(raw)
+        var parsed = json.parse(text)
+        log("TARGET_DIR=${parsed.TARGET_DIR} VERIFY_CMD=${parsed.VERIFY_CMD}")
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	want := `TARGET_DIR=app/portable-agent-runtime VERIFY_CMD=GOCACHE="$PWD/.cache/go-build" go test ./...`
+	if !strings.Contains(out, want) {
+		t.Errorf("expected %q in output, got: %s", want, out)
+	}
+}
+
 // --- git.add / git.commit / git.status / git.rev_parse / git.log ---------
 
 // TestGitHandoffCycle exercises the same add→commit→status→rev_parse→log
@@ -426,6 +491,105 @@ func TestToolFSExistsFalseForMissingFile(t *testing.T) {
 	}
 	if !strings.Contains(out, "false\n") {
 		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+// --- fs.delete -------------------------------------------------------------
+
+func TestToolFSDeleteRemovesExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.txt")
+	if err := os.WriteFile(path, []byte("hi"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	out, err := run(t, wrapStep(`log(fs.delete("`+filepath.ToSlash(path)+`"))`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "true\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("expected file to be gone, stat err = %v", err)
+	}
+}
+
+func TestToolFSDeleteMissingFileErrors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "absent.txt")
+	_, err := run(t, wrapStep(`log(fs.delete("`+filepath.ToSlash(path)+`"))`))
+	if err == nil {
+		t.Fatal("expected an error deleting a missing file")
+	}
+}
+
+// --- fs.list ---------------------------------------------------------------
+
+func TestToolFSListReturnsEntryPaths(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.md", "b.md"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	out, err := run(t, wrapStep(`
+        var entries = fs.list("`+filepath.ToSlash(dir)+`")
+        log(entries.size())
+        for (var entry in entries) log(entry)
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "2\n") {
+		t.Errorf("expected 2 entries: %s", out)
+	}
+	for _, want := range []string{filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md")} {
+		if !strings.Contains(out, filepath.ToSlash(want)) {
+			t.Errorf("output missing entry %q: %s", want, out)
+		}
+	}
+}
+
+func TestToolFSListMissingDirErrors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "absent")
+	_, err := run(t, wrapStep(`log(fs.list("`+filepath.ToSlash(path)+`"))`))
+	if err == nil {
+		t.Fatal("expected an error listing a missing directory")
+	}
+}
+
+// --- fs.join -----------------------------------------------------------
+
+func TestToolFSJoinCombinesSegments(t *testing.T) {
+	out, err := run(t, wrapStep(`log(fs.join("a", "b", "c.txt"))`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, filepath.Join("a", "b", "c.txt")+"\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolFSJoinResultIsUsableByOtherFSOps(t *testing.T) {
+	dir := t.TempDir()
+	out, err := run(t, wrapStep(`
+        var path = fs.join("`+filepath.ToSlash(dir)+`", "out.txt")
+        fs.write(path, "hi")
+        log(fs.read(path))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "hi\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolFSJoinRequiresAtLeastOneSegment(t *testing.T) {
+	_, err := run(t, wrapStep(`log(fs.join())`))
+	if err == nil {
+		t.Fatal("expected an error joining zero segments")
 	}
 }
 

@@ -31,7 +31,10 @@ type Pipeline struct {
 
 // PipelineFromAST projects an ast.Pipeline onto a runtime Pipeline, extracting
 // ordered step names, the checkpoint configuration, and — for a `loop
-// pipeline` — its stop_when/max_iterations Props.
+// pipeline` — its `repeat { stop_when, max_iterations }` block. Named
+// `repeat`, not `loop`, specifically to avoid reading as `loop pipeline X {
+// loop: {...} }` — the leading `loop` keyword already says this pipeline
+// repeats; the block itself only needs to say how.
 func PipelineFromAST(p *ast.Pipeline) Pipeline {
 	out := Pipeline{Name: p.Name, Loop: p.Loop}
 	for _, m := range p.Body {
@@ -40,12 +43,8 @@ func PipelineFromAST(p *ast.Pipeline) Pipeline {
 			out.Steps = append(out.Steps, m.Step.Name)
 		case m.Prop != nil && m.Prop.Name == "checkpoint":
 			out.Checkpoint = checkpointFromExpr(m.Prop.Value)
-		case m.Prop != nil && m.Prop.Name == "stop_when":
-			out.StopWhen = m.Prop.Value
-		case m.Prop != nil && m.Prop.Name == "max_iterations":
-			if n, ok := ast.NumberValue(m.Prop.Value); ok {
-				out.MaxIterations = int(n)
-			}
+		case m.Prop != nil && m.Prop.Name == "repeat":
+			out.StopWhen, out.MaxIterations = repeatConfigFromExpr(m.Prop.Value)
 		}
 	}
 	return out
@@ -104,6 +103,39 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 		return Pipeline{}, fmt.Errorf("runtime: no pipeline declared in program")
 	}
 	return Pipeline{}, fmt.Errorf("runtime: pipeline %q not found", name)
+}
+
+// repeatConfigFromExpr reads a `repeat { stop_when, max_iterations }`
+// property's object literal — grouping a `loop pipeline`'s two repeat-policy
+// fields under one marker, the same way `checkpoint { ... }` already groups
+// its own, instead of leaving them loose directly in the pipeline body.
+// Either field may be absent (stopWhen stays nil, maxIterations stays 0),
+// matching how a loop with no explicit ceiling or condition already behaved
+// before this grouping existed — see Pipeline.StopWhen/MaxIterations's doc
+// comment.
+func repeatConfigFromExpr(e *ast.Expr) (stopWhen *ast.Expr, maxIterations int) {
+	obj := ast.BareObject(e)
+	if obj == nil {
+		return nil, 0
+	}
+	for _, f := range obj.Fields {
+		key := ""
+		switch {
+		case f.KeyIdent != nil:
+			key = *f.KeyIdent
+		case f.KeyStr != nil:
+			key = *f.KeyStr
+		}
+		switch key {
+		case "stop_when":
+			stopWhen = f.Value
+		case "max_iterations":
+			if n, ok := ast.NumberValue(f.Value); ok {
+				maxIterations = int(n)
+			}
+		}
+	}
+	return stopWhen, maxIterations
 }
 
 // checkpointFromExpr reads a `checkpoint { ... }` property's object literal

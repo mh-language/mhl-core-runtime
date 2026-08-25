@@ -21,9 +21,15 @@ var keywords = []string{
 var memberAccessRe = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)\.[A-Za-z0-9_]*$`)
 
 // completionAt computes the completion list for path/text at pos, following
-// the same two modes every LSP client expects: member completion right
-// after "target." (only target's own methods), or general completion
-// everywhere else (keywords + every symbol in scope).
+// three modes: member completion right after "target." (only target's own
+// methods), property-name completion when the cursor sits directly inside a
+// recognized declaration body or nested config object (an `agent { }`, a
+// `pipeline { }`/`loop pipeline { }`, or one of their own nested `checkpoint
+// { }`/`repeat { }`/`retry { }`/`cache { }`/`rate_limit { }` blocks — see
+// blockStack/propertyItemsFor), appended to the general list rather than
+// replacing it since the block classifier is best-effort, not authoritative
+// — or general completion everywhere else (keywords + every symbol in
+// scope).
 func completionAt(path, text string, pos position) []completionItem {
 	linePrefix := textBeforePosition(text, pos)
 
@@ -48,6 +54,7 @@ func completionAt(path, text string, pos position) []completionItem {
 			Detail: s.Kind.label(),
 		})
 	}
+	items = append(items, propertyItemsFor(blockStack(textUpToPosition(text, pos)))...)
 	return items
 }
 
@@ -70,6 +77,8 @@ func symbolItemKind(k symbolKind) int {
 		return kindClass
 	case symPrompt, symSkill, symPipeline, symMCPServer:
 		return kindProperty
+	case symNative:
+		return kindModule
 	default:
 		return kindText
 	}

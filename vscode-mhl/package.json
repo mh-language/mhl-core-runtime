@@ -2,9 +2,13 @@
   "name": "mhl-language",
   "displayName": "MHL Language Support",
   "description": "Syntax highlighting and editor support for Meta-Harness Language files.",
-  "version": "0.1.5",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/meta-harness/mhl-language.git"
+  },
+  "version": "0.2.1",
   "publisher": "local-mhl",
-  "icon": "assets/mhl-icon.png",
+  "icon": "assets/mhl-logo-rebrand.png",
   "license": "MIT",
   "engines": {
     "vscode": ">=1.80.0"
@@ -32,6 +36,16 @@
         "language": "mhl",
         "scopeName": "source.mhl",
         "path": "./syntaxes/mhl.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.mhl.codeblock",
+        "path": "./syntaxes/mhl-markdown-fence.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.mhl.markdown": "mhl"
+        }
       }
     ],
     "iconThemes": [

@@ -57,10 +57,17 @@ test test_memory {
         are_equal(SessionJsonMem.get("array")[2], 3)
     }
 
+    // append_log memory only ever exposes .append() (memory_ops.go's
+    // executeMemoryOp rejects any other method with "append_log memory has
+    // no method ...") -- there's no .load()/.get() to read it back through
+    // the memory declaration itself, by design: it's a write-only sink, and
+    // reading it back is a plain file read, the same pattern
+    // memory_session_mem_value_appended_as_a_progress_line below already
+    // uses for progress.txt.
     describe memory_AuditLogMem_append_and_read {
         AuditLogMem.append("First log entry")
         AuditLogMem.append("Second log entry")
-        var logs = AuditLogMem.read()
+        var logs = fs.read(".mhl/logs/audit.log").trim().split("\n")
         are_equal(logs[0], "First log entry")
         are_equal(logs[1], "Second log entry")
     }

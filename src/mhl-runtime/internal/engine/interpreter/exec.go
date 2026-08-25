@@ -289,21 +289,27 @@ func execExprStatement(ctx *evalCtx, expr *ast.Expr) error {
 }
 
 // execAssign handles `x = expr` and `x[i] = expr` (chained: `matrix[i][j] =
-// expr`) — a bare variable, or a variable followed by one or more array-
-// index trailers. Any Member or Call trailer anywhere in the target — e.g.
-// `obj.field = expr` — fails closed with a clear error rather than silently
-// no-oping, since this interpreter has no mutable-structure semantics
-// beyond array-index writes. Assigning to a name never declared with `var`
-// is also an error: it never implicitly declares, consistent with the rest
-// of the interpreter's fail-closed philosophy.
+// expr`, `config[section][key] = expr`) — a bare variable, or a variable
+// followed by one or more bracket-index trailers, each an integer index
+// into an array or a dynamic (runtime-computed) string key into an object.
+// Any Member or Call trailer anywhere in the target — e.g. `obj.field =
+// expr` — fails closed with a clear error rather than silently no-oping,
+// since this interpreter has no mutable-structure semantics beyond
+// bracket-index writes (a Member trailer only ever reads a literal,
+// parse-time-known field name; dynamic writes go through `obj[key] = v`
+// instead). Assigning to a name never declared with `var` is also an
+// error: it never implicitly declares, consistent with the rest of the
+// interpreter's fail-closed philosophy.
 //
-// An index write mutates the target array in place (arr[idx] = v) rather
-// than rebuilding and reassigning ctx.env — since a Go slice already shares
-// its backing array with every alias of the same value (`var b = a` copies
-// the slice header, not its contents, the same as reading `a` back after
-// `b[0] = ...` already reflects it today), this is what makes
-// `matrix[i][j] = v` mutate the outer array/env entry it was read from at
-// all, with no reassignment step needed at each level of the chain.
+// An index write mutates the target array/object in place (indexWrite,
+// eval.go) rather than rebuilding and reassigning ctx.env — since a Go
+// slice or map already shares its backing storage with every alias of the
+// same value (`var b = a` copies the slice/map header, not its contents,
+// the same as reading `a` back after `b[0] = ...` or `b["k"] = ...`
+// already reflects it today), this is what makes `matrix[i][j] = v` or
+// `config[section][key] = v` mutate the outer array/object/env entry it
+// was read from at all, with no reassignment step needed at each level of
+// the chain.
 //
 // A name declared with the step's own `var` always wins over a
 // same-named pipeline variable (env is checked before pipelineEnv,
@@ -335,18 +341,14 @@ func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
 	if err != nil {
 		return err
 	}
-	arr, idx, err := indexArray(ctx, container, ops[len(ops)-1].Index, 0)
-	if err != nil {
-		return err
-	}
-	arr[idx] = v
-	return nil
+	return indexWrite(ctx, container, ops[len(ops)-1].Index, v, 0)
 }
 
 // assignTargetBase returns the target's base variable name when it has the
 // shape execAssign accepts: a bare identifier, or an identifier followed
-// only by array-index trailers (`arr[i]`, `matrix[i][j]`) — any Member or
-// Call trailer in the chain makes it not an assignable target.
+// only by bracket-index trailers (`arr[i]`, `matrix[i][j]`, `config[key]`)
+// — any Member or Call trailer in the chain makes it not an assignable
+// target.
 func assignTargetBase(p *ast.Postfix) (string, bool) {
 	if p == nil || p.Primary == nil || p.Primary.Ident == "" {
 		return "", false

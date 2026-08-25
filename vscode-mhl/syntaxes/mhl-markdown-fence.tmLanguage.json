@@ -1,0 +1,28 @@
+{
+  "fileTypes": [],
+  "injectionSelector": "L:markup.fenced_code.block.markdown",
+  "patterns": [
+    {
+      "include": "#mhl-code-block"
+    }
+  ],
+  "repository": {
+    "mhl-code-block": {
+      "begin": "(?<=[`~])(mhl|mh)(\\s+[^`~]*)?$",
+      "end": "(^|\\G)(?=\\s*[`~]{3,}\\s*$)",
+      "patterns": [
+        {
+          "begin": "(^|\\G)(\\s*)(.*)",
+          "while": "(^|\\G)(?!\\s*([`~]{3,})\\s*$)",
+          "contentName": "meta.embedded.mhl.markdown",
+          "patterns": [
+            {
+              "include": "source.mhl"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "scopeName": "markdown.mhl.codeblock"
+}

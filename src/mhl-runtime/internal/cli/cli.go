@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/yanjustino/mhl-runtime/internal/engine/interpreter"
 	"github.com/yanjustino/mhl-runtime/internal/engine/runtime"
@@ -221,15 +222,20 @@ func printBreakReason(out io.Writer, name string, reason any) {
 // .mh file under a directory is expected to declare tests.
 //
 // Each describe block's assertion results are printed PASS/FAIL/SKIP per
-// assertion, followed by a summary line. It returns a non-nil error (and so
-// a non-zero exit code from cmd/mhl) when any assertion failed, or when no
-// test blocks were found at all; an `incomplete(...)` assertion does not
-// count as a failure.
+// assertion (with a colored ✓/✗/○ glance-icon when out is a real terminal —
+// see isTerminalWriter), followed by a per-describe subtotal, and finally
+// an elaborate report across every suite (printTestReport, test_report.go):
+// a one-line-per-suite breakdown, aggregate counts, an enumerated list of
+// every failure's file/test/describe address, and a pass/fail banner. It
+// returns a non-nil error (and so a non-zero exit code from cmd/mhl) when
+// any assertion failed, or when no test blocks were found at all; an
+// `incomplete(...)` assertion does not count as a failure.
 func runTests(args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: mhl test <file.mh|dir>")
 	}
 	target := args[0]
+	start := time.Now()
 
 	info, err := os.Stat(target)
 	if err != nil {
@@ -246,7 +252,9 @@ func runTests(args []string, out io.Writer) error {
 		files = []string{target}
 	}
 
-	var totalPassed, totalFailed, totalSkipped, filesWithTests int
+	style := testReportStyle{color: isTerminalWriter(out)}
+	var fileReports []fileReport
+	var failures []testFailure
 	anyFailed := false
 	for _, file := range files {
 		results, err := runTestFile(file, out)
@@ -256,40 +264,42 @@ func runTests(args []string, out io.Writer) error {
 		if len(results) == 0 {
 			continue
 		}
-		filesWithTests++
+		fileReports = append(fileReports, fileReport{file: file, results: results})
 
 		for _, r := range results {
 			fmt.Fprintf(out, "test %s\n", r.Name)
 			for _, d := range r.Describes {
 				fmt.Fprintf(out, "  describe %s\n", d.Name)
+				dPassed, dFailed, dSkipped := 0, 0, 0
 				for _, a := range d.Assertions {
 					switch {
 					case a.Skipped:
-						fmt.Fprintf(out, "    SKIP %s\n", a.Detail)
+						dSkipped++
+						fmt.Fprintf(out, "    %s %s\n", style.yellow("○ SKIP"), a.Detail)
 					case a.Passed:
-						fmt.Fprintf(out, "    PASS %s\n", a.Call)
+						dPassed++
+						fmt.Fprintf(out, "    %s %s\n", style.green("✓ PASS"), a.Call)
 					default:
-						fmt.Fprintf(out, "    FAIL %s — %s\n", a.Call, a.Detail)
+						dFailed++
+						fmt.Fprintf(out, "    %s %s — %s\n", style.red("✗ FAIL"), a.Call, a.Detail)
+						failures = append(failures, testFailure{file: file, test: r.Name, describe: d.Name, call: a.Call, detail: a.Detail})
 					}
 				}
+				fmt.Fprintf(out, "  %s %d passed, %d failed, %d incomplete\n", style.statusIcon(dFailed), dPassed, dFailed, dSkipped)
 			}
-			passed, failed, skipped := r.Counts()
-			totalPassed += passed
-			totalFailed += failed
-			totalSkipped += skipped
 			if r.Failed() {
 				anyFailed = true
 			}
 		}
 	}
 
-	if filesWithTests == 0 {
+	if len(fileReports) == 0 {
 		return fmt.Errorf("no test blocks declared in %s", target)
 	}
 
-	fmt.Fprintf(out, "%d passed, %d failed, %d incomplete\n", totalPassed, totalFailed, totalSkipped)
+	printTestReport(out, style, fileReports, failures, len(files), time.Since(start))
 	if anyFailed {
-		return fmt.Errorf("%d assertion(s) failed", totalFailed)
+		return fmt.Errorf("%d assertion(s) failed", len(failures))
 	}
 	return nil
 }

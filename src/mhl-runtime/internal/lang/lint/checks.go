@@ -273,12 +273,12 @@ func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast
 			Message: fmt.Sprintf("agent %q: engine %q is not supported yet", agentName, engine)}}
 	}
 
-	promptText, ok, err := resolvePromptArgument(prog, call)
+	promptText, resolved, present, err := resolvePromptArgument(prog, call)
 	if err != nil {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.run: %s", agentName, err)}}
 	}
-	if !ok || promptText == "" {
+	if !present || (resolved && promptText == "") {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.run requires a non-empty prompt", agentName)}}
 	}
@@ -302,6 +302,7 @@ func agentRunCall(expr *ast.Expr) (*ast.Call, string, bool) {
 }
 
 func findAgent(prog *ast.Program, name string) (*ast.Agent, bool) {
+	name = resolveName(prog, name)
 	for _, decl := range prog.Decls {
 		if decl.Agent != nil && decl.Agent.Name == name {
 			return decl.Agent, true
@@ -311,6 +312,7 @@ func findAgent(prog *ast.Program, name string) (*ast.Agent, bool) {
 }
 
 func findMemory(prog *ast.Program, name string) (*ast.Memory, bool) {
+	name = resolveName(prog, name)
 	for _, decl := range prog.Decls {
 		if decl.Memory != nil && decl.Memory.Name == name {
 			return decl.Memory, true
@@ -320,6 +322,7 @@ func findMemory(prog *ast.Program, name string) (*ast.Memory, bool) {
 }
 
 func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
+	name = resolveName(prog, name)
 	for _, decl := range prog.Decls {
 		if decl.Tool != nil && decl.Tool.Name == name {
 			return decl.Tool, true
@@ -329,9 +332,9 @@ func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
 }
 
 // nativeNamespaces mirrors internal/engine/interpreter.nativeNamespaces: the reserved
-// cmd/git/fs/http/json method-call targets (language-design.md §7) that are
+// cmd/git/fs/http/json/log method-call targets (language-design.md §7) that are
 // never looked up against user declarations.
-var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true}
+var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true, "log": true}
 
 // checkToolCall mirrors internal/engine/interpreter.evalToolCall's validation: the method
 // must exist on tool, and the call's argument count must match the
@@ -635,48 +638,66 @@ func agentOllamaConfig(agent *ast.Agent, engine string) (endpoint, model string,
 	return endpoint, model, temperature, nil
 }
 
-// resolvePromptArgument mirrors internal/engine/interpreter.resolvePromptArgument: it
-// accepts either a plain string literal for call's `prompt:` argument, or a
-// reference to a declared `prompt Name(...) { "..." }` template, which it
-// renders — recursively resolving any nested prompt-reference argument
-// first (see resolvePromptCallArgs). ok is false (nil error) when the
-// argument is absent or neither shape matches; a non-nil error means the
-// prompt reference itself is invalid (unknown prompt, bad arguments, or
-// missing/undeclared parameters).
-func resolvePromptArgument(prog *ast.Program, call *ast.Call) (string, bool, error) {
+// resolvePromptArgument statically validates what it can prove about call's
+// `prompt:` argument: a plain string literal, or a reference to a declared
+// `prompt Name(...) { "..." }` template (recursively resolving any nested
+// prompt-reference argument — see renderPromptCallArgs). present reports
+// whether a `prompt:` argument exists at all — lint's only real "requires a
+// non-empty prompt" signal. Since internal/engine/interpreter.
+// resolvePromptArgument now accepts *any* expression evaluating to a string
+// there (a variable, string concatenation, ...), not just these two literal
+// shapes, present-but-not-`resolved` isn't an error lint can raise: lint
+// never evaluates anything, so it has no way to know such an expression is
+// empty (or even that it isn't itself a valid prompt) — only the runtime
+// does. resolved is true only when text was actually computed.
+func resolvePromptArgument(prog *ast.Program, call *ast.Call) (text string, resolved, present bool, err error) {
 	for _, arg := range call.Args {
 		if arg.Name != "prompt" {
 			continue
 		}
+		present = true
 		if s, ok := ast.StringValue(arg.Value); ok {
-			return s, true, nil
+			return s, true, true, nil
 		}
 		promptCall, name, ok := promptRefCall(arg.Value)
 		if !ok {
-			return "", false, nil
+			return "", false, true, nil
 		}
-		rendered, err := renderPromptCall(prog, name, promptCall)
+		rendered, r, err := renderPromptCall(prog, name, promptCall)
 		if err != nil {
-			return "", false, err
+			return "", false, true, err
 		}
-		return rendered, true, nil
+		return rendered, r, true, nil
 	}
-	return "", false, nil
+	return "", false, false, nil
 }
 
-// renderPromptCall mirrors internal/engine/interpreter.renderPromptCall: it
-// resolves and renders the `name(...)` prompt reference in call, recursively
-// rendering any nested prompt-reference argument first.
-func renderPromptCall(prog *ast.Program, name string, call *ast.Call) (string, error) {
+// renderPromptCall resolves the declared prompt template named name and
+// statically validates call's arguments against it (renderPromptCallArgs) —
+// every argument named, matching a declared parameter, and every declared
+// parameter supplied — regardless of whether each argument's *value* is
+// itself statically known. resolved is true only when every argument's
+// value was known too, in which case text is the fully rendered template;
+// mirrors internal/engine/interpreter.renderPromptCallDynamic's structural
+// checks (prompt.Render's own parameter validation), just without the
+// runtime values needed to compute text when resolved is false.
+func renderPromptCall(prog *ast.Program, name string, call *ast.Call) (text string, resolved bool, err error) {
 	decl, ok := findPrompt(prog, name)
 	if !ok {
-		return "", fmt.Errorf("prompt %q not found", name)
+		return "", false, fmt.Errorf("prompt %q not found", name)
 	}
-	callArgs, err := resolvePromptCallArgs(prog, call)
+	values, resolved, err := renderPromptCallArgs(prog, decl, call)
 	if err != nil {
-		return "", fmt.Errorf("prompt %q: %w", name, err)
+		return "", false, fmt.Errorf("prompt %q: %w", name, err)
 	}
-	return prompt.Render(decl, callArgs)
+	if !resolved {
+		return "", false, nil
+	}
+	rendered, err := prompt.Render(decl, values)
+	if err != nil {
+		return "", false, fmt.Errorf("prompt %q: %w", name, err)
+	}
+	return rendered, true, nil
 }
 
 func promptRefCall(expr *ast.Expr) (*ast.Call, string, bool) {
@@ -691,6 +712,7 @@ func promptRefCall(expr *ast.Expr) (*ast.Call, string, bool) {
 }
 
 func findPrompt(prog *ast.Program, name string) (*ast.Prompt, bool) {
+	name = resolveName(prog, name)
 	for _, decl := range prog.Decls {
 		if decl.Prompt != nil && decl.Prompt.Name == name {
 			return decl.Prompt, true
@@ -699,30 +721,60 @@ func findPrompt(prog *ast.Program, name string) (*ast.Prompt, bool) {
 	return nil, false
 }
 
-// resolvePromptCallArgs mirrors internal/engine/interpreter.resolvePromptCallArgs:
-// it collects call's arguments into a name->value map, where each value must
-// be either a string literal or a reference to another declared prompt,
-// which is rendered (via renderPromptCall) and substituted in as a plain
-// string.
-func resolvePromptCallArgs(prog *ast.Program, call *ast.Call) (map[string]string, error) {
-	args := make(map[string]string, len(call.Args))
+// renderPromptCallArgs validates call's arguments against decl's declared
+// parameters — every argument named and matching a declared parameter
+// exactly once, and every declared parameter supplied — the same
+// structural checks prompt.Render itself makes before ever touching
+// placeholder text (internal/features/prompt/render.go), decoupled here
+// from whether each argument's *value* is statically known. A value that's
+// a string literal or a (recursively resolved) nested prompt reference is
+// collected into values; any other expression shape (a variable, string
+// concatenation, `feature.title`, ...) can be anything at runtime now
+// (renderPromptCallDynamic, internal/engine/interpreter/prompt_ops.go), so
+// lint accepts the shape — it's still a validly-named argument — but
+// reports resolved=false rather than guessing at a value.
+func renderPromptCallArgs(prog *ast.Program, decl *ast.Prompt, call *ast.Call) (values map[string]string, resolved bool, err error) {
+	declared := make(map[string]bool, len(decl.Params))
+	for _, p := range decl.Params {
+		declared[p.Name] = true
+	}
+	supplied := make(map[string]bool, len(call.Args))
+	values = make(map[string]string, len(call.Args))
+	resolved = true
 	for _, arg := range call.Args {
 		if arg.Name == "" {
-			return nil, fmt.Errorf("arguments must be named")
+			return nil, false, fmt.Errorf("arguments must be named")
 		}
+		if !declared[arg.Name] {
+			return nil, false, fmt.Errorf("unexpected argument %q", arg.Name)
+		}
+		if supplied[arg.Name] {
+			return nil, false, fmt.Errorf("argument %q supplied more than once", arg.Name)
+		}
+		supplied[arg.Name] = true
 		if s, ok := ast.StringValue(arg.Value); ok {
-			args[arg.Name] = s
+			values[arg.Name] = s
 			continue
 		}
 		nestedCall, nestedName, ok := promptRefCall(arg.Value)
 		if !ok {
-			return nil, fmt.Errorf("argument %q must be a string literal or a prompt reference", arg.Name)
+			resolved = false
+			continue
 		}
-		rendered, err := renderPromptCall(prog, nestedName, nestedCall)
+		rendered, nestedResolved, err := renderPromptCall(prog, nestedName, nestedCall)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		args[arg.Name] = rendered
+		if !nestedResolved {
+			resolved = false
+			continue
+		}
+		values[arg.Name] = rendered
 	}
-	return args, nil
+	for name := range declared {
+		if !supplied[name] {
+			return nil, false, fmt.Errorf("missing value for parameter %q", name)
+		}
+	}
+	return values, resolved, nil
 }

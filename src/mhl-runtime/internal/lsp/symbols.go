@@ -24,6 +24,7 @@ const (
 	symSkill
 	symPipeline
 	symMCPServer
+	symNative
 )
 
 func (k symbolKind) label() string {
@@ -42,6 +43,8 @@ func (k symbolKind) label() string {
 		return "pipeline"
 	case symMCPServer:
 		return "mcp_server"
+	case symNative:
+		return "native"
 	default:
 		return ""
 	}
@@ -234,19 +237,39 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 	return 0, false
 }
 
-// documentSymbols returns every symbol visible from path/text: the buffer's
-// own declarations (parsed properly when text is syntactically valid,
-// regex-recovered otherwise so completion keeps working mid-edit) plus every
-// declaration in sibling .mh files under the same directory — a plain,
-// import-oblivious "everything nearby is in scope" approximation that's
-// good enough for completion (lint.Source is what actually enforces real
-// import/use rules).
+// nativeSymbols are the built-in cmd/git/fs/http/json/log namespaces —
+// never declared in any .mh source, so symbolsFromProgram/symbolsFromText
+// can't find them, yet a .mh author calls their members constantly. Method
+// sets mirror the case labels nativeOpCall actually implements
+// (internal/engine/interpreter/tool.go) and evalLogCall's log.info/warn/error
+// (internal/engine/interpreter/eval.go); keep both lists in sync by hand —
+// there's no single source these are generated from.
+var nativeSymbols = []symbol{
+	{Name: "cmd", Kind: symNative, Methods: []string{"exec", "exec_all"}},
+	{Name: "git", Kind: symNative, Methods: []string{"diff", "add", "commit", "status", "rev_parse", "log"}},
+	{Name: "fs", Kind: symNative, Methods: []string{"read", "exists", "write", "append", "delete", "list", "join"}},
+	{Name: "http", Kind: symNative, Methods: []string{"post"}},
+	{Name: "json", Kind: symNative, Methods: []string{"parse", "parse_lines", "stringify"}},
+	{Name: "log", Kind: symNative, Methods: []string{"info", "warn", "error"}},
+}
+
+// documentSymbols returns every symbol visible from path/text: the fixed
+// native namespaces, the buffer's own declarations (parsed properly when
+// text is syntactically valid, regex-recovered otherwise so completion keeps
+// working mid-edit), plus every declaration in sibling .mh files under the
+// same directory — a plain, import-oblivious "everything nearby is in
+// scope" approximation that's good enough for completion (lint.Source is
+// what actually enforces real import/use rules). Native symbols are listed
+// first so they win dedupeSymbols' "first occurrence wins" tie-break,
+// matching how the runtime itself always resolves e.g. "log" as the
+// built-in namespace regardless of what a .mh author declares (eval.go's
+// nativeNamespaces check runs before any user-declaration lookup).
 func documentSymbols(path, text string) []symbol {
-	var syms []symbol
+	syms := append([]symbol{}, nativeSymbols...)
 	if prog, err := parser.Parse(text); err == nil {
-		syms = symbolsFromProgram(prog)
+		syms = append(syms, symbolsFromProgram(prog)...)
 	} else {
-		syms = symbolsFromText(text)
+		syms = append(syms, symbolsFromText(text)...)
 	}
 	syms = append(syms, workspaceSymbols(path)...)
 	return dedupeSymbols(syms)

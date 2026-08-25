@@ -49,8 +49,14 @@ A **Meta-Harness Language (MHL)** é uma Linguagem de Domínio Específico (DSL)
 ```mhl
 import "./agentes/qualidade.mhl" as qa
 use { SecurityAudit } from "./prompts/seguranca.mhl"
+use { FeatureStore as store, RunConfig as config, PlanReader as planner } from "./tools/feature.mhl"
 
 ```
+
+Em uma cláusula `use`, cada item segue a forma `Nome` ou `Nome as alias`. O
+alias é local ao programa que faz o `use` e pode ser usado no lugar do nome
+exportado, por exemplo `store.get(...)`. O nome original continua sendo o
+nome exportado pelo módulo.
 
 ### **3.2 Declaração de Skills Modulares**
 
@@ -342,7 +348,7 @@ func (s *SkillRuntimeResolver) PrepareAgentPayloadForSkill(
 | Abstração MHL | Responsabilidade | Exemplo |
 | --- | --- | --- |
 | **`tool` / `mcp_server**` | Execução de infraestrutura e I/O. | `cmd.exec("dotnet test")`, `fs.read()`, `PostgresDB` |
-| **`prompt`** | Template de texto formatado com variáveis. | `prompt Review(code) { "..." }` |
+| **`prompt`** | Template de texto formatado com variáveis, inline ou carregado de um arquivo Markdown externo. | `prompt Review(code) { "..." }` ou `prompt Review(code) from "./review.prompt.md"` |
 | **`agent`** | Provedor de IA, credenciais, timeouts e resiliência. | `engine: "anthropic/claude-3-5-sonnet"` |
 | **`skill`** | **Capacidade procedural** (Tools + Prompts + Instruções + Contrato I/O). | `CodeAuditorSkill`, `SQLQueryOptimizerSkill` |
 | **`pipeline`** | Orquestrador de fluxo, loops, checkpoints e condições. | `step`, `while`, `try/catch`, `checkpoint` |

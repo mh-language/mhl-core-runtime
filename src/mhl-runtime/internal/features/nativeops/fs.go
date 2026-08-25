@@ -67,3 +67,42 @@ func Append(path, content string) (bool, error) {
 	}
 	return true, nil
 }
+
+// List returns the paths of dir's immediate entries — files and
+// subdirectories, one level, not recursive — as filepath.Join(dir, name)
+// each, so a caller can feed a result straight into fs.read/fs.write/
+// fs.delete without reassembling the path itself. os.ReadDir already
+// returns entries sorted by filename, so the result is deterministic across
+// runs without an extra sort here.
+func List(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("fs.list %q: %w", dir, err)
+	}
+	out := make([]string, len(entries))
+	for i, e := range entries {
+		out[i] = filepath.Join(dir, e.Name())
+	}
+	return out, nil
+}
+
+// Join combines parts into a single path using the OS-appropriate separator,
+// exactly like filepath.Join — cleaning the result and dropping empty parts.
+func Join(parts ...string) string {
+	return filepath.Join(parts...)
+}
+
+// Delete removes path — a file or an empty directory. Unlike Exists, it
+// does not treat "already gone" as success: os.Remove errors when path
+// doesn't exist, and that error is returned as-is (not wrapped in the usual
+// "fs.delete %q: %w" — the .mh caller already gets the exact path back from
+// the underlying PathError), so a .mh script that only expects an already-
+// created file to be there (e.g. clearing a stale plan file between runs)
+// can tell "deleted" from "was never created" via try/catch rather than
+// having both look like a silent no-op.
+func Delete(path string) (bool, error) {
+	if err := os.Remove(path); err != nil {
+		return false, err
+	}
+	return true, nil
+}

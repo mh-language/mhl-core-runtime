@@ -11,7 +11,7 @@ import (
 )
 
 // mergeImports statically validates every `import ... as alias` and
-// `use { Names } from "path"` declaration at the top level of prog (whose
+// `use { Names [as Alias] } from "path"` declaration at the top level of prog (whose
 // source file is file), resolving each path relative to file's directory. It
 // never aborts early: every broken import/use is reported as a Finding, and
 // within a single `use {A, B, C}` every unresolved name is reported, not
@@ -23,6 +23,7 @@ import (
 // names.
 func mergeImports(file string, prog *ast.Program) (*ast.Program, []Finding) {
 	merged := &ast.Program{Decls: append([]*ast.Declaration{}, prog.Decls...)}
+	merged.AliasMap()
 	var findings []Finding
 	key := file
 	if abs, err := filepath.Abs(file); err == nil {
@@ -59,6 +60,7 @@ func mergeImports(file string, prog *ast.Program) (*ast.Program, []Finding) {
 // runaway `goto` elsewhere in this codebase, just for the import graph
 // instead of control flow.
 func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, resolved map[string]*ast.Program, findings *[]Finding) {
+	prog.AliasMap()
 	dir := filepath.Dir(file)
 	for _, decl := range prog.Decls {
 		switch {
@@ -69,6 +71,16 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 					Message: fmt.Sprintf("import %q as %s: %s", decl.Import.Path, decl.Import.Alias, err),
 				})
 			}
+		case decl.Prompt != nil && decl.Prompt.Source != "":
+			text, err := loadPromptSource(dir, decl.Prompt.Source)
+			if err != nil {
+				*findings = append(*findings, Finding{
+					File: file, Line: decl.Prompt.Pos.Line, Column: decl.Prompt.Pos.Column,
+					Message: fmt.Sprintf("prompt %q from %q: %s", decl.Prompt.Name, decl.Prompt.Source, err),
+				})
+				continue
+			}
+			decl.Prompt.Body = ast.NewMultilineStringExpr(text)
 		case decl.Use != nil:
 			modulePath := filepath.Join(dir, decl.Use.Path)
 			key := modulePath
@@ -83,7 +95,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				if err != nil {
 					*findings = append(*findings, Finding{
 						File: file, Line: decl.Use.Pos.Line, Column: decl.Use.Pos.Column,
-						Message: fmt.Sprintf("use {%s} from %q: %s", strings.Join(decl.Use.Names, ", "), decl.Use.Path, err),
+						Message: fmt.Sprintf("use {%s} from %q: %s", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err),
 					})
 					continue
 				}
@@ -92,13 +104,30 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			}
 
 			missing := false
-			for _, name := range decl.Use.Names {
-				if _, found := findExport(module, name); !found {
+			if err := mergeAliases(merged, module.AliasMap()); err != nil {
+				*findings = append(*findings, Finding{
+					File: file, Line: decl.Use.Pos.Line, Column: decl.Use.Pos.Column,
+					Message: fmt.Sprintf("use {%s} from %q: %s", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err),
+				})
+				missing = true
+			}
+			for _, item := range decl.Use.Items {
+				if _, found := findExport(module, item.Name); !found {
 					*findings = append(*findings, Finding{
 						File: file, Line: decl.Use.Pos.Line, Column: decl.Use.Pos.Column,
-						Message: fmt.Sprintf("use {%s} from %q: %q is not exported", strings.Join(decl.Use.Names, ", "), decl.Use.Path, name),
+						Message: fmt.Sprintf("use {%s} from %q: %q is not exported", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, item.Name),
 					})
 					missing = true
+					continue
+				}
+				if item.Alias != "" {
+					if err := addAlias(merged, item.Alias, item.Name); err != nil {
+						*findings = append(*findings, Finding{
+							File: file, Line: decl.Use.Pos.Line, Column: decl.Use.Pos.Column,
+							Message: fmt.Sprintf("use {%s} from %q: %s", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err),
+						})
+						missing = true
+					}
 				}
 			}
 			if missing {
@@ -113,6 +142,46 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				merged.Decls = append(merged.Decls, imported)
 			}
 		}
+	}
+}
+
+func addAlias(prog *ast.Program, alias, name string) error {
+	aliases := prog.AliasMap()
+	if existing, ok := aliases[alias]; ok {
+		if existing == name {
+			return nil
+		}
+		return fmt.Errorf("alias %q already refers to %q", alias, existing)
+	}
+	aliases[alias] = name
+	return nil
+}
+
+func mergeAliases(dst *ast.Program, aliases map[string]string) error {
+	for alias, name := range aliases {
+		if err := addAlias(dst, alias, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func resolveName(prog *ast.Program, name string) string {
+	if prog == nil {
+		return name
+	}
+	aliases := prog.AliasMap()
+	seen := map[string]bool{}
+	for {
+		if seen[name] {
+			return name
+		}
+		seen[name] = true
+		resolved, ok := aliases[name]
+		if !ok {
+			return name
+		}
+		name = resolved
 	}
 }
 
@@ -168,6 +237,20 @@ func loadModule(dir, path string) (*ast.Program, error) {
 		return nil, fmt.Errorf("parsing %s: %w", full, err)
 	}
 	return module, nil
+}
+
+// loadPromptSource reads the file at path, resolved relative to dir, for a
+// `prompt ... from "path"` declaration — mirrors
+// internal/engine/interpreter.loadPromptSource exactly, including the
+// trailing TrimSpace that matches trimMultiline's treatment of an inline
+// """...""" body (internal/lang/parser/parser.go).
+func loadPromptSource(dir, path string) (string, error) {
+	full := filepath.Join(dir, path)
+	src, err := os.ReadFile(full)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(src)), nil
 }
 
 // findExport returns the declaration in module exporting name, if any.

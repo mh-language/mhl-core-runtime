@@ -114,6 +114,20 @@ func StringFromPrimary(p *Primary) (string, bool) {
 	}
 }
 
+// NewMultilineStringExpr builds an *Expr that is nothing but s wrapped as a
+// *Primary.MultiStr literal — the same shape StringValue reads off an
+// inline """...""" body. It exists for a resolver that loads a prompt body
+// from an external file (Prompt.Source, internal/engine/interpreter/imports.go,
+// internal/lang/lint/imports.go) and needs to rewrite Prompt.Body so every
+// downstream reader (prompt.Render, lint's static prompt checks) sees the
+// loaded text exactly as it would see an inline literal, with no separate
+// "where did this body come from" case to handle.
+func NewMultilineStringExpr(s string) *Expr {
+	return &Expr{Or: &OrExpr{Head: &AndExpr{Head: &EqExpr{Head: &CmpExpr{Head: &AddExpr{
+		Head: &MulExpr{Head: &Unary{Operand: &Postfix{Primary: &Primary{MultiStr: &s}}}},
+	}}}}}}
+}
+
 // IdentValue reads e as a bare identifier with no trailers or operators —
 // e.g. an agent's bare-name entry in a `fallback: [...]` list, which names
 // another declared agent rather than holding a literal value.

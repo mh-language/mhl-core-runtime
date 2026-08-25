@@ -12,6 +12,7 @@ import (
 )
 
 func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
+	name = resolveName(prog, name)
 	for _, decl := range prog.Decls {
 		if decl.Tool != nil && decl.Tool.Name == name {
 			return decl.Tool, true
@@ -21,10 +22,10 @@ func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
 }
 
 // nativeNamespaces are the reserved `tool` method-body namespaces
-// (language-design.md §7), plus `json` — never looked up against user
-// declarations, the same way the `log` builtin is reserved regardless of
-// what a .mh author might otherwise name a variable.
-var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true}
+// (language-design.md §7), plus `json` and `log` — never looked up against
+// user declarations, the same way the bare `log(...)` builtin is reserved
+// regardless of what a .mh author might otherwise name a variable.
+var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true, "log": true}
 
 // evalToolCall resolves and executes a declared `tool` method call, e.g.
 // `execution.get_diff()`. Arguments bind positionally to the method's
@@ -206,6 +207,32 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, fmt.Errorf("fs.append requires string content")
 		}
 		return nativeops.Append(path, content)
+	case "fs.delete":
+		path, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("fs.delete requires a string path as its first argument")
+		}
+		return nativeops.Delete(path)
+	case "fs.join":
+		parts, ok := args.allStrings()
+		if !ok || len(parts) == 0 {
+			return nil, fmt.Errorf("fs.join requires one or more string path segments")
+		}
+		return nativeops.Join(parts...), nil
+	case "fs.list":
+		dir, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("fs.list requires a string path as its first argument")
+		}
+		paths, err := nativeops.List(dir)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]any, len(paths))
+		for i, p := range paths {
+			out[i] = p
+		}
+		return out, nil
 	case "http.post":
 		url, ok := args.stringNamedOrFirst("url")
 		if !ok {
@@ -222,11 +249,26 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, fmt.Errorf("json.parse requires a string as its first argument")
 		}
 		return nativeops.Parse(text)
+	case "json.parse_lines":
+		text, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("json.parse_lines requires a string as its first argument")
+		}
+		return nativeops.ParseLines(text)
 	case "json.stringify":
 		if len(args.positional) == 0 {
 			return nil, fmt.Errorf("json.stringify requires a value as its first argument")
 		}
 		return nativeops.Stringify(args.positional[0])
+	case "log.info":
+		writeLog(ctx, "INFO", args.positional)
+		return nil, nil
+	case "log.warn":
+		writeLog(ctx, "WARN", args.positional)
+		return nil, nil
+	case "log.error":
+		writeLog(ctx, "ERROR", args.positional)
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("%s.%s is not a supported native operation", namespace, op)
 	}
@@ -285,6 +327,22 @@ func toStringSlice(v any) ([]string, bool) {
 	out := make([]string, len(arr))
 	for i, item := range arr {
 		s, ok := item.(string)
+		if !ok {
+			return nil, false
+		}
+		out[i] = s
+	}
+	return out, true
+}
+
+// allStrings reads every positional argument as a string — used by fs.join,
+// which (unlike stringSliceAt's single-array-argument ops) takes each path
+// segment as its own argument (`fs.join(dir, "sub", "file.txt")`). Returns
+// false if any positional argument isn't a string.
+func (a callArgs) allStrings() ([]string, bool) {
+	out := make([]string, len(a.positional))
+	for i, v := range a.positional {
+		s, ok := v.(string)
 		if !ok {
 			return nil, false
 		}

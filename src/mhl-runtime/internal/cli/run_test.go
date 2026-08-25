@@ -190,8 +190,10 @@ memory Counter {
 }
 
 loop pipeline Increment {
-    stop_when: Counter.get("n", 0) >= 3
-    max_iterations: 10
+    repeat: {
+        stop_when: Counter.get("n", 0) >= 3
+        max_iterations: 10
+    }
 
     step Bump {
         var current = Counter.get("n", 0)
@@ -230,8 +232,10 @@ func TestRunLoopStopsOnStopWhen(t *testing.T) {
 
 const loopMaxIterationsFile = `
 loop pipeline NoOp {
-    stop_when: false
-    max_iterations: 4
+    repeat: {
+        stop_when: false
+        max_iterations: 4
+    }
 
     step Idle {
         var x = 1
@@ -322,8 +326,10 @@ memory Counter {
 }
 
 loop pipeline Cycle {
-    stop_when: Counter.get("total", 0) >= 3
-    max_iterations: 10
+    repeat: {
+        stop_when: Counter.get("total", 0) >= 3
+        max_iterations: 10
+    }
 
     var seen_this_iteration = 0
 
@@ -377,8 +383,10 @@ memory Counter {
 }
 
 loop pipeline Cycle {
-    stop_when: Counter.get("total", 0) >= 3
-    max_iterations: 10
+    repeat: {
+        stop_when: Counter.get("total", 0) >= 3
+        max_iterations: 10
+    }
 
     var total_so_far = Counter.get("total", 0)
 

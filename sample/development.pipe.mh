@@ -1,0 +1,86 @@
+use {FeatureStore as store, RunConfig as config} from "modules/tools/feature.tool.mh"
+use {CodexAdapter as codex} from "modules/agents/codex.agent.mh"
+
+// Prompts
+prompt SetupPrompt() from "modules/prompts/setup.prompt.md"
+prompt PlanPrompt(plan_path: string, content: string) from "modules/prompts/plan.prompt.md"
+
+// Feature Cycle Pipeline
+loop pipeline FeatureCycle {
+
+    repeat: {
+        stop_when: store.pending() == 0
+        max_iterations: 10
+    }
+
+    checkpoint: {
+        enabled: true
+        strategy: "per_step"
+        storage: "file"
+        ttl: 7d
+    }
+
+    // Start the feature cycle.
+    step Start {
+        log.info("[dev] Starting feature cycle pipeline...")
+        if (store.has_pending_features() == true) goto Bearings
+
+        log.info("[dev] No pending features found. Resetting feature store and run config...")
+        store.reset()
+        config.reset()
+
+        log.info("[dev] Importing features from plan...")
+        if (store.try_import_preview_plan() == false) goto Plan else goto Setup
+    }
+
+    // plan step is a placeholder for the planning step, which is not yet implemented. 
+    step Plan {
+        // ler os arquivso no caminho specs/source e guardar numa variável
+        var files = fs.list("./specs/sources")
+        var content = ""
+        for (var file in files) {
+            log.info("[dev] Found source file: ${file}")
+            content = content + fs.read(file) + "\n"
+        }
+        
+        // chamar o codex para gerar o plano no caminho specs/active/40-development-plan.json
+        // se sucess, goto Setup else fail
+        var plan_path = "specs/active/40-development-plan.json"
+
+        log.info("[dev] Generating plan at ${plan_path} using Codex...")
+        var result =codex.executeWithoutSchema(query: PlanPrompt(plan_path: plan_path, content: content))
+        
+        log.info("[dev] Plan step result: ${result}")
+        var plan_json = fs.read(plan_path)
+        var plan = json.parse(plan_json)
+        if (plan == null || plan.size() == 0) {
+            fail("[dev] Plan step failed. No result returned from Codex.")
+        }
+
+        store.set(plan)
+    }
+
+    step Setup {
+        log.info("[dev] Running setup step...")
+        var schema = codex.get_setup_schema_path()
+        var result = codex.execute(query: SetupPrompt(), schema: schema)
+        if (result == null) {
+            fail("[dev] Setup step failed. No result returned from Codex.")
+        }
+        var raw = json.parse(result)
+        config.setup(raw)
+    }
+
+
+    // step Bearings {
+    // }
+
+    // step Implement {
+    // }
+
+    // step Verify {
+    // }
+
+    // step Handoff {
+    // }
+}

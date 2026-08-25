@@ -92,6 +92,7 @@ pipeline P {
         log("pending=${Counter.pending()}")
     }
 }
+
 `,
 	}
 	for name, content := range files {
@@ -111,5 +112,140 @@ pipeline P {
 	}
 	if out := buf.String(); !strings.Contains(out, "pending=5") {
 		t.Errorf("output missing %q:\n%s", "pending=5", out)
+	}
+}
+
+func TestRunUseAliasResolvesTopLevelAndTransitiveReferences(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"memory.mh": `
+export memory Store {
+    type: "kv"
+    store: "memory"
+}
+`,
+		"tool.mh": `
+use {Store as store} from "memory.mh"
+
+export tool Counter {
+    pending() -> store.get("n", 0)
+}
+`,
+		"pipeline.mh": `
+use {Counter as counter} from "tool.mh"
+
+pipeline P {
+    step S {
+        counter.pending()
+        log(store.set("n", 7))
+        log(counter.pending())
+    }
+}
+`,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	cwd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", "pipeline.mh"}, &buf); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if out := buf.String(); !strings.Contains(out, "7") {
+		t.Errorf("output missing aliased memory result 7:\n%s", out)
+	}
+}
+
+// TestRunPromptFromMarkdownFileRenders covers `prompt ... from "path"`
+// (internal/lang/ast/prompt.go): the body is loaded from an external
+// Markdown file during import resolution — relative to the .mh file that
+// declares it, same as `use`/`import` — and behaves exactly like an inline
+// """...""" body from there on: ${name} still substitutes, and a \${...}
+// escape (only meaningful in Markdown pulled in from elsewhere, which is
+// far more likely to contain incidental ${...} than a hand-written inline
+// template) renders as a literal placeholder instead of erroring on an
+// undeclared parameter.
+func TestRunPromptFromMarkdownFileRenders(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"greeting.prompt.md": "hello ${name}, run with \\${TARGET_DIR}",
+		"prompt.mh": `
+export prompt Greeting(name: string) from "greeting.prompt.md"
+`,
+		"pipeline.mh": `
+use {Greeting} from "prompt.mh"
+
+pipeline P {
+    step S {
+        log(Greeting(name: "World"))
+    }
+}
+`,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	cwd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", "pipeline.mh"}, &buf); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if out := buf.String(); !strings.Contains(out, "hello World, run with ${TARGET_DIR}") {
+		t.Errorf("output missing rendered markdown prompt:\n%s", out)
+	}
+}
+
+// TestRunPromptFromMissingMarkdownFileFails is the failure path: a `from`
+// path that doesn't resolve to a real file must surface as a run error, the
+// same way a broken `use`/`import` path does, instead of silently producing
+// an empty or partial prompt body.
+func TestRunPromptFromMissingMarkdownFileFails(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"prompt.mh": `
+export prompt Greeting(name: string) from "missing.prompt.md"
+`,
+		"pipeline.mh": `
+use {Greeting} from "prompt.mh"
+
+pipeline P {
+    step S {
+        log(Greeting(name: "World"))
+    }
+}
+`,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	cwd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	var buf bytes.Buffer
+	err := cli.Run([]string{"run", "pipeline.mh"}, &buf)
+	if err == nil {
+		t.Fatalf("expected an error for a missing prompt source file")
+	}
+	if !strings.Contains(err.Error(), "Greeting") || !strings.Contains(err.Error(), "missing.prompt.md") {
+		t.Errorf("expected error to name the prompt and missing path, got: %v", err)
 	}
 }

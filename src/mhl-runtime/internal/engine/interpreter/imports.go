@@ -10,7 +10,7 @@ import (
 	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
 )
 
-// ResolveImports processes the `import ... as alias` and `use { Names }
+// ResolveImports processes the `import ... as alias` and `use { Names [as Alias] }
 // from "path"` declarations at the top level of prog. Each referenced path
 // is resolved relative to the directory of file and must exist and parse as
 // a valid .mh module; a `use` also requires every named symbol to be
@@ -40,6 +40,7 @@ import (
 // (mergeableDecl below excludes it): merging one in would make `mhl test`
 // on the importer silently run a suite that belongs to a different file.
 func ResolveImports(file string, prog *ast.Program) error {
+	prog.AliasMap()
 	key := file
 	if abs, err := filepath.Abs(file); err == nil {
 		key = abs
@@ -66,6 +67,7 @@ func ResolveImports(file string, prog *ast.Program) error {
 // resolvable via the cycle's own not-yet-finished side simply won't be
 // found, the same inherent limit any circular-dependency graph has.
 func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Program) error {
+	prog.AliasMap()
 	dir := filepath.Dir(file)
 	for _, decl := range prog.Decls {
 		switch {
@@ -73,6 +75,12 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 			if _, err := loadModule(dir, decl.Import.Path); err != nil {
 				return fmt.Errorf("import %q as %s: %w", decl.Import.Path, decl.Import.Alias, err)
 			}
+		case decl.Prompt != nil && decl.Prompt.Source != "":
+			text, err := loadPromptSource(dir, decl.Prompt.Source)
+			if err != nil {
+				return fmt.Errorf("prompt %q from %q: %w", decl.Prompt.Name, decl.Prompt.Source, err)
+			}
+			decl.Prompt.Body = ast.NewMultilineStringExpr(text)
 		case decl.Use != nil:
 			modulePath := filepath.Join(dir, decl.Use.Path)
 			key := modulePath
@@ -85,17 +93,25 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 				var err error
 				module, err = loadModule(dir, decl.Use.Path)
 				if err != nil {
-					return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names, ", "), decl.Use.Path, err)
+					return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err)
 				}
 				resolved[key] = module
 				if err := resolveImports(modulePath, module, resolved); err != nil {
-					return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names, ", "), decl.Use.Path, err)
+					return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err)
 				}
 			}
 
-			for _, name := range decl.Use.Names {
-				if _, ok := findExport(module, name); !ok {
-					return fmt.Errorf("use {%s} from %q: %q is not exported", strings.Join(decl.Use.Names, ", "), decl.Use.Path, name)
+			if err := mergeAliases(prog, module.AliasMap()); err != nil {
+				return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err)
+			}
+			for _, item := range decl.Use.Items {
+				if _, ok := findExport(module, item.Name); !ok {
+					return fmt.Errorf("use {%s} from %q: %q is not exported", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, item.Name)
+				}
+				if item.Alias != "" {
+					if err := addAlias(prog, item.Alias, item.Name); err != nil {
+						return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err)
+					}
 				}
 			}
 
@@ -109,6 +125,51 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 		}
 	}
 	return nil
+}
+
+// addAlias records one source-level alias and rejects an ambiguous binding.
+// Repeating the same alias for the same declaration is harmless, which keeps
+// diamond-shaped import graphs deterministic.
+func addAlias(prog *ast.Program, alias, name string) error {
+	aliases := prog.AliasMap()
+	if existing, ok := aliases[alias]; ok {
+		if existing == name {
+			return nil
+		}
+		return fmt.Errorf("alias %q already refers to %q", alias, existing)
+	}
+	aliases[alias] = name
+	return nil
+}
+
+func mergeAliases(dst *ast.Program, aliases map[string]string) error {
+	for alias, name := range aliases {
+		if err := addAlias(dst, alias, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// resolveName maps a local alias to the declaration name used by the
+// flattened AST. Names without an alias are returned unchanged.
+func resolveName(prog *ast.Program, name string) string {
+	if prog == nil {
+		return name
+	}
+	aliases := prog.AliasMap()
+	seen := map[string]bool{}
+	for {
+		if seen[name] {
+			return name
+		}
+		seen[name] = true
+		resolved, ok := aliases[name]
+		if !ok {
+			return name
+		}
+		name = resolved
+	}
 }
 
 // mergeableDecl reports whether decl is a kind that belongs in another
@@ -165,6 +226,20 @@ func loadModule(dir, path string) (*ast.Program, error) {
 		return nil, fmt.Errorf("parsing %s: %w", full, err)
 	}
 	return module, nil
+}
+
+// loadPromptSource reads the file at path, resolved relative to dir, for a
+// `prompt ... from "path"` declaration. The trailing TrimSpace mirrors
+// trimMultiline's treatment of an inline """...""" body (internal/lang/parser/parser.go)
+// so a file-sourced and an inline-sourced prompt body are indistinguishable
+// from here on.
+func loadPromptSource(dir, path string) (string, error) {
+	full := filepath.Join(dir, path)
+	src, err := os.ReadFile(full)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(src)), nil
 }
 
 // findExport returns the declaration in module exporting name, if any.

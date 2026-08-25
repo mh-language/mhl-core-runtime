@@ -1507,6 +1507,102 @@ pipeline P {
 	}
 }
 
+// TestCheckDynamicPromptRuntimeArgumentDoesNotFalsePositive is a regression
+// test: internal/engine/interpreter.renderPromptCallDynamic now accepts any
+// expression for a prompt template's own arguments (a variable,
+// `feature.title`, ...), not just a string literal or a nested prompt
+// reference — lint has no way to evaluate `feature.title` and prove
+// anything about it, so it must accept the shape (the argument name still
+// matches a declared parameter) without claiming it "must be a string
+// literal or a prompt reference", which used to be a false positive on
+// perfectly valid code.
+func TestCheckDynamicPromptRuntimeArgumentDoesNotFalsePositive(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+prompt FixPrompt(title: string) {
+    "Corrija a feature: ${title}"
+}
+
+agent Echo {
+    command: "echo"
+}
+
+pipeline P {
+    step S {
+        var feature = {"title": "checkout"}
+        var response = Echo.run(prompt: FixPrompt(title: feature.title))
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+// TestCheckDynamicPromptRuntimeArgumentUnexpectedNameStillErrors proves the
+// previous test's leniency doesn't swallow a genuine mistake: an argument
+// name that doesn't match any of the prompt's declared parameters is still
+// flagged, even though its value is a runtime expression lint can't
+// evaluate — the check is on the argument's *name*, which is always
+// statically known, not on its unevaluable value.
+func TestCheckDynamicPromptRuntimeArgumentUnexpectedNameStillErrors(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+prompt FixPrompt(title: string) {
+    "Corrija a feature: ${title}"
+}
+
+agent Echo {
+    command: "echo"
+}
+
+pipeline P {
+    step S {
+        var feature = {"title": "checkout"}
+        var response = Echo.run(prompt: FixPrompt(subtitle: feature.title))
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `unexpected argument "subtitle"`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+// TestCheckPromptArgumentAsVariableDoesNotFalsePositive is a regression
+// test for the other half of the same change: `prompt:` itself now accepts
+// any string-valued expression at runtime (resolvePromptArgument,
+// internal/engine/interpreter/prompt_ops.go), not just a literal or a bare
+// `Name(...)` reference — a variable holding a previously-rendered prompt
+// must not be flagged as "requires a non-empty prompt" just because lint
+// can't prove what it holds.
+func TestCheckPromptArgumentAsVariableDoesNotFalsePositive(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Echo {
+    command: "echo"
+}
+
+pipeline P {
+    step S {
+        var rendered = "hello"
+        var response = Echo.run(prompt: rendered)
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
 func TestImportMissingFile(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")
@@ -1548,6 +1644,60 @@ pipeline P {
 		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
 	}
 	if !strings.Contains(findings[0].Message, "missing.mh") {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+// TestPromptFromMarkdownFileResolvesWithoutFinding covers `prompt ... from
+// "path"` (internal/lang/ast/prompt.go) resolving cleanly: lint's own import
+// walk (internal/lang/lint/imports.go, deliberately mirroring
+// internal/engine/interpreter's) loads the file and populates Body before
+// checkAgentCalls ever runs, so a prompt referenced via `prompt:
+// Greeting(...)` renders with no finding, same as an inline-body prompt.
+func TestPromptFromMarkdownFileResolvesWithoutFinding(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, filepath.Join(dir, "greeting.prompt.md"), `hello ${name}`)
+	write(t, main, `
+prompt Greeting(name: string) from "./greeting.prompt.md"
+
+agent Echo {
+    command: "bash"
+}
+
+pipeline P {
+    step S {
+        var response = Echo.run(prompt: Greeting(name: "World"))
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+// TestPromptFromMissingMarkdownFile is the failure path: a `from` path that
+// doesn't resolve to a real file is reported the same way a broken
+// `use`/`import` path is, instead of surfacing later as "prompt has no text
+// body" once something tries to render it.
+func TestPromptFromMissingMarkdownFile(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+prompt Greeting(name: string) from "./missing.prompt.md"
+
+pipeline P {
+    step S {
+        var value = 1
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, "missing.prompt.md") {
 		t.Errorf("unexpected message: %q", findings[0].Message)
 	}
 }
