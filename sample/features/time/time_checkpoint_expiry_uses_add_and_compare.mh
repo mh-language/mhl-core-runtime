@@ -1,0 +1,16 @@
+// Illustrates composing time.* to reason about staleness the same way
+// `checkpoint { ttl: 7d }` does internally — purely author-level (this
+// sample does not touch the real checkpoint/--resume machinery, which
+// stays Go-side).
+test time_checkpoint_expiry_uses_add_and_compare {
+    describe time_checkpoint_expiry_uses_add_and_compare {
+        var created_at = "2024-01-01T00:00:00Z"
+        var expires_at = time.add(created_at, 7d) // ttl: 7d, mirroring checkpoint.ttl
+
+        var still_fresh = "2024-01-05T00:00:00Z"
+        is_true(time.compare(still_fresh, expires_at) < 0)
+
+        var now_stale = "2024-01-10T00:00:00Z"
+        is_true(time.compare(now_stale, expires_at) >= 0)
+    }
+}

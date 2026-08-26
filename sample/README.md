@@ -169,13 +169,14 @@ Array          ::= "[" [ Expr { "," Expr } [ "," ] ] "]" ;
 - **Precedence** (lowest to highest binding): `||` → `&&` → `== !=` → `< > <= >=` →
   `+ -` → `* / %` → unary `! -` → postfix (`.member`, `(call)`, `[index]`, `[slice]`).
   There is no exponent operator.
-- **Native op namespaces** (`cmd`, `git`, `fs`, `http`, `json`, `log`) are not separate
-  grammar — `cmd.exec(...)` parses as ordinary `Postfix` (`Ident` `.member` `Call`). The
-  reserved namespace/method pairs live in `internal/engine/interpreter/tool.go`'s
+- **Native op namespaces** (`cmd`, `git`, `fs`, `http`, `json`, `log`, `time`) are not
+  separate grammar — `cmd.exec(...)` parses as ordinary `Postfix` (`Ident` `.member` `Call`).
+  The reserved namespace/method pairs live in `internal/engine/interpreter/tool.go`'s
   `nativeOpCall` (e.g. `cmd.exec`, `cmd.exec_all`, `git.diff`, `git.add`, `git.commit`,
   `git.status`, `git.rev_parse`, `git.log`, `fs.read`, `fs.exists`, `fs.write`, `fs.append`,
   `fs.delete`, `fs.join`, `fs.list`, `http.post`, `json.parse`, `json.parse_lines`,
-  `json.stringify`, `log.info`, `log.warn`, `log.error`), not the grammar.
+  `json.stringify`, `log.info`, `log.warn`, `log.error`, `time.now`, `time.parse`,
+  `time.format`, `time.add`, `time.diff`, `time.compare`), not the grammar.
 - **`env(...)`** and assertion calls (`are_equal`, `is_true`, `is_false`, `is_null`,
   `not_null`, `incomplete`, ...) are ordinary `Ident` `Call` expressions too — recognized by
   name at evaluation time, not by any dedicated grammar rule.

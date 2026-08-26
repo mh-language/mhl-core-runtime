@@ -41,6 +41,7 @@ func TestCompletionNativeNamespaceMembers(t *testing.T) {
 		{"fs", []string{"read", "exists", "write", "append", "delete", "list", "join"}},
 		{"http", []string{"post"}},
 		{"json", []string{"parse", "parse_lines", "stringify"}},
+		{"time", []string{"now", "parse", "format", "add", "diff", "compare"}},
 	}
 	for _, c := range cases {
 		text := c.namespace + "."
@@ -55,7 +56,7 @@ func TestCompletionNativeNamespaceMembers(t *testing.T) {
 
 func TestCompletionOffersNativeNamespaceNames(t *testing.T) {
 	items := completionAt("main.mh", "", position{Line: 0, Character: 0})
-	for _, name := range []string{"cmd", "git", "fs", "http", "json", "log"} {
+	for _, name := range []string{"cmd", "git", "fs", "http", "json", "log", "time"} {
 		if !hasLabel(items, name) {
 			t.Errorf("general completion missing native namespace %q", name)
 		}

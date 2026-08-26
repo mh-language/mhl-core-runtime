@@ -1,0 +1,6 @@
+test time_format_with_custom_layout {
+    describe time_format_with_custom_layout {
+        var formatted = time.format("2024-01-15T10:30:00Z", "2006-01-02")
+        are_equal(formatted, "2024-01-15")
+    }
+}
