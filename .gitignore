@@ -15,3 +15,4 @@ dotnet/
 
 # build artifacts (built by release.yml on tag push, not committed)
 *.vsix
+.DS_Store
