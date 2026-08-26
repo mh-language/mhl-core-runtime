@@ -1,11 +1,10 @@
-# mhl
+<p align="center">
+  <img src="docs/site/assets/mhl-logo-rebrand.png" alt="mhl logo" width="160">
+</p>
 
-**mhl** (Meta-Harness Language, `.mh`) is a declarative language for describing AI agent
-pipelines: agents, skills, tools, memory, MCP servers, prompts, and the pipelines that wire
-them together. See [`src/mhl-runtime`](src/mhl-runtime) for the Go implementation of the `mhl`
-CLI and [`vscode-mhl`](vscode-mhl) for editor support.
+# Meta-Harness Language (mhl)
 
-The language manual is available as a Markdown wiki in [`docs/wiki`](docs/wiki/README.md).
+**mhl** is a declarative language for describing AI agent pipelines: agents, skills, tools, memory, MCP servers, prompts, and the pipelines that wire them together. **[Click here for the full language reference](https://mh-language.github.io/mhl-core-runtime/reference.html)**.
 
 ## Install
 
@@ -42,3 +41,30 @@ cd vscode-mhl && npm install && npx @vscode/vsce package   # outputs mhl-languag
 
 Then install the `.vsix` in VS Code via **Extensions → ⋯ → Install from VSIX...**, or run
 `vscode-mhl/install.sh`, which builds and installs it in one step.
+
+## Documentation
+
+> [!NOTE]  
+> **Note:** The docs are a work in progress. The language is still evolving, and the docs
+> 
+The full language reference lives at **[mh-language.github.io/mhl-core-runtime/reference.html](https://mh-language.github.io/mhl-core-runtime/reference.html)**.
+
+
+## Examples
+
+[`sample/`](sample/README.md) has worked, self-verifying `.mh` examples for every language
+feature — run any of them directly with `mhl test <file>`:
+
+- [`sample/syntax/`](sample/syntax/README.md) — the expression and statement language itself
+  (arithmetic, arrays, objects, strings, conditionals, loops)
+- [`sample/features/`](sample/features/README.md) — the higher-level declarations a pipeline
+  is built from (`agent`, `memory`, `prompt`) and how a `pipeline` wires them together
+
+## Repository layout
+
+- [`src/mhl-runtime/`](src/mhl-runtime) — the Go implementation of the `mhl` CLI (parser,
+  interpreter, runtime, LSP)
+- [`vscode-mhl/`](vscode-mhl) — the VS Code extension (syntax highlighting, diagnostics,
+  completion), a thin wrapper around `mhl lsp`
+- [`docs/`](docs) — design docs and the language reference wiki
+- [`sample/`](sample) — worked `.mh` examples, doubling as the docs-facing test suite
