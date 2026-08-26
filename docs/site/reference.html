@@ -459,6 +459,7 @@ if (result.exit_code != 0) fail(result.stderr)</code></pre>
             <article><h3><code>json</code></h3><p><code>parse</code> · <code>parse_lines</code> · <code>stringify</code></p></article>
             <article><h3><code>http</code></h3><p><code>post(url:, headers:, body:)</code></p></article>
             <article><h3><code>log</code></h3><p><code>info</code> · <code>warn</code> · <code>error</code></p></article>
+            <article><h3><code>time</code></h3><p><code>now()</code> · <code>parse(text, layout:)</code> · <code>format(value, layout:)</code></p><p><code>add(value, duration)</code> · <code>diff(a, b)</code> · <code>compare(a, b)</code></p></article>
           </div>
           <pre class="code-block"><code class="language-mhl">var result = cmd.exec(["git", "status", "--short"], timeout: 30s)
 var response = http.post(
@@ -467,7 +468,9 @@ var response = http.post(
     body: {status: "ready"}
 )
 var payload = json.parse(response.body)
-fs.write("result.json", json.stringify(payload))</code></pre>
+fs.write("result.json", json.stringify(payload))
+var expires_at = time.add(time.now(), 7d)</code></pre>
+          <p class="feature-lede"><code>time.parse</code>/<code>time.format</code>'s <code>layout</code> accepts either a raw Go reference-time layout (<code>"2006-01-02"</code>) or the friendlier <code>yyyy</code>/<code>MM</code>/<code>dd</code>/<code>HH</code>/<code>mm</code>/<code>ss</code> tokens (e.g. <code>time.format(dt, "dd/MM/yyyy")</code>) — case matters where a unit would otherwise be ambiguous: <code>MM</code> is always month, <code>mm</code> is always minute; <code>HH</code> is always 24-hour, <code>hh</code> is always 12-hour.</p>
           <div class="security-banner"><span>!</span><div><strong>Prefer argv.</strong><p><code>cmd.exec(["program", "arg with spaces"])</code> preserves every argument and avoids accidental shell interpolation. Use a command string only when shell features are actually required.</p></div></div>
         </section>
 

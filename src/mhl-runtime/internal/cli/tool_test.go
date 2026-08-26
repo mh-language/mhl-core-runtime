@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // --- tool method dispatch: positional binding, function-call scoping ------
@@ -764,6 +766,111 @@ pipeline P {
 	}
 	if !strings.Contains(gotBody, "hello there") {
 		t.Errorf("server did not receive expected body: %s", gotBody)
+	}
+}
+
+// --- time.* -----------------------------------------------------------
+
+func TestToolTimeNowIsRecentUTC(t *testing.T) {
+	out, err := run(t, wrapStep(`log(time.now())`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	m := regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`).FindString(out)
+	if m == "" {
+		t.Fatalf("no RFC3339 timestamp found in output: %s", out)
+	}
+	parsed, perr := time.Parse(time.RFC3339, m)
+	if perr != nil {
+		t.Fatalf("time.now() = %q, not valid RFC3339: %v", m, perr)
+	}
+	if d := time.Since(parsed); d < 0 || d > 5*time.Second {
+		t.Errorf("time.now() = %q, not close to time.Now(): off by %v", m, d)
+	}
+}
+
+func TestToolTimeParseWithCustomLayout(t *testing.T) {
+	out, err := run(t, wrapStep(`log(time.parse("2024-01-15", "2006-01-02"))`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "2024-01-15T00:00:00Z\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolTimeParseInvalidTextErrors(t *testing.T) {
+	_, err := run(t, wrapStep(`log(time.parse("not a date"))`))
+	if err == nil || !strings.Contains(err.Error(), "time.parse") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestToolTimeParseRequiresStringArgument(t *testing.T) {
+	_, err := run(t, wrapStep(`log(time.parse(42))`))
+	if err == nil || !strings.Contains(err.Error(), "time.parse requires a string") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestToolTimeFormatWithCustomLayout(t *testing.T) {
+	out, err := run(t, wrapStep(`log(time.format("2024-01-15T10:30:00Z", "2006-01-02"))`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "2024-01-15\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolTimeFormatWithFriendlyDayMonthYearLayout(t *testing.T) {
+	out, err := run(t, wrapStep(`log(time.format("2024-01-15T10:30:00Z", "dd/MM/yyyy"))`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "15/01/2024\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolTimeAddAcceptsDurationLiteral(t *testing.T) {
+	out, err := run(t, wrapStep(`log(time.add("2024-01-15T10:30:00Z", 7d))`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "2024-01-22T10:30:00Z\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolTimeAddRequiresDurationArgument(t *testing.T) {
+	_, err := run(t, wrapStep(`log(time.add("2024-01-15T10:30:00Z", "not a duration"))`))
+	if err == nil || !strings.Contains(err.Error(), "time.add requires a duration") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestToolTimeDiffSeconds(t *testing.T) {
+	out, err := run(t, wrapStep(`log(time.diff("2024-01-15T11:00:00Z", "2024-01-15T10:00:00Z"))`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "3600\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolTimeCompareOrdering(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        log(time.compare("2024-01-15T10:00:00Z", "2024-01-15T11:00:00Z"))
+        log(time.compare("2024-01-15T11:00:00Z", "2024-01-15T10:00:00Z"))
+        log(time.compare("2024-01-15T10:00:00Z", "2024-01-15T10:00:00Z"))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "-1\n1\n0\n") {
+		t.Errorf("unexpected output: %s", out)
 	}
 }
 

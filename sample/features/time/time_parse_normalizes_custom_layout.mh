@@ -1,0 +1,6 @@
+test time_parse_normalizes_custom_layout {
+    describe time_parse_normalizes_custom_layout {
+        var normalized = time.parse("2024-01-15", "2006-01-02")
+        are_equal(normalized, "2024-01-15T00:00:00Z")
+    }
+}

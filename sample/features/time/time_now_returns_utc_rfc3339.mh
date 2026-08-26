@@ -1,0 +1,8 @@
+test time_now_returns_utc_rfc3339 {
+    describe time_now_returns_utc_rfc3339 {
+        var now = time.now()
+        is_true(now.size() == 20) // "2024-01-15T10:30:00Z"
+        is_true(now.contains("T"))
+        is_true(now.ends_with("Z"))
+    }
+}

@@ -1,0 +1,6 @@
+test time_add_duration_literal {
+    describe time_add_duration_literal {
+        var later = time.add("2024-01-15T10:30:00Z", 7d)
+        are_equal(later, "2024-01-22T10:30:00Z")
+    }
+}

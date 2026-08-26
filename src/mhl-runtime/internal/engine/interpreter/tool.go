@@ -23,10 +23,10 @@ func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
 }
 
 // nativeNamespaces are the reserved `tool` method-body namespaces
-// (language-design.md §7), plus `json` and `log` — never looked up against
-// user declarations, the same way the bare `log(...)` builtin is reserved
-// regardless of what a .mh author might otherwise name a variable.
-var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true, "log": true}
+// (language-design.md §7), plus `json`, `log`, and `time` — never looked up
+// against user declarations, the same way the bare `log(...)` builtin is
+// reserved regardless of what a .mh author might otherwise name a variable.
+var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true, "log": true, "time": true}
 
 // evalToolCall resolves and executes a declared `tool` method call, e.g.
 // `execution.get_diff()`. Arguments bind positionally to the method's
@@ -295,6 +295,52 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 	case "log.error":
 		writeLog(ctx, "ERROR", args.positional)
 		return nil, nil
+	case "time.now":
+		return nativeops.TimeNow(), nil
+	case "time.parse":
+		text, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("time.parse requires a string as its first argument")
+		}
+		layout, _ := args.stringNamedOrAt("layout", 1)
+		return nativeops.TimeParse(text, layout)
+	case "time.format":
+		value, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("time.format requires a string value as its first argument")
+		}
+		layout, _ := args.stringNamedOrAt("layout", 1)
+		return nativeops.TimeFormat(value, layout)
+	case "time.add":
+		value, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("time.add requires a string value as its first argument")
+		}
+		d, ok := args.durationNamedOrAt("duration", 1)
+		if !ok {
+			return nil, fmt.Errorf("time.add requires a duration as its second argument")
+		}
+		return nativeops.TimeAdd(value, d)
+	case "time.diff":
+		a, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("time.diff requires a string as its first argument")
+		}
+		b, ok := args.stringAt(1)
+		if !ok {
+			return nil, fmt.Errorf("time.diff requires a string as its second argument")
+		}
+		return nativeops.TimeDiff(a, b)
+	case "time.compare":
+		a, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("time.compare requires a string as its first argument")
+		}
+		b, ok := args.stringAt(1)
+		if !ok {
+			return nil, fmt.Errorf("time.compare requires a string as its second argument")
+		}
+		return nativeops.TimeCompare(a, b)
 	default:
 		return nil, fmt.Errorf("%s.%s is not a supported native operation", namespace, op)
 	}
@@ -460,6 +506,22 @@ func (a callArgs) duration(name string) (time.Duration, bool) {
 		return 0, false
 	}
 	d, ok := v.(time.Duration)
+	return d, ok
+}
+
+// durationNamedOrAt reads a named duration argument, falling back to the
+// positional slot at i — unlike cmd.exec's timeout: (always named),
+// time.add's duration argument is written positionally
+// (time.add(dt, 7d)), so duration(name) alone (named-only) isn't enough.
+func (a callArgs) durationNamedOrAt(name string, i int) (time.Duration, bool) {
+	if v, ok := a.named[name]; ok {
+		d, ok := v.(time.Duration)
+		return d, ok
+	}
+	if i >= len(a.positional) {
+		return 0, false
+	}
+	d, ok := a.positional[i].(time.Duration)
 	return d, ok
 }
 

@@ -1179,7 +1179,7 @@ pipeline P {
 	}
 }
 
-// TestCheckNativeNamespaceCallNeverFlagged confirms cmd/git/fs/http calls
+// TestCheckNativeNamespaceCallNeverFlagged confirms cmd/git/fs/http/time calls
 // never produce a finding — lint never executes anything (no subprocess, no
 // filesystem, no network), so there's nothing it can statically verify
 // beyond the shape already being a well-formed call.
@@ -1193,6 +1193,7 @@ pipeline P {
         fs.read("/no/such/file")
         git.diff(target: "nonsense")
         http.post(url: "not a real url")
+        time.now()
     }
 }
 `)

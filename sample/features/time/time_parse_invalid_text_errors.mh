@@ -1,0 +1,10 @@
+test time_parse_invalid_text_errors {
+    describe time_parse_invalid_text_errors {
+        try {
+            time.parse("not a date")
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("time.parse"))
+        }
+    }
+}

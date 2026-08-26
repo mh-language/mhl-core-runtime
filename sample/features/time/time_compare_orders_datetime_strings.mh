@@ -1,0 +1,7 @@
+test time_compare_orders_datetime_strings {
+    describe time_compare_orders_datetime_strings {
+        are_equal(time.compare("2024-01-15T10:00:00Z", "2024-01-15T11:00:00Z"), -1)
+        are_equal(time.compare("2024-01-15T11:00:00Z", "2024-01-15T10:00:00Z"), 1)
+        are_equal(time.compare("2024-01-15T10:00:00Z", "2024-01-15T10:00:00Z"), 0)
+    }
+}

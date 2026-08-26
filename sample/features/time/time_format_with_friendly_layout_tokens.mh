@@ -1,0 +1,12 @@
+// time.format/time.parse also accept the moment.js/ICU-style friendly
+// tokens as an alternative to Go's raw reference-time layout
+// ("2006-01-02"): yyyy/MM/dd, HH/hh, mm, ss. Case carries meaning where
+// two units would otherwise collide — MM is always month, mm is always
+// minute; HH is always 24-hour, hh is always 12-hour.
+test time_format_with_friendly_layout_tokens {
+    describe time_format_with_friendly_layout_tokens {
+        are_equal(time.format("2024-01-15T10:30:00Z", "dd/MM/yyyy"), "15/01/2024")
+        are_equal(time.format("2024-01-15T10:30:00Z", "HH:mm:ss"), "10:30:00")
+        are_equal(time.parse("15/01/2024", "dd/MM/yyyy"), "2024-01-15T00:00:00Z")
+    }
+}

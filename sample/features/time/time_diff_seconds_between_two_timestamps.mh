@@ -1,0 +1,6 @@
+test time_diff_seconds_between_two_timestamps {
+    describe time_diff_seconds_between_two_timestamps {
+        var seconds = time.diff("2024-01-22T10:30:00Z", "2024-01-15T10:30:00Z")
+        are_equal(seconds, 604800) // 7 days
+    }
+}
