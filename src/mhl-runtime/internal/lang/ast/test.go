@@ -1,7 +1,7 @@
 package ast
 
 // Test declares a named suite of describe blocks, each grouping statements
-// that exercise the pipelines/tools/skills declared elsewhere in the same
+// that exercise the pipelines/tools declared elsewhere in the same
 // program:
 //
 //	test CodeAuditPipelineTest {

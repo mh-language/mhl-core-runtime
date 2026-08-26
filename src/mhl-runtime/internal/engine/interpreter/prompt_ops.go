@@ -3,8 +3,8 @@ package interpreter
 import (
 	"fmt"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/prompt"
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/features/prompt"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 // resolvePromptArgument resolves call's `prompt:` argument. A bare

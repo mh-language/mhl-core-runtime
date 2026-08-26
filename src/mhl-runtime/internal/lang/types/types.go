@@ -155,11 +155,9 @@ func (t Type) String() string {
 
 // aliases maps every bare-keyword spelling a `: Ident` annotation may use to
 // its canonical Type. "int"/"integer"/"float" and "boolean" are accepted
-// because they're already in use today — docs/language-design.md's examples
-// and, more importantly, internal/features/skills/resolver_test.go's real
-// fixture (`strict_mode: boolean`, `vulnerabilities_found: int`) — even
-// though mhl has exactly one numeric runtime representation (float64) and
-// one bool spelling.
+// because they're already in use today — docs/language-design.md's own
+// examples use them — even though mhl has exactly one numeric runtime
+// representation (float64) and one bool spelling.
 var aliases = map[string]Type{
 	"string":  String,
 	"number":  Number,

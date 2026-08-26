@@ -3,8 +3,8 @@ package interpreter
 import (
 	"fmt"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/memory"
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 func findMemory(prog *ast.Program, name string) (*ast.Memory, bool) {

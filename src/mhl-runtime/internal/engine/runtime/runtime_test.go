@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/engine/runtime"
-	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
 const pipelineSource = `

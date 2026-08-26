@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/adapters"
-	"github.com/yanjustino/mhl-runtime/internal/features/nativeops"
-	"github.com/yanjustino/mhl-runtime/internal/features/tools"
-	"github.com/yanjustino/mhl-runtime/internal/features/traffic"
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/features/adapters"
+	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
+	"github.com/mh-language/mhl-core-runtime/internal/features/tools"
+	"github.com/mh-language/mhl-core-runtime/internal/features/traffic"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 func findAgent(prog *ast.Program, name string) (*ast.Agent, bool) {
@@ -33,15 +33,46 @@ func findAgent(prog *ast.Program, name string) (*ast.Agent, bool) {
 // that actually ran — the primary agent, or whichever fallback ended up
 // succeeding — gates its own "response:" line on its own `trace` property,
 // the same way it already has its own independent cache/retry/rate_limit.
+//
+// A declared `before` hook runs first (runAgentBeforeHook, agent_hooks.go):
+// its returned object's fields become extra bindings visible to the
+// `prompt:`/`schema:` arguments' own "${...}" interpolation (promptCtx,
+// below) — this is what lets `prompt: "Review: ${mcp_result}"` resolve
+// against data before/after actually fetched, not a template variable that
+// happens to already exist in the calling step. A declared `after` hook
+// runs once, against whichever leg (primary or fallback) produced the
+// final response, immediately before this returns — not once per attempt.
 func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, depth int) (string, error) {
-	promptText, ok, err := resolvePromptArgument(ctx, call, depth)
+	beforeResult, err := runAgentBeforeHook(ctx, agentName, agent, depth)
+	if err != nil {
+		return "", err
+	}
+	promptCtx := ctx
+	if len(beforeResult) > 0 {
+		childEnv := make(Env, len(ctx.env)+len(beforeResult))
+		for k, v := range ctx.env {
+			childEnv[k] = v
+		}
+		for k, v := range beforeResult {
+			childEnv[k] = v
+		}
+		child := *ctx
+		child.env = childEnv
+		promptCtx = &child
+	}
+
+	promptText, ok, err := resolvePromptArgument(promptCtx, call, depth)
 	if err != nil {
 		return "", fmt.Errorf("%s.run: %w", agentName, err)
 	}
 	if !ok || promptText == "" {
 		return "", fmt.Errorf("%s.run requires a non-empty prompt", agentName)
 	}
-	schemaText, _, err := resolveAgentStringArg(ctx, call, "schema", depth)
+	schemaText, _, err := resolveAgentStringArg(promptCtx, call, "schema", depth)
+	if err != nil {
+		return "", fmt.Errorf("%s.run: %w", agentName, err)
+	}
+	promptText, err = applyAgentDeclaredToolScope(ctx, agent, promptText)
 	if err != nil {
 		return "", fmt.Errorf("%s.run: %w", agentName, err)
 	}
@@ -51,7 +82,7 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 		if agentTrace(agent) {
 			fmt.Fprintf(ctx.out, "agent %s response:\n%s\n", agentName, response)
 		}
-		return response, nil
+		return runAgentAfterHook(ctx, agentName, agent, response, depth)
 	}
 
 	fallbacks, fbErr := agentFallback(ctx.prog, agent)
@@ -68,7 +99,7 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 			if agentTrace(fb) {
 				fmt.Fprintf(ctx.out, "agent %s response (via %s):\n%s\n", agentName, fbName, response)
 			}
-			return response, nil
+			return runAgentAfterHook(ctx, agentName, agent, response, depth)
 		}
 		err = fbAttemptErr // report the last fallback's error if every leg fails
 	}
@@ -368,8 +399,8 @@ var (
 // also persist as JSON under .mhl-cache/, surviving across separate `mhl`
 // invocations too.
 //
-// SKETCH GAP: `strategy` is accepted but ignored — traffic.Cache only
-// implements exact-match (SHA-256 of engine+prompt+parameters) today.
+// `strategy` other than exact-match (SHA-256 of engine+prompt+parameters)
+// is rejected by ast.AgentCacheConfig before this ever runs.
 func agentCache(agent *ast.Agent) (cache *traffic.Cache, ttl time.Duration, hasCache bool, err error) {
 	ttl, diskStorage, hasCache, err := ast.AgentCacheConfig(agent)
 	if err != nil || !hasCache {
@@ -408,9 +439,8 @@ var (
 // (rate_limit.go), so callers can call Acquire/Release unconditionally for
 // every agent without a hasLimit guard.
 //
-// SKETCH GAP: `on_exceeded` is read and stored on the Limiter, but
-// Limiter.Acquire only implements one behavior (block and wait) regardless
-// of its value — a "reject" (fail-fast) mode isn't implemented.
+// `on_exceeded` other than "queue" (Limiter.Acquire only implements block-
+// and-wait) is rejected by ast.AgentLimiterConfig before this ever runs.
 func agentLimiter(agent *ast.Agent) (*traffic.Limiter, error) {
 	requestsPerMinute, concurrency, onExceeded, hasLimit, err := ast.AgentLimiterConfig(agent)
 	if err != nil {

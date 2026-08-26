@@ -1,0 +1,32 @@
+test ExpressionConformance {
+    describe conditional_statements {
+        are_equal("a", "a")
+        var x = 5
+        if (x > 0) {
+            is_true(x > 0)
+        } else {
+            incomplete("negative case")
+        }
+    }
+
+    describe collections_and_loops {
+        var items = [1, 2, 3]
+        var total = 0
+        for (var item in items) {
+            total = total + item
+        }
+        are_equal(total, 6)
+        is_true(items.contains(2))
+    }
+
+    describe error_handling {
+        var caught = false
+        try {
+            fail("boom")
+        } catch (e) {
+            caught = true
+            is_true(e.contains("boom"))
+        }
+        is_true(caught)
+    }
+}

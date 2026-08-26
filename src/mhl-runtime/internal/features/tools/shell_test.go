@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/tools"
+	"github.com/mh-language/mhl-core-runtime/internal/features/tools"
 )
 
 func TestExecCapturesOutput(t *testing.T) {

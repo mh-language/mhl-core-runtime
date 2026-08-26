@@ -108,13 +108,19 @@ func stringOrNumberArray(e *Expr) ([]string, bool) {
 	return values, true
 }
 
+// implementedBackoff is the only `retry.backoff` value traffic.Retrier
+// actually implements today.
+const implementedBackoff = "exponential"
+
 // AgentRetryConfig reads an agent's `retry: { max_attempts, delay, retry_on
 // }` property. Absent `retry` yields the same defaults a Retrier that runs
 // the call exactly once would use (maxAttempts=1, delay=1s), so callers can
 // apply the result unconditionally.
 //
-// SKETCH GAP (unchanged by this move): `backoff` is accepted but ignored —
-// traffic.Retrier only implements exponential backoff today.
+// `backoff` is validated, not silently accepted: traffic.Retrier only
+// implements exponential backoff today, so declaring any other value (e.g.
+// `backoff: "linear"`) is rejected here rather than quietly running
+// exponential anyway — a caller has no other way to discover the mismatch.
 func AgentRetryConfig(agent *Agent) (maxAttempts int, delay time.Duration, retryOn []string, err error) {
 	maxAttempts, delay = 1, time.Second
 	for _, prop := range agent.Props {
@@ -146,16 +152,32 @@ func AgentRetryConfig(agent *Agent) (maxAttempts int, delay time.Duration, retry
 			}
 			retryOn = codes
 		}
+		if v, ok := objectField(obj, "backoff"); ok {
+			backoff, strOk := StringValue(v)
+			if !strOk {
+				return 0, 0, nil, fmt.Errorf("agent %q retry.backoff must be a string", agent.Name)
+			}
+			if backoff != implementedBackoff {
+				return 0, 0, nil, fmt.Errorf("agent %q retry.backoff %q is not implemented — only %q is supported today", agent.Name, backoff, implementedBackoff)
+			}
+		}
 		break
 	}
 	return maxAttempts, delay, retryOn, nil
 }
 
-// AgentCacheConfig reads an agent's `cache: { ttl, storage }` property.
-// hasCache is false when the agent declares no `cache` property at all.
+// implementedCacheStrategy is the only `cache.strategy` value traffic.Cache
+// actually implements today.
+const implementedCacheStrategy = "exact"
+
+// AgentCacheConfig reads an agent's `cache: { ttl, storage, strategy }`
+// property. hasCache is false when the agent declares no `cache` property
+// at all.
 //
-// SKETCH GAP (unchanged by this move): `strategy` is accepted but ignored —
-// traffic.Cache only implements exact-match caching today.
+// `strategy` is validated, not silently accepted: traffic.Cache only
+// implements exact-match caching (SHA-256 of engine+prompt+parameters)
+// today, so declaring any other value (e.g. `strategy: "semantic"`) is
+// rejected here rather than quietly falling back to exact-match anyway.
 func AgentCacheConfig(agent *Agent) (ttl time.Duration, diskStorage bool, hasCache bool, err error) {
 	for _, prop := range agent.Props {
 		if prop.Name != "cache" {
@@ -180,18 +202,32 @@ func AgentCacheConfig(agent *Agent) (ttl time.Duration, diskStorage bool, hasCac
 			}
 			diskStorage = storage == "disk"
 		}
+		if v, ok := objectField(obj, "strategy"); ok {
+			strategy, strOk := StringValue(v)
+			if !strOk {
+				return 0, false, false, fmt.Errorf("agent %q cache.strategy must be a string", agent.Name)
+			}
+			if strategy != implementedCacheStrategy {
+				return 0, false, false, fmt.Errorf("agent %q cache.strategy %q is not implemented — only %q is supported today", agent.Name, strategy, implementedCacheStrategy)
+			}
+		}
 		return ttl, diskStorage, true, nil
 	}
 	return 0, false, false, nil
 }
 
+// implementedOnExceeded is the only `rate_limit.on_exceeded` value
+// traffic.Limiter actually implements today.
+const implementedOnExceeded = "queue"
+
 // AgentLimiterConfig reads an agent's `rate_limit: { requests_per_minute,
 // concurrency, on_exceeded }` property. hasLimit is false when the agent
 // declares no `rate_limit` at all.
 //
-// SKETCH GAP (unchanged by this move): `on_exceeded` is read but
-// traffic.Limiter.Acquire only implements one behavior (block and wait)
-// regardless of its value.
+// `on_exceeded` is validated, not silently accepted: traffic.Limiter.Acquire
+// only implements one behavior (block and wait, i.e. "queue") regardless of
+// this value, so declaring anything else (e.g. `on_exceeded: "reject"`) is
+// rejected here rather than quietly queuing anyway.
 func AgentLimiterConfig(agent *Agent) (requestsPerMinute, concurrency int, onExceeded string, hasLimit bool, err error) {
 	for _, prop := range agent.Props {
 		if prop.Name != "rate_limit" {
@@ -219,6 +255,9 @@ func AgentLimiterConfig(agent *Agent) (requestsPerMinute, concurrency int, onExc
 			s, strOk := StringValue(v)
 			if !strOk {
 				return 0, 0, "", false, fmt.Errorf("agent %q rate_limit.on_exceeded must be a string", agent.Name)
+			}
+			if s != implementedOnExceeded {
+				return 0, 0, "", false, fmt.Errorf("agent %q rate_limit.on_exceeded %q is not implemented — only %q is supported today", agent.Name, s, implementedOnExceeded)
 			}
 			onExceeded = s
 		}

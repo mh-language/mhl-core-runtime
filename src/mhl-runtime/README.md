@@ -1,13 +1,12 @@
 # mhl-runtime
 
 Go implementation of the **mhl** CLI — the runtime for the Meta-Harness Language (`.mh`), a
-declarative language for describing AI agent pipelines: agents, skills, tools, memory, MCP
+declarative language for describing AI agent pipelines: agents, tools, memory, MCP
 servers, prompts and the pipelines that wire them together.
 
 ```
 mhl run <pipeline.mh> [--input key=value ...] [--resume]
 mhl test <file.mh>
-mhl skills list [dir]
 mhl lint [dir]
 ```
 
@@ -27,9 +26,9 @@ The dependency direction only ever flows down this table: `features` packages ne
 `engine` or `cli`; `engine` imports `lang` and `features` but never `cli`; `cli` is the only
 package allowed to import all three. Most `features` packages (`memory`, `tools`, `nativeops`,
 `traffic`, `auth`, `adapters`) don't even import `lang` — they're plain Go APIs with no idea
-`.mh` exists. A few (`prompt`, `skills`, `mcp`) do import `lang/ast`, because the most natural
+`.mh` exists. A few (`prompt`, `mcp`) do import `lang/ast`, because the most natural
 shape for their public function is "take the declaration node directly"
-(`prompt.Render(*ast.Prompt, args)`, `skills.ListSkills(*ast.Program)`) rather than having every
+(`prompt.Render(*ast.Prompt, args)`) rather than having every
 caller unpack the node into primitives first — that's still a one-way, downward dependency
 (`ast` never imports them back), not a violation of the split. This is what makes each group
 independently readable — you can understand `internal/features/memory` in isolation, without
@@ -50,13 +49,13 @@ test/fixtures/     example .mh programs used by parser/interpreter tests
 Everything here is about **structure and syntax**, not behavior: given `.mh` source text,
 what AST does it parse into, and is it well-formed? None of these packages execute anything.
 
-- **`ast`** — the Go types describing a parsed `.mh` program (`Program`, `Agent`, `Skill`,
+- **`ast`** — the Go types describing a parsed `.mh` program (`Program`, `Agent`,
   `Memory`, `Tool`, `MCPServer`, `Prompt`, `Pipeline`, `Test`, and the expression/statement
   grammar). Each node's [Participle](https://github.com/alecthomas/participle) struct tags *are*
   the grammar — e.g. `` `parser:"'agent' @Ident?"` `` on `Agent.Name` is simultaneously the Go
   field definition and the declaration that `agent` is a reserved keyword. This is why there
   is no separate "keywords" file: in a Participle-based parser the reserved words live next to
-  the node they introduce, one per file (`agent.go`, `skill.go`, `prompt.go`, `pipeline.go`,
+  the node they introduce, one per file (`agent.go`, `prompt.go`, `pipeline.go`,
   `test.go` for `test`/`describe`, `program.go` for `import`/`use`/`memory`/`tool`/`mcp_server`,
   `expr.go` for operators).
 - **`parser`** — the lexer (`lexer.go`: token rules for strings, numbers, durations,
@@ -71,12 +70,12 @@ what AST does it parse into, and is it well-formed? None of these packages execu
 value straight out of an `*Expr` that's just a bare literal — no evaluation, no `Env`. This is
 what a declaration's config (an agent's `command:`, a memory's `type:`, a pipeline's
 `checkpoint { ttl: 7d }`) is read with, everywhere that isn't the interpreter's full expression
-evaluator. Six different packages independently reimplemented this exact logic before this
-refactor (`internal/cli`, `internal/runtime`, `internal/skills`, `internal/lint`,
-`internal/prompt` and `internal/mcp`, one copy each); it's a good example of the
+evaluator. Several different packages independently reimplemented this exact logic before this
+refactor (`internal/cli`, `internal/runtime`, `internal/lint`, `internal/prompt` and
+`internal/mcp`, one copy each); it's a good example of the
 language/feature boundary this layout enforces — "what counts as a bare literal" is a fact
 about the AST's shape, so it lives in `lang/ast` once, and `engine/interpreter`,
-`engine/runtime`, `lang/lint`, `features/prompt`, `features/skills` and `features/mcp` all call
+`engine/runtime`, `lang/lint`, `features/prompt` and `features/mcp` all call
 into that single copy now instead of keeping their own. `mcp`'s `env("KEY")`-resolution and
 `"a" + "b"` string-concatenation logic is genuinely mcp-specific (fetching credentials is a
 feature concern, not a language one) and stays local to that package — only the underlying
@@ -117,8 +116,6 @@ back into the interpreter.
 
 - **`prompt`** — renders a `prompt Name(params) { "..." }` template by substituting its
   `${param}` placeholders.
-- **`skills`** — resolves a `skill` declaration's scoped tools/mcp_servers and system
-  instructions for `mhl skills list` and skill-scoped agent invocations.
 - **`memory`** — the storage backends a `memory` block can declare: an in-process KV store, a
   disk-persisted JSON store, an append-only text log, and an append-only JSONL log.
 - **`mcp`** — a Model Context Protocol client (stdio and HTTP/SSE transports) for
@@ -139,9 +136,9 @@ back into the interpreter.
 
 ## `internal/cli`
 
-Argument parsing and dispatch for the four subcommands (`run`, `test`, `skills list`, `lint`).
+Argument parsing and dispatch for the subcommands (`run`, `test`, `lint`, `lsp`, `version`).
 Kept deliberately thin: it parses flags, reads files, and hands off to `lang/parser`,
-`engine/interpreter`, `engine/runtime`, `lang/lint` and `features/skills` for the actual work.
+`engine/interpreter`, `engine/runtime` and `lang/lint` for the actual work.
 `test` prints each assertion's PASS/FAIL/SKIP and a summary line, and exits non-zero when any
 assertion failed (an `incomplete(...)` assertion never counts as a failure). If you're looking
 for *how* a pipeline executes, you want `internal/engine/interpreter`, not here.

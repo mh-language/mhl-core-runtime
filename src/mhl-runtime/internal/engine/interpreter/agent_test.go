@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
 // TestRunAgentAttemptSharesLimiterAcrossCalls proves the *wiring*, not

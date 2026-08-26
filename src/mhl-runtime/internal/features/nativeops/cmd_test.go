@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/nativeops"
+	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
 )
 
 func TestExecCapturesOutputAndExitCode(t *testing.T) {

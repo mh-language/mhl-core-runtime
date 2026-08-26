@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/cli"
+	"github.com/mh-language/mhl-core-runtime/internal/cli"
 )
 
 const passingTestFile = `

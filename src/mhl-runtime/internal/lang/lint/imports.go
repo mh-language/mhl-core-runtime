@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
-	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
 // mergeImports statically validates every `import ... as alias` and
@@ -194,8 +194,6 @@ func resolveName(prog *ast.Program, name string) string {
 // else from that file.
 func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 	switch {
-	case decl.Skill != nil:
-		return "skill", decl.Skill.Name, true
 	case decl.Prompt != nil:
 		return "prompt", decl.Prompt.Name, true
 	case decl.MCPServer != nil:
@@ -261,8 +259,6 @@ func findExport(module *ast.Program, name string) (*ast.Declaration, bool) {
 		}
 		switch {
 		case decl.Agent != nil && decl.Agent.Name == name:
-			return decl, true
-		case decl.Skill != nil && decl.Skill.Name == name:
 			return decl, true
 		case decl.MCPServer != nil && decl.MCPServer.Name == name:
 			return decl, true

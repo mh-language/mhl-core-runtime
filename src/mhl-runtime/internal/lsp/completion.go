@@ -9,7 +9,7 @@ import (
 // offered as a plain keyword completion whenever the cursor isn't in a
 // member-access position.
 var keywords = []string{
-	"agent", "memory", "tool", "prompt", "skill", "pipeline", "mcp_server", "loop",
+	"agent", "memory", "tool", "prompt", "pipeline", "mcp_server", "loop",
 	"import", "use", "from", "as", "export", "input", "step", "test", "describe",
 	"var", "if", "else", "while", "for", "in", "try", "catch", "finally",
 	"return", "break", "goto", "true", "false", "null",
@@ -21,9 +21,9 @@ var keywords = []string{
 var memberAccessRe = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)\.[A-Za-z0-9_]*$`)
 
 // typeAnnotationRe matches an in-progress "name: partialType" at the very
-// end of the text before the cursor — the shape of a `input name: `, tool
-// method `param: `, or skill field `name: ` type annotation (see
-// internal/lang/types' vocabulary). isTypeAnnotationPosition additionally
+// end of the text before the cursor — the shape of a `input name: ` or tool
+// method `param: ` type annotation (see internal/lang/types' vocabulary).
+// isTypeAnnotationPosition additionally
 // restricts where this fires so it never fires on an ordinary `key: value`
 // property (e.g. `agent { command: }`).
 var typeAnnotationRe = regexp.MustCompile(`\b[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Za-z_]*$`)
@@ -37,11 +37,7 @@ var typeKeywords = []string{"string", "number", "bool", "array", "object", "any"
 // elsewhere in this package. It recognizes two shapes: a pipeline `input
 // name: ` line (line itself starts with "input "), and a tool/prompt method
 // parameter list (`name(param: ` — the enclosing block is blockOther, and
-// the line has an unclosed "(" before the match). It deliberately does NOT
-// recognize a skill's `input { }`/`output { }` field block, since that
-// block is itself classified blockOther indistinguishably from a plain
-// object literal or step body — a small, known gap rather than a source of
-// false positives on ordinary properties.
+// the line has an unclosed "(" before the match).
 func isTypeAnnotationPosition(linePrefix, text string, pos position) bool {
 	if strings.HasPrefix(strings.TrimSpace(linePrefix), "input ") {
 		return true
@@ -116,7 +112,7 @@ func symbolItemKind(k symbolKind) int {
 	switch k {
 	case symAgent, symTool, symMemory:
 		return kindClass
-	case symPrompt, symSkill, symPipeline, symMCPServer:
+	case symPrompt, symPipeline, symMCPServer:
 		return kindProperty
 	case symNative:
 		return kindModule

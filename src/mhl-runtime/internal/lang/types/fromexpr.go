@@ -1,6 +1,6 @@
 package types
 
-import "github.com/yanjustino/mhl-runtime/internal/lang/ast"
+import "github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 
 // FromExpr resolves a parsed *ast.TypeExpr into this package's Type
 // vocabulary, recursively for array-element suffixes and inline object

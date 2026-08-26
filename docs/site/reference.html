@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Self-contained MHL language reference: syntax, agents, prompts, skills, memory, tools, MCP, pipelines, and tests." />
+    <meta name="description" content="Self-contained MHL language reference: syntax, agents, prompts, memory, tools, MCP, pipelines, and tests." />
     <meta name="theme-color" content="#10161f" />
     <meta property="og:title" content="MHL Reference — Meta-Harness Language" />
     <meta property="og:description" content="Syntax and complete examples for every MHL construct." />
@@ -45,7 +45,6 @@
           <a class="nav-link" href="#statements">Control flow</a>
           <a class="nav-link" href="#agent">agent</a>
           <a class="nav-link" href="#prompt">prompt</a>
-          <a class="nav-link" href="#skill">skill</a>
           <a class="nav-link" href="#memory">memory and mem</a>
           <a class="nav-link" href="#tool">tool and native ops</a>
           <a class="nav-link" href="#mcp">mcp_server</a>
@@ -151,7 +150,7 @@ pipeline Import {
 }</code></pre>
 
           <p class="block-label">PRACTICAL GRAMMAR</p>
-          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | skill | memory | tool | mcp_server | pipeline | test)
+          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | memory | tool | mcp_server | pipeline | test)
 variable     := "var" identifier "=" expression
 property     := identifier ":" expression
 call         := expression "(" [argument {"," argument}] ")"
@@ -241,7 +240,7 @@ pipeline SafeRead {
           <div class="tip-row"><span>ERRORS</span><p><code>fail("message")</code> creates a failure that <code>catch</code> can handle. Without a handler, the failure stops execution and the CLI returns a nonzero status.</p></div>
         </section>
 
-        <section class="feature doc-section" id="agent" data-title="agent cli ollama run prompt schema retry cache rate limit fallback">
+        <section class="feature doc-section" id="agent" data-title="agent cli ollama run prompt schema retry cache rate limit fallback tools mcp_servers before after hooks">
           <div class="feature-head"><h2><span class="feature-num">05</span><code>agent</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Declares an AI backend callable through <code>.run(prompt: ...)</code>. The runtime supports local CLI processes and models served by Ollama.</p>
 
@@ -292,8 +291,41 @@ var result = json.parse(raw)</code></pre>
             <div class="table-row"><span><code>cache</code></span><code>{ttl: 1h, storage: "disk"}</code><span>Reuses a response by exact key.</span></div>
             <div class="table-row"><span><code>rate_limit</code></span><code>{requests_per_minute: 20, concurrency: 2}</code><span>Controls frequency and concurrency.</span></div>
             <div class="table-row"><span><code>fallback</code></span><code>[Backup, agent {...}]</code><span>Tries agents in declaration order.</span></div>
+            <div class="table-row"><span><code>tools</code> / <code>mcp_servers</code></span><code>[execution] · [GitHub]</code><span>Folded into every <code>.run()</code> prompt as an allowed-scope instruction, and what <code>before</code>/<code>after</code> below bind their <code>tool</code>/<code>mcp</code> parameters to.</span></div>
+            <div class="table-row"><span><code>before</code></span><code>(mcp, tool) -> {...}</code><span>Runs once, before the prompt is built.</span></div>
+            <div class="table-row"><span><code>after</code></span><code>(mcp, tool, result) -> {...}</code><span>Runs once, on the final response.</span></div>
           </div>
           <div class="security-banner"><span>!</span><div><strong>Do not place secrets in <code>args</code>.</strong><p>Prefer environment variables resolved by the invoked process. To preserve spaces and special characters in prompts, keep <code>"${prompt}"</code> as one complete array element.</p></div></div>
+
+          <p class="block-label">BEFORE / AFTER HOOKS</p>
+          <p class="feature-lede">An agent is a single-shot CLI process — it cannot decide mid-generation to call a tool or an MCP server. <code>before</code>/<code>after</code> are how the pipeline does that calling on the agent's behalf: real values, fetched before the prompt exists, not a hope the model reads and acts on an instruction.</p>
+          <pre class="code-block"><code class="language-mhl">agent Reviewer {
+    command: "claude"
+    args: ["-p", "${prompt}"]
+    tools: [execution]
+    mcp_servers: [GitHub]
+
+    before: (mcp, tool) -> {
+        return {
+            issue: mcp.GitHub.call("get_issue", { number: 42 }),
+            diff: tool.execution.git_diff()
+        }
+    }
+    after: (mcp, tool, result) -> {
+        log("review is ${result.size()} characters")
+    }
+}
+
+var review = Reviewer.run(
+    prompt: "Issue: ${issue}\nDiff: ${diff}\nWrite a review."
+)</code></pre>
+          <ul class="plain-list">
+            <li><code>mcp</code>/<code>tool</code> are maps keyed by declared name — <code>mcp.GitHub</code>, <code>tool.execution</code> — covering every entry in that agent's own <code>mcp_servers:</code>/<code>tools:</code>, not any other declaration in the program.</li>
+            <li>A dotted entry in <code>tools:</code> (<code>tools: [execution.read_file]</code>) narrows that tool's binding to just that method; calling any other method on it is rejected. Naming the same tool bare anywhere in the list removes the restriction.</li>
+            <li><code>before</code>'s returned object's fields become real <code>"${...}"</code> bindings available to that call's <code>prompt:</code>/<code>schema:</code> arguments.</li>
+            <li><code>after</code> runs once, against whichever leg — the primary agent or a successful <code>fallback</code> — produced the final response. A non-<code>null</code> string return replaces that response; anything else (including no <code>return</code>) passes it through unchanged.</li>
+          </ul>
+          <div class="tip-row"><span>REAL VS. BEST-EFFORT</span><p><code>before</code>/<code>after</code> execute real calls through mhl itself — the model never has to cooperate. <code>tools:</code>/<code>mcp_servers:</code>'s prompt text (above) is the opposite: a hint the model may or may not act on, since mhl has no channel to enforce it against a CLI-backed agent. Prefer <code>before</code>/<code>after</code> when the agent actually needs the data to do its job.</p></div>
         </section>
 
         <section class="feature doc-section" id="prompt" data-title="prompt template interpolation markdown from nested composition parameters">
@@ -348,40 +380,8 @@ var rendered = Review(
           </ul>
         </section>
 
-        <section class="feature doc-section" id="skill" data-title="skill contract input output tools mcp servers system instructions list alpha">
-          <div class="feature-head"><h2><span class="feature-num">07</span><code>skill</code></h2><span class="status status-partial">Alpha contract</span></div>
-          <p class="feature-lede">Groups a description, typed contract, instructions, and the smallest tool/MCP scope required for one capability. In the alpha, skills can be declared, imported, validated, and listed by the CLI.</p>
-          <pre class="code-block"><code class="language-mhl">skill SecurityAudit {
-    description: "Review code and return prioritized findings."
-
-    input {
-        file_path: string
-        code: string
-    }
-
-    output {
-        summary: string
-        findings: {severity: string, message: string}[]
-    }
-
-    tools: [ProjectFiles]
-    mcp_servers: [IssueTracker]
-    system_instructions: "Do not modify files. Cite evidence."
-}</code></pre>
-          <div class="inline-code"><span>inspect</span><code>mhl skills list</code></div>
-          <div class="reference-table">
-            <div class="table-row table-head"><span>Member</span><span>Form</span><span>Responsibility</span></div>
-            <div class="table-row"><span><code>input</code></span><code>{ name: type }</code><span>Contract for received data.</span></div>
-            <div class="table-row"><span><code>output</code></span><code>{ name: type }</code><span>Expected result shape.</span></div>
-            <div class="table-row"><span><code>tools</code></span><code>[ProjectFiles]</code><span>Minimum tool scope.</span></div>
-            <div class="table-row"><span><code>mcp_servers</code></span><code>[IssueTracker]</code><span>Minimum MCP server scope.</span></div>
-            <div class="table-row"><span><code>system_instructions</code></span><code>"..."</code><span>Capability-specific rules.</span></div>
-          </div>
-          <div class="tip-row"><span>ALPHA</span><p>Direct skill invocation from a step is not yet a public language operation. Treat the declaration as an inspectable contract while full agent injection evolves.</p></div>
-        </section>
-
         <section class="feature doc-section" id="memory" data-title="memory mem kv json append log persistent state set get remove nested reset">
-          <div class="feature-head"><h2><span class="feature-num">08</span><code>memory</code> and <code>mem</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">07</span><code>memory</code> and <code>mem</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede"><code>memory</code> declares a named store. <code>mem</code> creates a pipeline-scoped persistent variable, ideal for a <code>loop pipeline</code> stop condition.</p>
 
           <p class="block-label">NAMED MEMORY</p>
@@ -433,7 +433,7 @@ Audit.append("pipeline started")</code></pre>
         </section>
 
         <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs http json log return types">
-          <div class="feature-head"><h2><span class="feature-num">09</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">08</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">A tool creates a small, reusable API over native operations. Methods take positional arguments, may declare types, and use either an expression body or a statement block.</p>
           <pre class="code-block"><code class="language-mhl">tool Project {
     read(path: string): string -> fs.read(path)
@@ -471,9 +471,9 @@ fs.write("result.json", json.stringify(payload))</code></pre>
           <div class="security-banner"><span>!</span><div><strong>Prefer argv.</strong><p><code>cmd.exec(["program", "arg with spaces"])</code> preserves every argument and avoids accidental shell interpolation. Use a command string only when shell features are actually required.</p></div></div>
         </section>
 
-        <section class="feature doc-section" id="mcp" data-title="mcp server stdio http sse headers env credential tools alpha">
-          <div class="feature-head"><h2><span class="feature-num">10</span><code>mcp_server</code></h2><span class="status status-partial">Alpha contract</span></div>
-          <p class="feature-lede">Declares a Model Context Protocol server connection. Configuration supports stdio or HTTP transports and secure environment references.</p>
+        <section class="feature doc-section" id="mcp" data-title="mcp server stdio http sse headers credential tools call list_tools discover x-mcp-header input_required mrtr">
+          <div class="feature-head"><h2><span class="feature-num">09</span><code>mcp_server</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Declares a Model Context Protocol server connection. Configuration supports stdio or HTTP transports and secure environment references. Call it with <code>Server.call("toolName", { ... })</code>, discover its catalog with <code>Server.list_tools()</code>, or inspect it with <code>Server.discover()</code>.</p>
           <div class="syntax-columns">
             <div><h3>stdio</h3><pre class="code-block"><code class="language-mhl">mcp_server LocalFiles {
     transport: "stdio"
@@ -483,9 +483,6 @@ fs.write("result.json", json.stringify(payload))</code></pre>
         "@modelcontextprotocol/server-filesystem",
         "."
     ]
-    env: {
-        "LOG_LEVEL": "warn"
-    }
 }</code></pre></div>
             <div><h3>HTTP</h3><pre class="code-block"><code class="language-mhl">mcp_server IssueTracker {
     transport: "http"
@@ -494,18 +491,25 @@ fs.write("result.json", json.stringify(payload))</code></pre>
         "Authorization":
             "Bearer " + env("MCP_TOKEN")
     }
-}</code></pre></div>
+}
+
+var result = IssueTracker.call("search_issues", { query: "is:open" })
+var catalog = IssueTracker.list_tools()
+var info = IssueTracker.discover()</code></pre></div>
           </div>
           <ul class="plain-list">
-            <li><code>transport: "stdio"</code> uses <code>command</code>, <code>args</code>, and <code>env</code>.</li>
-            <li><code>transport: "http"</code> uses <code>url</code> and <code>headers</code>.</li>
+            <li><code>transport: "stdio"</code> uses <code>command</code> and <code>args</code>; each call spawns a fresh process.</li>
+            <li><code>transport: "http"</code> uses <code>url</code> and <code>headers</code>; each call is a fresh, independent request.</li>
             <li><code>env("NAME")</code> resolves a credential only when needed and keeps it out of source.</li>
+            <li><code>.call(toolName, arguments)</code> issues a stateless JSON-RPC <code>tools/call</code>; <code>.list_tools()</code> issues <code>tools/list</code>; <code>.discover()</code> issues <code>server/discover</code> (supported versions/capabilities/identity).</li>
+            <li>On <code>http</code>, <code>.call(...)</code> first checks the target tool's schema for <code>x-mcp-header</code>-annotated arguments (top-level, string/integer/boolean only) and mirrors any present into <code>Mcp-Param-{Name}</code> headers — best-effort: if the schema can't be fetched, the call proceeds without them.</li>
+            <li>A server response with <code>resultType: "input_required"</code> (Multi Round-Trip Requests — the server wants elicitation/sampling input) is rejected with a clear error; this client cannot gather and resubmit that input.</li>
           </ul>
-          <div class="tip-row"><span>ALPHA</span><p>Transport declarations and configuration are part of the language contract. Direct discovery and invocation of MCP tools from a step are not yet public operations; use a skill declaration to define the intended scope.</p></div>
+          <div class="tip-row"><span>STATELESS</span><p>There is no session or handshake between calls — each <code>.call(...)</code>/<code>.list_tools()</code>/<code>.discover()</code> is fully independent, matching MCP spec 2026-07-28's stateless model. Every request self-identifies (protocol version, capabilities, and <code>{name: "mhl"}</code> as <code>clientInfo</code>). A credential that fails to resolve aborts the call instead of sending a request with an empty header.</p></div>
         </section>
 
         <section class="feature doc-section" id="pipeline" data-title="pipeline input var step checkpoint resume loop repeat stop when max iterations goto break">
-          <div class="feature-head"><h2><span class="feature-num">11</span><code>pipeline</code> and <code>loop pipeline</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">10</span><code>pipeline</code> and <code>loop pipeline</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Pipelines are the executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in order unless an explicit transition redirects them.</p>
 
           <p class="block-label">RECOVERABLE PIPELINE</p>
@@ -568,7 +572,7 @@ fs.write("result.json", json.stringify(payload))</code></pre>
         </section>
 
         <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing">
-          <div class="feature-head"><h2><span class="feature-num">12</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">11</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">MHL files can be self-verifying examples. Each <code>describe</code> receives a fresh environment and uses the same statement syntax as a step.</p>
           <pre class="code-block"><code class="language-mhl">tool Normalize {
     slug(text: string): string ->
@@ -601,18 +605,19 @@ test normalize_examples {
           </div>
         </section>
 
-        <section class="feature doc-section" id="cli" data-title="cli run test lint skills list lsp security credentials env diagnostics install">
-          <div class="feature-head"><h2><span class="feature-num">13</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">The <code>mhl</code> binary handles execution, tests, static analysis, skill inspection, and editor integration.</p>
+        <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp version security credentials env diagnostics install">
+          <div class="feature-head"><h2><span class="feature-num">12</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">The <code>mhl</code> binary handles execution, tests, static analysis, and editor integration.</p>
           <div class="cli-grid">
+            <div class="cli-command"><code>mhl init</code><span>scaffold an immediately-runnable main.mh (never overwrites)</span></div>
             <div class="cli-command"><code>mhl run flow.mh</code><span>run the declared pipeline</span></div>
             <div class="cli-command"><code>mhl run flow.mh --input key=value</code><span>supply typed inputs</span></div>
             <div class="cli-command"><code>mhl run flow.mh --resume</code><span>resume a checkpoint</span></div>
             <div class="cli-command"><code>mhl test file.mh</code><span>run assertions</span></div>
             <div class="cli-command"><code>mhl test directory/</code><span>discover tests recursively</span></div>
             <div class="cli-command"><code>mhl lint .</code><span>validate syntax, types, and references</span></div>
-            <div class="cli-command"><code>mhl skills list</code><span>list skill contracts</span></div>
             <div class="cli-command"><code>mhl lsp</code><span>start the language server</span></div>
+            <div class="cli-command"><code>mhl version</code><span>print the installed version</span></div>
           </div>
 
           <p class="block-label">OPERATIONAL CHECKLIST</p>

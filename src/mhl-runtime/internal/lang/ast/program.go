@@ -34,7 +34,6 @@ type Declaration struct {
 	Export    bool       `parser:"@'export'?"`
 	Import    *Import    `parser:"( @@"`
 	Use       *Use       `parser:"| @@"`
-	Skill     *Skill     `parser:"| @@"`
 	Prompt    *Prompt    `parser:"| @@"`
 	MCPServer *MCPServer `parser:"| @@"`
 	Agent     *Agent     `parser:"| @@"`

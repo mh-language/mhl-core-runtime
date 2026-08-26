@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/auth"
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 )
 
 // StateDirName is the checkpoint storage directory, relative to a project root.

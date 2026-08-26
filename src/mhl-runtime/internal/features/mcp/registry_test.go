@@ -3,8 +3,8 @@ package mcp_test
 import (
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/mcp"
-	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/features/mcp"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
 // §3.3 declarations: one stdio server and one HTTP server with an env-resolved

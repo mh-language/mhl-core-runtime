@@ -209,7 +209,17 @@ agent X {
     §
 }
 `,
-			want: []string{"engine", "command", "args", "endpoint", "temperature", "log", "trace", "retry", "cache", "rate_limit", "fallback"},
+			want: []string{"engine", "command", "args", "endpoint", "temperature", "log", "trace", "retry", "cache", "rate_limit", "fallback", "tools", "mcp_servers", "before", "after"},
+		},
+		{
+			name: "mcp_server body",
+			src: `
+mcp_server GitHub {
+    §
+}
+`,
+			want: []string{"transport", "command", "args", "url", "headers"},
+			skip: []string{"engine", "retry"},
 		},
 		{
 			name: "inside agent retry object",

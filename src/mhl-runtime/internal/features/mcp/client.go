@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,17 +42,48 @@ type ServerConfig struct {
 
 // ToolRequest is a stateless tool invocation. Method is the JSON-RPC method
 // (e.g. "tools/call"); Params carries its arguments.
+//
+// ParamHeaders is x-mcp-header support (spec 2026-07-28's Streamable HTTP
+// transport section): raw, not-yet-encoded values to mirror into
+// "Mcp-Param-{Name}" headers on the http transport — callHTTP applies the
+// same Value Encoding rules (encodeHeaderValue) it already uses for
+// Mcp-Name. The caller (mcp_ops.go) is responsible for knowing which
+// argument maps to which header name, since that requires the tool's
+// inputSchema (from a "tools/list" call) — this package only knows how to
+// carry and encode already-decided values, not how to discover them.
+// Ignored on the stdio transport, matching the spec's own scoping of
+// x-mcp-header to Streamable HTTP.
 type ToolRequest struct {
-	Method string
-	Params map[string]interface{}
+	Method       string
+	Params       map[string]interface{}
+	ParamHeaders map[string]string
 }
 
 // Result is the decoded JSON-RPC result of a tool call, including any `_meta`
 // and its `ttlMs` surfaced to the caller (IF-3).
+//
+// ResultType is spec 2026-07-28's polymorphic result discriminator: servers
+// implementing this revision set it to "complete" for an ordinary result or
+// "input_required" when the request needs more input via the Multi
+// Round-Trip Requests pattern (elicitation/sampling) before it can finish —
+// this client doesn't retry with `inputResponses`, so IsInputRequired lets
+// a caller (mcp_ops.go) detect that case and fail with a clear message
+// instead of returning the InputRequiredResult's shape as if it were the
+// tool's real data. A server on an earlier revision that omits the field
+// entirely decodes as "complete", per spec's own backward-compatibility
+// rule.
 type Result struct {
-	Raw   json.RawMessage
-	Meta  *Meta
-	TTLMs int64
+	Raw        json.RawMessage
+	Meta       *Meta
+	TTLMs      int64
+	ResultType string
+}
+
+// IsInputRequired reports whether the server responded with an
+// "input_required" result — a Multi Round-Trip Requests interim result this
+// client cannot continue (see Result's doc comment).
+func (r Result) IsInputRequired() bool {
+	return r.ResultType == "input_required"
 }
 
 // Client is a stateless MCP client. A single Client instance may be reused
@@ -106,20 +138,30 @@ func (c *Client) CallTool(server ServerConfig, request ToolRequest) (Result, err
 }
 
 // buildRequest constructs the JSON-RPC request bytes for a tool call.
+// Spec 2026-07-28 requires every request to carry its protocol version and
+// client capabilities in `params._meta` (RequestMeta) — this applies to
+// both transports, not just HTTP, since it is what makes each call
+// self-describing now that there is no `initialize` handshake to establish
+// that context once per session.
 func buildRequest(request ToolRequest) ([]byte, error) {
-	var params json.RawMessage
-	if request.Params != nil {
-		p, err := json.Marshal(request.Params)
-		if err != nil {
-			return nil, err
-		}
-		params = p
+	params := make(map[string]interface{}, len(request.Params)+1)
+	for k, v := range request.Params {
+		params[k] = v
+	}
+	params["_meta"] = RequestMeta{
+		ProtocolVersion:    SpecVersion,
+		ClientCapabilities: map[string]interface{}{},
+		ClientInfo:         mhlClientInfo,
+	}
+	p, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
 	}
 	req := Request{
 		JSONRPC: JSONRPCVersion,
 		ID:      1, // one call per process/request; ids need not be unique across calls
 		Method:  request.Method,
-		Params:  params,
+		Params:  p,
 	}
 	return json.Marshal(req)
 }
@@ -146,20 +188,28 @@ func decodeResponse(server ServerConfig, data []byte) (Result, error) {
 		}
 	}
 
-	res := Result{Raw: resp.Result, Meta: resp.Meta}
+	res := Result{Raw: resp.Result, Meta: resp.Meta, ResultType: "complete"}
 	if resp.Meta != nil {
 		res.TTLMs = resp.Meta.TTLMs
 	}
-	// Fall back to a _meta embedded inside the result payload.
-	if res.TTLMs == 0 && len(resp.Result) > 0 {
+	// Fall back to a _meta embedded inside the result payload, and read
+	// resultType from the same payload — both are fields of the `result`
+	// object itself, not the JSON-RPC envelope.
+	if len(resp.Result) > 0 {
 		var embedded struct {
-			Meta *Meta `json:"_meta"`
+			Meta       *Meta  `json:"_meta"`
+			ResultType string `json:"resultType"`
 		}
-		if err := json.Unmarshal(resp.Result, &embedded); err == nil && embedded.Meta != nil {
-			if res.Meta == nil {
-				res.Meta = embedded.Meta
+		if err := json.Unmarshal(resp.Result, &embedded); err == nil {
+			if res.TTLMs == 0 && embedded.Meta != nil {
+				if res.Meta == nil {
+					res.Meta = embedded.Meta
+				}
+				res.TTLMs = embedded.Meta.TTLMs
 			}
-			res.TTLMs = embedded.Meta.TTLMs
+			if embedded.ResultType != "" {
+				res.ResultType = embedded.ResultType
+			}
 		}
 	}
 	return res, nil
@@ -261,6 +311,24 @@ func (c *Client) callHTTP(server ServerConfig, request ToolRequest) (Result, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
+	// Spec 2026-07-28's Streamable HTTP transport requires these three
+	// headers on every POST, mirroring fields already in the body so
+	// intermediaries can route/inspect without parsing JSON — a server
+	// MUST reject the request with 400 + HeaderMismatch (-32020) if any is
+	// missing or doesn't match the body (see "Request Metadata" in the
+	// transport spec). Mcp-Name mirrors `params.name`, which every
+	// ToolRequest this client builds sets for a tools/call.
+	httpReq.Header.Set("MCP-Protocol-Version", SpecVersion)
+	httpReq.Header.Set("Mcp-Method", request.Method)
+	if name, ok := request.Params["name"].(string); ok {
+		httpReq.Header.Set("Mcp-Name", encodeHeaderValue(name))
+	}
+	// x-mcp-header support: the caller already decided which arguments map
+	// to which header names (mcp_ops.go, from the tool's inputSchema); this
+	// is only the encoding step.
+	for name, value := range request.ParamHeaders {
+		httpReq.Header.Set("Mcp-Param-"+name, encodeHeaderValue(value))
+	}
 	for k, v := range server.Headers {
 		httpReq.Header.Set(k, v)
 	}
@@ -312,6 +380,47 @@ func extractSSEData(body []byte) []byte {
 		return data.Bytes()
 	}
 	return trimmed
+}
+
+// headerSentinelPrefix and headerSentinelSuffix mark a Base64-encoded HTTP
+// header value per spec 2026-07-28's Value Encoding rules.
+const headerSentinelPrefix, headerSentinelSuffix = "=?base64?", "?="
+
+// encodeHeaderValue applies the transport spec's Value Encoding rules to a
+// value carried in a mirrored header (here, Mcp-Name): plain visible-ASCII
+// text with no leading/trailing whitespace passes through unchanged;
+// anything else — non-ASCII bytes, control characters, or leading/trailing
+// whitespace, which HTTP header values cannot carry safely — is wrapped as
+// "=?base64?<base64 of the UTF-8 bytes>?=". A value that already happens to
+// look like that sentinel is also wrapped, so a decoder can never mistake a
+// literal value for an encoded one.
+func encodeHeaderValue(v string) string {
+	if isSafeHeaderValue(v) && !isHeaderSentinel(v) {
+		return v
+	}
+	return headerSentinelPrefix + base64.StdEncoding.EncodeToString([]byte(v)) + headerSentinelSuffix
+}
+
+func isHeaderSentinel(v string) bool {
+	return strings.HasPrefix(v, headerSentinelPrefix) && strings.HasSuffix(v, headerSentinelSuffix)
+}
+
+// isSafeHeaderValue reports whether v can be sent as a raw HTTP header
+// value per RFC 9110 §5.5: visible ASCII (0x21-0x7E), space, or horizontal
+// tab, with no leading/trailing whitespace.
+func isSafeHeaderValue(v string) bool {
+	if v == "" {
+		return true
+	}
+	if strings.TrimSpace(v) != v {
+		return false
+	}
+	for _, r := range v {
+		if r != ' ' && r != '\t' && (r < 0x21 || r > 0x7E) {
+			return false
+		}
+	}
+	return true
 }
 
 func firstNonNil(errs ...error) error {

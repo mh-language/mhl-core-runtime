@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/lint"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
 )
 
 func write(t *testing.T, path, content string) {
@@ -2050,7 +2050,7 @@ agent Reviewer {
     command: "bash"
     retry: { max_attempts: 3, delay: 2s, retry_on: [500, "timeout"] }
     cache: { ttl: 1h, storage: "disk" }
-    rate_limit: { requests_per_minute: 10, concurrency: 2, on_exceeded: "wait" }
+    rate_limit: { requests_per_minute: 10, concurrency: 2, on_exceeded: "queue" }
     fallback: [Backup]
 }
 
@@ -2063,6 +2063,90 @@ pipeline P {
 	findings := lint.File(main)
 	if len(findings) != 0 {
 		t.Fatalf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+// TestCheckAgentRetryBackoffRejectsUnimplementedValue proves `retry.backoff`
+// is validated, not silently accepted: traffic.Retrier only implements
+// exponential backoff, so declaring any other value must be a lint finding
+// instead of quietly running exponential anyway.
+func TestCheckAgentRetryBackoffRejectsUnimplementedValue(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer {
+    command: "bash"
+    retry: { max_attempts: 3, backoff: "linear" }
+}
+
+pipeline P {
+    step S {
+        var response = Reviewer.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Reviewer" retry.backoff "linear" is not implemented`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+// TestCheckAgentCacheStrategyRejectsUnimplementedValue proves
+// `cache.strategy` is validated: traffic.Cache only implements exact-match
+// caching, so declaring any other strategy must be a lint finding instead
+// of silently falling back to exact-match.
+func TestCheckAgentCacheStrategyRejectsUnimplementedValue(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer {
+    command: "bash"
+    cache: { ttl: 1h, strategy: "semantic" }
+}
+
+pipeline P {
+    step S {
+        var response = Reviewer.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Reviewer" cache.strategy "semantic" is not implemented`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+// TestCheckAgentRateLimitOnExceededRejectsUnimplementedValue proves
+// `rate_limit.on_exceeded` is validated: traffic.Limiter only implements
+// block-and-wait ("queue"), so declaring any other value must be a lint
+// finding instead of silently queuing anyway.
+func TestCheckAgentRateLimitOnExceededRejectsUnimplementedValue(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer {
+    command: "bash"
+    rate_limit: { concurrency: 2, on_exceeded: "reject" }
+}
+
+pipeline P {
+    step S {
+        var response = Reviewer.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Reviewer" rate_limit.on_exceeded "reject" is not implemented`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
 	}
 }
 

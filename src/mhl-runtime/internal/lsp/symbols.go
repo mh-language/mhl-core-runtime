@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
-	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
 // symbolKind identifies what a declared top-level name is, which in turn
@@ -21,7 +21,6 @@ const (
 	symMemory
 	symTool
 	symPrompt
-	symSkill
 	symPipeline
 	symMCPServer
 	symNative
@@ -40,8 +39,6 @@ func (k symbolKind) label() string {
 		return "tool"
 	case symPrompt:
 		return "prompt"
-	case symSkill:
-		return "skill"
 	case symPipeline:
 		return "pipeline"
 	case symMCPServer:
@@ -85,12 +82,10 @@ func symbolsFromProgram(prog *ast.Program) []symbol {
 			syms = append(syms, symbol{Name: decl.Tool.Name, Kind: symTool, Methods: methods})
 		case decl.Prompt != nil:
 			syms = append(syms, symbol{Name: decl.Prompt.Name, Kind: symPrompt})
-		case decl.Skill != nil:
-			syms = append(syms, symbol{Name: decl.Skill.Name, Kind: symSkill})
 		case decl.Pipeline != nil:
 			syms = append(syms, symbol{Name: decl.Pipeline.Name, Kind: symPipeline})
 		case decl.MCPServer != nil:
-			syms = append(syms, symbol{Name: decl.MCPServer.Name, Kind: symMCPServer})
+			syms = append(syms, symbol{Name: decl.MCPServer.Name, Kind: symMCPServer, Methods: mcpServerMethods})
 		}
 	}
 	return syms
@@ -107,6 +102,11 @@ func memoryMethods(mem *ast.Memory) []string {
 	}
 	return memoryMethodsForType(memType)
 }
+
+// mcpServerMethods mirrors internal/engine/interpreter/mcp_ops.go's
+// evalMCPServerCall dispatch — the only operations a declared mcp_server
+// exposes to `.mh` code today.
+var mcpServerMethods = []string{"call", "list_tools", "discover"}
 
 func memoryMethodsForType(memType string) []string {
 	switch memType {
@@ -129,7 +129,7 @@ func memoryMethodsForType(memType string) []string {
 // when the buffer won't parse. An optional leading `loop` (as in `loop
 // pipeline X`) is skipped, not captured — it's a modifier on `pipeline`, not
 // a declaration kind of its own.
-var declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|memory|tool|prompt|skill|pipeline|mcp_server)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+var declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|memory|tool|prompt|pipeline|mcp_server)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 
 func symbolsFromText(src string) []symbol {
 	var syms []symbol
@@ -146,6 +146,8 @@ func symbolsFromText(src string) []symbol {
 			s.Methods = memoryMethodsFromText(src, m[2])
 		case symTool:
 			s.Methods = toolMethodsFromText(src, m[2])
+		case symMCPServer:
+			s.Methods = mcpServerMethods
 		}
 		syms = append(syms, s)
 	}
@@ -236,8 +238,6 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 		return symTool, true
 	case "prompt":
 		return symPrompt, true
-	case "skill":
-		return symSkill, true
 	case "pipeline":
 		return symPipeline, true
 	case "mcp_server":

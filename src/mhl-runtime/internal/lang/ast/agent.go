@@ -3,7 +3,7 @@ package ast
 import "github.com/alecthomas/participle/v2/lexer"
 
 // Agent declares an AI agent and its configuration (engine, credentials,
-// resiliency, skills, tools, ...). The same node is reused for inline agent
+// resiliency, tools, mcp_servers, ...). The same node is reused for inline agent
 // blocks (e.g. inside a `fallback: [...]` list), where the name is omitted.
 type Agent struct {
 	Pos   lexer.Position

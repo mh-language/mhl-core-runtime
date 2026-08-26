@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
 // interpolate scans s for "${...}" spans, evaluates each span's content as

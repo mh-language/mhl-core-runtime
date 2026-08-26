@@ -3,7 +3,7 @@ package adapters
 
 import (
 	"context"
-	"github.com/yanjustino/mhl-runtime/internal/features/tools"
+	"github.com/mh-language/mhl-core-runtime/internal/features/tools"
 )
 
 // CLI runs a local agent command in an isolated process group.

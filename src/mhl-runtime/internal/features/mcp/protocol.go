@@ -20,11 +20,46 @@ const JSONRPCVersion = "2.0"
 // SpecVersion is the MCP specification revision this client conforms to.
 const SpecVersion = "2026-07-28"
 
-// Meta models the JSON-RPC `_meta` object. Per spec 2026-07-28 it may carry a
-// `ttlMs` field indicating how long a tool result may be considered fresh.
+// Meta models the JSON-RPC `_meta` object of a *result*. Per spec 2026-07-28
+// it may carry a `ttlMs` field indicating how long a tool result may be
+// considered fresh.
 type Meta struct {
 	TTLMs int64 `json:"ttlMs,omitempty"`
 }
+
+// RequestMeta models the `_meta` object spec 2026-07-28 requires inside
+// every request's `params` — this is what replaced the `initialize`
+// handshake and protocol-level sessions removed in this revision (see
+// "Statelessness" and "General fields > _meta > Per-request protocol
+// fields" in the spec): a server infers nothing about protocol version or
+// client capabilities from prior requests on the same connection, so every
+// request must restate them itself. A request missing ProtocolVersion or
+// ClientCapabilities is malformed and MUST be rejected by a conformant
+// server with JSON-RPC error -32602 (Invalid params) / HTTP 400.
+// ClientInfo is optional (spec: "SHOULD include... unless specifically
+// configured not to") and is always populated by this client with a fixed
+// self-identification — see ClientInfo's own doc comment for why it carries
+// no version.
+type RequestMeta struct {
+	ProtocolVersion    string                 `json:"io.modelcontextprotocol/protocolVersion"`
+	ClientCapabilities map[string]interface{} `json:"io.modelcontextprotocol/clientCapabilities"`
+	ClientInfo         *ClientInfo            `json:"io.modelcontextprotocol/clientInfo,omitempty"`
+}
+
+// ClientInfo self-identifies this client in a request's `_meta` — purely
+// informational (spec: "not verified by the protocol... intended for
+// display, logging, and debugging"). Version is deliberately left empty:
+// this package sits below internal/cli in mhl's dependency order (lang →
+// engine → features → cli), so it has no access to cli.Version, and adding
+// a second, package-local version constant that could drift from the real
+// one would be worse than reporting none.
+type ClientInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version,omitempty"`
+}
+
+// mhlClientInfo is the fixed self-identification every request carries.
+var mhlClientInfo = &ClientInfo{Name: "mhl"}
 
 // Request is a JSON-RPC 2.0 request envelope.
 type Request struct {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/engine/interpreter"
+	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 )
 
 // ANSI codes used by testReportStyle. Never used directly — see paint().

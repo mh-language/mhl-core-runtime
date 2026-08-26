@@ -1,0 +1,62 @@
+// A dotted `tools:` entry (`execution.read_file`) narrows a before/after
+// hook's `tool.execution` binding to exactly that method — every other
+// method the tool declares stays unreachable through the hook, even
+// though `execution` itself has more than one.
+agent Restricted {
+    command: "echo"
+    args: ["${prompt}"]
+    tools: [execution.read_file]
+
+    before: (mcp, tool) -> {
+        return { result: tool.execution.write_file("x", "y") }
+    }
+}
+
+agent Allowed {
+    command: "echo"
+    args: ["${prompt}"]
+    tools: [execution.read_file]
+
+    before: (mcp, tool) -> {
+        return { result: tool.execution.read_file("x") }
+    }
+}
+
+// Naming the same tool both bare and dotted anywhere in `tools:` removes
+// the restriction — a method-level scope next to full access to the same
+// tool would be meaningless, so the bare form always wins.
+agent Unrestricted {
+    command: "echo"
+    args: ["${prompt}"]
+    tools: [execution.read_file, execution]
+
+    before: (mcp, tool) -> {
+        return { result: tool.execution.write_file("x", "y") }
+    }
+}
+
+tool execution {
+    read_file(path: string) -> "read:" + path
+    write_file(path: string, content: string) -> "write:" + path
+}
+
+test agent_before_hook_scopes_tool_access_by_method {
+    describe a_dotted_entry_rejects_a_different_real_method {
+        try {
+            Restricted.run(prompt: "${result}")
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("write_file"))
+        }
+    }
+
+    describe a_dotted_entry_allows_the_declared_method {
+        var response = Allowed.run(prompt: "${result}")
+        is_true(response.contains("read:x"))
+    }
+
+    describe a_bare_entry_anywhere_removes_the_restriction {
+        var response = Unrestricted.run(prompt: "${result}")
+        is_true(response.contains("write:x"))
+    }
+}

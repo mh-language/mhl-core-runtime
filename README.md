@@ -4,7 +4,7 @@
 
 # Meta-Harness Language (mhl)
 
-**mhl** is a declarative language for describing AI agent pipelines: agents, skills, tools, memory, MCP servers, prompts, and the pipelines that wire them together. **[Click here for the full language reference](https://mh-language.github.io/mhl-core-runtime/reference.html)**.
+**mhl** is a declarative language for describing AI agent pipelines: agents, tools, memory, MCP servers, prompts, and the pipelines that wire them together. **[Click here for the full language reference](https://mh-language.github.io/mhl-core-runtime/reference.html)**.
 
 ## Install
 
@@ -66,5 +66,5 @@ feature — run any of them directly with `mhl test <file>`:
   interpreter, runtime, LSP)
 - [`vscode-mhl/`](vscode-mhl) — the VS Code extension (syntax highlighting, diagnostics,
   completion), a thin wrapper around `mhl lsp`
-- [`docs/`](docs) — design docs and the language reference wiki
+- [`docs/site/`](docs/site) — the canonical language reference, deployed to GitHub Pages
 - [`sample/`](sample) — worked `.mh` examples, doubling as the docs-facing test suite

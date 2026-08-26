@@ -1,0 +1,16 @@
+export prompt Review(file: string, code: string) {
+    """
+    Review the file ${file}.
+    Code:
+    ${code}
+    Return an objective list of issues.
+    """
+}
+
+prompt Greeting(name: string) {
+    "Hello, ${name}!"
+}
+
+prompt Composed(role: string) {
+    Greeting(name: role) + " Welcome."
+}

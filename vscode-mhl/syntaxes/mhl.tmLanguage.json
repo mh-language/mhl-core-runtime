@@ -49,7 +49,7 @@
       "patterns": [
         {
           "name": "storage.type.declaration.mhl",
-          "match": "\\b(import|from|use|as|export|module|mcp_server|agent|skill|memory|tool|loop|pipeline|prompt|step|input|test|describe)\\b"
+          "match": "\\b(import|from|use|as|export|mcp_server|agent|memory|tool|loop|pipeline|prompt|step|input|test|describe)\\b"
         }
       ]
     },
@@ -57,7 +57,7 @@
       "patterns": [
         {
           "name": "keyword.control.mhl",
-          "match": "\\b(if|else|while|try|catch|finally|fail|return|mem|var|goto|break|self)\\b"
+          "match": "\\b(if|else|while|for|in|try|catch|finally|fail|return|mem|var|goto|break|self)\\b"
         }
       ]
     },

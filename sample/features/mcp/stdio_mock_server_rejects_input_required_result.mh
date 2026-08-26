@@ -1,0 +1,21 @@
+// A mocked "input_required" result — spec 2026-07-28's Multi Round-Trip
+// Requests pattern, used when a server needs elicitation/sampling input
+// before it can finish. mhl's MCP client cannot gather and resubmit that
+// input, so `.call()` rejects this outright instead of returning the
+// InputRequiredResult's shape as if it were the tool's real data.
+mcp_server MockTools {
+    transport: "stdio"
+    command: "sh"
+    args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"input_required\",\"inputRequests\":[{\"method\":\"elicitation/create\"}]}}'"]
+}
+
+test stdio_mock_server_rejects_input_required_result {
+    describe stdio_mock_server_rejects_input_required_result {
+        try {
+            MockTools.call("book_flight", {})
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("Multi Round-Trip"))
+        }
+    }
+}

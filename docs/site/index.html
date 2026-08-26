@@ -186,7 +186,7 @@ pipeline Hello {
             <p>An MHL file separates reusable building blocks from execution order. This keeps operational decisions visible without mixing them into agent code.</p>
           </div>
           <div class="architecture-flow" aria-label="MHL conceptual flow">
-            <div><small>DECLARATIONS</small><strong>agent · prompt · skill</strong><span>who reasons and with which context</span></div>
+            <div><small>DECLARATIONS</small><strong>agent · prompt</strong><span>who reasons and with which context</span></div>
             <i>→</i>
             <div><small>CAPABILITIES</small><strong>tool · memory · MCP</strong><span>what the flow can do and remember</span></div>
             <i>→</i>
@@ -198,22 +198,21 @@ pipeline Hello {
           </div>
         </section>
 
-        <section class="doc-section" id="features" data-title="features agents prompts skills memory tools mcp pipelines tests syntax">
+        <section class="doc-section" id="features" data-title="features agents prompts memory tools mcp pipelines tests syntax hooks before after">
           <div class="section-heading">
             <p class="eyebrow">05 · FEATURES</p>
             <h2>A small surface for complete workflows.</h2>
             <p>Each construct has one clear role. The reference includes syntax, fields, and complete examples for all of them.</p>
           </div>
           <div class="feature-catalog">
-            <a class="feature-card" href="reference.html#agent"><span>01</span><h3><code>agent</code></h3><p>Local CLI or Ollama, with retry, cache, rate limits, and fallback.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#agent"><span>01</span><h3><code>agent</code></h3><p>Local CLI or Ollama, with retry, cache, rate limits, fallback, and before/after hooks for real tool/MCP data.</p><b>view example →</b></a>
             <a class="feature-card" href="reference.html#prompt"><span>02</span><h3><code>prompt</code></h3><p>Typed templates, interpolation, composition, and Markdown files.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#skill"><span>03</span><h3><code>skill</code></h3><p>Input/output contract and context scoped to tools and MCP.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#memory"><span>04</span><h3><code>memory</code> / <code>mem</code></h3><p>Ephemeral KV, persistent JSON, append-only logs, and loop state.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#tool"><span>05</span><h3><code>tool</code></h3><p>Reusable methods over processes, files, Git, HTTP, and JSON.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#mcp"><span>06</span><h3><code>mcp_server</code></h3><p>MCP server configuration over stdio or HTTP with credentials.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#pipeline"><span>07</span><h3><code>pipeline</code></h3><p>Inputs, shared variables, steps, checkpoints, and recovery.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#tests"><span>08</span><h3><code>test</code></h3><p>Self-verifying examples with assertions and case isolation.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#syntax"><span>09</span><h3>Syntax</h3><p>Types, collections, lambdas, operators, and control flow.</p><b>view reference →</b></a>
+            <a class="feature-card" href="reference.html#memory"><span>03</span><h3><code>memory</code> / <code>mem</code></h3><p>Ephemeral KV, persistent JSON, append-only logs, and loop state.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#tool"><span>04</span><h3><code>tool</code></h3><p>Reusable methods over processes, files, Git, HTTP, and JSON.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#mcp"><span>05</span><h3><code>mcp_server</code></h3><p>MCP server configuration over stdio or HTTP with credentials, plus <code>.call(...)</code>/<code>.list_tools()</code>/<code>.discover()</code>.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#pipeline"><span>06</span><h3><code>pipeline</code></h3><p>Inputs, shared variables, steps, checkpoints, and recovery.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#tests"><span>07</span><h3><code>test</code></h3><p>Self-verifying examples with assertions and case isolation.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#syntax"><span>08</span><h3>Syntax</h3><p>Types, collections, lambdas, operators, and control flow.</p><b>view reference →</b></a>
           </div>
         </section>
 

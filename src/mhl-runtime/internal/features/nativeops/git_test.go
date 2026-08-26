@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/nativeops"
+	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
 )
 
 // initGitRepo creates a throwaway git repo with one committed file, then an

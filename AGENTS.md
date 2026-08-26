@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-The main implementation is the Go module in `src/mhl-runtime` (`github.com/yanjustino/mhl-runtime`). The CLI entry point is `cmd/mhl/main.go`; packages live under `internal/`, including `parser`, `ast`, `runtime`, `mcp`, `auth`, `skills`, `traffic`, and `tools`. Go tests sit beside the code they cover. End-to-end tests and `.mhl` examples are in `test/e2e` and `test/fixtures`. `dist/` contains generated binaries, `vscode-mhl/` contains editor support, and `specs/` contains documentation.
+The main implementation is the Go module in `src/mhl-runtime` (`github.com/mh-language/mhl-core-runtime`). The CLI entry point is `cmd/mhl/main.go`; packages live under `internal/`, including `parser`, `ast`, `runtime`, `mcp`, `auth`, `traffic`, and `tools`. Go tests sit beside the code they cover. End-to-end tests and `.mhl` examples are in `test/e2e` and `test/fixtures`. `dist/` contains generated binaries, `vscode-mhl/` contains editor support, and `specs/` contains documentation.
 
 ## Build, Test, and Development Commands
 

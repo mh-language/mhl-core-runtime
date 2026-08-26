@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/engine/runtime"
-	"github.com/yanjustino/mhl-runtime/internal/features/auth"
+	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 )
 
 func TestCheckpointRedactsResolvedSecrets(t *testing.T) {

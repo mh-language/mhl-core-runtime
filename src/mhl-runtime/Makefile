@@ -1,15 +1,18 @@
 SHELL := /bin/sh
 
-MODULE := github.com/yanjustino/mhl-runtime
+MODULE := github.com/mh-language/mhl-core-runtime
 CMD := ./cmd/mhl
 DIST := dist
 TEST := test
-LDFLAGS := -s -w
+SAMPLE := ../../sample
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X $(MODULE)/internal/cli.Version=$(VERSION)
 
 .PHONY: build test release clean verify-release
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(DIST)/mhl $(CMD)
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(SAMPLE)/mhl $(CMD)
 
 test:
 	go test ./...

@@ -1,0 +1,17 @@
+// A mocked "tools/list" response — a real server would advertise its
+// actual catalog with `inputSchema` per tool; this mock just proves the
+// method dispatch and result decoding.
+mcp_server MockTools {
+    transport: "stdio"
+    command: "sh"
+    args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"search_repositories\"},{\"name\":\"get_me\"}]}}'"]
+}
+
+test stdio_mock_server_proves_list_tools_wiring {
+    describe stdio_mock_server_proves_list_tools_wiring {
+        var result = MockTools.list_tools()
+        log("MockTools.list_tools result: ${json.stringify(result)}")
+        are_equal(result.tools.size(), 2)
+        are_equal(result.tools.get_index(0).name, "search_repositories")
+    }
+}

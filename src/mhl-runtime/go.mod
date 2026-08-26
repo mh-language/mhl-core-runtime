@@ -1,4 +1,4 @@
-module github.com/yanjustino/mhl-runtime
+module github.com/mh-language/mhl-core-runtime
 
 go 1.25.0
 

@@ -1,0 +1,19 @@
+// The mock server is a one-line shell script standing in for a real MCP
+// stdio server process: it reads the JSON-RPC request line mhl writes to
+// its stdin, discards it, and prints back a canned "tools/call" response.
+// This proves the stdio transport's request/response wiring deterministically,
+// with no network and no external binary required.
+mcp_server MockTools {
+    transport: "stdio"
+    command: "sh"
+    args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"pong\":true,\"echoed_tool\":\"ping\"}}'"]
+}
+
+test stdio_mock_server_proves_tools_call_wiring {
+    describe stdio_mock_server_proves_tools_call_wiring {
+        var result = MockTools.call("ping", { note: "hello" })
+        log("MockTools.call result: ${json.stringify(result)}")
+        are_equal(result.pong, true)
+        are_equal(result.echoed_tool, "ping")
+    }
+}

@@ -3,7 +3,7 @@ package interpreter
 import (
 	"fmt"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 // Closure is a first-class function value: a Lambda's parameters/body

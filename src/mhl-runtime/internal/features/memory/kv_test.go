@@ -3,7 +3,7 @@ package memory_test
 import (
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/memory"
+	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 )
 
 func TestKVStoreSetThenGet(t *testing.T) {

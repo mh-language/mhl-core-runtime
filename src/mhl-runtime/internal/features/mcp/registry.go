@@ -3,8 +3,8 @@ package mcp
 import (
 	"sort"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/auth"
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 // Registry is a catalog of declared mcp_servers, resolved into ServerConfigs

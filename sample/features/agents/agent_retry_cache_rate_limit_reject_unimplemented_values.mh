@@ -1,0 +1,50 @@
+// retry.backoff, cache.strategy, and rate_limit.on_exceeded each accept
+// only one value today (traffic.Retrier/Cache/Limiter don't implement any
+// other), so declaring anything else is a build-time error — not silently
+// accepted and quietly run with the one implemented behavior anyway. The
+// same validation runs at `mhl lint` time (ast.AgentRetryConfig et al. are
+// shared by internal/lang/lint and internal/engine/interpreter), so a typo
+// here is caught before `.run()` is ever reached in a real pipeline.
+agent RetryBad {
+    command: "echo"
+    retry: { max_attempts: 3, backoff: "linear" }
+}
+
+agent CacheBad {
+    command: "echo"
+    cache: { ttl: 1h, strategy: "semantic" }
+}
+
+agent RateLimitBad {
+    command: "echo"
+    rate_limit: { concurrency: 2, on_exceeded: "reject" }
+}
+
+test agent_retry_cache_rate_limit_reject_unimplemented_values {
+    describe retry_backoff_rejects_unimplemented_value {
+        try {
+            RetryBad.run(prompt: "hi")
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("retry.backoff \"linear\" is not implemented"))
+        }
+    }
+
+    describe cache_strategy_rejects_unimplemented_value {
+        try {
+            CacheBad.run(prompt: "hi")
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("cache.strategy \"semantic\" is not implemented"))
+        }
+    }
+
+    describe rate_limit_on_exceeded_rejects_unimplemented_value {
+        try {
+            RateLimitBad.run(prompt: "hi")
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("rate_limit.on_exceeded \"reject\" is not implemented"))
+        }
+    }
+}

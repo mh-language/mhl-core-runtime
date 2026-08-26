@@ -9,7 +9,7 @@ import (
 // Coerce converts raw — always a plain string, since that's all a CLI flag or
 // an OS environment ever hands over — toward declared. This is the one place
 // a typed boundary's value legitimately starts life with no representation of
-// its own; everywhere else (tool params, skill fields) the value already came
+// its own; everywhere else (tool params, pipeline inputs) the value already came
 // out of the expression evaluator with a real Go type and gets Check'd, never
 // Coerce'd. Any and String pass raw through unchanged. Array/Object attempt a
 // JSON decode (`--input tags='["a","b"]'`) so a structured input is still

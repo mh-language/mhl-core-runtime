@@ -1,6 +1,6 @@
 package lsp
 
-import "github.com/yanjustino/mhl-runtime/internal/lang/lint"
+import "github.com/mh-language/mhl-core-runtime/internal/lang/lint"
 
 // diagnosticsFor statically checks text as the .mh file at path (same
 // engine `mhl lint` uses — see internal/lang/lint.Source) and converts

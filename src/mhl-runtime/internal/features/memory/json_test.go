@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/memory"
+	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 )
 
 func TestJSONStoreSetThenGet(t *testing.T) {

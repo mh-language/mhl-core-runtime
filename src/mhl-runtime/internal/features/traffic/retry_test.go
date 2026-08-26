@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/traffic"
+	"github.com/mh-language/mhl-core-runtime/internal/features/traffic"
 )
 
 func TestRetrierRetriesTransientErrorsWithBackoff(t *testing.T) {

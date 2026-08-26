@@ -5,16 +5,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Repository overview
 
 This repo is the implementation of **mhl** (Meta-Harness Language, `.mh`): a declarative
-language for describing AI agent pipelines — agents, skills, tools, memory, MCP servers,
+language for describing AI agent pipelines — agents, tools, memory, MCP servers,
 prompts, and the pipelines that wire them together. It has three tracked parts:
 
 - **`src/mhl-runtime/`** — the Go implementation of the `mhl` CLI (parser, interpreter,
   runtime, LSP). This is where nearly all engineering work happens.
 - **`vscode-mhl/`** — a VS Code extension providing syntax highlighting, diagnostics, and
   completion for `.mh` files; it's a thin `vscode-languageclient` wrapper around `mhl lsp`.
-- **`docs/`** — `language-design.md` and `language-specification.md` describe the language
-  surface with worked examples. Some example fields are aspirational, not yet implemented —
-  see "Docs vs. implementation" below before trusting an example as ground truth.
+- **`docs/site/`** — `reference.html` (and `index.html`) is the single, canonical language
+  reference, deployed as-is to GitHub Pages by `.github/workflows/page.yml`. There is no
+  separate wiki; some example fields may still be aspirational, not yet implemented — see
+  "Docs vs. implementation" below before trusting an example as ground truth.
 
 A `dotnet/` directory may be present locally but is `.gitignore`d in its entirety — it is not
 part of this repository and unrelated to `mhl`.
@@ -49,11 +50,12 @@ exist in this checkout) — a pre-existing gap, not something a normal change wi
 The built CLI itself:
 
 ```sh
+mhl init [dir]  # scaffolds an immediately-runnable main.mh; never overwrites
 mhl run <pipeline.mh> [--input key=value ...] [--resume]
 mhl test <file.mh|dir>
-mhl skills list [dir]
 mhl lint [dir]
 mhl lsp        # LSP server over stdio, used by vscode-mhl
+mhl version    # or --version / -v
 ```
 
 VS Code extension, from `vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
@@ -103,7 +105,7 @@ Key packages:
   `features` meet.
 - **`internal/engine/runtime`** — pipeline execution order, `loop pipeline`'s repeat policy,
   and checkpoint persistence for `--resume`. Knows step *names* only, not step behavior.
-- **`internal/features/*`** — `prompt`, `skills`, `memory` (kv/json/log/jsonl backends),
+- **`internal/features/*`** — `prompt`, `memory` (kv/json/log/jsonl backends),
   `mcp`, `nativeops` (the actual `cmd.exec`/`fs.read`/... implementations behind `tool.go`),
   `tools` (low-level subprocess exec), `adapters` (runs an agent's `cli/*` or `ollama/*`
   engine), `traffic` (retry/backoff, response caching), `auth` (credential resolution).
@@ -117,16 +119,25 @@ Key packages:
 
 ### Docs vs. implementation
 
-`docs/language-design.md` and `docs/language-specification.md` show aspirational examples that
-outrun what's actually wired up. For agents specifically, `internal/engine/interpreter/agent.go`
-only reads `engine`, `command`, `args`, `endpoint`, `temperature`, `log`, `trace`, `retry`,
-`cache`, `rate_limit`, `fallback` — fields the docs also show (`api_key`, `skills`,
-`mcp_servers`, `tools`, `timeout`, `system_instructions`) are not read anywhere in `agent.go`
-and are silently ignored if written. Some accepted nested fields are read but only partially
-honored — `agent.go` marks these inline as `SKETCH GAP` (e.g. `cache.strategy` is accepted but
-only exact-match caching is implemented; `retry.backoff` is accepted but always exponential).
-Before relying on a docs example, grep the relevant `internal/engine/interpreter` or
-`internal/features/nativeops` file for the exact property/op name.
+`docs/site/reference.html` is the single source of truth for the language surface — there is no
+separate wiki; keep it in sync with `agent.go`/`agent_scope.go`/`agent_hooks.go` rather than
+letting a second copy of this explanation drift. For agents specifically,
+`internal/engine/interpreter/agent.go` reads `engine`, `command`, `args`, `endpoint`,
+`temperature`, `log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `tools`,
+`mcp_servers`, `before`, `after` — `tools`/`mcp_servers` fold into every `.run()` call as an
+explicit allowed-scope instruction in the prompt (best-effort only; mhl has no structural channel
+to enforce it against a CLI-backed agent), while `before`/`after` (agent_hooks.go) are real:
+`before: (mcp, tool) -> {...}` runs before the prompt is built, with `mcp`/`tool` bound to maps of
+exactly that agent's declared `mcp_servers:`/`tools:`, and its returned object's fields become
+`${...}` bindings the prompt can interpolate. Fields the docs may still show (`api_key`,
+`timeout`, `system_instructions`) are not read anywhere in `agent.go` and are silently ignored if
+written.
+`retry.backoff`, `cache.strategy`, and `rate_limit.on_exceeded` each implement exactly one value
+today (`"exponential"`, `"exact"`, `"queue"` respectively — see `ast.AgentRetryConfig` et al.);
+declaring any other value is a build-time error (caught by both `mhl lint` and `mhl run`), not
+silently accepted. Before relying on a docs example, grep the relevant
+`internal/engine/interpreter` or `internal/features/nativeops` file for the exact property/op
+name.
 
 ## Testing conventions
 

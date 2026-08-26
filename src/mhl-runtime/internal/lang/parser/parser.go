@@ -8,7 +8,7 @@ import (
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 // mhlParser is the compiled Participle parser for the MHL grammar. It is built

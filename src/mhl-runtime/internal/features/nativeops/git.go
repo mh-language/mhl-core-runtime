@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/tools"
+	"github.com/mh-language/mhl-core-runtime/internal/features/tools"
 )
 
 // Diff runs `git diff [target]` and returns its stdout as plain text —

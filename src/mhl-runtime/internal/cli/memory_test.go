@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/cli"
+	"github.com/mh-language/mhl-core-runtime/internal/cli"
 )
 
 // TestRunKVMemorySetThenGetSucceeds proves the kv store wiring end-to-end:

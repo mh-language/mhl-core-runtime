@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/auth"
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 )
 
 func TestResolveEnvAndRedact(t *testing.T) {

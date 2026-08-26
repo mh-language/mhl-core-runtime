@@ -2,14 +2,16 @@ package mcp_test
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/mcp"
+	"github.com/mh-language/mhl-core-runtime/internal/features/mcp"
 )
 
 // TestMain lets the test binary re-exec itself as a mock MCP stdio server when
@@ -150,6 +152,191 @@ func TestCallToolHTTPBearer(t *testing.T) {
 	}
 	if payload.Stars != 42 {
 		t.Errorf("stars = %d, want 42", payload.Stars)
+	}
+}
+
+// TestCallToolHTTPCarriesModernRequestMetadata proves the spec 2026-07-28
+// conformance fix: since this revision removed the `initialize` handshake
+// and protocol-level sessions, every request must instead be
+// self-describing — both in the JSON-RPC body (`params._meta`) and, on
+// Streamable HTTP specifically, in three mirrored headers a conformant
+// server validates the body against (see "Request Metadata" in the
+// transport spec). A request missing any of this is malformed and a real
+// server rejects it with 400, regardless of whether the endpoint requires
+// no session at all.
+func TestCallToolHTTPCarriesModernRequestMetadata(t *testing.T) {
+	var gotProtocolHeader, gotMethodHeader, gotNameHeader string
+	var gotBody struct {
+		Params struct {
+			Name string `json:"name"`
+			Meta struct {
+				ProtocolVersion    string                 `json:"io.modelcontextprotocol/protocolVersion"`
+				ClientCapabilities map[string]interface{} `json:"io.modelcontextprotocol/clientCapabilities"`
+				ClientInfo         struct {
+					Name string `json:"name"`
+				} `json:"io.modelcontextprotocol/clientInfo"`
+			} `json:"_meta"`
+		} `json:"params"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotProtocolHeader = r.Header.Get("MCP-Protocol-Version")
+		gotMethodHeader = r.Header.Get("Mcp-Method")
+		gotNameHeader = r.Header.Get("Mcp-Name")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		resp := mcp.Response{JSONRPC: mcp.JSONRPCVersion, ID: 1, Result: json.RawMessage(`{}`)}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	server := mcp.ServerConfig{Name: "GitHubServer", Transport: mcp.TransportHTTP, URL: srv.URL}
+	client := mcp.NewClient()
+	_, err := client.CallTool(server, mcp.ToolRequest{
+		Method: "tools/call",
+		Params: map[string]interface{}{
+			"name":      "search_repositories",
+			"arguments": map[string]interface{}{"query": "org:mh-language mhl"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("http call failed: %v", err)
+	}
+
+	if gotProtocolHeader != mcp.SpecVersion {
+		t.Errorf("MCP-Protocol-Version header = %q, want %q", gotProtocolHeader, mcp.SpecVersion)
+	}
+	if gotMethodHeader != "tools/call" {
+		t.Errorf("Mcp-Method header = %q, want %q", gotMethodHeader, "tools/call")
+	}
+	if gotNameHeader != "search_repositories" {
+		t.Errorf("Mcp-Name header = %q, want %q", gotNameHeader, "search_repositories")
+	}
+	if gotBody.Params.Name != "search_repositories" {
+		t.Errorf("body params.name = %q, want %q", gotBody.Params.Name, "search_repositories")
+	}
+	if gotBody.Params.Meta.ProtocolVersion != mcp.SpecVersion {
+		t.Errorf("body params._meta protocolVersion = %q, want %q", gotBody.Params.Meta.ProtocolVersion, mcp.SpecVersion)
+	}
+	if gotBody.Params.Meta.ClientCapabilities == nil {
+		t.Error("body params._meta clientCapabilities missing, want present (may be empty object)")
+	}
+	if gotBody.Params.Meta.ClientInfo.Name != "mhl" {
+		t.Errorf("body params._meta clientInfo.name = %q, want %q", gotBody.Params.Meta.ClientInfo.Name, "mhl")
+	}
+}
+
+// TestCallToolRejectsInputRequiredResult proves the Multi Round-Trip
+// Requests guard: a server responding with `resultType: "input_required"`
+// (spec 2026-07-28's polymorphic result shape, used when it needs
+// elicitation/sampling input this client cannot supply) is surfaced as a
+// clear error, not returned as if the InputRequiredResult were the tool's
+// real data.
+func TestCallToolRejectsInputRequiredResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp := mcp.Response{
+			JSONRPC: mcp.JSONRPCVersion,
+			ID:      1,
+			Result:  json.RawMessage(`{"resultType":"input_required","inputRequests":[{"method":"elicitation/create"}]}`),
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	server := mcp.ServerConfig{Name: "GitHubServer", Transport: mcp.TransportHTTP, URL: srv.URL}
+	client := mcp.NewClient()
+	result, err := client.CallTool(server, mcp.ToolRequest{Method: "tools/call"})
+	if err != nil {
+		t.Fatalf("CallTool itself should not error (decoding succeeds); got: %v", err)
+	}
+	if !result.IsInputRequired() {
+		t.Fatalf("IsInputRequired() = false, want true for resultType %q", result.ResultType)
+	}
+}
+
+// TestCallToolDefaultsResultTypeToCompleteWhenAbsent proves spec 2026-07-28's
+// own backward-compatibility rule: a server (or any response) that omits
+// `resultType` entirely is treated as "complete", not as an error or an
+// unset zero value a caller might mishandle.
+func TestCallToolDefaultsResultTypeToCompleteWhenAbsent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp := mcp.Response{JSONRPC: mcp.JSONRPCVersion, ID: 1, Result: json.RawMessage(`{"stars":42}`)}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	server := mcp.ServerConfig{Name: "GitHubServer", Transport: mcp.TransportHTTP, URL: srv.URL}
+	client := mcp.NewClient()
+	result, err := client.CallTool(server, mcp.ToolRequest{Method: "tools/call"})
+	if err != nil {
+		t.Fatalf("CallTool failed: %v", err)
+	}
+	if result.IsInputRequired() {
+		t.Fatal("IsInputRequired() = true for a response with no resultType, want false (defaults to complete)")
+	}
+	if result.ResultType != "complete" {
+		t.Errorf("ResultType = %q, want %q", result.ResultType, "complete")
+	}
+}
+
+// TestEncodeHeaderValueBase64EncodesUnsafeValues proves the transport
+// spec's Value Encoding rule: a header value that isn't plain visible ASCII
+// (or that already looks like the encoded sentinel) must be wrapped as
+// "=?base64?...?=" rather than sent raw, which could otherwise corrupt the
+// header or violate RFC 9110 field-value syntax.
+func TestEncodeHeaderValueBase64EncodesUnsafeValues(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		safe  bool // true: passed through unchanged
+	}{
+		{"plain ascii", "search_repositories", true},
+		{"non-ascii", "Hello, 世界", false},
+		{"leading/trailing whitespace", " padded ", false},
+		{"embedded newline", "line1\nline2", false},
+		{"already looks like the sentinel", "=?base64?literal?=", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotNameHeader string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotNameHeader = r.Header.Get("Mcp-Name")
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(mcp.Response{JSONRPC: mcp.JSONRPCVersion, ID: 1, Result: json.RawMessage(`{}`)})
+			}))
+			defer srv.Close()
+
+			server := mcp.ServerConfig{Name: "GitHubServer", Transport: mcp.TransportHTTP, URL: srv.URL}
+			client := mcp.NewClient()
+			_, err := client.CallTool(server, mcp.ToolRequest{
+				Method: "tools/call",
+				Params: map[string]interface{}{"name": tc.value},
+			})
+			if err != nil {
+				t.Fatalf("http call failed: %v", err)
+			}
+
+			if tc.safe {
+				if gotNameHeader != tc.value {
+					t.Errorf("Mcp-Name = %q, want unchanged %q", gotNameHeader, tc.value)
+				}
+				return
+			}
+			if gotNameHeader == tc.value {
+				t.Errorf("Mcp-Name = %q, want it Base64-sentinel-encoded, not passed through raw", gotNameHeader)
+			}
+			if !strings.HasPrefix(gotNameHeader, "=?base64?") || !strings.HasSuffix(gotNameHeader, "?=") {
+				t.Errorf("Mcp-Name = %q, want the =?base64?...?= sentinel format", gotNameHeader)
+			}
+			decoded, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(strings.TrimPrefix(gotNameHeader, "=?base64?"), "?="))
+			if err != nil {
+				t.Fatalf("decoding Mcp-Name: %v", err)
+			}
+			if string(decoded) != tc.value {
+				t.Errorf("decoded Mcp-Name = %q, want %q", decoded, tc.value)
+			}
+		})
 	}
 }
 

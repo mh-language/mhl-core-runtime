@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/memory"
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 // Env is a step's variable environment: every `var`/`assign` in a step body
@@ -336,8 +336,9 @@ func evalIfExpr(ctx *evalCtx, e *ast.IfExpr, depth int) (any, error) {
 // (`cmd.exec(...)`, etc. — see nativeNamespaces), `name.run(...)` on a
 // declared agent, `self.<method>(...)` on the tool currently executing
 // (ctx.selfTool), `name.<method>(...)` on a declared memory, and
-// `name.<method>(...)` on a declared tool are all recognized first (and
-// keep their existing, specific "not found" errors) — anything else falls
+// `name.<method>(...)` on a declared tool, and `name.call(...)` on a
+// declared mcp_server are all recognized first (and keep their existing,
+// specific "not found" errors) — anything else falls
 // through to a generic identifier/literal lookup followed by plain member
 // access, so a variable holding an object (e.g. from memory.get()) can
 // have its fields read with `.field`.
@@ -436,6 +437,13 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 				v, err := evalToolCall(ctx, tool, member, call, depth)
 				if err != nil {
 					return nil, fmt.Errorf("%s.%s: %w", name, member, err)
+				}
+				return applyTrailers(ctx, v, p.Ops[2:], depth)
+			}
+			if server, ok := findMCPServer(ctx.prog, name); ok {
+				v, err := evalMCPServerCall(ctx, server, member, call, depth)
+				if err != nil {
+					return nil, err
 				}
 				return applyTrailers(ctx, v, p.Ops[2:], depth)
 			}
@@ -573,6 +581,35 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 		op := ops[i]
 		switch {
 		case op.Member != "" && i+1 < len(ops) && ops[i+1].Call != nil:
+			// A *toolRef/*mcpServerRef is what an agent's `before`/`after`
+			// hook navigates to off its `tool`/`mcp` map parameter (e.g.
+			// `tool.execution.read_file(...)`, `mcp.GitHub.call(...)` —
+			// agent_hooks.go): dispatch it into the exact same
+			// evalToolCall/evalMCPServerCall a declared name's own two-level
+			// `name.member(...)` fast path (evalPostfix) calls into, rather
+			// than callValueMethod below, which has no ctx/raw *ast.Call to
+			// give them (named arguments, ctx.prog lookups).
+			switch ref := v.(type) {
+			case *toolRef:
+				if ref.allowedMethods != nil && !ref.allowedMethods[op.Member] {
+					return nil, fmt.Errorf("tool %q: method %q is not in this agent's declared tools: scope", ref.tool.Name, op.Member)
+				}
+				result, err := evalToolCall(ctx, ref.tool, op.Member, ops[i+1].Call, depth)
+				if err != nil {
+					return nil, err
+				}
+				v = result
+				i++
+				continue
+			case *mcpServerRef:
+				result, err := evalMCPServerCall(ctx, ref.server, op.Member, ops[i+1].Call, depth)
+				if err != nil {
+					return nil, err
+				}
+				v = result
+				i++
+				continue
+			}
 			args, err := evalPositionalValues(ctx, ops[i+1].Call, depth)
 			if err != nil {
 				return nil, err

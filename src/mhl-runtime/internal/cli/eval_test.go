@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/cli"
+	"github.com/mh-language/mhl-core-runtime/internal/cli"
 )
 
 // run is a small helper shared by this file's tests: write src as main.mh

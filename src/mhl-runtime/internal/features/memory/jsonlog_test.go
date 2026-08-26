@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/memory"
+	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 )
 
 type jsonlEntry struct {

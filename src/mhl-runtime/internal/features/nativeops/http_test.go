@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/nativeops"
+	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
 )
 
 func TestPostSendsHeadersAndJSONBody(t *testing.T) {

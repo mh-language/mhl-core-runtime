@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/memory"
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 // EvalCondition evaluates expr — a `loop`'s stop_when — against a fresh

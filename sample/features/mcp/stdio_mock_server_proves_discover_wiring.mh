@@ -1,0 +1,17 @@
+// A mocked "server/discover" response — a real server would advertise its
+// actual supported versions/capabilities/identity; this mock just proves
+// the method dispatch and result decoding.
+mcp_server MockTools {
+    transport: "stdio"
+    command: "sh"
+    args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"supported\":[\"2026-07-28\"],\"name\":\"MockTools\"}}'"]
+}
+
+test stdio_mock_server_proves_discover_wiring {
+    describe stdio_mock_server_proves_discover_wiring {
+        var info = MockTools.discover()
+        log("MockTools.discover result: ${json.stringify(info)}")
+        are_equal(info.name, "MockTools")
+        are_equal(info.supported.get_index(0), "2026-07-28")
+    }
+}

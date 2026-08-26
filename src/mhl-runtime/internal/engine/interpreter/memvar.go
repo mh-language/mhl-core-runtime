@@ -3,7 +3,7 @@ package interpreter
 import (
 	"fmt"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 // MemContext is the persistent backing for one pipeline instance's `mem`

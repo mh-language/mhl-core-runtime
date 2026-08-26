@@ -1,0 +1,27 @@
+memory session {
+    type: "kv"
+    store: "memory"
+}
+
+memory state {
+    type: "json"
+    path: "./.mhl/state.json"
+}
+
+memory audit {
+    type: "append_log"
+    path: "./logs/audit.log"
+}
+
+tool project {
+    read(path: string) -> fs.read(path)
+    write(path: string, content: string) -> fs.write(path, content)
+    run_tests() -> cmd.exec(["go", "test", "./..."], timeout: 120s)
+    verify(path: string) -> {
+        var result = cmd.exec(["go", "vet", path])
+        if (result.exit_code == 0) {
+            return true
+        }
+        return false
+    }
+}

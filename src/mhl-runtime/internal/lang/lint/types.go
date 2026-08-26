@@ -3,8 +3,8 @@ package lint
 import (
 	"fmt"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
-	"github.com/yanjustino/mhl-runtime/internal/lang/types"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // pipelineInputs returns every `input name: Type` declaration in p — the
@@ -64,12 +64,6 @@ func checkPipelineInputTypes(file string, prog *ast.Program) []Finding {
 	return findings
 }
 
-// checkSkillFieldTypes reports every skill `input`/`output` field whose Type
-// text doesn't resolve via types.Parse. Static only: skills are never
-// invoked by the interpreter today (only `mhl skills list` and import
-// resolution touch them), so there is no runtime boundary yet to enforce
-// this against — this check exists purely so a typo in a skill contract
-// surfaces at `mhl lint` instead of silently doing nothing forever.
 // checkToolMethodReturnTypes reports two things for every `): Type ->`
 // return-type annotation: an unrecognized Type keyword (a typo), and any
 // return value the method's own declaration proves is the wrong type — a
@@ -146,30 +140,3 @@ func toolMethodReturnExprs(m *ast.ToolMethod) []*ast.Expr {
 	return exprs
 }
 
-func checkSkillFieldTypes(file string, prog *ast.Program) []Finding {
-	var findings []Finding
-	for _, decl := range prog.Decls {
-		if decl.Skill == nil {
-			continue
-		}
-		for _, member := range decl.Skill.Body {
-			blocks := []*ast.FieldBlock{member.Input, member.Output}
-			for _, block := range blocks {
-				if block == nil {
-					continue
-				}
-				for _, f := range block.Fields {
-					if _, ok := types.FromExpr(f.Type); !ok {
-						findings = append(findings, Finding{
-							File:    file,
-							Line:    f.Pos.Line,
-							Column:  f.Pos.Column,
-							Message: fmt.Sprintf("skill %q: field %q has an unrecognized type %q", decl.Skill.Name, f.Name, f.Type),
-						})
-					}
-				}
-			}
-		}
-	}
-	return findings
-}

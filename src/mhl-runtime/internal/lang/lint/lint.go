@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
 // Finding is one statically-detected problem in a .mh file.
@@ -56,7 +56,6 @@ func Source(path, src string) []Finding {
 	findings = append(findings, checkLoopStopWhen(path, merged)...)
 	findings = append(findings, checkPipelineInputTypes(path, merged)...)
 	findings = append(findings, checkToolMethodReturnTypes(path, merged)...)
-	findings = append(findings, checkSkillFieldTypes(path, merged)...)
 	return findings
 }
 

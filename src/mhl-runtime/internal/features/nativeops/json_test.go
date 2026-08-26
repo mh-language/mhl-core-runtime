@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/nativeops"
+	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
 )
 
 func TestParseObjectProducesMapStringAny(t *testing.T) {

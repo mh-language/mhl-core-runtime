@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 // fixturesDir points at the §3 example fixtures relative to this package.
@@ -585,7 +585,7 @@ func TestMalformedYieldsError(t *testing.T) {
 	}
 }
 
-// TestTypedDeclPosPopulates confirms PipelineInput/Param/Field's additive Pos
+// TestTypedDeclPosPopulates confirms PipelineInput/Param's additive Pos
 // field is populated by participle (no parser tag needed), so lint findings
 // anchored to these nodes can carry a real line/column.
 func TestTypedDeclPosPopulates(t *testing.T) {
@@ -598,12 +598,6 @@ pipeline P {
 tool T {
     read_file(path: string) -> fs.read(path)
 }
-
-skill K {
-    input {
-        target_file: string
-    }
-}
 `)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -615,9 +609,5 @@ skill K {
 	param := prog.Decls[1].Tool.Methods[0].Params[0]
 	if param.Pos.Line == 0 {
 		t.Fatalf("expected Param.Pos to be populated, got %#v", param)
-	}
-	field := prog.Decls[2].Skill.Body[0].Input.Fields[0]
-	if field.Pos.Line == 0 {
-		t.Fatalf("expected Field.Pos to be populated, got %#v", field)
 	}
 }

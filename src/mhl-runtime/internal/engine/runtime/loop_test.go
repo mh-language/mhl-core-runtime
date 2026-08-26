@@ -3,7 +3,7 @@ package runtime_test
 import (
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/engine/runtime"
+	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 )
 
 // oneStepPipeline is the minimal loop pipeline a LoopRunner repeats — its

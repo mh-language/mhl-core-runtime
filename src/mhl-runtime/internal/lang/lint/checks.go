@@ -7,9 +7,9 @@ import (
 
 	"github.com/alecthomas/participle/v2/lexer"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/prompt"
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
-	"github.com/yanjustino/mhl-runtime/internal/lang/types"
+	"github.com/mh-language/mhl-core-runtime/internal/features/prompt"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // checkAgentCalls statically mirrors the agent/memory-call checks that
@@ -364,8 +364,8 @@ func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast
 }
 
 // --- lint-specific expression helpers (shared literal reading now lives in internal/lang/ast) -----
-// (this pattern used to be duplicated across internal/engine/interpreter, internal/engine/runtime
-// and internal/features/skills — all now share internal/lang/ast's literal readers)
+// (this pattern used to be duplicated across internal/engine/interpreter and internal/engine/runtime
+// — both now share internal/lang/ast's literal readers)
 
 func agentRunCall(expr *ast.Expr) (*ast.Call, string, bool) {
 	postfix := ast.BarePostfix(expr)

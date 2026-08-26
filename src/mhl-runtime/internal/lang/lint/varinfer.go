@@ -1,8 +1,8 @@
 package lint
 
 import (
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
-	"github.com/yanjustino/mhl-runtime/internal/lang/types"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // bareAssignName reports name, true only when target is a bare identifier

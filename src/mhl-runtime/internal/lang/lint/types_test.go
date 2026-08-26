@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/lang/lint"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
 )
 
 func TestCheckPipelineInputUnknownType(t *testing.T) {
@@ -43,59 +43,6 @@ pipeline P {
     input meta: object
     input anything: any
     step S {}
-}
-`)
-	findings := lint.File(main)
-	if len(findings) != 0 {
-		t.Fatalf("expected 0 findings, got %d: %+v", len(findings), findings)
-	}
-}
-
-// TestCheckSkillFieldUnknownType mirrors TestCheckPipelineInputUnknownType
-// for a skill's input/output field block.
-func TestCheckSkillFieldUnknownType(t *testing.T) {
-	dir := t.TempDir()
-	main := filepath.Join(dir, "main.mh")
-	write(t, main, `
-skill K {
-    input {
-        target_file: sting
-    }
-}
-`)
-	findings := lint.File(main)
-	if len(findings) != 1 {
-		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
-	}
-	if !strings.Contains(findings[0].Message, `skill "K": field "target_file" has an unrecognized type "sting"`) {
-		t.Errorf("unexpected message: %q", findings[0].Message)
-	}
-}
-
-// TestCheckSkillFieldBooleanIntAliasesClean is a regression guard: a real,
-// CI-run fixture (internal/features/skills/resolver_test.go's projectSource)
-// declares `strict_mode: boolean` and `vulnerabilities_found: int` — if the
-// alias table in internal/lang/types didn't accept those spellings, this
-// exact shape would become a brand-new lint failure the moment
-// checkSkillFieldTypes shipped.
-func TestCheckSkillFieldBooleanIntAliasesClean(t *testing.T) {
-	dir := t.TempDir()
-	main := filepath.Join(dir, "main.mh")
-	write(t, main, `
-export skill CodeAuditorSkill {
-    description: "Analisa código."
-    tools: [execution.read_file, execution.git_diff]
-    mcp_servers: [PostgresDB]
-
-    input {
-        target_file: string
-        strict_mode: boolean
-    }
-
-    output {
-        vulnerabilities_found: int
-        report_markdown: string
-    }
 }
 `)
 	findings := lint.File(main)
@@ -665,27 +612,6 @@ pipeline P {
 		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
 	}
 	if !strings.Contains(findings[0].Message, `input "tags": unrecognized type "sting[]"`) {
-		t.Errorf("unexpected message: %q", findings[0].Message)
-	}
-}
-
-// TestCheckSkillFieldNestedShapeUnknownType confirms a typo inside a nested
-// object-shape field type (`{ age: sting }`) is caught too.
-func TestCheckSkillFieldNestedShapeUnknownType(t *testing.T) {
-	dir := t.TempDir()
-	main := filepath.Join(dir, "main.mh")
-	write(t, main, `
-skill K {
-    input {
-        person: { name: string, age: sting }
-    }
-}
-`)
-	findings := lint.File(main)
-	if len(findings) != 1 {
-		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
-	}
-	if !strings.Contains(findings[0].Message, `field "person" has an unrecognized type`) {
 		t.Errorf("unexpected message: %q", findings[0].Message)
 	}
 }

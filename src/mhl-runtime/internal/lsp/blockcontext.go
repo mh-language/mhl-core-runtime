@@ -24,6 +24,7 @@ const (
 	blockRetry
 	blockCache
 	blockRateLimit
+	blockMCPServer
 )
 
 // headerRe pairs a blockKind with the regex that recognizes the token(s)
@@ -39,6 +40,7 @@ var headerRe = []struct {
 	{blockLoopPipeline, regexp.MustCompile(`\bloop\s+pipeline\s+\w+\s*$`)},
 	{blockPipeline, regexp.MustCompile(`\bpipeline\s+\w+\s*$`)},
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
+	{blockMCPServer, regexp.MustCompile(`\bmcp_server\s+\w+\s*$`)},
 	{blockCheckpoint, regexp.MustCompile(`\bcheckpoint\s*:\s*$`)},
 	{blockRepeat, regexp.MustCompile(`\brepeat\s*:\s*$`)},
 	{blockRetry, regexp.MustCompile(`\bretry\s*:\s*$`)},

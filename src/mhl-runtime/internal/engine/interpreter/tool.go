@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/nativeops"
-	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
-	"github.com/yanjustino/mhl-runtime/internal/lang/types"
+	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {

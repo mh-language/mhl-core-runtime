@@ -1,0 +1,41 @@
+pipeline Release {
+    input environment: string
+    var approved = false
+
+    checkpoint: {
+        enabled: true
+        strategy: "per_step"
+        storage: "file"
+        ttl: 7d
+    }
+
+    step Validate {
+        var result = cmd.exec(["go", "test", "./..."], timeout: 2m)
+        if (result.exit_code != 0) {
+            fail(result.stderr)
+        }
+        approved = true
+    }
+
+    step Publish {
+        if (!approved) {
+            goto Validate
+        }
+        log.info("publishing to", environment)
+    }
+}
+
+loop pipeline PollBuild {
+    input build_id: string
+    mem attempts = 0
+
+    repeat: {
+        stop_when: attempts >= 5
+        max_iterations: 10
+    }
+
+    step Poll {
+        attempts = attempts + 1
+        log("attempt ${attempts} for ${build_id}")
+    }
+}

@@ -7,3 +7,4 @@ how they're wired together at runtime.
 - [memory/](memory/README.md) — declaring `memory` stores and reading/writing them
 - [prompts/](prompts/README.md) — declaring and rendering `prompt` templates
 - [pipelines/](pipelines/README.md) — wiring an agent into a `pipeline` `step`
+- [mcp/](mcp/README.md) — declaring an `mcp_server` and calling it with `.call(...)`

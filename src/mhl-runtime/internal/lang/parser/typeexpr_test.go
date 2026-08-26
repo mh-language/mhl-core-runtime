@@ -6,10 +6,9 @@ import (
 
 // TestTypeExprAcrossAllAnnotationSites confirms the new *ast.TypeExpr
 // grammar (bare keyword, array suffix, nested array, inline object shape,
-// and a mix of both) parses identically at all four annotation sites —
-// ast.Param.Type, ast.PipelineInput.Type, ast.Field.Type, and
-// ast.ToolMethod.Returns — since all four share the exact same TypeExpr
-// grammar rule.
+// and a mix of both) parses identically at all three annotation sites —
+// ast.Param.Type, ast.PipelineInput.Type, and ast.ToolMethod.Returns —
+// since all three share the exact same TypeExpr grammar rule.
 func TestTypeExprAcrossAllAnnotationSites(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -48,15 +47,6 @@ func TestTypeExprAcrossAllAnnotationSites(t *testing.T) {
 			}
 			if got := stripSpaces(prog.Decls[0].Pipeline.Body[0].Input.Type.String()); got != stripSpaces(c.annotation) {
 				t.Errorf("PipelineInput.Type.String() = %q, want %q", got, stripSpaces(c.annotation))
-			}
-
-			// Skill Field.
-			prog, err = Parse("skill K { input { v: " + c.annotation + " } }")
-			if err != nil {
-				t.Fatalf("Field: parse: %v", err)
-			}
-			if got := stripSpaces(prog.Decls[0].Skill.Body[0].Input.Fields[0].Type.String()); got != stripSpaces(c.annotation) {
-				t.Errorf("Field.Type.String() = %q, want %q", got, stripSpaces(c.annotation))
 			}
 		})
 	}

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/adapters"
+	"github.com/mh-language/mhl-core-runtime/internal/features/adapters"
 )
 
 func TestOllamaRunHappyPath(t *testing.T) {

@@ -1,0 +1,22 @@
+mcp_server LocalTools {
+    transport: "stdio"
+    command: "npx"
+    args: ["-y", "example-mcp-server"]
+}
+
+mcp_server RemoteTools {
+    transport: "http"
+    url: "https://example.test/mcp"
+    headers: {
+        "Authorization": "Bearer " + env("MCP_TOKEN")
+    }
+}
+
+pipeline UseMCP {
+    step Query {
+        var result = RemoteTools.call("search_repositories", { query: "mhl" })
+        var catalog = LocalTools.list_tools()
+        log(result)
+        log(catalog)
+    }
+}

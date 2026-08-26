@@ -63,7 +63,7 @@ literals — see [features/prompts/prompt_loaded_from_markdown_file.mh](features
 Program        ::= { Declaration } ;
 
 Declaration    ::= [ "export" ]
-                    ( Import | Use | Skill | Prompt | MCPServer
+                    ( Import | Use | Prompt | MCPServer
                     | Agent | Memory | Tool | Pipeline | Test ) ;
 
 Import         ::= "import" String "as" Ident ;
@@ -75,11 +75,6 @@ Memory         ::= "memory" Ident "{" { Property } "}" ;
 Agent          ::= "agent" [ Ident ] "{" { Property } "}" ;
                    (* Name is omitted for an inline agent literal, e.g. inside
                       a `fallback: [...]` list or anywhere an Expr is expected *)
-
-Skill          ::= "skill" Ident "{" { SkillMember } "}" ;
-SkillMember    ::= "input" FieldBlock | "output" FieldBlock | Property ;
-FieldBlock     ::= "{" { Field } "}" ;
-Field          ::= Ident ":" TypeExpr ;
 
 Prompt         ::= "prompt" Ident "(" [ Param { "," Param } ] ")"
                     ( "{" Expr "}" | "from" String ) ;

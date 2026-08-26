@@ -40,11 +40,11 @@ var repeatFieldItems = []completionItem{
 
 // agentPropertyItems lists only what internal/engine/interpreter/agent.go
 // actually reads (agentEngine/agentCommand/agentOllamaConfig/agentLogPath/
-// agentTrace/agentRetry/agentCache/agentLimiter/agentFallback) — not every
-// field language-design.md's aspirational examples show (api_key, skills,
-// mcp_servers, tools, timeout, system_instructions aren't implemented yet),
-// so this list doesn't suggest config an agent declaration can write but
-// the runtime will silently ignore.
+// agentTrace/agentRetry/agentCache/agentLimiter/agentFallback/
+// agentToolScope/agentHookExpr) — not every field docs/site/reference.html
+// may still show aspirationally (api_key, timeout, system_instructions
+// aren't implemented yet), so this list doesn't suggest config an agent
+// declaration can write but the runtime will silently ignore.
 var agentPropertyItems = []completionItem{
 	propertyItem("engine", `e.g. "cli/claude-code", "ollama/qwen2.5-coder"`),
 	propertyItem("command", "cli/* engine: the executable to run"),
@@ -57,32 +57,45 @@ var agentPropertyItems = []completionItem{
 	propertyItem("cache", "{ ttl, storage, strategy }"),
 	propertyItem("rate_limit", "{ requests_per_minute, concurrency, on_exceeded }"),
 	propertyItem("fallback", "array of inline agent {...} literals or declared agent names"),
+	propertyItem("tools", "array of declared tool names or tool.method references; folded into every .run() prompt as an allowed-scope instruction"),
+	propertyItem("mcp_servers", "array of declared mcp_server names; folded into every .run() prompt as an allowed-scope instruction"),
+	propertyItem("before", "(mcp, tool) -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),
+	propertyItem("after", "(mcp, tool, result) -> {...}: runs once on the final response; a returned string replaces it"),
+}
+
+// mcpServerPropertyItems mirrors registry.serverFromAST's field switch
+// (features/mcp/registry.go).
+var mcpServerPropertyItems = []completionItem{
+	propertyItem("transport", `"stdio" or "http"`),
+	propertyItem("command", `"stdio" transport: the executable to spawn per call`),
+	propertyItem("args", `"stdio" transport: argv for the spawned process`),
+	propertyItem("url", `"http" transport: the endpoint URL`),
+	propertyItem("headers", `"http" transport: e.g. { "Authorization": "Bearer " + env("TOKEN") }`),
 }
 
 // retryFieldItems mirrors agentRetry's field switch. backoff is listed even
-// though agentRetry's own SKETCH GAP comment notes it's accepted but always
-// exponential today — it's valid, non-erroring syntax, just not fully
-// honored yet.
+// though ast.AgentRetryConfig rejects any value other than "exponential" —
+// it's valid syntax, just constrained to the one implemented value.
 var retryFieldItems = []completionItem{
 	propertyItem("max_attempts", "integer"),
 	propertyItem("delay", "duration between attempts"),
 	propertyItem("retry_on", "array of status codes/strings to retry on"),
-	propertyItem("backoff", `accepted; only "exponential" is actually implemented today`),
+	propertyItem("backoff", `only "exponential" is implemented; any other value is rejected`),
 }
 
 // cacheFieldItems mirrors agentCache's field switch. strategy is listed for
-// the same accepted-but-not-fully-honored reason as retry's backoff above.
+// the same implemented-value-only reason as retry's backoff above.
 var cacheFieldItems = []completionItem{
 	propertyItem("ttl", "duration, default 24h"),
 	propertyItem("storage", `"disk" persists across separate mhl runs; default is in-memory only`),
-	propertyItem("strategy", "accepted; only exact-match is actually implemented today"),
+	propertyItem("strategy", `only "exact" is implemented; any other value is rejected`),
 }
 
 // rateLimitFieldItems mirrors agentLimiter's field switch.
 var rateLimitFieldItems = []completionItem{
 	propertyItem("requests_per_minute", "integer"),
 	propertyItem("concurrency", "integer: max simultaneous calls"),
-	propertyItem("on_exceeded", `accepted; Limiter only actually blocks-and-waits today`),
+	propertyItem("on_exceeded", `only "queue" (block-and-wait) is implemented; any other value is rejected`),
 }
 
 // propertyItemsFor returns the property-name completions valid directly
@@ -114,6 +127,8 @@ func propertyItemsFor(stack []blockKind) []completionItem {
 		return cacheFieldItems
 	case blockRateLimit:
 		return rateLimitFieldItems
+	case blockMCPServer:
+		return mcpServerPropertyItems
 	default:
 		return nil
 	}

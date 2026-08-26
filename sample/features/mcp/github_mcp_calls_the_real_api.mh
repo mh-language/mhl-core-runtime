@@ -1,0 +1,38 @@
+// GitHub's remote MCP server: stateless JSON-RPC over HTTP, authenticated
+// with a personal access token as a bearer header. `env("GITHUB_TOKEN")` is
+// resolved by features/mcp.BuildRegistryWithError before the call is ever
+// sent — if the variable isn't set, the call fails closed instead of going
+// out with an empty Authorization header (see stdio_mock_server_proves_tools_call_wiring.mh
+// for a network-free proof of the same request/response wiring).
+mcp_server GitHub {
+    transport: "http"
+    url: "https://api.githubcopilot.com/mcp/"
+    headers: {
+        "Authorization": "Bearer " + env("GITHUB_TOKEN")
+    }
+}
+
+test github_mcp_calls_the_real_api {
+    describe github_mcp_calls_the_real_api {
+        if (env("GITHUB_TOKEN") != "") {
+            var result = GitHub.call("search_repositories", { query: "org:mh-language mhl" })
+            log("GitHub MCP search_repositories result: ${json.stringify(result.content)}")
+            not_null(result)
+        } else {
+            incomplete("set GITHUB_TOKEN to a GitHub personal access token to run this against the real GitHub MCP server")
+        }
+    }
+
+    // tools/list is real-time discovery, not a "tool" being called — see
+    // MockTools.list_tools() in stdio_mock_server_proves_list_tools_wiring.mh
+    // for a network-free proof of the same request/response wiring.
+    describe github_mcp_lists_its_tools {
+        if (env("GITHUB_TOKEN") != "") {
+            var catalog = GitHub.list_tools()
+            log("GitHub MCP tools/list result: ${json.stringify(catalog.tools)}")
+            not_null(catalog.tools)
+        } else {
+            incomplete("set GITHUB_TOKEN to a GitHub personal access token to run this against the real GitHub MCP server")
+        }
+    }
+}

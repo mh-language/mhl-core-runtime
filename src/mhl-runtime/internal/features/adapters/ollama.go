@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/tools"
+	"github.com/mh-language/mhl-core-runtime/internal/features/tools"
 )
 
 // Ollama runs an agent turn against a local Ollama (or Ollama-compatible)

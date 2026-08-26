@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/tools"
+	"github.com/mh-language/mhl-core-runtime/internal/features/tools"
 )
 
 // Exec runs command — split on whitespace, no shell quoting/expansion, the

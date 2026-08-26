@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yanjustino/mhl-runtime/internal/features/prompt"
-	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/features/prompt"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
 func TestRenderInterpolatesDeclaredParams(t *testing.T) {
