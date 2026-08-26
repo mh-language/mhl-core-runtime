@@ -8,6 +8,7 @@ test memory_session_mem_value_appended_as_a_progress_line {
         SessionJsonMem.set("last_feature", "auth")
         var feature = SessionJsonMem.get("last_feature")
 
+        if (fs.exists(".mhl/progress.txt")) fs.delete(".mhl/progress.txt")
         fs.append(".mhl/progress.txt", "Feature ${feature}: PASS\n")
         fs.append(".mhl/progress.txt", "Feature checkout: PASS\n")
 

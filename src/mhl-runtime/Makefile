@@ -3,12 +3,11 @@ SHELL := /bin/sh
 MODULE := github.com/mh-language/mhl-core-runtime
 CMD := ./cmd/mhl
 DIST := dist
-TEST := test
 SAMPLE := ../../sample
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X $(MODULE)/internal/cli.Version=$(VERSION)
 
-.PHONY: build test release clean verify-release
+.PHONY: build test functional-test release clean verify-release
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(DIST)/mhl $(CMD)
@@ -16,6 +15,12 @@ build:
 
 test:
 	go test ./...
+
+# runs the sample/ tree (docs-facing .mh examples, migrated from the old
+# test/e2e/{lang/syntax,features}) through the binary build produces above
+functional-test: build
+	$(SAMPLE)/mhl test $(SAMPLE)/syntax
+	$(SAMPLE)/mhl test $(SAMPLE)/features
 
 release: $(DIST)/linux-amd64/mhl $(DIST)/darwin-arm64/mhl $(DIST)/windows-amd64/mhl.exe
 

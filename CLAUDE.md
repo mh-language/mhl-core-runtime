@@ -25,7 +25,7 @@ part of this repository and unrelated to `mhl`.
 All Go commands run from `src/mhl-runtime`:
 
 ```sh
-make build            # builds dist/mhl and test/mhl
+make build            # builds dist/mhl and sample/mhl
 make test             # go test ./...
 make functional-test  # runs `mhl test` against test/e2e/features and test/e2e/lang/syntax
 go vet ./...
@@ -146,9 +146,9 @@ name.
   parser, interpreter, and runner together the way a real `mhl run` would.
 - `internal/features/*` and `internal/lang/*` additionally have focused unit tests beside the
   code they cover.
-- `test/e2e/features`, `test/e2e/lang/syntax`, and `test/e2e/scenarios` hold real `.mh`
-  programs exercised via `mhl test`/`mhl lint`, not `go test`; `make functional-test` runs the
-  first two directories through the built `test/mhl` binary.
+- `sample/syntax` and `sample/features` (migrated from the old `test/e2e/{lang/syntax,features}`)
+  hold real `.mh` programs exercised via `mhl test`/`mhl lint`, not `go test`; `make
+  functional-test` runs both directories through the `sample/mhl` binary `make build` produces.
 - Prefer table-driven cases for parser/runtime behavior.
 
 ## Coding style
