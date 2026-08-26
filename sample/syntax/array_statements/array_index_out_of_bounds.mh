@@ -1,0 +1,13 @@
+test array_index_out_of_bounds {
+    describe array_index_out_of_bounds {
+        var A = [1, 2, 3]
+        var result = ""
+        try {
+            var value = A[3]
+            result = "Value at index 3: ${value}"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: index 3 out of range (size 3)")
+    }
+}

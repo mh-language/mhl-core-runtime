@@ -62,6 +62,98 @@ func TestCompletionOffersNativeNamespaceNames(t *testing.T) {
 	}
 }
 
+func TestCompletionLocalVarMembers(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want []string
+		skip []string
+	}{
+		{
+			name: "string var offers string methods, mid-typing the trailer (broken parse)",
+			src: `
+pipeline P {
+    step S {
+        var content = "a\r\nb"
+        content.§
+    }
+}
+`,
+			want: []string{"replace", "split", "trim", "starts_with", "ends_with", "to_upper", "to_lower", "substring", "contains", "size", "is_empty"},
+			skip: []string{"keys", "values", "filter", "find", "sort_by", "get_index"},
+		},
+		{
+			name: "array var offers array methods",
+			src: `
+pipeline P {
+    step S {
+        var items = [1, 2, 3]
+        items.§
+    }
+}
+`,
+			want: []string{"filter", "find", "sort_by", "get_index", "index_of", "size", "is_empty", "contains"},
+			skip: []string{"replace", "split", "trim", "keys", "values"},
+		},
+		{
+			name: "object var offers object methods",
+			src: `
+pipeline P {
+    step S {
+        var config = {a: 1}
+        config.§
+    }
+}
+`,
+			want: []string{"keys", "values", "size", "is_empty"},
+			skip: []string{"replace", "filter", "get_index"},
+		},
+		{
+			name: "agent.run() result is inferred as string",
+			src: `
+agent Claude {
+    command: "claude"
+}
+pipeline P {
+    step S {
+        var response = Claude.run(prompt: "hi")
+        response.§
+    }
+}
+`,
+			want: []string{"replace", "split", "trim"},
+		},
+		{
+			name: "var from an unresolvable expression offers nothing",
+			src: `
+pipeline P {
+    step S {
+        var total = a + b
+        total.§
+    }
+}
+`,
+			skip: []string{"replace", "filter", "keys", "size"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text, pos := posAtMarker(t, c.src)
+			items := completionAt("main.mh", text, pos)
+			for _, want := range c.want {
+				if !hasLabel(items, want) {
+					t.Errorf("missing %q, got %+v", want, items)
+				}
+			}
+			for _, skip := range c.skip {
+				if hasLabel(items, skip) {
+					t.Errorf("unexpectedly offered %q", skip)
+				}
+			}
+		})
+	}
+}
+
 func TestCompletionPropertyPosition(t *testing.T) {
 	cases := []struct {
 		name string
@@ -175,6 +267,70 @@ pipeline P {
 }
 `,
 			skip: []string{"checkpoint", "repeat", "enabled", "stop_when", "engine"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text, pos := posAtMarker(t, c.src)
+			items := completionAt("main.mh", text, pos)
+			for _, want := range c.want {
+				if !hasLabel(items, want) {
+					t.Errorf("missing %q, got %+v", want, items)
+				}
+			}
+			for _, skip := range c.skip {
+				if hasLabel(items, skip) {
+					t.Errorf("unexpectedly offered %q", skip)
+				}
+			}
+		})
+	}
+}
+
+func TestCompletionTypeAnnotationPosition(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want []string
+		skip []string // must NOT be offered — proves this doesn't false-positive on ordinary properties
+	}{
+		{
+			name: "pipeline input type position",
+			src: `
+pipeline P {
+    input count: §
+    step S {}
+}
+`,
+			want: []string{"string", "number", "bool", "array", "object", "any"},
+		},
+		{
+			name: "tool method param type position",
+			src: `
+tool execution {
+    read_file(path: §
+}
+`,
+			want: []string{"string", "number", "bool", "array", "object", "any"},
+		},
+		{
+			name: "ordinary agent property is not offered type keywords",
+			src: `
+agent X {
+    command: §
+}
+`,
+			skip: []string{"string", "number", "bool", "array", "object", "any"},
+		},
+		{
+			name: "ordinary agent body property position keeps its own keywords",
+			src: `
+agent X {
+    §
+}
+`,
+			want: []string{"engine", "command"},
+			skip: []string{"string", "number", "bool", "array", "object", "any"},
 		},
 	}
 	for _, c := range cases {

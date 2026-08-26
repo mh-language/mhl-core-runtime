@@ -1792,3 +1792,299 @@ pipeline P {
 		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
 	}
 }
+
+func TestCheckLoopStopWhenReferencesPipelineVar(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+loop pipeline MainPipeline {
+    var count = 0
+
+    repeat: {
+        stop_when: count == 10
+        max_iterations: 10
+    }
+
+    step Step1 {
+        count = count + 1
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `stop_when references var "count"`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckLoopStopWhenReferencesPipelineVarNestedInCall(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+loop pipeline MainPipeline {
+    var count = 0
+
+    repeat: {
+        stop_when: count >= (5 + 5)
+    }
+
+    step Step1 {
+        count = count + 1
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `stop_when references var "count"`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckLoopStopWhenUsingMemoryIsClean(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+memory Session {
+    type: "kv"
+    store: "memory"
+}
+
+loop pipeline MainPipeline {
+    repeat: {
+        stop_when: Session.get("count", 0) == 10
+        max_iterations: 10
+    }
+
+    step Step1 {
+        Session.set("count", Session.get("count", 0) + 1)
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+func TestCheckLoopStopWhenPlainPipelineNotFlagged(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+pipeline P {
+    var count = 0
+
+    step S {
+        count = count + 1
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+// A pipeline-level `mem` is a valid assignment target in a step, same as
+// `var` — this must not false-positive "undefined variable".
+func TestMemAssignmentInStepIsClean(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+loop pipeline MainPipeline {
+    mem count = 0
+
+    repeat: {
+        stop_when: count == 10
+        max_iterations: 10
+    }
+
+    step Step1 {
+        count = count + 1
+        count.reset()
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+// checkLoopStopWhen must not flag a `mem` reference in stop_when — unlike
+// `var`, that's the intended, supported usage.
+func TestCheckLoopStopWhenMemNotFlagged(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+loop pipeline MainPipeline {
+    mem count = 0
+
+    repeat: {
+        stop_when: count == 10
+        max_iterations: 10
+    }
+
+    step Step1 {
+        count = count + 1
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+// --- agent retry/cache/rate_limit/fallback: static coverage lint previously
+// lacked entirely (only runtime, in interpreter/agent.go, checked these) ---
+
+func TestCheckAgentRetryMaxAttemptsNotANumber(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer {
+    command: "bash"
+    retry: { max_attempts: "three" }
+}
+
+pipeline P {
+    step S {
+        var response = Reviewer.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Reviewer" retry.max_attempts must be a number`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckAgentCacheTTLNotADuration(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer {
+    command: "bash"
+    cache: { ttl: "forever" }
+}
+
+pipeline P {
+    step S {
+        var response = Reviewer.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Reviewer" cache.ttl must be a duration`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckAgentRateLimitRequestsPerMinuteNotANumber(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer {
+    command: "bash"
+    rate_limit: { requests_per_minute: "many" }
+}
+
+pipeline P {
+    step S {
+        var response = Reviewer.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Reviewer" rate_limit.requests_per_minute must be a number`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckAgentFallbackUndeclaredAgent(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer {
+    command: "bash"
+    fallback: [Ghost]
+}
+
+pipeline P {
+    step S {
+        var response = Reviewer.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Reviewer" fallback: agent "Ghost" is not declared`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckAgentRetryCacheRateLimitFallbackValidIsClean(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Backup {
+    command: "bash"
+}
+
+agent Reviewer {
+    command: "bash"
+    retry: { max_attempts: 3, delay: 2s, retry_on: [500, "timeout"] }
+    cache: { ttl: 1h, storage: "disk" }
+    rate_limit: { requests_per_minute: 10, concurrency: 2, on_exceeded: "wait" }
+    fallback: [Backup]
+}
+
+pipeline P {
+    step S {
+        var response = Reviewer.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+func TestCheckLoopStopWhenUnrelatedVarNotFlagged(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+loop pipeline MainPipeline {
+    var count = 0
+
+    repeat: {
+        stop_when: max_iterations_reached == true
+        max_iterations: 10
+    }
+
+    step Step1 {
+        count = count + 1
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}

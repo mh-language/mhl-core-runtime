@@ -1,0 +1,7 @@
+test substring {
+    describe substring {
+        are_equal("hello world".substring(0, 5), "hello")
+        are_equal("hello world".substring(6, 11), "world")
+        are_equal("hello".substring(0, 0), "")
+    }
+}

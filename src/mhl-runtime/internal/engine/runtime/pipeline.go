@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/yanjustino/mhl-runtime/internal/lang/types"
 )
 
 // CheckpointConfig is the resolved `checkpoint { ... }` block of a pipeline.
@@ -27,6 +28,25 @@ type Pipeline struct {
 	Loop          bool
 	StopWhen      *ast.Expr
 	MaxIterations int
+	// InstanceID is not derived from the AST at all — PipelineFromAST never
+	// sets it. It's a runtime-only field LoopRunner.Run fills in (resolved
+	// or freshly generated from its own LoopCheckpoint, see loop.go) right
+	// before each iteration's Runner.Run call, so Run can thread it into
+	// RunContext.InstanceID for cli.go's `mem` support. Left empty for a
+	// plain (non-`loop`) pipeline — Run treats that as instance "default".
+	InstanceID string
+	// Inputs lists this pipeline's declared `input name: Type` members, in
+	// declaration order. A malformed/unrecognized Type text resolves to
+	// types.Any here (best-effort, same as every other reader in this
+	// function) — internal/lang/lint is what reports the typo as a Finding.
+	Inputs []PipelineInputSpec
+}
+
+// PipelineInputSpec is one `input name: Type` declaration, resolved to the
+// shared types.Type vocabulary.
+type PipelineInputSpec struct {
+	Name string
+	Type types.Type
 }
 
 // PipelineFromAST projects an ast.Pipeline onto a runtime Pipeline, extracting
@@ -45,6 +65,12 @@ func PipelineFromAST(p *ast.Pipeline) Pipeline {
 			out.Checkpoint = checkpointFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "repeat":
 			out.StopWhen, out.MaxIterations = repeatConfigFromExpr(m.Prop.Value)
+		case m.Input != nil:
+			t, ok := types.FromExpr(m.Input.Type)
+			if !ok {
+				t = types.Any
+			}
+			out.Inputs = append(out.Inputs, PipelineInputSpec{Name: m.Input.Name, Type: t})
 		}
 	}
 	return out

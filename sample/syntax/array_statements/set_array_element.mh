@@ -1,0 +1,7 @@
+test set_array_element {
+    describe set_array_element {
+        var A = [1, 2, 3]
+        A[1] = 20
+        are_equal(A[1], 20)
+    }
+}

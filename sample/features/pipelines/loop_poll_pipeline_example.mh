@@ -1,0 +1,29 @@
+// Minimal case for a `loop pipeline`: repeat a pipeline until a
+// `memory`-backed condition is met (or a max_iterations ceiling is hit). Run
+// with:
+//
+//   mhl run sample/features/pipelines/loop_poll_pipeline_example.mh
+//
+// stop_when runs in its own environment, outside any step, so state it needs
+// to see across iterations has to go through memory -- a step-local `var`
+// would not be visible there.
+
+memory poll {
+    type: "kv"
+    store: "memory"
+}
+
+loop pipeline PollForReady {
+    repeat: {
+        stop_when: poll.get("status", "pending") == "done"
+        max_iterations: 5
+    }
+
+    step Check {
+        log.info("[poll] checking readiness marker...")
+        var ready = fs.exists(".mhl/ready.marker")
+        var status = if (ready) "done" else "pending"
+        poll.set("status", status)
+        log.info("[poll] status: ${status}")
+    }
+}

@@ -1,0 +1,13 @@
+use {GeminiAPI} from "fixtures/agents.mh"
+
+test gemini_api_calls_the_real_api {
+    describe gemini_api_calls_the_real_api {
+        if (env("ENABLE_LLM_CALL") == "1") {
+            var response = GeminiAPI.run(prompt: "Ping")
+            log("Response from GeminiAPI: ${response}")
+            not_null(response)
+        } else {
+            incomplete("set ENABLE_LLM_CALL=1 to run this against the real Gemini API")
+        }
+    }
+}

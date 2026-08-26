@@ -1,359 +1,343 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-US">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Interactive manual for the Meta-Harness Language (MHL)." data-i18n-attr="content" data-pt="Manual interativo da Meta-Harness Language (MHL)." />
+    <meta name="description" content="MHL is a declarative language for deterministic, auditable, framework-independent AI agent pipelines." />
     <meta name="theme-color" content="#10161f" />
+    <meta property="og:title" content="MHL — Meta-Harness Language" />
+    <meta property="og:description" content="Orchestrate agents, prompts, tools, and memory in deterministic pipelines." />
+    <meta property="og:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MHL — Meta-Harness Language" />
+    <meta name="twitter:description" content="Orchestrate agents, prompts, tools, and memory in deterministic pipelines." />
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
     <link rel="icon" href="assets/mhl-logo-rebrand.png" />
-    <title data-pt="Manual MHL — Meta-Harness Language">MHL Manual — Meta-Harness Language</title>
+    <title>MHL — Meta-Harness Language</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="#top" aria-label="MHL Manual, home" data-i18n-attr="aria-label" data-pt="Manual MHL, início">
+      <a class="brand" href="#top" aria-label="MHL home">
         <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
         <span><strong>MHL</strong><small>Meta-Harness Language</small></span>
       </a>
       <div class="top-actions">
         <label class="search" for="site-search">
           <span aria-hidden="true">⌕</span>
-          <input id="site-search" type="search" placeholder="Search the manual" data-i18n-attr="placeholder" data-pt="Buscar no manual" autocomplete="off" />
+          <input id="site-search" type="search" placeholder="Search this page" autocomplete="off" />
           <kbd>/</kbd>
         </label>
-        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme" data-i18n-attr="aria-label" data-pt="Alternar tema">☼</button>
-        <button class="icon-button lang-toggle" id="lang-toggle" type="button" aria-label="Switch to Portuguese">PT-BR</button>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
         <a class="github-link" href="reference.html">Reference</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
       </div>
     </header>
 
     <div class="layout" id="top">
-      <aside class="sidebar" aria-label="Manual navigation" data-i18n-attr="aria-label" data-pt="Navegação do manual">
-        <p class="eyebrow" data-pt="MANUAL DA LINGUAGEM">LANGUAGE MANUAL</p>
+      <aside class="sidebar" aria-label="Documentation navigation">
+        <p class="eyebrow">META-HARNESS LANGUAGE</p>
         <nav id="toc">
-          <a class="nav-link active" href="#inicio" data-pt="Início">Home</a>
-          <a class="nav-link" href="#primeiro-programa" data-pt="Primeiro programa">First program</a>
-          <a class="nav-link" href="#sintaxe" data-pt="Sintaxe">Syntax</a>
-          <a class="nav-link" href="#expressoes" data-pt="Expressões">Expressions</a>
-          <a class="nav-link" href="#controle-fluxo" data-pt="Controle de fluxo">Control flow</a>
-          <a class="nav-link" href="#agentes" data-pt="Agentes">Agents</a>
-          <a class="nav-link" href="#prompts" data-pt="Prompts e módulos">Prompts &amp; modules</a>
-          <a class="nav-link" href="#memoria-tools" data-pt="Memória e tools">Memory &amp; tools</a>
-          <a class="nav-link" href="#pipelines">Pipelines</a>
-          <a class="nav-link" href="#mcp" data-pt="MCP e resiliência">MCP &amp; resilience</a>
-          <a class="nav-link" href="#cli" data-pt="CLI e diagnóstico">CLI &amp; diagnostics</a>
+          <a class="nav-link active" href="#overview">Overview</a>
+          <a class="nav-link" href="#motivation">Motivation</a>
+          <a class="nav-link" href="#difference">MHL vs. frameworks</a>
+          <a class="nav-link" href="#first-program">First program</a>
+          <a class="nav-link" href="#mental-model">Mental model</a>
+          <a class="nav-link" href="#features">Features</a>
+          <a class="nav-link" href="#complete-example">Complete example</a>
+          <a class="nav-link" href="#research">Research</a>
+          <a class="nav-link" href="#contributions">Contributions</a>
         </nav>
         <div class="sidebar-note">
           <span class="status-dot"></span>
-          <span data-pt="Runtime Go&lt;br /&gt;&lt;small&gt;documentação baseada na implementação atual&lt;/small&gt;">Go runtime<br /><small>docs based on the current implementation</small></span>
+          <span>Go runtime<br /><small>declarative programs in .mh files</small></span>
         </div>
       </aside>
 
       <main class="content">
-        <section class="hero doc-section" id="inicio" data-title="Home overview MHL Início visão geral">
+        <section class="hero doc-section" id="overview" data-title="overview mhl language ai agents pipelines meta harness">
           <div class="hero-copy">
-            <p class="eyebrow accent">META-HARNESS LANGUAGE · v0.2</p>
-            <h1 data-pt="Orquestre agentes&lt;br /&gt;&lt;em&gt;com intenção.&lt;/em&gt;">Orchestrate agents<br /><em>with intent.</em></h1>
-            <p class="lead" data-pt="MHL é uma linguagem declarativa para descrever agentes de IA, prompts, ferramentas, memória e pipelines executáveis.">MHL is a declarative language for describing AI agents, prompts, tools, memory, and executable pipelines.</p>
+            <p class="eyebrow accent">META-HARNESS LANGUAGE · v0.1 ALPHA</p>
+            <h1>Control the loop.<br /><em>Not the agent.</em></h1>
+            <p class="lead">MHL is a declarative language that turns AI agents, prompts, tools, memory, and operational policies into reproducible pipelines.</p>
             <div class="hero-actions">
-              <a class="button primary" href="#primeiro-programa" data-pt="Começar agora &lt;span&gt;→&lt;/span&gt;">Get started <span>→</span></a>
-              <a class="button secondary" href="https://github.com/mh-language/mhl-core-runtime/tree/main/docs/wiki" target="_blank" rel="noreferrer" data-pt="Ver wiki Markdown ↗">View Markdown wiki ↗</a>
+              <a class="button primary" href="#first-program">Get started <span>→</span></a>
+              <a class="button secondary" href="reference.html">Explore the language</a>
+            </div>
+            <div class="hero-proof" aria-label="Core characteristics">
+              <span>deterministic</span><span>local-first</span><span>auditable</span>
             </div>
           </div>
           <div class="hero-card">
-            <div class="window-bar"><span></span><span></span><span></span><b>hello.mh</b></div>
-            <pre class="code-block"><code class="language-mhl">agent Local {
-    command: "echo"
+            <div class="window-bar"><span></span><span></span><span></span><b>review.mh</b></div>
+            <pre class="code-block"><code class="language-mhl">agent Reviewer {
+    engine: "ollama/qwen2.5-coder"
+    endpoint: "http://localhost:11434"
 }
 
-pipeline Hello {
-    step Run {
-        log(Local.run(prompt: "Olá, MHL"))
+prompt Review(diff: string) {
+    "Review the diff and list risks:\n${diff}"
+}
+
+pipeline PullRequest {
+    step Analyze {
+        var diff = git.diff()
+        var answer = Reviewer.run(
+            prompt: Review(diff: diff)
+        )
+        log.info(answer)
     }
 }</code></pre>
-            <div class="hero-card-foot"><span class="pulse"></span> <span data-pt="declarativo · local · componível">declarative · local · composable</span></div>
+            <div class="hero-card-foot"><span class="pulse"></span> configuration + flow + policies in one artifact</div>
           </div>
         </section>
 
-        <section class="section-grid doc-section" id="primeiro-programa" data-title="First program getting started install Primeiro programa começar instalação">
+        <section class="doc-section" id="motivation" data-title="motivation inverted orchestration determinism enterprise agents autonomy engineering">
           <div class="section-heading">
-            <p class="eyebrow" data-pt="01 · COMEÇAR">01 · GET STARTED</p>
-            <h2 data-pt="Seu primeiro pipeline">Your first pipeline</h2>
-            <p data-pt="Um programa MHL combina declarações de configuração com steps executáveis. Salve o arquivo como &lt;code&gt;main.mh&lt;/code&gt; e execute com o CLI.">An MHL program combines configuration declarations with executable steps. Save the file as <code>main.mh</code> and run it with the CLI.</p>
+            <p class="eyebrow">01 · WHY MHL</p>
+            <h2>Agents are probabilistic. Your process does not have to be.</h2>
+            <p>In real engineering workflows, unrestricted agent autonomy makes basic questions hard to answer: what ran, with which data, in what order, under which limits, and how can the process resume after a failure?</p>
+          </div>
+          <div class="principle-grid">
+            <article class="principle-card">
+              <span>01</span>
+              <h3>Invert orchestration</h3>
+              <p>A deterministic harness owns the loop. The model is called only where probabilistic judgment adds value.</p>
+            </article>
+            <article class="principle-card">
+              <span>02</span>
+              <h3>Make policies explicit</h3>
+              <p>Retry, cache, rate limits, fallback, checkpoints, and iteration limits live beside the flow and enter code review.</p>
+            </article>
+            <article class="principle-card">
+              <span>03</span>
+              <h3>Preserve replaceability</h3>
+              <p>The pipeline describes intent; CLI agents, local models, and integrations can change without rewriting orchestration.</p>
+            </article>
+          </div>
+          <div class="thesis-strip">
+            <strong>Core principle</strong>
+            <p>Use conventional software for control, state, and verification. Use AI for interpretation, synthesis, and decisions under uncertainty.</p>
+          </div>
+        </section>
+
+        <section class="doc-section" id="difference" data-title="comparison frameworks sdk yaml python langgraph temporal agents difference">
+          <div class="section-heading">
+            <p class="eyebrow">02 · POSITIONING</p>
+            <h2>A harness language, not another framework.</h2>
+            <p>Frameworks are libraries embedded in a host application. MHL is a small, independent executable format designed to describe the workflow's operational contract itself.</p>
+          </div>
+          <div class="comparison">
+            <div class="comparison-row comparison-head"><span>Decision</span><span>Agent framework</span><span>MHL</span></div>
+            <div class="comparison-row"><strong>Unit of work</strong><span>Code in the framework's host language</span><span>Declarative, executable <code>.mh</code> file</span></div>
+            <div class="comparison-row"><strong>Flow control</strong><span>Callbacks, graphs, or library conventions</span><span>Steps, loops, <code>goto</code>, <code>break</code>, and explicit policies</span></div>
+            <div class="comparison-row"><strong>Replacing an agent</strong><span>Often requires SDK-specific adapters</span><span>Change the <code>agent</code> declaration; keep the pipeline</span></div>
+            <div class="comparison-row"><strong>State and recovery</strong><span>Infrastructure added to the application</span><span><code>memory</code>, <code>mem</code>, checkpoints, and <code>--resume</code></span></div>
+            <div class="comparison-row"><strong>Inspection</strong><span>Distributed across code and configuration</span><span>Flow and limits are readable in one versioned artifact</span></div>
+            <div class="comparison-row"><strong>Best fit</strong><span>Full applications and deep integrations</span><span>Engineering harnesses, local automation, and controlled loops</span></div>
+          </div>
+          <div class="tip-row"><span>CHOOSING</span><p>MHL complements applications and frameworks. Use it when the flow must be portable, auditable, and controlled by a deterministic layer; use a framework when orchestration must live deeply inside the application.</p></div>
+        </section>
+
+        <section class="section-grid doc-section" id="first-program" data-title="installation first program hello pipeline run input cli">
+          <div class="section-heading">
+            <p class="eyebrow">03 · GETTING STARTED</p>
+            <h2>From zero to your first pipeline.</h2>
+            <p>Install the runtime, save the example as <code>hello.mh</code>, and run it. The agent uses <code>echo</code>, so this tutorial needs neither an API key nor network access.</p>
           </div>
           <div class="section-body">
-            <div class="callout"><strong data-pt="Instale o runtime">Install the runtime</strong><span>macOS / Linux</span><code>curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | sh</code></div>
+            <div class="install-tabs" aria-label="Installation commands">
+              <div class="callout"><strong>macOS / Linux</strong><code>curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | sh</code></div>
+              <div class="callout"><strong>Windows / PowerShell</strong><code>irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.ps1 | iex</code></div>
+            </div>
             <div class="code-wrap">
-              <button class="copy-button" type="button" data-copy="copy" data-pt="Copiar">Copy</button>
-              <pre class="code-block"><code class="language-mhl">agent Local {
+              <button class="copy-button" type="button" data-copy="copy">Copy</button>
+              <pre class="code-block"><code class="language-mhl">agent Echo {
     command: "echo"
-    args: ["resposta local"]
+    args: ["${prompt}"]
+}
+
+prompt Greeting(name: string) {
+    "Hello, ${name}. Your first pipeline is running."
 }
 
 pipeline Hello {
     input name: string
 
     step Greet {
-        var message = "Olá, ${name}!"
-        log(message)
-        var answer = Local.run(prompt: message)
-        log(answer)
+        var answer = Echo.run(
+            prompt: Greeting(name: name)
+        )
+        log.info(answer)
     }
 }</code></pre>
             </div>
-            <div class="inline-code"><span data-pt="execute">run</span><code>mhl run main.mh --input name="Ana"</code></div>
+            <div class="run-stack">
+              <div class="inline-code"><span>run</span><code>mhl run hello.mh --input name=Ana</code></div>
+              <div class="inline-code"><span>output</span><code>Hello, Ana. Your first pipeline is running.</code></div>
+            </div>
           </div>
         </section>
 
-        <section class="doc-section" id="sintaxe" data-title="Syntax declarations strings comments duration Sintaxe declarações strings comentários duração">
+        <section class="doc-section" id="mental-model" data-title="mental model declarations execution pipeline step harness flow">
           <div class="section-heading">
-            <p class="eyebrow" data-pt="02 · FUNDAMENTOS">02 · FUNDAMENTALS</p>
-            <h2 data-pt="Sintaxe sem ruído">Syntax without the noise</h2>
-            <p data-pt="A gramática é pequena, legível e orientada a blocos. Comentários usam &lt;code&gt;//&lt;/code&gt;; objetos e configurações aceitam campos separados por vírgulas ou quebras de linha.">The grammar is small, readable, and block-oriented. Comments use <code>//</code>; objects and config accept fields separated by commas or line breaks.</p>
+            <p class="eyebrow">04 · MENTAL MODEL</p>
+            <h2>Declare capabilities. Compose the flow. Execute with limits.</h2>
+            <p>An MHL file separates reusable building blocks from execution order. This keeps operational decisions visible without mixing them into agent code.</p>
           </div>
-          <div class="card-grid three">
-            <article class="info-card"><span class="card-icon">✦</span><h3 data-pt="Declarações">Declarations</h3><p data-pt="&lt;code&gt;agent&lt;/code&gt;, &lt;code&gt;prompt&lt;/code&gt;, &lt;code&gt;skill&lt;/code&gt;, &lt;code&gt;memory&lt;/code&gt;, &lt;code&gt;tool&lt;/code&gt;, &lt;code&gt;mcp_server&lt;/code&gt; e &lt;code&gt;pipeline&lt;/code&gt;."><code>agent</code>, <code>prompt</code>, <code>skill</code>, <code>memory</code>, <code>tool</code>, <code>mcp_server</code>, and <code>pipeline</code>.</p></article>
-            <article class="info-card"><span class="card-icon">{} </span><h3 data-pt="Valores">Values</h3><p data-pt="&lt;code&gt;null&lt;/code&gt;, booleanos, números, strings, arrays, objetos e closures."><code>null</code>, booleans, numbers, strings, arrays, objects, and closures.</p></article>
-            <article class="info-card"><span class="card-icon">↗</span><h3 data-pt="Composição">Composition</h3><p data-pt="Use &lt;code&gt;import&lt;/code&gt; para namespaces e &lt;code&gt;use&lt;/code&gt; para imports seletivos com alias.">Use <code>import</code> for namespaces and <code>use</code> for selective imports with an alias.</p></article>
+          <div class="architecture-flow" aria-label="MHL conceptual flow">
+            <div><small>DECLARATIONS</small><strong>agent · prompt · skill</strong><span>who reasons and with which context</span></div>
+            <i>→</i>
+            <div><small>CAPABILITIES</small><strong>tool · memory · MCP</strong><span>what the flow can do and remember</span></div>
+            <i>→</i>
+            <div class="active"><small>ORCHESTRATION</small><strong>pipeline · step · loop</strong><span>order, limits, and recovery</span></div>
           </div>
           <div class="syntax-columns">
-            <div><h3 data-pt="Strings e durações">Strings and durations</h3><pre class="code-block"><code class="language-mhl">prompt Review(file: string) {
-    """
-    Revise o arquivo ${file}.
-    Retorne problemas objetivos.
-    """
-}
-
-pipeline Deploy {
-    checkpoint: { ttl: 7d }
-}</code></pre></div>
-            <div><h3 data-pt="Declarações de módulo">Module declarations</h3><pre class="code-block"><code class="language-mhl">import "./agents.mh" as agents
-use { ReviewPrompt as Review }
-    from "./prompts.mh"
-
-export agent Local { command: "echo" }</code></pre></div>
+            <article class="concept-note"><b>Declarations</b><p>Named top-level blocks. They can be exported and reused by other modules.</p><code>export prompt Review(...)</code></article>
+            <article class="concept-note"><b>Expressions and statements</b><p>They live inside steps and tools: variables, calls, objects, arrays, conditions, loops, and error handling.</p><code>var ready = result.exit_code == 0</code></article>
           </div>
         </section>
 
-        <section class="doc-section" id="expressoes" data-title="Expressions operators arrays objects lambdas Expressões operadores arrays objetos lambdas">
+        <section class="doc-section" id="features" data-title="features agents prompts skills memory tools mcp pipelines tests syntax">
           <div class="section-heading">
-            <p class="eyebrow" data-pt="03 · LINGUAGEM">03 · LANGUAGE</p>
-            <h2 data-pt="Expressões que fazem o trabalho">Expressions that do the work</h2>
-            <p data-pt="O interpretador suporta operadores, acesso a objetos e arrays, slices, métodos de valores e funções anônimas.">The interpreter supports operators, object and array access, slices, value methods, and anonymous functions.</p>
+            <p class="eyebrow">05 · FEATURES</p>
+            <h2>A small surface for complete workflows.</h2>
+            <p>Each construct has one clear role. The reference includes syntax, fields, and complete examples for all of them.</p>
           </div>
-          <div class="reference-table">
-            <div class="table-row table-head"><span data-pt="Construção">Construct</span><span data-pt="Exemplo">Example</span><span data-pt="Uso">Use</span></div>
-            <div class="table-row"><span data-pt="Operadores">Operators</span><code>a + b * 2</code><span data-pt="aritmética e lógica">arithmetic and logic</span></div>
-            <div class="table-row"><span data-pt="Acesso">Access</span><code>record.status</code><span data-pt="campos estáticos">static fields</span></div>
-            <div class="table-row"><span data-pt="Índice">Index</span><code>items[i]</code><span data-pt="arrays e chaves dinâmicas">arrays and dynamic keys</span></div>
-            <div class="table-row"><span>Slice</span><code>items[1..^1]</code><span data-pt="cópia de intervalos">range copies</span></div>
-            <div class="table-row"><span>Closure</span><code>(item) -&gt; item.active</code><span data-pt="filter, find e sort_by">filter, find, and sort_by</span></div>
+          <div class="feature-catalog">
+            <a class="feature-card" href="reference.html#agent"><span>01</span><h3><code>agent</code></h3><p>Local CLI or Ollama, with retry, cache, rate limits, and fallback.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#prompt"><span>02</span><h3><code>prompt</code></h3><p>Typed templates, interpolation, composition, and Markdown files.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#skill"><span>03</span><h3><code>skill</code></h3><p>Input/output contract and context scoped to tools and MCP.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#memory"><span>04</span><h3><code>memory</code> / <code>mem</code></h3><p>Ephemeral KV, persistent JSON, append-only logs, and loop state.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#tool"><span>05</span><h3><code>tool</code></h3><p>Reusable methods over processes, files, Git, HTTP, and JSON.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#mcp"><span>06</span><h3><code>mcp_server</code></h3><p>MCP server configuration over stdio or HTTP with credentials.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#pipeline"><span>07</span><h3><code>pipeline</code></h3><p>Inputs, shared variables, steps, checkpoints, and recovery.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#tests"><span>08</span><h3><code>test</code></h3><p>Self-verifying examples with assertions and case isolation.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#syntax"><span>09</span><h3>Syntax</h3><p>Types, collections, lambdas, operators, and control flow.</p><b>view reference →</b></a>
           </div>
-          <pre class="code-block"><code class="language-mhl">var ready = retries < 3 && items.size() > 0
-var active = items.filter((item) -> item.enabled)
-var first = active[0]
-var result = if (ready) "continue" else "stop"
-
-log.info("itens ativos:", active.size())
-fail("interromper com erro tratável")</code></pre>
         </section>
 
-        <section class="doc-section" id="controle-fluxo" data-title="Control flow statements if while for break return try catch finally Controle de fluxo">
+        <section class="doc-section" id="complete-example" data-title="complete example agent prompt tool memory loop pipeline retry fix test">
           <div class="section-heading">
-            <p class="eyebrow" data-pt="04 · LINGUAGEM">04 · LANGUAGE</p>
-            <h2 data-pt="Statements dentro de um step">Statements inside a step</h2>
-            <p data-pt="Além de expressões, o corpo de um &lt;code&gt;step&lt;/code&gt; ou de um método de &lt;code&gt;tool&lt;/code&gt; aceita statements imperativos: condicionais, laços, atribuição, &lt;code&gt;return&lt;/code&gt;/&lt;code&gt;break&lt;/code&gt; e &lt;code&gt;try/catch/finally&lt;/code&gt;.">Besides expressions, the body of a <code>step</code> or a <code>tool</code> method accepts imperative statements: conditionals, loops, assignment, <code>return</code>/<code>break</code>, and <code>try/catch/finally</code>.</p>
+            <p class="eyebrow">06 · APPLIED EXAMPLE</p>
+            <h2>An engineering loop with explicit stop criteria.</h2>
+            <p>This example connects an agent, prompt, tool, and persistent state. The runtime executes a test, asks for a fix only when necessary, and stops on success or at the attempt ceiling.</p>
           </div>
-          <div class="reference-table">
-            <div class="table-row table-head"><span>Statement</span><span data-pt="Exemplo">Example</span><span data-pt="Uso">Use</span></div>
-            <div class="table-row"><span>If/else</span><code>if (cond) { ... } else { ... }</code><span data-pt="bloco condicional (não expressão)">conditional block (not an expression)</span></div>
-            <div class="table-row"><span>While</span><code>while (cond) { ... }</code><span data-pt="laço condicional">conditional loop</span></div>
-            <div class="table-row"><span>For..in</span><code>for (var item in items) { ... }</code><span data-pt="itera um array">iterates an array</span></div>
-            <div class="table-row"><span>Break</span><code>break "motivo"</code><span data-pt="interrompe o laço, com motivo opcional">stops the loop, with an optional reason</span></div>
-            <div class="table-row"><span>Return</span><code>return valor</code><span data-pt="encerra o step ou método">exits the step or method</span></div>
-            <div class="table-row"><span>Try/catch</span><code>try { } catch (err) { } finally { }</code><span data-pt="captura erro como string">captures the error as a string</span></div>
-          </div>
-          <div class="section-body">
-            <pre class="code-block"><code class="language-mhl">tool Counter {
-    count(items) -> {
-        var n = 0
-        while (n < items.size()) { n = n + 1 }
-        return n
-    }
-}
-
-pipeline Sync {
-    step Check {
-        for (var file in changed_files) {
-            if (file.size > max_size) break "arquivo grande demais"
-        }
-
-        try {
-            var config = fs.read("config.json")
-        } catch (err) {
-            log.warn("config ausente:", err)
-        } finally {
-            log.info("verificação concluída")
-        }
-    }
-}</code></pre>
-          </div>
-          <div class="tip-row"><span>NOTE</span><p data-pt="&lt;code&gt;catch (err)&lt;/code&gt; liga &lt;code&gt;err&lt;/code&gt; à mensagem do erro (string); &lt;code&gt;finally&lt;/code&gt; sempre roda, mesmo quando o &lt;code&gt;try&lt;/code&gt; ou o &lt;code&gt;catch&lt;/code&gt; propaga um &lt;code&gt;return&lt;/code&gt;, &lt;code&gt;break&lt;/code&gt; ou &lt;code&gt;goto&lt;/code&gt;."><code>catch (err)</code> binds <code>err</code> to the error's message (a string); <code>finally</code> always runs, even when the <code>try</code> or <code>catch</code> propagates a <code>return</code>, <code>break</code>, or <code>goto</code>.</p></div>
-        </section>
-
-        <section class="doc-section split-section" id="agentes" data-title="Agents CLI Ollama fallback retry cache Agentes">
-          <div class="section-heading">
-            <p class="eyebrow" data-pt="05 · IA">05 · AI</p>
-            <h2 data-pt="Agentes, sem acoplamento">Agents, without coupling</h2>
-            <p data-pt="A mesma abstração pode chamar um processo CLI local ou um modelo Ollama. A configuração fica separada do fluxo.">The same abstraction can call a local CLI process or an Ollama model. Configuration stays separate from the flow.</p>
-          </div>
-          <div class="section-body">
-            <pre class="code-block"><code class="language-mhl">agent LocalModel {
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-mhl">agent Fixer {
     engine: "ollama/qwen2.5-coder"
     endpoint: "http://localhost:11434"
-    temperature: 0.2
-    retry: {
-        max_attempts: 3
-        delay: 2s
-        retry_on: ["timeout", 503]
-    }
-}</code></pre>
-            <p class="muted" data-pt="A chamada é sempre uma expressão:">The call is always an expression:</p>
-            <pre class="code-block"><code class="language-mhl">var answer = LocalModel.run(
-    prompt: Review(file: "main.go", code: source),
-    schema: schema_text
-)</code></pre>
-          </div>
-        </section>
-
-        <section class="doc-section" id="prompts" data-title="Prompts modules imports interpolation Markdown Prompts módulos imports interpolação">
-          <div class="section-heading">
-            <p class="eyebrow" data-pt="06 · CONTEXTO">06 · CONTEXT</p>
-            <h2 data-pt="Prompts como código reutilizável">Prompts as reusable code</h2>
-            <p data-pt="Templates são cidadãos de primeira classe: recebem parâmetros nomeados, interpolam expressões e podem viver em arquivos Markdown externos.">Templates are first-class citizens: they take named parameters, interpolate expressions, and can live in external Markdown files.</p>
-          </div>
-          <div class="prompt-demo">
-            <div class="prompt-label">review.prompt.md</div>
-            <pre class="code-block"><code class="language-mhl">prompt Review(file: string, code: string) from "./review.prompt.md"
-
-// review.prompt.md
-# Revisão técnica
-
-Arquivo: ${file}
-
-${code}</code></pre>
-          </div>
-          <div class="tip-row"><span>TIP</span><p data-pt="Use &lt;code&gt;\${PLACEHOLDER}&lt;/code&gt; quando a variável pertence ao shell ou a outro template e deve ser mantida literalmente.">Use <code>\${PLACEHOLDER}</code> when the variable belongs to the shell or another template and must be kept literal.</p></div>
-        </section>
-
-        <section class="doc-section" id="memoria-tools" data-title="Memory tools cmd fs git http json Memória tools">
-          <div class="section-heading">
-            <p class="eyebrow" data-pt="07 · CAPACIDADES">07 · CAPABILITIES</p>
-            <h2 data-pt="Memória e ferramentas nativas">Memory and native tools</h2>
-            <p data-pt="Encapsule I/O em tools e escolha o tipo de memória de acordo com a duração e a forma dos dados.">Wrap I/O in tools and pick the memory type based on how long the data lives and its shape.</p>
-          </div>
-          <div class="card-grid three">
-            <article class="info-card accent-card"><span class="card-icon">⌁</span><h3>KV</h3><p data-pt="Efêmera, rápida e isolada por execução com &lt;code&gt;set&lt;/code&gt; e &lt;code&gt;get&lt;/code&gt;.">Ephemeral, fast, and isolated per run, with <code>set</code> and <code>get</code>.</p></article>
-            <article class="info-card"><span class="card-icon">▣</span><h3>JSON</h3><p data-pt="Persistente em arquivo, ideal para estado entre execuções.">Persisted to file, ideal for state across runs.</p></article>
-            <article class="info-card"><span class="card-icon">≋</span><h3>Append log</h3><p data-pt="Histórico textual ou JSONL somente para anexação.">Append-only text or JSONL history.</p></article>
-          </div>
-          <pre class="code-block"><code class="language-mhl">memory session {
-    type: "kv"
-    store: "memory"
+    temperature: 0.1
+    retry: { max_attempts: 3, delay: 2s }
+    cache: { ttl: 10m }
 }
 
-tool project {
-    read(path: string) -> fs.read(path)
-    test() -> cmd.exec(["go", "test", "./..."], timeout: 120s)
+prompt Repair(diff: string, failure: string) {
+    """
+    Change as little code as possible to fix the failure.
+
+    Current diff:
+    ${diff}
+
+    Test failure:
+    ${failure}
+    """
 }
 
-session.set("attempt", 1)
-var attempt = session.get("attempt", 0)</code></pre>
-          <div class="native-list"><span><b>cmd</b> exec · exec_all</span><span><b>fs</b> read · write · list</span><span><b>git</b> diff · status · commit</span><span><b>json</b> parse · stringify</span><span><b>http</b> post</span></div>
-        </section>
+tool Project {
+    test() -> cmd.exec(["go", "test", "./..."], timeout: 2m)
+    diff() -> git.diff()
+}
 
-        <section class="doc-section" id="pipelines" data-title="Pipelines steps checkpoint resume loop">
-          <div class="section-heading">
-            <p class="eyebrow" data-pt="08 · ORQUESTRAÇÃO">08 · ORCHESTRATION</p>
-            <h2 data-pt="Fluxos que continuam">Flows that keep going</h2>
-            <p data-pt="Steps são executados em ordem, podem redirecionar com &lt;code&gt;goto&lt;/code&gt; e persistir progresso com checkpoints por step.">Steps run in order, can redirect with <code>goto</code>, and persist progress with per-step checkpoints.</p>
-          </div>
-          <pre class="code-block"><code class="language-mhl">pipeline Recoverable {
-    checkpoint: {
-        enabled: true
-        strategy: "per_step"
-        storage: "file"
-        ttl: 7d
+loop pipeline AutoRepair {
+    mem attempts = 0
+    mem done = false
+
+    repeat: {
+        stop_when: done
+        max_iterations: 5
     }
 
     step Verify {
-        var result = project.test()
-        if (result.exit_code != 0) goto Repair
-    }
-
-    step Repair {
-        log.warn("corrigir e tentar novamente")
-    }
-}</code></pre>
-          <div class="flow-diagram"><span>input</span><i>→</i><strong>step</strong><i>→</i><span>checkpoint</span><i>→</i><strong>resume</strong></div>
-          <div class="tip-row"><span>NOTE</span><p data-pt="O estado fica em &lt;code&gt;.mhl/state/&lt;/code&gt;. Uma execução concluída limpa o checkpoint; uma falha permite &lt;code&gt;mhl run file.mh --resume&lt;/code&gt;.">State lives in <code>.mhl/state/</code>. A completed run clears the checkpoint; a failure lets you <code>mhl run file.mh --resume</code>.</p></div>
-          <p class="muted" data-pt="Prefixar com &lt;code&gt;loop&lt;/code&gt; repete o pipeline inteiro segundo uma política de &lt;code&gt;repeat&lt;/code&gt;:">Prefixing with <code>loop</code> repeats the whole pipeline according to a <code>repeat</code> policy:</p>
-          <pre class="code-block"><code class="language-mhl">memory poll {
-    type: "kv"
-    store: "memory"
-}
-
-loop pipeline Poll {
-    repeat: {
-        stop_when: poll.get("status") == "done"
-        max_iterations: 20
-    }
-
-    step Check {
-        var status = if (project.test().exit_code == 0) "done" else "pending"
-        poll.set("status", status)
+        var result = Project.test()
+        if (result.exit_code == 0) {
+            done = true
+        } else {
+            attempts = attempts + 1
+            var patch = Fixer.run(prompt: Repair(
+                diff: Project.diff(),
+                failure: result.stderr
+            ))
+            fs.write("candidate.patch", patch)
+        }
     }
 }</code></pre>
-          <div class="tip-row"><span>NOTE</span><p data-pt="&lt;code&gt;stop_when&lt;/code&gt; roda num ambiente próprio, fora de qualquer step — &lt;code&gt;var&lt;/code&gt; de step não é visível ali, então o estado observado entre iterações precisa passar por &lt;code&gt;memory&lt;/code&gt;. &lt;code&gt;max_iterations&lt;/code&gt; é um teto rígido; ambos os campos são opcionais."><code>stop_when</code> runs in its own environment, outside any step — a step's <code>var</code> isn't visible there, so state observed across iterations has to go through <code>memory</code>. <code>max_iterations</code> is a hard ceiling; both fields are optional.</p></div>
+          </div>
+          <div class="example-steps">
+            <div><span>1</span><p><strong>Verify</strong> with a deterministic command.</p></div>
+            <div><span>2</span><p><strong>Call AI</strong> only after an objective failure.</p></div>
+            <div><span>3</span><p><strong>Bound</strong> agent retries and pipeline iterations.</p></div>
+            <div><span>4</span><p><strong>Persist</strong> progress to inspect and resume the loop.</p></div>
+          </div>
         </section>
 
-        <section class="doc-section split-section" id="mcp" data-title="MCP servers retry cache rate limit servidores resiliência">
+        <section class="doc-section research-section" id="research" data-title="research paper study zenodo doi inverted orchestration looping engineering">
           <div class="section-heading">
-            <p class="eyebrow" data-pt="09 · INTEGRAÇÕES">09 · INTEGRATIONS</p>
-            <h2 data-pt="MCP e resiliência">MCP and resilience</h2>
-            <p data-pt="Declare servidores MCP stateless via stdio ou HTTP, injete credenciais com ambiente e controle tráfego.">Declare stateless MCP servers over stdio or HTTP, inject credentials via the environment, and control traffic.</p>
+            <p class="eyebrow">07 · FOUNDATIONS</p>
+            <h2>The idea behind the language.</h2>
+            <p>MHL materializes the <em>Inverted Orchestration</em> pattern: a deterministic harness keeps control of transitions, state, verification, and limits while specialized agents operate within that boundary.</p>
           </div>
-          <div class="section-body">
-            <pre class="code-block"><code class="language-mhl">mcp_server RemoteTools {
-    transport: "http"
-    url: "https://example.test/mcp"
-    headers: {
-        "Authorization": "Bearer " + env("MCP_TOKEN")
-    }
+          <article class="paper-card">
+            <div class="paper-mark">DOI</div>
+            <div>
+              <p class="eyebrow accent">REFERENCE STUDY · 2026</p>
+              <h3>Inverted Orchestration in Software Development: A Deterministic Harness and Looping Engineering under Enterprise Constraints</h3>
+              <p>Yan Justino · Zenodo · v0.1.0</p>
+              <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">10.5281/zenodo.21421908 ↗</a>
+            </div>
+          </article>
+          <p class="block-label">BIBTEX CITATION</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>@misc{justino_2026_21421908,
+  author    = {Justino, Yan},
+  title     = {Inverted Orchestration in Software Development:
+               A Deterministic Harness and Looping Engineering
+               under Enterprise Constraints},
+  year      = {2026},
+  month     = jul,
+  publisher = {Zenodo},
+  version   = {v0.1.0},
+  doi       = {10.5281/zenodo.21421908},
+  url       = {https://doi.org/10.5281/zenodo.21421908}
 }</code></pre>
-            <div class="mini-stats"><div><strong>SHA-256</strong><span data-pt="cache exato">exact-match cache</span></div><div><strong>TTL</strong><span data-pt="expiração explícita">explicit expiration</span></div><div><strong>RPM</strong><span data-pt="limite de chamadas">call rate limit</span></div></div>
           </div>
         </section>
 
-        <section class="doc-section" id="cli" data-title="CLI lint test diagnostics security diagnóstico segurança">
+        <section class="doc-section" id="contributions" data-title="contributions creator yan justino community github credit authorship">
           <div class="section-heading">
-            <p class="eyebrow" data-pt="10 · OPERAR">10 · OPERATE</p>
-            <h2 data-pt="CLI e diagnóstico">CLI and diagnostics</h2>
-            <p data-pt="O binário &lt;code&gt;mhl&lt;/code&gt; concentra execução, testes, lint e a integração LSP.">The <code>mhl</code> binary handles execution, tests, lint, and LSP integration.</p>
+            <p class="eyebrow">08 · CONTRIBUTIONS</p>
+            <h2>An open language for AI-assisted engineering.</h2>
+            <p>MHL was created by <strong>Yan Justino</strong>, author of the Inverted Orchestration proposal and the original designer of the language and its runtime.</p>
           </div>
-          <div class="cli-grid">
-            <div class="cli-command"><code>mhl run main.mh</code><span data-pt="executar pipeline">run pipeline</span></div>
-            <div class="cli-command"><code>mhl run main.mh --resume</code><span data-pt="retomar estado">resume state</span></div>
-            <div class="cli-command"><code>mhl test tests/</code><span data-pt="rodar blocos test">run test blocks</span></div>
-            <div class="cli-command"><code>mhl lint .</code><span data-pt="validar fonte e imports">validate source and imports</span></div>
-            <div class="cli-command"><code>mhl skills list</code><span data-pt="listar skills">list skills</span></div>
-            <div class="cli-command"><code>mhl lsp</code><span data-pt="servidor de linguagem">language server</span></div>
+          <div class="contribution-panel">
+            <div class="creator-card">
+              <div class="creator-monogram" aria-hidden="true">YJ</div>
+              <div><small>CREATOR</small><h3>Yan Justino</h3><p>Language, runtime, and original research.</p></div>
+            </div>
+            <div class="contribution-copy">
+              <h3>How to contribute</h3>
+              <p>Contributions are welcome across examples, documentation, runtime behavior, diagnostics, and editor support. Include a reproducible case, keep credentials out of source, and accompany new constructs with tests.</p>
+              <a class="button primary" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">Contribute on GitHub <span>↗</span></a>
+            </div>
           </div>
-          <div class="security-banner"><span>!</span><div><strong data-pt="Zero-trust por padrão">Zero-trust by default</strong><p data-pt="Não versione tokens. Use &lt;code&gt;env(&amp;quot;API_TOKEN&amp;quot;)&lt;/code&gt;, prefira argv a comandos concatenados e revise logs/trace antes de habilitar em produção.">Don't commit tokens. Use <code>env("API_TOKEN")</code>, prefer argv over concatenated commands, and review logs/trace before enabling in production.</p></div></div>
         </section>
 
-        <footer class="site-footer"><span>© MHL · Meta-Harness Language</span><a href="https://github.com/mh-language/mhl-core-runtime/tree/main/docs/wiki" target="_blank" rel="noreferrer" data-pt="Manual completo em Markdown →">Full manual in Markdown →</a></footer>
+        <footer class="site-footer">
+          <span>© 2026 MHL · Created by Yan Justino</span>
+          <span><a href="reference.html">Language reference</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+        </footer>
       </main>
     </div>
     <script src="app.js"></script>

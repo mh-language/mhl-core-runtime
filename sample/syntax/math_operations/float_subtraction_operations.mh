@@ -1,0 +1,8 @@
+test float_subtraction_operations {
+    describe float_subtraction_operations {
+        var A = 0.005
+        var B = 0.002
+        var C = A - B
+        are_equal(C, 0.003)
+    }
+}

@@ -1,0 +1,12 @@
+test substring_out_of_range_errors {
+    describe substring_out_of_range_errors {
+        var result = ""
+        try {
+            var s = "hi".substring(0, 5)
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: substring(0, 5) out of range (length 2)")
+    }
+}

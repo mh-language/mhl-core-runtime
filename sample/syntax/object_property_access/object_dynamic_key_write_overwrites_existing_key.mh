@@ -1,0 +1,8 @@
+test object_dynamic_key_write_overwrites_existing_key {
+    describe object_dynamic_key_write_overwrites_existing_key {
+        var obj = {"key1": "value1"}
+        var key = "key1"
+        obj[key] = "updated"
+        are_equal(obj.key1, "updated")
+    }
+}

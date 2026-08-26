@@ -1,0 +1,7 @@
+test sort_by_string {
+    describe sort_by_string {
+        var names = ["charlie", "alice", "bob"]
+        var sorted = names.sort_by((n) -> n)
+        are_equal(sorted, ["alice", "bob", "charlie"])
+    }
+}

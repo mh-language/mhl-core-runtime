@@ -10,14 +10,9 @@ LDFLAGS := -s -w
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(DIST)/mhl $(CMD)
-	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(TEST)/mhl $(CMD)
 
 test:
 	go test ./...
-
-functional-test:
-	$(TEST)/mhl test $(TEST)/e2e/features
-	$(TEST)/mhl test $(TEST)/e2e/lang/syntax
 
 release: $(DIST)/linux-amd64/mhl $(DIST)/darwin-arm64/mhl $(DIST)/windows-amd64/mhl.exe
 

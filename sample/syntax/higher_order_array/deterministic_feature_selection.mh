@@ -1,0 +1,21 @@
+// Reproduces FeatureStore.NextPending() (dotnet/Flows.Development): among the
+// pending features whose dependencies are all already passed, pick the one
+// with the highest priority (lowest number).
+test deterministic_feature_selection {
+    describe deterministic_feature_selection {
+        var passedIds = [10]
+        var features = [
+            {"id": 20, "status": "pending", "priority": 2, "dependsOn": [10]},
+            {"id": 30, "status": "pending", "priority": 1, "dependsOn": [99]},
+            {"id": 40, "status": "pending", "priority": 3, "dependsOn": []}
+        ]
+        var ready = features
+            .filter((f) -> f.status == "pending")
+            .filter((f) -> f.dependsOn.filter((d) -> !passedIds.contains(d)).is_empty())
+            .sort_by((f) -> f.priority)
+
+        are_equal(ready.size(), 2)
+        var next = ready[0]
+        are_equal(next.id, 20)
+    }
+}

@@ -1,0 +1,19 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+// fs.append is the progress.txt use case: one line per completed feature,
+// added without reading the whole file back first -- each line here comes
+// from a value already sitting in memory.
+test memory_session_mem_value_appended_as_a_progress_line {
+    describe memory_session_mem_value_appended_as_a_progress_line {
+        SessionJsonMem.set("last_feature", "auth")
+        var feature = SessionJsonMem.get("last_feature")
+
+        fs.append(".mhl/progress.txt", "Feature ${feature}: PASS\n")
+        fs.append(".mhl/progress.txt", "Feature checkout: PASS\n")
+
+        var lines = fs.read(".mhl/progress.txt").trim().split("\n")
+        are_equal(lines.size(), 2)
+        are_equal(lines[0], "Feature auth: PASS")
+        are_equal(lines[1], "Feature checkout: PASS")
+    }
+}

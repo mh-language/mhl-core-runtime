@@ -1,0 +1,13 @@
+use {ClaudeCLI} from "fixtures/agents.mh"
+
+test claude_cli_calls_the_real_api {
+    describe claude_cli_calls_the_real_api {
+        if (env("ENABLE_LLM_CALL") == "1") {
+            var response = ClaudeCLI.run(prompt: "Ping")
+            log("Response from ClaudeCLI: ${response}")
+            not_null(response)
+        } else {
+            incomplete("set ENABLE_LLM_CALL=1 to run this against the real claude CLI")
+        }
+    }
+}

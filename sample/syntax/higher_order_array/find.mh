@@ -1,0 +1,11 @@
+test find {
+    describe find {
+        var users = [
+            {"id": 1, "status": "pending"},
+            {"id": 2, "status": "passed"},
+            {"id": 3, "status": "pending"}
+        ]
+        var found = users.find((u) -> u.status == "passed")
+        are_equal(found.id, 2)
+    }
+}

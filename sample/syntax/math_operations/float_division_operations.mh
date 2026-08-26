@@ -1,0 +1,8 @@
+test float_division_operations {
+    describe float_division_operations {
+        var A = 0.006
+        var B = 0.002
+        var C = A / B
+        are_equal(C, 3.0)
+    }
+}

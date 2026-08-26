@@ -1,0 +1,8 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+test memory_session_mem {
+    describe memory_session_mem {
+        SessionJsonMem.set("key1", "value1")
+        are_equal(SessionJsonMem.get("key1"), "value1")
+    }
+}

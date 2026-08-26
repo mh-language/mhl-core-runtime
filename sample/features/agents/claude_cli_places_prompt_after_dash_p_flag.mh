@@ -1,0 +1,8 @@
+use {MockClaudeCLI} from "fixtures/agents.mh"
+
+test claude_cli_places_prompt_after_dash_p_flag {
+    describe claude_cli_places_prompt_after_dash_p_flag {
+        var response = MockClaudeCLI.run(prompt: "Revise a PR #42")
+        are_equal(response, "-p Revise a PR #42 --agent security-audit --permission-mode bypassPermissions --output-format stream-json --json-schema {\"type\": \"object\", \"properties\": {\"message\": {\"type\": \"string\"}}, \"required\": [\"message\"]} --verbose")
+    }
+}

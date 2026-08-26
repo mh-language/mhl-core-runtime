@@ -1,0 +1,7 @@
+test split_on_missing_separator_returns_the_whole_string {
+    describe split_on_missing_separator_returns_the_whole_string {
+        var parts = "abc".split(",")
+        are_equal(parts.size(), 1)
+        are_equal(parts[0], "abc")
+    }
+}

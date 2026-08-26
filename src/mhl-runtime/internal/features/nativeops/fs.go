@@ -2,6 +2,7 @@ package nativeops
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -66,6 +67,58 @@ func Append(path, content string) (bool, error) {
 		return false, fmt.Errorf("fs.append %q: %w", path, err)
 	}
 	return true, nil
+}
+
+// appendWriter is an io.WriteCloser that appends each Write directly to a
+// file, opening (and creating any missing parent directories for) that file
+// lazily on the first non-empty Write rather than at construction — the same
+// "created on first write" behavior Append has, extended to a stream of
+// writes instead of one already-complete string. A caller that never writes
+// to it, or writes only empty chunks, never touches the filesystem, and
+// Close is a safe no-op in that case too.
+type appendWriter struct {
+	path string
+	f    *os.File
+}
+
+func (w *appendWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if w.f == nil {
+		if dir := filepath.Dir(w.path); dir != "." {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return 0, fmt.Errorf("fs.append %q: creating %s: %w", w.path, dir, err)
+			}
+		}
+		f, err := os.OpenFile(w.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return 0, fmt.Errorf("fs.append %q: %w", w.path, err)
+		}
+		w.f = f
+	}
+	n, err := w.f.Write(p)
+	if err != nil {
+		return n, fmt.Errorf("fs.append %q: %w", w.path, err)
+	}
+	return n, nil
+}
+
+func (w *appendWriter) Close() error {
+	if w.f == nil {
+		return nil
+	}
+	return w.f.Close()
+}
+
+// AppendWriter returns an io.WriteCloser that streams writes to path one
+// chunk at a time instead of requiring the full content up front like
+// Append does — for a caller (e.g. an agent's `log:` property) that wants to
+// persist a subprocess's output as it arrives rather than buffering the
+// whole thing in memory until the process exits. The caller is responsible
+// for calling Close once it's done writing.
+func AppendWriter(path string) io.WriteCloser {
+	return &appendWriter{path: path}
 }
 
 // List returns the paths of dir's immediate entries — files and

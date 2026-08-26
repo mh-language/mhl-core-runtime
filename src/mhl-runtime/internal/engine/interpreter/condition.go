@@ -13,11 +13,16 @@ import (
 // because a loop's stop condition isn't inside any step body: it's
 // re-checked by runtime.LoopRunner once a full pipeline iteration finishes,
 // so there's no *ast.Step for RunStep to run it as part of. Like a step's
-// own `var`, nothing declared while evaluating expr persists anywhere —
-// state a stop_when needs to observe across iterations is expected to go
-// through `memory`, exactly as a step's would.
-func EvalCondition(prog *ast.Program, expr *ast.Expr, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore) (bool, error) {
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, file: file}
+// own `var`, nothing declared while evaluating expr persists anywhere, and
+// a pipeline `var` is not visible here either (pipelineEnv is intentionally
+// left unset) — state a stop_when needs to observe across iterations is
+// expected to go through `mem` or `memory`, not `var`; see
+// checkLoopStopWhen (internal/lang/lint/loop.go), which flags a `var`
+// reference here at lint time. mem (may be nil) is the one exception: a
+// pipeline's `mem` declarations ARE visible here, since surviving
+// stop_when's own re-checks across iterations is `mem`'s entire purpose.
+func EvalCondition(prog *ast.Program, expr *ast.Expr, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, mem *MemContext) (bool, error) {
+	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, mem: mem, file: file}
 	v, err := evalExpr(ctx, expr)
 	if err != nil {
 		return false, err

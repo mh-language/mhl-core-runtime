@@ -1,0 +1,6 @@
+test trim {
+    describe trim {
+        are_equal("  hello  ".trim(), "hello")
+        are_equal("no-padding".trim(), "no-padding")
+    }
+}

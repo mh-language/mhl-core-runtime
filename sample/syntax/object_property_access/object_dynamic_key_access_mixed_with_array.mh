@@ -1,0 +1,9 @@
+test object_dynamic_key_access_mixed_with_array {
+    describe object_dynamic_key_access_mixed_with_array {
+        var obj = {"key1": [1, 2, 3]}
+        var key = "key1"
+        are_equal(obj[key][0], 1)
+        are_equal(obj[key][1], 2)
+        are_equal(obj[key][2], 3)
+    }
+}

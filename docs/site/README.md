@@ -1,9 +1,9 @@
-# Site da documentação MHL
+# MHL documentation site
 
-Este diretório contém uma versão estática do manual da linguagem, pronta para publicação no GitHub Pages.
+This directory contains the public, self-contained en-US documentation for the Meta-Harness Language, ready for static publishing. The home page covers motivation, positioning, a quickstart, an applied example, the reference research, and contributions. `reference.html` documents the syntax and every language construct with complete examples.
 
-## Publicação
+## Publishing
 
-Configure o GitHub Pages para publicar o diretório `docs/site`, ou use uma GitHub Action de Pages com esse diretório como artefato. O site não depende de build nem de backend.
+Configure GitHub Pages to publish `docs/site`, or use a Pages workflow with this directory as its artifact. The site requires no build step or backend.
 
-O destaque de sintaxe é implementado em `app.js`, portanto funciona para MHL mesmo que o GitHub não reconheça `mhl` como uma linguagem nativa em blocos Markdown.
+Syntax highlighting is implemented in `app.js`, so MHL is highlighted even when GitHub does not recognize `mhl` as a native Markdown code-block language.

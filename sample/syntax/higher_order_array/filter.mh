@@ -1,0 +1,10 @@
+test filter {
+    describe filter {
+        var numbers = [1, 2, 3, 4, 5, 6]
+        var even = numbers.filter((n) -> n % 2 == 0)
+        are_equal(even.size(), 3)
+        are_equal(even[0], 2)
+        are_equal(even[1], 4)
+        are_equal(even[2], 6)
+    }
+}

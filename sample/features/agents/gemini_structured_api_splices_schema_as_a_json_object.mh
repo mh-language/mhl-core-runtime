@@ -1,0 +1,12 @@
+use {MockGeminiStructuredAPI} from "fixtures/agents.mh"
+
+test gemini_structured_api_splices_schema_as_a_json_object {
+    describe gemini_structured_api_splices_schema_as_a_json_object {
+        var response = MockGeminiStructuredAPI.run(prompt: "Ping", schema: "{\"type\": \"object\", \"properties\": {\"message\": {\"type\": \"string\"}}, \"required\": [\"message\"]}")
+        var parsed = json.parse(response)
+        are_equal(parsed.contents[0].parts[0].text, "Ping")
+        are_equal(parsed.generationConfig.responseMimeType, "application/json")
+        are_equal(parsed.generationConfig.responseSchema.type, "object")
+        are_equal(parsed.generationConfig.responseSchema.required[0], "message")
+    }
+}

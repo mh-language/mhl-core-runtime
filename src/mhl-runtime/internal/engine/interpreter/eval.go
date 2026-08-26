@@ -46,6 +46,13 @@ type evalCtx struct {
 	// accidentally redeclare a pipeline variable out from under later
 	// steps.
 	pipelineEnv Env
+	// mem backs a pipeline's `mem` declarations (PipelineMember.Mem) — nil
+	// wherever the pipeline declares none. Checked as the third and last
+	// fallback tier by evalPrimary's Ident case and execAssign, after env
+	// and pipelineEnv, and set (unlike pipelineEnv) in EvalCondition too:
+	// unlike a pipeline `var`, a `mem` var is exactly what `stop_when` is
+	// meant to be able to read — see MemContext's doc comment (memvar.go).
+	mem *MemContext
 	// file is the entry .mh file RunStep was called with, used only to
 	// prefix a runtime error with its statement's position (see
 	// execStatement's positionedError wrap in exec.go). A declaration
@@ -403,6 +410,17 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 				return nil, fmt.Errorf("self.%s: %w", member, err)
 			}
 			return applyTrailers(ctx, v, p.Ops[2:], depth)
+		case isMemVar(ctx, name):
+			if member != "reset" {
+				return nil, fmt.Errorf("mem %q has no method %q", name, member)
+			}
+			if len(call.Args) != 0 {
+				return nil, fmt.Errorf("%s.reset: takes no arguments", name)
+			}
+			if err := resetMemVar(ctx, name); err != nil {
+				return nil, err
+			}
+			return applyTrailers(ctx, nil, p.Ops[2:], depth)
 		default:
 			if mem, ok := findMemory(ctx.prog, name); ok {
 				if !isMemoryMethod(member) {
@@ -1201,6 +1219,9 @@ func evalPrimary(ctx *evalCtx, p *ast.Primary, depth int) (any, error) {
 		}
 		if v, ok := ctx.pipelineEnv[p.Ident]; ok {
 			return v, nil
+		}
+		if isMemVar(ctx, p.Ident) {
+			return readMemVar(ctx, p.Ident)
 		}
 		return nil, fmt.Errorf("undefined variable %q", p.Ident)
 	case p.Agent != nil:

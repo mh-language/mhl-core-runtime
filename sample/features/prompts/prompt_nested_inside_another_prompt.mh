@@ -1,0 +1,12 @@
+use {SecurityExpertRole, SystemPrompt} from "fixtures/prompts.mh"
+use {Echo} from "fixtures/agents.mh"
+
+test prompt_nested_inside_another_prompt {
+    describe prompt_nested_inside_another_prompt {
+        var response = Echo.run(prompt: SystemPrompt(
+            role: SecurityExpertRole(),
+            task: "Revise o pull request #42."
+        ))
+        are_equal(response, "Voce e um especialista em seguranca de software.\n\n    Revise o pull request #42.")
+    }
+}

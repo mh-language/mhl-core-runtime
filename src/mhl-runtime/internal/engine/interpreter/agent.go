@@ -3,7 +3,6 @@ package interpreter
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -197,12 +196,13 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 			if argErr != nil {
 				return traffic.Result{}, fmt.Errorf("agent %q: %w", agentName, argErr)
 			}
-			result, runErr = (adapters.CLI{Command: tools.Cmd{}}).Run(context.Background(), command, finalArgs...)
-			if logPath, hasLog := agentLogPath(agent); hasLog && result.Stdout != "" {
-				if _, logErr := nativeops.Append(logPath, result.Stdout); logErr != nil {
-					return traffic.Result{}, fmt.Errorf("agent %q: writing log: %w", agentName, logErr)
-				}
+			cmd := tools.Cmd{}
+			if logPath, hasLog := agentLogPath(agent); hasLog {
+				logWriter := nativeops.AppendWriter(logPath)
+				defer logWriter.Close()
+				cmd.Stdout = logWriter
 			}
+			result, runErr = (adapters.CLI{Command: cmd}).Run(context.Background(), command, finalArgs...)
 		} else {
 			result, runErr = (adapters.Ollama{}).Run(context.Background(), endpoint, model, promptText, temperature, schemaText)
 		}
@@ -232,24 +232,7 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 }
 
 func agentCommand(agent *ast.Agent) (string, []string, error) {
-	command := ""
-	var args []string
-	for _, prop := range agent.Props {
-		switch prop.Name {
-		case "command":
-			command, _ = ast.StringValue(prop.Value)
-		case "args":
-			var ok bool
-			args, ok = ast.StringArrayValue(prop.Value)
-			if !ok {
-				return "", nil, fmt.Errorf("agent %q args must be an array of strings", agent.Name)
-			}
-		}
-	}
-	if command == "" {
-		return "", nil, fmt.Errorf("agent %q has no command", agent.Name)
-	}
-	return command, args, nil
+	return ast.AgentCommand(agent)
 }
 
 // injectPromptArg places promptText into args at the position marked by a
@@ -303,21 +286,17 @@ func injectSchemaArg(args []string, schemaText string) ([]string, error) {
 // agentEngine reads the agent's engine property. ok is false when the
 // property is absent or not a string.
 func agentEngine(agent *ast.Agent) (string, bool) {
-	for _, prop := range agent.Props {
-		if prop.Name == "engine" {
-			return ast.StringValue(prop.Value)
-		}
-	}
-	return "", false
+	return ast.AgentEngine(agent)
 }
 
 // agentLogPath reads an agent's `log` property — a file path that every
-// cli/* engine call appends its subprocess's raw stdout to, creating the
-// file (and any missing parent directories) on first write. ok is false
-// when the agent declares no `log` property, letting callers skip the
-// write entirely rather than treating "no log" and "empty path" the same
-// way. Not consulted for the ollama/* engine, since that path calls an
-// HTTP endpoint rather than a subprocess.
+// cli/* engine call streams its subprocess's raw stdout into as it arrives
+// (via tools.Cmd.Stdout / nativeops.AppendWriter), creating the file (and
+// any missing parent directories) on first write rather than waiting for the
+// subprocess to exit. ok is false when the agent declares no `log` property,
+// letting callers skip the write entirely rather than treating "no log" and
+// "empty path" the same way. Not consulted for the ollama/* engine, since
+// that path calls an HTTP endpoint rather than a subprocess.
 func agentLogPath(agent *ast.Agent) (string, bool) {
 	for _, prop := range agent.Props {
 		if prop.Name == "log" {
@@ -352,81 +331,18 @@ func agentTrace(agent *ast.Agent) bool {
 // "ollama/"). temperature is nil when the agent declares no temperature
 // property.
 func agentOllamaConfig(agent *ast.Agent, engine string) (endpoint, model string, temperature *float64, err error) {
-	model = strings.TrimPrefix(engine, "ollama/")
-	for _, prop := range agent.Props {
-		switch prop.Name {
-		case "endpoint":
-			endpoint, _ = ast.StringValue(prop.Value)
-		case "temperature":
-			t, ok := ast.NumberValue(prop.Value)
-			if !ok {
-				return "", "", nil, fmt.Errorf("agent %q temperature must be a number", agent.Name)
-			}
-			temperature = &t
-		}
-	}
-	if endpoint == "" {
-		return "", "", nil, fmt.Errorf("agent %q has no endpoint", agent.Name)
-	}
-	return endpoint, model, temperature, nil
-}
-
-// objectField looks up a field by name (string or bare-identifier key) in
-// an already-unwrapped object literal, e.g. the `{ max_attempts: 3, ... }`
-// value of a `retry:` property.
-func objectField(obj *ast.Object, name string) (*ast.Expr, bool) {
-	if obj == nil {
-		return nil, false
-	}
-	for _, f := range obj.Fields {
-		if (f.KeyIdent != nil && *f.KeyIdent == name) || (f.KeyStr != nil && *f.KeyStr == name) {
-			return f.Value, true
-		}
-	}
-	return nil, false
+	return ast.AgentOllamaConfig(agent, engine)
 }
 
 // agentRetry reads an agent's `retry: { max_attempts, delay, retry_on }`
 // property into a traffic.Retrier. Absent `retry` yields a Retrier that
 // runs the call exactly once, so callers can use it unconditionally.
-//
-// SKETCH GAP: `backoff` is accepted but ignored — traffic.Retrier only
-// implements exponential backoff today, so a declared "linear"/"fixed"
-// strategy would silently behave as exponential rather than erroring.
 func agentRetry(agent *ast.Agent) (traffic.Retrier, error) {
-	retrier := traffic.Retrier{MaxAttempts: 1, Delay: time.Second}
-	for _, prop := range agent.Props {
-		if prop.Name != "retry" {
-			continue
-		}
-		obj := ast.BareObject(prop.Value)
-		if obj == nil {
-			return traffic.Retrier{}, fmt.Errorf("agent %q retry must be an object", agent.Name)
-		}
-		if v, ok := objectField(obj, "max_attempts"); ok {
-			n, numOk := ast.NumberValue(v)
-			if !numOk {
-				return traffic.Retrier{}, fmt.Errorf("agent %q retry.max_attempts must be a number", agent.Name)
-			}
-			retrier.MaxAttempts = int(n)
-		}
-		if v, ok := objectField(obj, "delay"); ok {
-			d, durOk := ast.DurationValue(v)
-			if !durOk {
-				return traffic.Retrier{}, fmt.Errorf("agent %q retry.delay must be a duration", agent.Name)
-			}
-			retrier.Delay = d
-		}
-		if v, ok := objectField(obj, "retry_on"); ok {
-			codes, arrOk := stringOrNumberArray(v)
-			if !arrOk {
-				return traffic.Retrier{}, fmt.Errorf("agent %q retry.retry_on must be an array of strings/numbers", agent.Name)
-			}
-			retrier.RetryOn = codes
-		}
-		break
+	maxAttempts, delay, retryOn, err := ast.AgentRetryConfig(agent)
+	if err != nil {
+		return traffic.Retrier{}, err
 	}
-	return retrier, nil
+	return traffic.Retrier{MaxAttempts: maxAttempts, Delay: delay, RetryOn: retryOn}, nil
 }
 
 // agentCaches holds one long-lived *traffic.Cache per declared agent (keyed
@@ -455,42 +371,22 @@ var (
 // SKETCH GAP: `strategy` is accepted but ignored — traffic.Cache only
 // implements exact-match (SHA-256 of engine+prompt+parameters) today.
 func agentCache(agent *ast.Agent) (cache *traffic.Cache, ttl time.Duration, hasCache bool, err error) {
-	for _, prop := range agent.Props {
-		if prop.Name != "cache" {
-			continue
-		}
-		obj := ast.BareObject(prop.Value)
-		if obj == nil {
-			return nil, 0, false, fmt.Errorf("agent %q cache must be an object", agent.Name)
-		}
-		ttl = 24 * time.Hour
-		if v, ok := objectField(obj, "ttl"); ok {
-			d, durOk := ast.DurationValue(v)
-			if !durOk {
-				return nil, 0, false, fmt.Errorf("agent %q cache.ttl must be a duration", agent.Name)
-			}
-			ttl = d
-		}
-		dir := ""
-		if v, ok := objectField(obj, "storage"); ok {
-			storage, strOk := ast.StringValue(v)
-			if !strOk {
-				return nil, 0, false, fmt.Errorf("agent %q cache.storage must be a string", agent.Name)
-			}
-			if storage == "disk" {
-				dir = ".mhl-cache"
-			}
-		}
-		agentCachesMu.Lock()
-		cache, ok := agentCaches[agent]
-		if !ok {
-			cache = traffic.NewCache(dir)
-			agentCaches[agent] = cache
-		}
-		agentCachesMu.Unlock()
-		return cache, ttl, true, nil
+	ttl, diskStorage, hasCache, err := ast.AgentCacheConfig(agent)
+	if err != nil || !hasCache {
+		return nil, 0, false, err
 	}
-	return nil, 0, false, nil
+	dir := ""
+	if diskStorage {
+		dir = ".mhl-cache"
+	}
+	agentCachesMu.Lock()
+	cache, ok := agentCaches[agent]
+	if !ok {
+		cache = traffic.NewCache(dir)
+		agentCaches[agent] = cache
+	}
+	agentCachesMu.Unlock()
+	return cache, ttl, true, nil
 }
 
 // agentLimiters holds one long-lived *traffic.Limiter per declared agent —
@@ -516,46 +412,22 @@ var (
 // Limiter.Acquire only implements one behavior (block and wait) regardless
 // of its value — a "reject" (fail-fast) mode isn't implemented.
 func agentLimiter(agent *ast.Agent) (*traffic.Limiter, error) {
-	for _, prop := range agent.Props {
-		if prop.Name != "rate_limit" {
-			continue
-		}
-		obj := ast.BareObject(prop.Value)
-		if obj == nil {
-			return nil, fmt.Errorf("agent %q rate_limit must be an object", agent.Name)
-		}
-		limiter := &traffic.Limiter{}
-		if v, ok := objectField(obj, "requests_per_minute"); ok {
-			n, numOk := ast.NumberValue(v)
-			if !numOk {
-				return nil, fmt.Errorf("agent %q rate_limit.requests_per_minute must be a number", agent.Name)
-			}
-			limiter.RequestsPerMinute = int(n)
-		}
-		if v, ok := objectField(obj, "concurrency"); ok {
-			n, numOk := ast.NumberValue(v)
-			if !numOk {
-				return nil, fmt.Errorf("agent %q rate_limit.concurrency must be a number", agent.Name)
-			}
-			limiter.Concurrency = int(n)
-		}
-		if v, ok := objectField(obj, "on_exceeded"); ok {
-			s, strOk := ast.StringValue(v)
-			if !strOk {
-				return nil, fmt.Errorf("agent %q rate_limit.on_exceeded must be a string", agent.Name)
-			}
-			limiter.OnExceeded = s
-		}
-		agentLimitersMu.Lock()
-		shared, ok := agentLimiters[agent]
-		if !ok {
-			shared = limiter
-			agentLimiters[agent] = shared
-		}
-		agentLimitersMu.Unlock()
-		return shared, nil
+	requestsPerMinute, concurrency, onExceeded, hasLimit, err := ast.AgentLimiterConfig(agent)
+	if err != nil {
+		return nil, err
 	}
-	return &traffic.Limiter{}, nil
+	if !hasLimit {
+		return &traffic.Limiter{}, nil
+	}
+	limiter := &traffic.Limiter{RequestsPerMinute: requestsPerMinute, Concurrency: concurrency, OnExceeded: onExceeded}
+	agentLimitersMu.Lock()
+	shared, ok := agentLimiters[agent]
+	if !ok {
+		shared = limiter
+		agentLimiters[agent] = shared
+	}
+	agentLimitersMu.Unlock()
+	return shared, nil
 }
 
 // agentFallback reads an agent's `fallback: [...]` property. Each item is
@@ -566,55 +438,21 @@ func agentLimiter(agent *ast.Agent) (*traffic.Limiter, error) {
 // [ClaudeCLI]`), resolved the same way a top-level `ClaudeCLI.run(...)`
 // statement resolves its receiver.
 func agentFallback(prog *ast.Program, agent *ast.Agent) ([]*ast.Agent, error) {
-	for _, prop := range agent.Props {
-		if prop.Name != "fallback" {
+	refs, err := ast.AgentFallbackRefs(agent)
+	if err != nil || refs == nil {
+		return nil, err
+	}
+	fallbacks := make([]*ast.Agent, 0, len(refs))
+	for _, ref := range refs {
+		if ref.Inline != nil {
+			fallbacks = append(fallbacks, ref.Inline)
 			continue
 		}
-		arr := ast.BareArray(prop.Value)
-		if arr == nil {
-			return nil, fmt.Errorf("agent %q fallback must be an array", agent.Name)
+		fb, found := findAgent(prog, ref.Name)
+		if !found {
+			return nil, fmt.Errorf("agent %q fallback: agent %q is not declared", agent.Name, ref.Name)
 		}
-		fallbacks := make([]*ast.Agent, 0, len(arr.Items))
-		for _, item := range arr.Items {
-			if fb, ok := ast.AgentValue(item); ok {
-				fallbacks = append(fallbacks, fb)
-				continue
-			}
-			if name, ok := ast.IdentValue(item); ok {
-				fb, found := findAgent(prog, name)
-				if !found {
-					return nil, fmt.Errorf("agent %q fallback: agent %q is not declared", agent.Name, name)
-				}
-				fallbacks = append(fallbacks, fb)
-				continue
-			}
-			return nil, fmt.Errorf("agent %q fallback entries must be an inline agent {...} block or a declared agent name", agent.Name)
-		}
-		return fallbacks, nil
+		fallbacks = append(fallbacks, fb)
 	}
-	return nil, nil
-}
-
-// stringOrNumberArray reads an array literal whose elements may mix string
-// and bare-number literals (e.g. `retry_on: [500, 503, "rate_limit"]`),
-// stringifying numbers so both forms can be matched uniformly against an
-// error message later (see traffic.Retrier.shouldRetry).
-func stringOrNumberArray(e *ast.Expr) ([]string, bool) {
-	arr := ast.BareArray(e)
-	if arr == nil {
-		return nil, false
-	}
-	values := make([]string, 0, len(arr.Items))
-	for _, item := range arr.Items {
-		if s, ok := ast.StringValue(item); ok {
-			values = append(values, s)
-			continue
-		}
-		if n, ok := ast.NumberValue(item); ok {
-			values = append(values, strconv.FormatFloat(n, 'f', -1, 64))
-			continue
-		}
-		return nil, false
-	}
-	return values, true
+	return fallbacks, nil
 }

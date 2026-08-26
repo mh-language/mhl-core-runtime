@@ -1,0 +1,11 @@
+test object_property_access_with_non_existent_nested_key {
+    describe object_property_access_with_non_existent_nested_key {
+        var obj = {"key1": {"nestedKey1": "nestedValue1"}}
+
+        try {
+            var value = obj.key1.nestedKey2 // Accessing a non-existent nested key throws an exception
+        } catch (e) {
+            are_equal(e, "field \"nestedKey2\" not found")
+        }
+    }
+}

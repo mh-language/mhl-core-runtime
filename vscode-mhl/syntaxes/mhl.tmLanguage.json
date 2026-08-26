@@ -27,6 +27,9 @@
       "include": "#properties"
     },
     {
+      "include": "#types"
+    },
+    {
       "include": "#assertions"
     },
     {
@@ -54,7 +57,7 @@
       "patterns": [
         {
           "name": "keyword.control.mhl",
-          "match": "\\b(if|else|while|try|catch|finally|fail|return|var|goto|break|self)\\b"
+          "match": "\\b(if|else|while|try|catch|finally|fail|return|mem|var|goto|break|self)\\b"
         }
       ]
     },
@@ -118,6 +121,18 @@
         {
           "name": "variable.other.mhl",
           "match": "\\$\\{?[a-zA-Z_][a-zA-Z0-9_.]*\\}?"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "match": ":\\s*((?:string|number|int|integer|float|bool|boolean|array|object|any)\\b(?:\\[\\])*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.mhl"
+            }
+          }
         }
       ]
     },

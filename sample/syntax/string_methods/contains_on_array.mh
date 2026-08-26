@@ -1,0 +1,7 @@
+test contains_on_array {
+    describe contains_on_array {
+        var A = [1, 2, 3]
+        is_true(A.contains(2))
+        is_false(A.contains(9))
+    }
+}

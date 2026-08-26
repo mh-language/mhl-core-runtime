@@ -44,6 +44,139 @@ tool execution {
 	}
 }
 
+// --- tool method params: gradual/optional typing ------
+
+func TestToolMethodTypedParamRejectsWrongType(t *testing.T) {
+	_, err := run(t, `
+tool execution {
+    read_file(path: string) -> fs.read(path)
+}
+
+`+wrapStep(`
+        log(execution.read_file(42))
+    `))
+	want := `tool "execution": read_file: parameter "path" must be string, got number`
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("unexpected error: %v, want to contain %q", err, want)
+	}
+}
+
+func TestToolMethodTypedParamAcceptsMatchingType(t *testing.T) {
+	out, err := run(t, `
+tool execution {
+    double(n: number) -> n * 2
+}
+
+`+wrapStep(`
+        log(execution.double(21))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "42\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+// --- tool method return type: gradual/optional typing ------
+
+func TestToolMethodTypedReturnAcceptsMatchingType(t *testing.T) {
+	out, err := run(t, `
+tool execution {
+    double(n: number): number -> n * 2
+}
+
+`+wrapStep(`
+        log(execution.double(21))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "42\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolMethodTypedReturnRejectsWrongType(t *testing.T) {
+	_, err := run(t, `
+tool execution {
+    bad(n: number): number -> "not a number"
+}
+
+`+wrapStep(`
+        log(execution.bad(1))
+    `))
+	want := `tool "execution": bad: return value must be number, got string`
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("unexpected error: %v, want to contain %q", err, want)
+	}
+}
+
+func TestToolMethodTypedReturnFromBlockBody(t *testing.T) {
+	out, err := run(t, `
+tool execution {
+    classify(n: number): string -> {
+        if (n > 0) {
+            return "positive"
+        }
+        return "non-positive"
+    }
+}
+
+`+wrapStep(`
+        log(execution.classify(5))
+        log(execution.classify(-1))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"positive\n", "non-positive\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q: %s", want, out)
+		}
+	}
+}
+
+func TestToolMethodUntypedReturnStillDynamic(t *testing.T) {
+	out, err := run(t, `
+tool execution {
+    identity(v) -> v
+}
+
+`+wrapStep(`
+        log(execution.identity(42))
+        log(execution.identity("hi"))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"42\n", "hi\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q: %s", want, out)
+		}
+	}
+}
+
+func TestToolMethodAnyParamAcceptsAnything(t *testing.T) {
+	out, err := run(t, `
+tool execution {
+    identity(v: any) -> v
+}
+
+`+wrapStep(`
+        log(execution.identity(42))
+        log(execution.identity("hi"))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"42\n", "hi\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q: %s", want, out)
+		}
+	}
+}
+
 func TestToolNotFoundErrors(t *testing.T) {
 	_, err := run(t, wrapStep(`log(ghost.add(1, 2))`))
 	if err == nil {

@@ -19,10 +19,13 @@ import (
 // (`session_mem.get("attempt", 0)` to recover after a resume), *or* through
 // pipelineEnv, for state that only needs to survive across steps within
 // this one run (see EvalPipelineVars). pipelineEnv may be nil — a pipeline
-// with no top-level `var` declarations never allocates one. file is the
-// .mh path being run, used only to prefix a failing statement's error with
-// its position (see execStatement's positionedError wrap below).
-func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env) error {
+// with no top-level `var` declarations never allocates one. mem is likewise
+// nil for a pipeline with no top-level `mem` declarations; unlike
+// pipelineEnv it survives across loop iterations and --resume too — see
+// MemContext (memvar.go). file is the .mh path being run, used only to
+// prefix a failing statement's error with its position (see
+// execStatement's positionedError wrap below).
+func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext) error {
 	var step *ast.Step
 	for _, decl := range prog.Decls {
 		if decl.Pipeline == nil {
@@ -38,7 +41,7 @@ func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *mem
 		return fmt.Errorf("pipeline step %q not found", stepName)
 	}
 
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, file: file}
+	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, file: file}
 	err := execBlock(ctx, step.Body)
 	var sig *returnSignal
 	if errors.As(err, &sig) {
@@ -324,6 +327,9 @@ func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
 	target := ctx.env
 	if _, declared := target[name]; !declared {
 		if _, declared = ctx.pipelineEnv[name]; !declared {
+			if isMemVar(ctx, name) {
+				return execMemAssign(ctx, name, assign)
+			}
 			return fmt.Errorf("undefined variable %q", name)
 		}
 		target = ctx.pipelineEnv

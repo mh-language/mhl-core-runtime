@@ -1,0 +1,13 @@
+test concatenation {
+    describe concatenation {
+        var A0 = 1
+        var B0 = "A"
+        var B1 = B0 + "B"
+        are_equal(B1, "AB")
+
+        var greeting = "A1: "
+        var count = 1
+        var result = "${greeting}${count}"
+        are_equal(result, "A1: 1")
+    }
+}

@@ -1,0 +1,16 @@
+test array_of_arrays {
+    describe array_of_arrays {
+        var A = [1, 2, 3]
+        var B = ["a", "b", "c"]
+        var C = [A, B]
+        are_equal(C.size(), 2)
+        are_equal(C[0].size(), 3)
+        are_equal(C[1].size(), 3)
+        are_equal(C[0][0], 1)
+        are_equal(C[0][1], 2)
+        are_equal(C[0][2], 3)
+        are_equal(C[1][0], "a")
+        are_equal(C[1][1], "b")
+        are_equal(C[1][2], "c")
+    }
+}

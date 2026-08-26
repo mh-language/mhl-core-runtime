@@ -1,0 +1,8 @@
+test module_integer_operations {
+    describe module_integer_operations {
+        var A = 6
+        var B = 2
+        var C = A % B
+        are_equal(C, 0)
+    }
+}

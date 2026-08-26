@@ -1,0 +1,9 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+test memory_session_mem_with_overwrite {
+    describe memory_session_mem_with_overwrite {
+        SessionJsonMem.set("key1", "value1")
+        SessionJsonMem.set("key1", "value2") // Overwriting the value of an existing key
+        are_equal(SessionJsonMem.get("key1"), "value2")
+    }
+}

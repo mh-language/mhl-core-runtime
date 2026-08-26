@@ -1,0 +1,12 @@
+test sort_by_key_must_be_number_or_string {
+    describe sort_by_key_must_be_number_or_string {
+        var result = ""
+        try {
+            var bad = [1, 2].sort_by((n) -> true)
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: sort_by() key must be a number or string, got bool")
+    }
+}

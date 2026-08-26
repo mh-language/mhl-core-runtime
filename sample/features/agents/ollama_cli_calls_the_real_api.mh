@@ -1,0 +1,13 @@
+use {OllamaCLI} from "fixtures/agents.mh"
+
+test ollama_cli_calls_the_real_api {
+    describe ollama_cli_calls_the_real_api {
+        if (env("ENABLE_LLM_CALL") == "1") {
+            var response = OllamaCLI.run(prompt: "Ping")
+            log("Response from OllamaCLI: ${response}")
+            not_null(response)
+        } else {
+            incomplete("set ENABLE_LLM_CALL=1 to run this against the real Ollama API")
+        }
+    }
+}

@@ -4,6 +4,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 )
 
@@ -15,18 +16,28 @@ type Result struct {
 }
 
 // Cmd is the command execution tool.
-type Cmd struct{}
+type Cmd struct {
+	// Stdout, when set, receives a copy of the subprocess's stdout as it
+	// arrives — alongside (not instead of) the buffer captured into
+	// Result.Stdout — so a caller can stream output (e.g. append it to a log
+	// file incrementally) instead of only seeing it once the process exits.
+	Stdout io.Writer
+}
 
 // Exec starts a command in its own process group and kills that group when the
 // context is cancelled, including descendants spawned by the command.
-func (Cmd) Exec(ctx context.Context, name string, args ...string) (Result, error) {
+func (c Cmd) Exec(ctx context.Context, name string, args ...string) (Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	command := exec.Command(name, args...)
 	configureProcessGroup(command)
 	var stdout, stderr captureBuffer
-	command.Stdout, command.Stderr = &stdout, &stderr
+	var stdoutWriter io.Writer = &stdout
+	if c.Stdout != nil {
+		stdoutWriter = io.MultiWriter(&stdout, c.Stdout)
+	}
+	command.Stdout, command.Stderr = stdoutWriter, &stderr
 	if err := command.Start(); err != nil {
 		return Result{}, fmt.Errorf("tools: start %q: %w", name, err)
 	}

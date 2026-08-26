@@ -22,20 +22,37 @@ type Pipeline struct {
 // pipeline-scoped variable: evaluated once per run (see
 // interpreter.EvalPipelineVars), then shared read/write across every step
 // of that run via plain assignment (`x = expr`, no `var`) — unlike a
-// step's own `var`, which never survives past that one step. 'var' is a
-// hard disambiguator against Step ('step') and Prop (bare Ident ':'), so
-// this adds no backtracking ambiguity.
+// step's own `var`, which never survives past that one step. Mem declares a
+// pipeline-scoped variable backed by a persistent store instead of an
+// in-process map: unlike Var, it is get-or-init (the initializer only runs
+// the first time a given pipeline instance sees it) and survives across
+// `loop pipeline` iterations and `--resume` — see
+// interpreter.readMemVar/writeMemVar (memvar.go) and MemContext. 'var' and
+// 'mem' are each a hard disambiguator against Step ('step') and Prop (bare
+// Ident ':'), so this adds no backtracking ambiguity.
 type PipelineMember struct {
 	Input *PipelineInput `parser:"( 'input' @@"`
 	Var   *VarDecl       `parser:"| @@"`
+	Mem   *MemDecl       `parser:"| @@"`
 	Step  *Step          `parser:"| @@"`
 	Prop  *Property      `parser:"| @@ )"`
 }
 
+// MemDecl declares and initializes a pipeline-scoped persistent variable:
+// `mem x = expr`. Grammar mirrors VarDecl exactly, just with the 'mem'
+// keyword instead of 'var' — kept as a separate type (rather than reusing
+// VarDecl) so PipelineMember.Mem and PipelineMember.Var are distinguishable
+// without inspecting which keyword matched.
+type MemDecl struct {
+	Name  string `parser:"'mem' @Ident '='"`
+	Value *Expr  `parser:"@@"`
+}
+
 // PipelineInput is a typed pipeline input, e.g. `input issue_id: string`.
 type PipelineInput struct {
-	Name string `parser:"@Ident ':'"`
-	Type string `parser:"@Ident"`
+	Pos  lexer.Position
+	Name string    `parser:"@Ident ':'"`
+	Type *TypeExpr `parser:"@@"`
 }
 
 // Step is a named block of statements.

@@ -1,0 +1,9 @@
+test split {
+    describe split {
+        var parts = "a,b,c".split(",")
+        are_equal(parts.size(), 3)
+        are_equal(parts[0], "a")
+        are_equal(parts[1], "b")
+        are_equal(parts[2], "c")
+    }
+}

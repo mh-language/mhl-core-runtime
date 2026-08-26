@@ -1,0 +1,9 @@
+test object_dynamic_key_write_with_nested_objects {
+    describe object_dynamic_key_write_with_nested_objects {
+        var obj = {"key1": {"nestedKey1": "nestedValue1"}}
+        var outerKey = "key1"
+        var innerKey = "nestedKey1"
+        obj[outerKey][innerKey] = "updated"
+        are_equal(obj.key1.nestedKey1, "updated")
+    }
+}

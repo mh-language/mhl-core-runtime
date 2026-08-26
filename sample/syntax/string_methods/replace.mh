@@ -1,0 +1,6 @@
+test replace {
+    describe replace {
+        are_equal("feat: complete feature #1".replace(":", " -"), "feat - complete feature #1")
+        are_equal("aaa".replace("a", "b"), "bbb")
+    }
+}

@@ -1,0 +1,7 @@
+test filter_does_not_mutate_the_source_array {
+    describe filter_does_not_mutate_the_source_array {
+        var numbers = [1, 2, 3, 4]
+        var even = numbers.filter((n) -> n % 2 == 0)
+        are_equal(numbers.size(), 4)
+    }
+}

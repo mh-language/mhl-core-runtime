@@ -1,0 +1,10 @@
+test object_dynamic_key_access_with_non_string_key {
+    describe object_dynamic_key_access_with_non_string_key {
+        var obj = {"key1": "value1"}
+        try {
+            var value = obj[0] // Object keys must be strings, not numbers
+        } catch (e) {
+            are_equal(e, "object key must be a string, got number")
+        }
+    }
+}

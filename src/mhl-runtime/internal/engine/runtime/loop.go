@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -22,6 +24,30 @@ type LoopCheckpoint struct {
 	NextIteration  int       `json:"next_iteration"`
 	TerminalReason string    `json:"terminal_reason"`
 	SavedAt        time.Time `json:"saved_at"`
+	// InstanceID identifies this particular run of the loop, for `mem`
+	// (interpreter.MemContext, via Pipeline.InstanceID/RunContext.InstanceID)
+	// to namespace a pipeline's persistent variables by — reused across
+	// every iteration of one run, and recovered by a --resume of an
+	// in-progress one (TerminalReason == ""), but never carried over into a
+	// fresh, non-resumed run: see Run's resolution of instanceID below.
+	InstanceID string `json:"instance_id,omitempty"`
+}
+
+// newInstanceID returns a fresh random hex id for a new (non-resumed) loop
+// run — deliberately not a real UUID library: this repo has exactly one
+// external dependency (participle) today, and 16 random bytes hex-encoded
+// serves the same "practically unique, opaque" purpose an RFC 4122 UUID
+// would for this — a filename/JSON-key component, never parsed or compared
+// structurally.
+func newInstanceID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand.Read failing is effectively unrecoverable (no source
+		// of entropy) — fall back to a timestamp rather than panic, so a
+		// pathological environment still gets *an* id, just a weaker one.
+		return "t" + hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))
+	}
+	return hex.EncodeToString(b)
 }
 
 // LoopStore persists LoopCheckpoints as JSON files under <root>/.mhl/state,
@@ -129,9 +155,20 @@ func NewLoopRunner(root string) *LoopRunner {
 // false) call below unchanged — since that call is what resets pipeline-
 // level state fresh every time, a loop's pipeline-level `var`s reset on
 // every iteration for free, with no loop-specific logic needed here.
-func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen func() (bool, error), resume bool) (*LoopResult, error) {
+//
+// p.InstanceID is resolved here — recovered from the loop's own checkpoint
+// when resuming an in-progress run (mirroring the iteration resolution just
+// below it), or freshly generated otherwise — and then set on the local p
+// (a value, so this never mutates the caller's Pipeline) before the very
+// first lr.Runner.Run call, so it's already in place for iteration 0, not
+// just iterations resumed from a later point. A fresh id on every
+// non-resumed run (even a plain re-run with no --resume flag at all) is
+// deliberate: two independent runs of the same loop pipeline must never
+// share `mem` state just because they share a pipeline name.
+func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen func(instanceID string) (bool, error), resume bool) (*LoopResult, error) {
 	iteration := 0
 	resumed := false
+	instanceID := ""
 	if resume {
 		cp, ok, err := lr.Store.Load(p.Name)
 		if err != nil {
@@ -139,13 +176,18 @@ func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen
 		}
 		if ok && cp.TerminalReason == "" {
 			iteration = cp.NextIteration
+			instanceID = cp.InstanceID
 			resumed = true
 		}
 	}
+	if instanceID == "" {
+		instanceID = newInstanceID()
+	}
+	p.InstanceID = instanceID
 
 	for {
 		if p.MaxIterations > 0 && iteration >= p.MaxIterations {
-			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "max_iterations"}); err != nil {
+			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "max_iterations", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			return &LoopResult{Iterations: iteration, TerminalReason: "max_iterations", Resumed: resumed}, nil
@@ -156,25 +198,25 @@ func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen
 			return nil, err
 		}
 		if result.Broke {
-			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "break"}); err != nil {
+			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "break", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			return &LoopResult{Iterations: iteration + 1, TerminalReason: "break", BreakReason: result.BreakReason, Resumed: resumed}, nil
 		}
 
 		iteration++
-		done, err := evalStopWhen()
+		done, err := evalStopWhen(instanceID)
 		if err != nil {
 			return nil, err
 		}
 		if done {
-			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "stop_when"}); err != nil {
+			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "stop_when", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			return &LoopResult{Iterations: iteration, TerminalReason: "stop_when", Resumed: resumed}, nil
 		}
 
-		if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: ""}); err != nil {
+		if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "", InstanceID: instanceID}); err != nil {
 			return nil, err
 		}
 	}

@@ -1,0 +1,15 @@
+test classical_if_statement {
+    describe classical_if_statement {
+        var valueA = 0
+        var valueB = 1
+        var result = ""
+
+        if (valueA > valueB) {
+            result = "Value A is greater than Value B"
+        } else {
+            result = "Value A is not greater than Value B"
+        }
+
+        are_equal(result, "Value A is not greater than Value B")
+    }
+}

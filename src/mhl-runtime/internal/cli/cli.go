@@ -22,6 +22,7 @@ import (
 	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
 	"github.com/yanjustino/mhl-runtime/internal/lang/lint"
 	"github.com/yanjustino/mhl-runtime/internal/lang/parser"
+	"github.com/yanjustino/mhl-runtime/internal/lang/types"
 	"github.com/yanjustino/mhl-runtime/internal/lsp"
 )
 
@@ -106,13 +107,47 @@ func runPipeline(args []string, out io.Writer) error {
 
 	store := memory.NewKVStore()
 	jsonStore := memory.NewJSONStore()
+
+	pipeline, err := runtime.FindPipeline(prog, "")
+	if err != nil {
+		return err
+	}
+	// Coerce each --input value toward its declared `input name: Type`
+	// (types.Any, i.e. a raw string, for anything not declared) once, before
+	// any step runs — a malformed value (e.g. --input count=abc against
+	// `input count: number`) fails immediately here instead of surfacing deep
+	// inside evalAdd/evalMul on whatever step first uses it.
+	declaredInputs := map[string]types.Type{}
+	for _, in := range pipeline.Inputs {
+		declaredInputs[in.Name] = in.Type
+	}
+	coercedInputs := map[string]any{}
+	for k, raw := range inputs {
+		v, err := types.Coerce(fmt.Sprintf("input %q", k), declaredInputs[k], raw)
+		if err != nil {
+			return err
+		}
+		coercedInputs[k] = v
+	}
+	// memInit is computed once, outside exec/evalStopWhen: a pipeline's
+	// `mem` declarations (which names exist, and their get-or-init
+	// initializer expressions) never change across steps or iterations —
+	// only the instance id each closure combines it with (ctx.InstanceID,
+	// evalStopWhen's own instanceID parameter) does. nil for a pipeline with
+	// no `mem` at all, so memContextFor below returns a nil *MemContext too.
+	memInit, err := interpreter.PipelineMemInit(prog, pipeline.Name)
+	if err != nil {
+		return err
+	}
+
 	exec := func(step string, ctx *runtime.RunContext) error {
-		for k, v := range inputs {
+		for k, v := range coercedInputs {
 			ctx.Vars[k] = v
 		}
 		ctx.Vars["__last_step"] = step
 		fmt.Fprintf(out, "step: %s\n", step)
-		err := interpreter.RunStep(prog, step, file, out, store, jsonStore, ctx.Vars)
+		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
+		err := interpreter.RunStep(prog, step, file, out, store, jsonStore, ctx.Vars, mem)
 		// interpreter and runtime each define their own break/goto signal
 		// type and stay independent of one another (see runtime/signal.go);
 		// this closure is the one place both are in scope to translate
@@ -127,10 +162,6 @@ func runPipeline(args []string, out io.Writer) error {
 		return err
 	}
 
-	pipeline, err := runtime.FindPipeline(prog, "")
-	if err != nil {
-		return err
-	}
 	init := pipelineVarsInit(prog, pipeline.Name, file, out, store, jsonStore)
 
 	// A `loop pipeline` repeats itself until its stop_when is satisfied, its
@@ -153,11 +184,12 @@ func runPipeline(args []string, out io.Writer) error {
 		return nil
 	}
 
-	evalStopWhen := func() (bool, error) {
+	evalStopWhen := func(instanceID string) (bool, error) {
 		if pipeline.StopWhen == nil {
 			return false, nil
 		}
-		return interpreter.EvalCondition(prog, pipeline.StopWhen, file, out, store, jsonStore)
+		mem := memContextFor(memInit, pipeline.Name, instanceID)
+		return interpreter.EvalCondition(prog, pipeline.StopWhen, file, out, store, jsonStore, mem)
 	}
 	loopRunner := runtime.NewLoopRunner(".")
 	res, err := loopRunner.Run(pipeline, init, exec, evalStopWhen, resume)
@@ -198,6 +230,26 @@ func pipelineVarsInit(prog *ast.Program, pipelineName, file string, out io.Write
 			ctx.Vars[k] = v
 		}
 		return nil
+	}
+}
+
+// memContextFor builds the interpreter.MemContext backing pipelineName's
+// `mem` declarations for one specific run instance, or nil when init is nil
+// (the pipeline declares no `mem` at all — the common case, and the only
+// one RunStep/EvalCondition need to treat specially, since a nil
+// *MemContext just means their own mem fallback tier never fires). The
+// backing file is isolated per instance (.mhl/state/mem/<pipeline>/
+// <instanceID>.json) — see runtime.RunContext.InstanceID and
+// LoopRunner.Run's id resolution for what instanceID actually is: "default"
+// for a plain pipeline, a fresh or resumed loop-run id for a `loop
+// pipeline`.
+func memContextFor(init map[string]*ast.Expr, pipelineName, instanceID string) *interpreter.MemContext {
+	if len(init) == 0 {
+		return nil
+	}
+	return &interpreter.MemContext{
+		Path: filepath.Join(runtime.StateDirName, "mem", pipelineName, instanceID+".json"),
+		Init: init,
 	}
 }
 

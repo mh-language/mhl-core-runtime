@@ -9,6 +9,7 @@ import (
 
 	"github.com/yanjustino/mhl-runtime/internal/features/nativeops"
 	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/yanjustino/mhl-runtime/internal/lang/types"
 )
 
 func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
@@ -52,12 +53,37 @@ func evalToolCall(ctx *evalCtx, tool *ast.Tool, method string, call *ast.Call, d
 	if len(args) != len(m.Params) {
 		return nil, fmt.Errorf("tool %q: %s requires %d argument(s), got %d", tool.Name, method, len(m.Params), len(args))
 	}
+	for i, p := range m.Params {
+		if p.Type == nil {
+			continue
+		}
+		declared, ok := types.FromExpr(p.Type)
+		if !ok {
+			return nil, fmt.Errorf("tool %q: %s: parameter %q has an unrecognized type %q", tool.Name, method, p.Name, p.Type)
+		}
+		if err := types.Check(fmt.Sprintf("tool %q: %s: parameter %q", tool.Name, method, p.Name), declared, args[i]); err != nil {
+			return nil, err
+		}
+	}
 	childEnv := Env{}
 	for i, p := range m.Params {
 		childEnv[p.Name] = args[i]
 	}
 	childCtx := &evalCtx{prog: ctx.prog, store: ctx.store, jsonStore: ctx.jsonStore, out: ctx.out, env: childEnv, file: ctx.file, selfTool: tool}
-	return invokeCallable(childCtx, m.Body, m.Block, depth)
+	result, err := invokeCallable(childCtx, m.Body, m.Block, depth)
+	if err != nil {
+		return nil, err
+	}
+	if m.Returns != nil {
+		declared, ok := types.FromExpr(m.Returns)
+		if !ok {
+			return nil, fmt.Errorf("tool %q: %s: unrecognized return type %q", tool.Name, method, m.Returns)
+		}
+		if err := types.Check(fmt.Sprintf("tool %q: %s: return value", tool.Name, method), declared, result); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
 }
 
 // invokeCallable runs a Body|Block pair (the shape ToolMethod and Lambda

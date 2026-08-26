@@ -1,0 +1,9 @@
+test object_dynamic_key_access {
+    describe object_dynamic_key_access {
+        var obj = {"key1": "value1", "key2": "value2"}
+        var key = "key1"
+        are_equal(obj[key], "value1")
+        key = "key2"
+        are_equal(obj[key], "value2")
+    }
+}

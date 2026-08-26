@@ -1,17 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-US">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Formal reference documentation for the Meta-Harness Language (MHL), sourced directly from the Go runtime." />
+    <meta name="description" content="Self-contained MHL language reference: syntax, agents, prompts, skills, memory, tools, MCP, pipelines, and tests." />
     <meta name="theme-color" content="#10161f" />
+    <meta property="og:title" content="MHL Reference — Meta-Harness Language" />
+    <meta property="og:description" content="Syntax and complete examples for every MHL construct." />
+    <meta property="og:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MHL Reference — Meta-Harness Language" />
+    <meta name="twitter:description" content="Syntax and complete examples for every MHL construct." />
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
     <link rel="icon" href="assets/mhl-logo-rebrand.png" />
     <title>MHL Reference — Meta-Harness Language</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="#top" aria-label="MHL Reference, home">
+      <a class="brand" href="index.html" aria-label="MHL home">
         <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
         <span><strong>MHL</strong><small>Meta-Harness Language</small></span>
       </a>
@@ -22,7 +29,7 @@
           <kbd>/</kbd>
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
-        <a class="github-link" href="index.html">Manual</a>
+        <a class="github-link" href="index.html">Overview</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
       </div>
     </header>
@@ -31,405 +38,480 @@
       <aside class="sidebar" aria-label="Reference navigation">
         <p class="eyebrow">LANGUAGE REFERENCE</p>
         <nav id="toc">
-          <a class="nav-link active" href="#overview">Overview</a>
-          <a class="nav-link" href="#program-structure">Program structure</a>
+          <a class="nav-link active" href="#overview">How to use this page</a>
+          <a class="nav-link" href="#program">Programs and modules</a>
+          <a class="nav-link" href="#syntax">Syntax and types</a>
+          <a class="nav-link" href="#expressions">Expressions</a>
+          <a class="nav-link" href="#statements">Control flow</a>
           <a class="nav-link" href="#agent">agent</a>
           <a class="nav-link" href="#prompt">prompt</a>
           <a class="nav-link" href="#skill">skill</a>
-          <a class="nav-link" href="#memory">memory</a>
-          <a class="nav-link" href="#tool">tool</a>
-          <a class="nav-link" href="#mcp-server">mcp_server</a>
+          <a class="nav-link" href="#memory">memory and mem</a>
+          <a class="nav-link" href="#tool">tool and native ops</a>
+          <a class="nav-link" href="#mcp">mcp_server</a>
           <a class="nav-link" href="#pipeline">pipeline</a>
-          <a class="nav-link" href="#test">test / describe</a>
-          <a class="nav-link" href="#expressions">Expressions</a>
-          <a class="nav-link" href="#statements">Statements</a>
-          <a class="nav-link" href="#native-ops">Native ops</a>
-          <a class="nav-link" href="#cli">CLI</a>
-          <a class="nav-link" href="#drift">LSP drift</a>
+          <a class="nav-link" href="#tests">test and describe</a>
+          <a class="nav-link" href="#cli">CLI and security</a>
         </nav>
         <div class="sidebar-note">
           <span class="status-dot"></span>
-          <span>Runtime Go<br /><small>every claim cited file:line against src/mhl-runtime</small></span>
+          <span>Alpha reference<br /><small>examples ready to copy and adapt</small></span>
         </div>
       </aside>
 
-      <main class="content">
-        <section class="ref-hero doc-section" id="overview" data-title="Overview how to read this reference status legend">
-          <p class="eyebrow accent">META-HARNESS LANGUAGE · REFERENCE · v0.2</p>
-          <h1>What the runtime actually does.</h1>
-          <p class="lead">This is a feature-by-feature reference for every <code>.mh</code> declaration and language construct, sourced directly from <code>src/mhl-runtime</code> — not from the design docs, which describe surface that sometimes outruns the implementation. Every claim here cites the exact file and line it comes from. Where the runtime falls short of the docs, or a field parses but does nothing, that's called out explicitly as a gap rather than glossed over.</p>
+      <main class="content reference-content">
+        <section class="ref-hero doc-section" id="overview" data-title="reference how to use legend status alpha">
+          <p class="eyebrow accent">MHL · SELF-CONTAINED REFERENCE · v0.1 ALPHA</p>
+          <h1>The language, from literals to loops.</h1>
+          <p class="lead">Everything you need to read and write an MHL program is on this page: practical grammar, behavior, commands, and complete examples. No explanation depends on internal project documents.</p>
           <div class="legend">
-            <span class="legend-item"><span class="status status-full">Implemented</span> works as described, exercised by tests</span>
-            <span class="legend-item"><span class="status status-partial">Partial</span> real, but with a named limitation</span>
-            <span class="legend-item"><span class="status status-gap">Docs-only</span> parses, but nothing executes it</span>
+            <span class="legend-item"><span class="status status-full">Executable</span> available through the normal CLI workflow</span>
+            <span class="legend-item"><span class="status status-partial">Alpha contract</span> declarable and inspectable, with integration still evolving</span>
+          </div>
+          <div class="quick-index">
+            <a href="#agent"><code>agent</code><span>call AI</span></a>
+            <a href="#prompt"><code>prompt</code><span>build context</span></a>
+            <a href="#tool"><code>tool</code><span>perform actions</span></a>
+            <a href="#pipeline"><code>pipeline</code><span>control the flow</span></a>
           </div>
         </section>
 
-        <section class="feature doc-section" id="program-structure" data-title="Program structure import use export alias modules">
-          <div class="feature-head"><h2><span class="feature-num">01</span>Program structure</h2><span class="status status-partial">Partial</span></div>
-          <p class="feature-lede"><code>import</code>, <code>use</code>, and the <code>export</code> modifier are how one <code>.mh</code> file makes declarations available to another. Only one of the two actually grants access.</p>
+        <section class="feature doc-section" id="program" data-title="program modules use export import alias files">
+          <div class="feature-head"><h2><span class="feature-num">01</span>Programs and modules</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A program is a sequence of top-level declarations. Use <code>export</code> to publish a declaration and <code>use</code> to import it from another file, optionally under a local alias.</p>
 
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">// memory.mh
-export memory Store {
-    type: "kv"
-    store: "memory"
+          <p class="block-label">TWO-FILE EXAMPLE</p>
+          <div class="file-example">
+            <div><span>shared.mh</span><pre class="code-block"><code class="language-mhl">export agent Echo {
+    command: "echo"
+    args: ["${prompt}"]
 }
 
-// tool.mh
-use {Store as store} from "memory.mh"
-export tool Counter {
-    pending() -> store.get("n", 0)
-}
+export prompt Greeting(name: string) {
+    "Hello, ${name}!"
+}</code></pre></div>
+            <div><span>main.mh</span><pre class="code-block"><code class="language-mhl">use {Echo, Greeting as Hello}
+    from "shared.mh"
 
-// pipeline.mh
-use {Counter as counter} from "tool.mh"
-pipeline P {
-    step S {
-        log(counter.pending())
+pipeline Welcome {
+    input name: string
+    step Run {
+        log(Echo.run(
+            prompt: Hello(name: name)
+        ))
     }
+}</code></pre></div>
+          </div>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Form</span><span>Syntax</span><span>When to use it</span></div>
+            <div class="table-row"><span>Export</span><code>export prompt Name(...) { ... }</code><span>Make a declaration reusable.</span></div>
+            <div class="table-row"><span>Import names</span><code>use {A, B} from "file.mh"</code><span>Bring in explicit contracts only.</span></div>
+            <div class="table-row"><span>Local alias</span><code>use {LongName as Short} from "file.mh"</code><span>Avoid collisions and improve readability.</span></div>
+          </div>
+          <div class="tip-row"><span>ALPHA</span><p>Prefer <code>use</code> for executable composition. The <code>import "file.mh" as alias</code> form is part of the syntax, but qualified namespace access is not yet the recommended operational form.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="syntax" data-title="syntax types string number bool null arrays objects duration comments input type">
+          <div class="feature-head"><h2><span class="feature-num">02</span>Syntax and types</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">MHL uses blocks, does not require semicolons, and allows object fields to be separated by commas or line breaks. Comments start with <code>//</code>.</p>
+
+          <p class="block-label">LITERALS</p>
+          <pre class="code-block"><code class="language-mhl">var absent = null
+var enabled = true
+var attempts = 3
+var temperature = 0.2
+var timeout = 45s
+var title = "feature audit"
+var message = """
+Multiline text with ${title}.
+"""
+var tags = ["security", "backend", 2026]
+var job = {
+    id: 42
+    status: "pending"
+    metadata: { priority: 1, owner: "platform" }
 }</code></pre>
 
-          <p class="block-label">Variations</p>
+          <p class="block-label">DECLARABLE TYPES</p>
           <div class="reference-table">
-            <div class="table-row table-head"><span>Form</span><span>Effect</span><span>Grants access?</span></div>
-            <div class="table-row"><span><code>import "path" as alias</code></span><span>Parses and validates the target file only</span><span>No — <code>alias</code> is never registered</span></div>
-            <div class="table-row"><span><code>use { Name } from "path"</code></span><span>Merges the named exported declaration into this file</span><span>Yes, under its own name</span></div>
-            <div class="table-row"><span><code>use { Name as x } from "path"</code></span><span>Same, plus registers <code>x</code> as an alias for <code>Name</code></span><span>Yes, under <code>x</code></span></div>
-            <div class="table-row"><span><code>export</code> (prefix on any declaration)</span><span>Marks the declaration visible to <code>use</code></span><span>Gate, not itself an import</span></div>
+            <div class="table-row table-head"><span>Type</span><span>Example</span><span>Use</span></div>
+            <div class="table-row"><span>Primitives</span><code>string · number · bool · duration</code><span>Inputs, parameters, returns, and contracts.</span></div>
+            <div class="table-row"><span>Arrays</span><code>string[] · number[][]</code><span>Add <code>[]</code> for each level.</span></div>
+            <div class="table-row"><span>Objects</span><code>{id: number, name: string}</code><span>Structural shape with named fields.</span></div>
+            <div class="table-row"><span>Composites</span><code>{id: number, tags: string[]}[]</code><span>Arrays of typed objects.</span></div>
+            <div class="table-row"><span>Prompt</span><code>prompt</code><span>A parameter that receives another prompt's rendered text.</span></div>
           </div>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li><code>import</code> resolution (<span class="cite">imports.go:74-77</span>) calls <code>loadModule</code> and discards the result — the parsed declarations are never merged into the program, and <code>Import.Alias</code> is never recorded anywhere except an error string. There is no code path that resolves <code>alias.Name</code>.</li>
-            <li><code>use</code> resolves each path relative to the <em>importing file's own directory</em>, not the process cwd (<span class="cite">imports.go:20-23</span>), recursively resolving the target's own <code>use</code>/<code>import</code> first — so a re-exported name works transitively.</li>
-            <li>Every requested name is looked up via <code>findExport</code>, which only matches declarations with <code>Export == true</code> (<span class="cite">imports.go:246-269</span>) — a hard runtime gate, not a lint-only hint.</li>
-            <li><code>use</code> merges the <strong>entire</strong> mergeable declaration set from the target module, not just the requested names (<span class="cite">imports.go:118-124</span>). <code>test</code> blocks are explicitly excluded from merging (<span class="cite">imports.go:181-200</span>), so <code>use</code>-ing a file never drags its test suite along.</li>
-            <li>A diamond dependency (two files both <code>use</code>-ing a common third file) is deduplicated by absolute path, not an error (<span class="cite">imports.go:91-102, 207-214</span>).</li>
-            <li><strong>No cycle detection exists.</strong> A module is marked resolved before recursing into its own imports; a cycle just silently stops recursing rather than erroring — a name only reachable via the unfinished side of the cycle simply isn't found.</li>
-          </ul>
-
-          <p class="block-label">Errors</p>
-          <div class="reference-table err-table">
-            <div class="table-row table-head"><span>Condition</span><span>Message</span><span>Location</span></div>
-            <div class="table-row"><span>requested name not exported</span><span><code>use {%s} from %q: %q is not exported</code></span><span class="cite">imports.go:109</span></div>
-            <div class="table-row"><span>conflicting alias, same alias different target</span><span><code>alias %q already refers to %q</code></span><span class="cite">imports.go:139</span></div>
-            <div class="table-row"><span><code>use</code>/<code>import</code> target unreadable/unparseable</span><span><code>use {%s} from %q: %w</code> / <code>import %q as %s: %w</code></span><span class="cite">imports.go:96,76</span></div>
-          </div>
-
-          <div class="gap-box"><span>!</span><div><strong>Known gap</strong><ul class="plain-list"><li><code>docs/language-design.md</code> shows <code>import "..." as qa</code> implying qualified access (<code>qa.SomeAgent.run(...)</code>) — that access pattern is not implemented. Real cross-file access always goes through <code>use { Name [as alias] } from "path"</code>.</li></ul></div></div>
-        </section>
-
-        <section class="feature doc-section" id="agent" data-title="agent declaration engine cli ollama retry cache rate_limit fallback run">
-          <div class="feature-head"><h2><span class="feature-num">02</span><code>agent</code></h2><span class="status status-partial">Partial</span></div>
-          <p class="feature-lede">Declares a callable AI backend — a local CLI subprocess or an Ollama HTTP endpoint — with resiliency policy attached. Core dispatch, retry, cache, rate-limiting, and fallback are all real; several documented fields are silently inert.</p>
-
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">export agent GeminiAPI {
-    command: "sh"
-    args: ["-c", "curl -s ... \"${prompt}\"", "gemini-api", "${prompt}"]
-
-    retry: {
-        max_attempts: 3
-        delay: 2s
-        retry_on: [500, 503, "rate_limit", "timeout"]
-    }
-
-    cache: { ttl: 1m }
-    fallback: [ClaudeCLI]
+          <pre class="code-block"><code class="language-mhl">tool Catalog {
+    first(items: {id: number, tags: string[]}[]): {id: number, tags: string[]} -> items[0]
 }
 
-agent LocalModel {
-    engine: "ollama/qwen2.5-coder"
-    endpoint: "http://localhost:11434"
-    temperature: 0.2
-}
-
-var answer = GeminiAPI.run(prompt: "Summarize this diff.", schema: schema_text)</code></pre>
-
-          <p class="block-label">Fields</p>
-          <div class="reference-table">
-            <div class="table-row table-head"><span>Field</span><span>Read by</span><span>Notes</span></div>
-            <div class="table-row"><span><code>engine</code></span><span class="cite">agent.go:305-312</span><span>empty or <code>cli/*</code> → subprocess; <code>ollama/*</code> → HTTP, suffix is the model name</span></div>
-            <div class="table-row"><span><code>command</code>, <code>args</code></span><span class="cite">agent.go:236-247</span><span><code>cli/*</code> engines only</span></div>
-            <div class="table-row"><span><code>endpoint</code>, <code>temperature</code></span><span class="cite">agent.go:358-366</span><span><code>ollama/*</code> engines only</span></div>
-            <div class="table-row"><span><code>log</code>, <code>trace</code></span><span class="cite">agent.go:321-348</span><span>append raw responses to a file; print call/response tracing</span></div>
-            <div class="table-row"><span><code>retry</code>{max_attempts,delay,retry_on,backoff}</span><span class="cite">agent.go:396-430</span><span><code>backoff</code> parses but is ignored — see gap</span></div>
-            <div class="table-row"><span><code>cache</code>{ttl,storage,strategy}</span><span class="cite">agent.go:457-494</span><span><code>strategy</code> parses but is ignored — see gap</span></div>
-            <div class="table-row"><span><code>rate_limit</code>{requests_per_minute,concurrency,on_exceeded}</span><span class="cite">agent.go:518-559</span><span><code>on_exceeded</code> parses but is ignored — see gap</span></div>
-            <div class="table-row"><span><code>fallback</code></span><span class="cite">agent.go:568-596</span><span>array of agent names/inline agents, tried in order on failure</span></div>
-          </div>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li><code>Agent</code> has no fixed grammar (<span class="cite">ast/agent.go</span>) — its body is a generic <code>[]*Property</code> bag, identical for every field name. Whether anything happens depends entirely on whether <code>agent.go</code> reads that key.</li>
-            <li>Dispatch order in <code>runAgentAttempt</code> (<span class="cite">agent.go:115-232</span>): read <code>engine</code> → branch → read <code>cache</code>, compute <code>traffic.RequestKey</code>, check cache → read <code>retry</code>/<code>rate_limit</code> → acquire limiter → run subprocess/HTTP call → append to <code>log</code> if set → trim + require non-empty response → retry via <code>retrier.Execute</code> → store to cache on success.</li>
-            <li><code>.run(prompt:, schema:)</code> dispatch happens in <code>evalPostfix</code> before generic identifier resolution (<span class="cite">eval.go:389-395</span>). <code>prompt:</code> must resolve to a string or a recognized prompt-template call; <code>schema:</code> accepts any string expression.</li>
-            <li><code>schema:</code>'s effect depends on the engine: for <code>cli/*</code> it's spliced wherever <code>"${schema}"</code> appears in <code>args</code> (error if declared without a value supplied, silent no-op if <code>args</code> never references it, <span class="cite">agent.go:289-301</span>); for <code>ollama/*</code> it's sent as the real <code>format</code> field on <code>/api/generate</code> (<span class="cite">adapters/ollama.go:64-65</span>). <strong>No response is ever validated against the schema</strong> — it only shapes the outgoing request.</li>
-            <li>Cache key = SHA-256 of <code>{engine, prompt, parameters}</code> (<span class="cite">traffic/cache.go:34-42</span>) — deliberately excludes <code>command</code>/<code>args</code>/<code>endpoint</code>/<code>temperature</code>, so two agents sharing engine+prompt+schema but different commands could collide (an undocumented latent edge case, not a flagged gap). Default TTL is <code>24h</code> when unset (<span class="cite">agent.go:466</span>); <code>cache.storage: "disk"</code> additionally persists one JSON file per key under <code>.mhl-cache/</code>.</li>
-            <li>On failure, fallback legs run in declaration order; the response is the first success or the last failure (<span class="cite">agent.go:58-76</span>).</li>
-          </ul>
-
-          <p class="block-label">Errors</p>
-          <div class="reference-table err-table">
-            <div class="table-row table-head"><span>Condition</span><span>Message</span><span>Location</span></div>
-            <div class="table-row"><span>unsupported <code>engine</code> value</span><span><code>agent %q: engine %q is not supported yet</code></span><span class="cite">agent.go:137</span></div>
-            <div class="table-row"><span><code>prompt:</code> empty/absent</span><span><code>%s.run requires a non-empty prompt</code></span><span class="cite">agent.go:43</span></div>
-            <div class="table-row"><span><code>${schema}</code> in args, no <code>schema:</code> given</span><span><code>args declares "${schema}" but no schema: argument was supplied</code></span><span class="cite">agent.go:293</span></div>
-          </div>
-
-          <div class="gap-box"><span>!</span><div><strong>Known gaps</strong><ul class="plain-list">
-            <li><code>api_key</code>, <code>skills</code>, <code>mcp_servers</code>, <code>tools</code>, <code>timeout</code>, <code>system_instructions</code> — shown in the design docs, but not referenced anywhere in <code>agent.go</code>. Writing them is silently a no-op.</li>
-            <li><code>retry.backoff</code> — accepted, ignored. <code>traffic.Retrier</code> only implements exponential backoff; a declared <code>"linear"</code>/<code>"fixed"</code> strategy behaves as exponential instead of erroring. <span class="cite">agent.go:393-395</span></li>
-            <li><code>cache.strategy</code> — accepted, ignored. <code>traffic.Cache</code> only implements exact-match (SHA-256 of engine+prompt+parameters). <span class="cite">agent.go:455-456</span></li>
-            <li><code>rate_limit.on_exceeded</code> — read and stored, but <code>Limiter.Acquire</code> only implements one behavior (block and wait); a <code>"reject"</code> fail-fast mode isn't implemented. <span class="cite">agent.go:515-517</span></li>
-          </ul>
-          <div class="sketch-quote">// SKETCH GAP: backoff is accepted but ignored — traffic.Retrier only<br />// implements exponential backoff today...</div>
-          </div></div>
-        </section>
-
-        <section class="feature doc-section" id="prompt" data-title="prompt declaration templates interpolation markdown from file">
-          <div class="feature-head"><h2><span class="feature-num">03</span><code>prompt</code></h2><span class="status status-full">Implemented</span></div>
-          <p class="feature-lede">A named, parameterized text template — inline or loaded from an external Markdown file — composable into other prompts and passed to <code>agent.run(prompt: ...)</code>.</p>
-
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">export prompt SecurityExpertRole() {
-    "Você é um especialista em segurança de software."
-}
-
-export prompt SystemPrompt(role: prompt, task: string) {
-    """
-    ${role}
-
-    ${task}
-    """
-}
-
-prompt SecurityAuditPrompt(file_path: string, code: string) from "./security-audit.prompt.md"
-
-var response = Echo.run(prompt: SystemPrompt(
-    role: SecurityExpertRole(),
-    task: "Revise o pull request #42."
-))</code></pre>
-
-          <p class="block-label">Variations</p>
-          <div class="variation-grid">
-            <div class="variation"><h4>inline body</h4><p><code>prompt Name(params) { "..." }</code> or a <code>"""..."""</code> block — mutually exclusive with <code>from</code>.</p></div>
-            <div class="variation"><h4>external file</h4><p><code>prompt Name(params) from "file.md"</code> — the file's trimmed contents become the body at import-resolution time, indistinguishable from an inline body thereafter.</p></div>
-            <div class="variation"><h4>two interpolation engines</h4><p>Ordinary strings anywhere interpolate a <strong>full expression</strong> inside <code>${...}</code> via <code>interpolate.go</code> — variables, calls, anything. A <code>prompt</code> template body interpolates only <strong>bare identifiers</strong> via a fixed regex in <code>prompt.Render</code>, with <code>\${name}</code> as a literal-text escape (needed because text pulled from a Markdown file often has incidental <code>${...}</code>).</p></div>
-          </div>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li><code>resolvePromptArgument</code> (<span class="cite">prompt_ops.go:23-46</span>): a bare <code>Name(...)</code> call is treated as a reference to a declared prompt and rendered via <code>renderPromptCallDynamic</code>; anything else is evaluated as an ordinary expression and must produce a string.</li>
-            <li>Every nested prompt-call argument must be named and must evaluate to a string (<span class="cite">prompt_ops.go:66,74</span>) — nested prompts compose naturally (<code>role: SecurityExpertRole()</code> inside another prompt call).</li>
-            <li><code>prompt.Render</code> is <strong>fail-closed</strong>: a declared parameter with no supplied value, a supplied argument that isn't a declared parameter, or a template referencing an undeclared <code>${name}</code> are all hard errors, not silently ignored.</li>
-          </ul>
-
-          <p class="block-label">Errors</p>
-          <div class="reference-table err-table">
-            <div class="table-row table-head"><span>Condition</span><span>Message</span><span>Location</span></div>
-            <div class="table-row"><span>declared param has no value</span><span><code>prompt %q: missing value for parameter %q</code></span><span class="cite">render.go:42</span></div>
-            <div class="table-row"><span>argument isn't a declared param</span><span><code>prompt %q: unexpected argument %q</code></span><span class="cite">render.go:47</span></div>
-            <div class="table-row"><span>template references undeclared <code>${name}</code></span><span><code>prompt %q: template references undeclared parameter %q</code></span><span class="cite">render.go:62</span></div>
-            <div class="table-row"><span>unterminated <code>${</code> in any string</span><span><code>unterminated "${" in string</code></span><span class="cite">interpolate.go:35</span></div>
-          </div>
-        </section>
-
-        <section class="feature doc-section" id="skill" data-title="skill declaration input output tools mcp_servers system_instructions">
-          <div class="feature-head"><h2><span class="feature-num">04</span><code>skill</code></h2><span class="status status-gap">Docs-only</span></div>
-          <p class="feature-lede">Declares a named, scoped capability — description, allowed tools/MCP servers, input/output schema, system instructions. Parses completely and is listed by <code>mhl skills list</code>, but nothing in the runtime ever invokes a skill or scopes an agent to it.</p>
-
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">export skill CodeAuditorSkill {
-    description: "Analisa código."
-    tools: [execution.read_file, execution.git_diff]
-    mcp_servers: [PostgresDB]
-
-    input {
-        target_file: string
-        strict_mode: boolean
-    }
-
-    output {
-        vulnerabilities_found: int
-        report_markdown: string
-    }
-
-    system_instructions: """
-    Você é um auditor de segurança sênior.
-    """
+pipeline Import {
+    input records: {id: number, active: bool}[]
+    step Count { log(records.size()) }
 }</code></pre>
 
-          <p class="block-label">Fields</p>
-          <div class="reference-table">
-            <div class="table-row table-head"><span>Field</span><span>Parsed?</span><span>Executed at runtime?</span></div>
-            <div class="table-row"><span><code>description</code></span><span>yes</span><span>printed by <code>mhl skills list</code> only</span></div>
-            <div class="table-row"><span><code>tools</code>, <code>mcp_servers</code></span><span>yes</span><span>printed by the CLI listing; otherwise unreachable</span></div>
-            <div class="table-row"><span><code>system_instructions</code></span><span>yes</span><span>only merged inside code that nothing calls</span></div>
-            <div class="table-row"><span><code>input { }</code>, <code>output { }</code></span><span>yes, into a schema struct</span><span>never read anywhere, not even by the CLI listing</span></div>
-          </div>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li>A <code>skill</code> is treated by <code>internal/engine/interpreter</code> only as one more exportable declaration kind for <code>use</code> resolution — nothing else (<span class="cite">imports.go:183-184,254</span>).</li>
-            <li>The real logic lives in <code>internal/features/skills</code>: <code>PrepareAgentPayloadForSkill</code> (<span class="cite">resolver.go:64-99</span>) computes a genuinely sandboxed payload — system instructions tagged <code>[ACTIVE SKILL: name]</code>, tool/MCP lists scoped to the skill's own lists — but is called only from that package's own unit tests, never from <code>internal/engine/interpreter</code> or <code>internal/cli</code>.</li>
-            <li><code>mhl skills list [dir]</code> parses every <code>.mh</code> file independently (no import resolution) and prints <code>description</code>/<code>tools</code>/<code>mcp_servers</code> per skill — <code>export</code> has no effect on this listing, unlike <code>use</code>.</li>
-          </ul>
-
-          <div class="gap-box"><span>!</span><div><strong>Known gap</strong><ul class="plain-list">
-            <li>There is no <code>.mh</code> syntax anywhere for actually invoking a skill from a pipeline. Declaring one documents intent and shows up in <code>mhl skills list</code>; it never restricts what an agent can do at run time.</li>
-          </ul></div></div>
+          <p class="block-label">PRACTICAL GRAMMAR</p>
+          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | skill | memory | tool | mcp_server | pipeline | test)
+variable     := "var" identifier "=" expression
+property     := identifier ":" expression
+call         := expression "(" [argument {"," argument}] ")"
+array        := "[" [expression {"," expression}] "]"
+object       := "{" [key ":" expression {","? key ":" expression}] "}"
+lambda       := "(" [parameters] ")" "->" (expression | block)
+if-expr      := "if" "(" expression ")" expression "else" expression</code></pre>
         </section>
 
-        <section class="feature doc-section" id="memory" data-title="memory declaration kv json append_log jsonl store path get set remove append">
-          <div class="feature-head"><h2><span class="feature-num">05</span><code>memory</code></h2><span class="status status-full">Implemented</span></div>
-          <p class="feature-lede">A named state store, chosen per-declaration by <code>type</code>. Four backends exist, each with a different persistence model and method set.</p>
+        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort slice interpolation">
+          <div class="feature-head"><h2><span class="feature-num">03</span>Expressions and collections</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Expressions produce values. They compose inside variables, arguments, properties, conditions, returns, and string interpolation.</p>
 
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">export memory SessionJsonMem {
-    type: "json"
-    path: ".mhl/session_mem.json"
-}
+          <p class="block-label">PRECEDENCE — LOWEST TO HIGHEST</p>
+          <div class="operator-line"><code>||</code><i>→</i><code>&amp;&amp;</code><i>→</i><code>== !=</code><i>→</i><code>&lt; &gt; &lt;= &gt;=</code><i>→</i><code>+ -</code><i>→</i><code>* / %</code><i>→</i><code>! -</code><i>→</i><code>. () []</code></div>
+          <pre class="code-block"><code class="language-mhl">var ready = retries &lt; 3 &amp;&amp; files.size() > 0
+var label = if (ready) "ready" else "blocked"
+var total = price * quantity + shipping
+var dynamic = record[field_name]
+var slice = numbers[1..^1] // index 1 through one before the end
+var text = "${label}: ${total}"</code></pre>
 
-export memory AuditLogMem {
-    type: "append_log"
-    path: ".mhl/logs/audit.log"
-}
-
-SessionJsonMem.set("key1", "value1")
-SessionJsonMem.set({"nested": {"key1": "value1"}})
-are_equal(SessionJsonMem.get("nested").key1, "value1")
-SessionJsonMem.remove("nested::key1")
-
-AuditLogMem.append("First log entry")</code></pre>
-
-          <p class="block-label">Backends</p>
-          <div class="reference-table">
-            <div class="table-row table-head"><span>type</span><span>Persistence</span><span>Methods</span></div>
-            <div class="table-row"><span><code>kv</code></span><span>in-memory only (<code>store: "memory"</code> required) — discarded at process exit</span><span><code>get</code>, <code>set</code></span></div>
-            <div class="table-row"><span><code>json</code></span><span>one JSON object file at <code>path</code>, rewritten whole on every write</span><span><code>get</code>, <code>set</code>, <code>remove</code> (all support <code>"::"</code>-delimited nested paths)</span></div>
-            <div class="table-row"><span><code>append_log</code></span><span>plain-text file at <code>path</code>, append-only</span><span><code>append(text)</code> only — no read-back method</span></div>
-            <div class="table-row"><span><code>jsonl</code></span><span>JSON-lines file, each entry auto-wrapped with a <code>ts</code> timestamp</span><span><code>append(value)</code> only</span></div>
+          <p class="block-label">VALUE METHODS</p>
+          <div class="method-grid">
+            <article><h3>Common</h3><code>size()</code><code>is_empty()</code><p>Strings, arrays, and objects.</p></article>
+            <article><h3>String</h3><code>split()</code><code>replace()</code><code>contains()</code><code>starts_with()</code><code>ends_with()</code><code>trim()</code><code>to_upper()</code><code>to_lower()</code><code>substring()</code></article>
+            <article><h3>Array</h3><code>get_index()</code><code>index_of()</code><code>contains()</code><code>filter()</code><code>find()</code><code>sort_by()</code></article>
+            <article><h3>Object</h3><code>keys()</code><code>values()</code><p>Keys are returned in stable order.</p></article>
           </div>
 
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li>Dispatch is <code>executeMemoryOp</code> (<span class="cite">memory_ops.go:53-185</span>): read <code>type</code>, evaluate call args <strong>positionally only</strong> — memory calls accept no named arguments — then switch on type and method.</li>
-            <li><code>json</code> is the most mature backend: lazily loaded and cached per path, so multiple <code>memory</code> declarations pointing at the same <code>path</code> share one cache entry (<span class="cite">json.go:19-27</span>). A missing file starts as an empty object (auto-created on first write, not on load); a malformed <em>existing</em> file is the only load-time error.</li>
-            <li><strong>Path resolution asymmetry:</strong> <code>path</code> resolves relative to the process's current working directory, not the declaring <code>.mh</code> file's directory — unlike <code>use</code>/<code>import</code>/<code>prompt ... from</code>, which all resolve relative to the declaring file.</li>
-            <li>Locking is an in-process <code>sync.Mutex</code> only. There is no cross-process file locking, and <code>json</code>'s writes are a direct <code>os.WriteFile</code>, not write-temp-then-rename — a crash mid-write can leave a partially-written file.</li>
-          </ul>
+          <p class="block-label">DETERMINISTIC SELECTION EXAMPLE</p>
+          <pre class="code-block"><code class="language-mhl">var passed_ids = [10]
+var features = [
+    {id: 20, status: "pending", priority: 2, depends_on: [10]},
+    {id: 30, status: "pending", priority: 1, depends_on: [99]},
+    {id: 40, status: "pending", priority: 3, depends_on: []}
+]
 
-          <p class="block-label">Errors</p>
-          <div class="reference-table err-table">
-            <div class="table-row table-head"><span>Condition</span><span>Message</span><span>Location</span></div>
-            <div class="table-row"><span>unsupported <code>type</code></span><span><code>memory %q: type %q is not supported yet</code></span><span class="cite">memory_ops.go:183</span></div>
-            <div class="table-row"><span><code>kv</code> with any <code>store</code> other than <code>"memory"</code></span><span><code>memory %q: store %q is not supported yet</code></span><span class="cite">memory_ops.go:63-65</span></div>
-            <div class="table-row"><span><code>append_log</code> entry not a plain string</span><span><code>memory %q: append_log entries must be plain text (a string), not a structured value</code></span><span class="cite">memory_ops.go:159</span></div>
-          </div>
+var ready = features
+    .filter((f) -> f.status == "pending")
+    .filter((f) -> f.depends_on
+        .filter((d) -> !passed_ids.contains(d))
+        .is_empty())
+    .sort_by((f) -> f.priority)
 
-          <div class="gap-box"><span>!</span><div><strong>Known gap</strong><ul class="plain-list">
-            <li>A <code>vector</code> backend is mentioned only in an AST doc comment (<span class="cite">program.go:88-92</span>) — declaring <code>type: "vector"</code> hits the generic "not supported yet" default. No TTL exists for any memory backend (that's an agent-level <code>cache</code> concept, unrelated).</li>
-          </ul></div></div>
+var next = ready.find((f) -> f.id == 20)</code></pre>
+          <div class="tip-row"><span>IMMUTABLE RESULTS</span><p><code>filter()</code>, <code>sort_by()</code>, concatenation, and slices return new arrays. Assigning to <code>items[index]</code> or <code>object[key]</code> mutates the original collection.</p></div>
         </section>
 
-        <section class="feature doc-section" id="tool" data-title="tool declaration self method block body expression body native ops">
-          <div class="feature-head"><h2><span class="feature-num">06</span><code>tool</code></h2><span class="status status-full">Implemented</span></div>
-          <p class="feature-lede">A namespace of methods — each either a single expression or a full statement block — that wraps native ops or other calls behind a named, reusable interface.</p>
-
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">tool T {
-    obj_body() -> {a: 1, b: 2}
-    empty_body() -> {}
-    block_body(items) -> {
+        <section class="feature doc-section" id="statements" data-title="statements control flow var assignment if else while for try catch finally return break goto fail">
+          <div class="feature-head"><h2><span class="feature-num">04</span>Control flow</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Statements perform actions inside a <code>step</code>, a <code>tool</code> method, a block lambda, or a test case.</p>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Construct</span><span>Syntax</span><span>Effect</span></div>
+            <div class="table-row"><span>Variable</span><code>var x = expression</code><span>Creates a local binding.</span></div>
+            <div class="table-row"><span>Assignment</span><code>x = expression</code><span>Updates a variable, field, or index.</span></div>
+            <div class="table-row"><span>Condition</span><code>if (cond) { ... } else { ... }</code><span>Executes a block by condition.</span></div>
+            <div class="table-row"><span>Repetition</span><code>while (cond) { ... }</code><span>Repeats while the condition is true.</span></div>
+            <div class="table-row"><span>Iteration</span><code>for (var item in items) { ... }</code><span>Iterates over an array.</span></div>
+            <div class="table-row"><span>Error handling</span><code>try { ... } catch (err) { ... } finally { ... }</code><span>Handles recoverable failures.</span></div>
+            <div class="table-row"><span>Return</span><code>return value</code><span>Exits a method or step.</span></div>
+            <div class="table-row"><span>Transition</span><code>goto StepName</code><span>Redirects to another pipeline step.</span></div>
+            <div class="table-row"><span>Stop</span><code>break "reason"</code><span>Stops the current pipeline or loop.</span></div>
+          </div>
+          <pre class="code-block"><code class="language-mhl">tool Summary {
+    count_valid(items: {valid: bool}[]): number -> {
         var count = 0
-        while (count < items.size()) {
-            count = count + 1
+        for (var item in items) {
+            if (item.valid) count = count + 1
         }
         return count
     }
-    pending() -> self.block_body(items: [])
-}</code></pre>
-
-          <p class="block-label">Variations</p>
-          <div class="variation-grid">
-            <div class="variation"><h4>expression body</h4><p><code>name(params) -> expr</code> — the method's value is the expression's value directly.</p></div>
-            <div class="variation"><h4>block body</h4><p><code>name(params) -> { statements }</code> — a real statement block with <code>var</code>/<code>if</code>/<code>while</code>/<code>return</code>. A block that looks like a single object literal (<code>-> {a: 1}</code>) is still parsed as an expression body, not a block — <code>Body</code> is tried first, and participle only falls back to <code>Block</code> when the content inside <code>{ }</code> can't parse as an expression.</p></div>
-            <div class="variation"><h4><code>self</code></h4><p>Inside a tool method, <code>self.other_method(...)</code> calls a sibling method on the same tool. <code>self</code> is only valid inside a tool method body — everywhere else (a pipeline step, a <code>describe</code>, a <code>stop_when</code>) it errors.</p></div>
-          </div>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li>Parameters bind <strong>purely positionally, by count</strong> — <code>Param</code>'s optional <code>: Type</code> annotation is accepted but never checked at call time (<span class="cite">tool.go:37-61</span>).</li>
-            <li>Each call gets a <strong>fresh <code>Env{}</code></strong> — a real function-call boundary. The method body never sees the caller's step-local variables.</li>
-            <li>Dispatch: <code>evalPostfix</code> checks reserved cases (native namespaces, agent <code>.run</code>, prompt calls, <code>self.*</code>) first, then falls to a generic tool/memory lookup (<span class="cite">eval.go:406-427</span>). An expression body evaluates directly; a block body runs through <code>execBlock</code>, and a <code>return</code> inside it supplies the result (falling off the end without one yields <code>nil</code>).</li>
-          </ul>
-
-          <p class="block-label">Errors</p>
-          <div class="reference-table err-table">
-            <div class="table-row table-head"><span>Condition</span><span>Message</span><span>Location</span></div>
-            <div class="table-row"><span>method doesn't exist</span><span><code>tool %q has no method %q</code></span><span class="cite">tool.go:46</span></div>
-            <div class="table-row"><span>wrong argument count</span><span><code>tool %q: %s requires %d argument(s), got %d</code></span><span class="cite">tool.go:53</span></div>
-            <div class="table-row"><span><code>self</code> used outside a tool method</span><span><code>self is only valid inside a tool method</code></span><span class="cite">eval.go:397-405</span></div>
-          </div>
-
-          <div class="gap-box"><span>!</span><div><strong>Known gap</strong><ul class="plain-list">
-            <li>No recursion or call-depth guard exists for tool-method self-calls (the threaded <code>depth</code> parameter is only used for literal-nesting limits). Deep or infinite recursion runs until the Go call stack overflows — an uncontrolled crash, unlike <code>runtime.Runner</code>'s explicit 10,000-visit cap for <code>goto</code> cycles.</li>
-          </ul></div></div>
-        </section>
-
-        <section class="feature doc-section" id="mcp-server" data-title="mcp_server declaration transport stdio http headers env credentials">
-          <div class="feature-head"><h2><span class="feature-num">07</span><code>mcp_server</code></h2><span class="status status-gap">Docs-only</span></div>
-          <p class="feature-lede">Declares a Model Context Protocol server — stdio or HTTP transport, credentials injected via <code>env(...)</code>. The registry and JSON-RPC client are real and independently tested, but nothing in the execution path ever constructs one.</p>
-
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">mcp_server PostgresDB {
-    transport: "stdio"
-    command: "npx"
-    args: ["-y", "@modelcontextprotocol/server-postgres", env("DATABASE_URL")]
 }
 
-mcp_server GitHubServer {
-    transport: "http"
-    url: "https://mcp.github.com/v1"
-    headers: {
-        "Authorization": "Bearer " + env("GITHUB_TOKEN")
+pipeline SafeRead {
+    step Read {
+        try {
+            var config = json.parse(fs.read("config.json"))
+            log.info("mode:", config.mode)
+        } catch (err) {
+            log.warn("invalid configuration:", err)
+        } finally {
+            log.info("read completed")
+        }
     }
 }</code></pre>
-
-          <p class="block-label">Variations</p>
-          <div class="variation-grid">
-            <div class="variation"><h4>transport: "stdio"</h4><p>Spawns <code>command</code>/<code>args</code>, writes one JSON-RPC request line to stdin, reads the first valid JSON line from stdout. Stateless per call — no session or handshake persisted.</p></div>
-            <div class="variation"><h4>transport: "http"</h4><p>POSTs the JSON-RPC request with <code>headers</code>, unwrapping optional SSE <code>data:</code> framing from the response.</p></div>
-          </div>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li><code>mcp.BuildRegistry(prog)</code> walks every <code>mcp_server</code> declaration into a <code>ServerConfig</code>; <code>env("KEY")</code> and <code>"prefix" + env("KEY")</code> concatenation are recognized and resolved via the shared credential resolver, with a fail-closed variant that pre-validates every reference resolves before returning.</li>
-            <li><code>Client.CallTool</code> dispatches on <code>transport</code> to a stdio or HTTP implementation. <strong>Tool discovery (<code>tools/list</code>) is not implemented anywhere</strong> — the client only exposes calling an already-known request; nothing builds a catalog of a server's available tools.</li>
-          </ul>
-
-          <p class="block-label">Errors</p>
-          <div class="reference-table err-table">
-            <div class="table-row table-head"><span>Condition</span><span>Message</span><span>Location</span></div>
-            <div class="table-row"><span>unsupported transport at call time</span><span><code>unsupported transport %q</code></span><span class="cite">client.go:100-104</span></div>
-            <div class="table-row"><span>stdio, no <code>command</code></span><span><code>no command configured</code></span><span class="cite">client.go:172-174</span></div>
-            <div class="table-row"><span>http, no <code>url</code></span><span><code>no url configured</code></span><span class="cite">client.go:247-249</span></div>
-          </div>
-
-          <div class="gap-box"><span>!</span><div><strong>Known gap — confirmed, total wiring gap</strong><ul class="plain-list">
-            <li>Grepping the whole tree for uses of the registry/client outside their own package turns up only their own tests. <strong>Nothing in <code>internal/engine/interpreter</code> (agent.go, tool.go, eval.go), <code>internal/engine/runtime</code>, or <code>internal/cli</code> ever imports <code>internal/features/mcp</code>.</strong> Declaring an <code>mcp_server</code> today does nothing beyond making it visible to <code>use</code>/<code>export</code> bookkeeping and <code>mhl skills list</code>'s echo of a skill's declared <code>mcp_servers:</code> list.</li>
-          </ul></div></div>
+          <div class="tip-row"><span>ERRORS</span><p><code>fail("message")</code> creates a failure that <code>catch</code> can handle. Without a handler, the failure stops execution and the CLI returns a nonzero status.</p></div>
         </section>
 
-        <section class="feature doc-section" id="pipeline" data-title="pipeline loop pipeline step checkpoint resume repeat stop_when max_iterations goto break">
-          <div class="feature-head"><h2><span class="feature-num">08</span><code>pipeline</code> / <code>loop pipeline</code></h2><span class="status status-full">Implemented</span></div>
-          <p class="feature-lede">An ordered sequence of <code>step</code>s with optional per-step checkpointing and resume, redirectable with <code>goto</code>. Prefixing with <code>loop</code> repeats the whole pipeline under a <code>repeat</code> policy.</p>
+        <section class="feature doc-section" id="agent" data-title="agent cli ollama run prompt schema retry cache rate limit fallback">
+          <div class="feature-head"><h2><span class="feature-num">05</span><code>agent</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Declares an AI backend callable through <code>.run(prompt: ...)</code>. The runtime supports local CLI processes and models served by Ollama.</p>
 
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">pipeline AutoFix {
-    input issue_id: string
+          <p class="block-label">CLI AGENT</p>
+          <pre class="code-block"><code class="language-mhl">agent Claude {
+    engine: "cli/claude-code"
+    command: "claude"
+    args: [
+        "-p", "${prompt}",
+        "--output-format", "json",
+        "--json-schema", "${schema}"
+    ]
+    retry: {
+        max_attempts: 3
+        delay: 2s
+        retry_on: [500, 503, "timeout", "rate_limit"]
+    }
+    cache: { ttl: 10m, storage: "disk" }
+    rate_limit: { requests_per_minute: 20, concurrency: 2 }
+}</code></pre>
+          <p class="block-label">OLLAMA AGENT AND CALL</p>
+          <pre class="code-block"><code class="language-mhl">agent LocalCoder {
+    engine: "ollama/qwen2.5-coder"
+    endpoint: "http://localhost:11434"
+    temperature: 0.1
+    fallback: [
+        agent {
+            command: "echo"
+            args: ["fallback: ${prompt}"]
+        }
+    ]
+}
+
+var schema = """
+{"type":"object","properties":{"summary":{"type":"string"}}}
+"""
+var raw = LocalCoder.run(
+    prompt: "Summarize the change.",
+    schema: schema
+)
+var result = json.parse(raw)</code></pre>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Field</span><span>Example</span><span>Behavior</span></div>
+            <div class="table-row"><span><code>engine</code></span><code>"cli/name" · "ollama/model"</code><span>Selects the adapter.</span></div>
+            <div class="table-row"><span><code>command</code> / <code>args</code></span><code>"claude" · ["-p", "${prompt}"]</code><span>Builds argv without splitting elements.</span></div>
+            <div class="table-row"><span><code>endpoint</code> / <code>temperature</code></span><code>"http://localhost:11434" · 0.2</code><span>Configures Ollama.</span></div>
+            <div class="table-row"><span><code>retry</code></span><code>{max_attempts: 3, delay: 2s}</code><span>Repeats eligible failures.</span></div>
+            <div class="table-row"><span><code>cache</code></span><code>{ttl: 1h, storage: "disk"}</code><span>Reuses a response by exact key.</span></div>
+            <div class="table-row"><span><code>rate_limit</code></span><code>{requests_per_minute: 20, concurrency: 2}</code><span>Controls frequency and concurrency.</span></div>
+            <div class="table-row"><span><code>fallback</code></span><code>[Backup, agent {...}]</code><span>Tries agents in declaration order.</span></div>
+          </div>
+          <div class="security-banner"><span>!</span><div><strong>Do not place secrets in <code>args</code>.</strong><p>Prefer environment variables resolved by the invoked process. To preserve spaces and special characters in prompts, keep <code>"${prompt}"</code> as one complete array element.</p></div></div>
+        </section>
+
+        <section class="feature doc-section" id="prompt" data-title="prompt template interpolation markdown from nested composition parameters">
+          <div class="feature-head"><h2><span class="feature-num">06</span><code>prompt</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A named template with parameters. A prompt renders to a string and can be passed to an agent or composed into another prompt.</p>
+
+          <p class="block-label">INLINE AND COMPOSED</p>
+          <pre class="code-block"><code class="language-mhl">prompt Role() {
+    "You are a software security reviewer."
+}
+
+prompt Review(role: prompt, file: string, code: string) {
+    """
+    ${role}
+
+    Review ${file}. Return concrete risks and a minimal fix.
+
+    ${code}
+    """
+}
+
+var request = Review(
+    role: Role(),
+    file: "auth.go",
+    code: fs.read("auth.go")
+)</code></pre>
+          <p class="block-label">MARKDOWN BODY</p>
+          <div class="file-example">
+            <div><span>review.prompt.md</span><pre class="code-block"><code># Review of ${file}
+
+## Criteria
+- correctness
+- security
+- compatibility
+
+## Code
+${code}</code></pre></div>
+            <div><span>prompts.mh</span><pre class="code-block"><code class="language-mhl">prompt Review(
+    file: string,
+    code: string
+) from "review.prompt.md"
+
+var rendered = Review(
+    file: "main.go",
+    code: fs.read("main.go")
+)</code></pre></div>
+          </div>
+          <ul class="plain-list">
+            <li>Prompt arguments are named: <code>Review(file: "x", code: source)</code>.</li>
+            <li>Missing, extra, or unknown placeholders fail instead of producing incomplete text.</li>
+            <li>Use <code>\${NAME}</code> in external Markdown when a placeholder must remain literal.</li>
+          </ul>
+        </section>
+
+        <section class="feature doc-section" id="skill" data-title="skill contract input output tools mcp servers system instructions list alpha">
+          <div class="feature-head"><h2><span class="feature-num">07</span><code>skill</code></h2><span class="status status-partial">Alpha contract</span></div>
+          <p class="feature-lede">Groups a description, typed contract, instructions, and the smallest tool/MCP scope required for one capability. In the alpha, skills can be declared, imported, validated, and listed by the CLI.</p>
+          <pre class="code-block"><code class="language-mhl">skill SecurityAudit {
+    description: "Review code and return prioritized findings."
+
+    input {
+        file_path: string
+        code: string
+    }
+
+    output {
+        summary: string
+        findings: {severity: string, message: string}[]
+    }
+
+    tools: [ProjectFiles]
+    mcp_servers: [IssueTracker]
+    system_instructions: "Do not modify files. Cite evidence."
+}</code></pre>
+          <div class="inline-code"><span>inspect</span><code>mhl skills list</code></div>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Member</span><span>Form</span><span>Responsibility</span></div>
+            <div class="table-row"><span><code>input</code></span><code>{ name: type }</code><span>Contract for received data.</span></div>
+            <div class="table-row"><span><code>output</code></span><code>{ name: type }</code><span>Expected result shape.</span></div>
+            <div class="table-row"><span><code>tools</code></span><code>[ProjectFiles]</code><span>Minimum tool scope.</span></div>
+            <div class="table-row"><span><code>mcp_servers</code></span><code>[IssueTracker]</code><span>Minimum MCP server scope.</span></div>
+            <div class="table-row"><span><code>system_instructions</code></span><code>"..."</code><span>Capability-specific rules.</span></div>
+          </div>
+          <div class="tip-row"><span>ALPHA</span><p>Direct skill invocation from a step is not yet a public language operation. Treat the declaration as an inspectable contract while full agent injection evolves.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="memory" data-title="memory mem kv json append log persistent state set get remove nested reset">
+          <div class="feature-head"><h2><span class="feature-num">08</span><code>memory</code> and <code>mem</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede"><code>memory</code> declares a named store. <code>mem</code> creates a pipeline-scoped persistent variable, ideal for a <code>loop pipeline</code> stop condition.</p>
+
+          <p class="block-label">NAMED MEMORY</p>
+          <pre class="code-block"><code class="language-mhl">memory Session {
+    type: "json"
+    path: ".mhl/session.json"
+}
+
+memory Audit {
+    type: "append_log"
+    path: ".mhl/audit.log"
+}
+
+Session.set("attempt", 1)
+Session.set({status: "running", owner: "platform"})
+var attempt = Session.get("attempt", 0)
+Session.remove("owner")
+Audit.append("pipeline started")</code></pre>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Type</span><span>Configuration</span><span>Operations</span></div>
+            <div class="table-row"><span>In-memory KV</span><code>{type: "kv", store: "memory"}</code><span><code>set</code>, <code>get</code>, <code>remove</code>; lasts one execution.</span></div>
+            <div class="table-row"><span>JSON</span><code>{type: "json", path: "state.json"}</code><span><code>set</code>, <code>get</code>, <code>remove</code>; persists to disk.</span></div>
+            <div class="table-row"><span>Text log</span><code>{type: "append_log", path: "audit.log"}</code><span><code>append</code>; one line per call.</span></div>
+            <div class="table-row"><span>JSONL</span><code>{type: "append_jsonl", path: "events.jsonl"}</code><span><code>append</code>; one JSON object per line.</span></div>
+          </div>
+          <div class="tip-row"><span>PATHS</span><p>In JSON memory, <code>Session.get("config::retry")</code> navigates nested objects. <code>remove("config::retry")</code> removes only the targeted field.</p></div>
+
+          <p class="block-label">PERSISTENT PIPELINE VARIABLE</p>
+          <pre class="code-block"><code class="language-mhl">loop pipeline Poll {
+    mem attempts = 0
+    mem status = "pending"
+
+    repeat: {
+        stop_when: status == "done"
+        max_iterations: 10
+    }
+
+    step Check {
+        attempts = attempts + 1
+        status = if (attempts >= 3) "done" else "pending"
+        log.info("attempt", attempts, status)
+    }
+}</code></pre>
+          <ul class="plain-list">
+            <li><code>mem name = value</code> uses get-or-init semantics: the initializer runs only when no value exists.</li>
+            <li>The value survives between iterations and is visible to <code>repeat.stop_when</code>.</li>
+            <li><code>name.reset()</code> deletes the persisted value; the next access initializes it again.</li>
+          </ul>
+        </section>
+
+        <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs http json log return types">
+          <div class="feature-head"><h2><span class="feature-num">09</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A tool creates a small, reusable API over native operations. Methods take positional arguments, may declare types, and use either an expression body or a statement block.</p>
+          <pre class="code-block"><code class="language-mhl">tool Project {
+    read(path: string): string -> fs.read(path)
+
+    test(package: string): {stdout: string, stderr: string, exit_code: number} ->
+        cmd.exec(["go", "test", package], timeout: 2m)
+
+    changed_go_files(): string[] -> {
+        var paths = fs.list(".")
+        return paths.filter((path) -> path.ends_with(".go"))
+    }
+}
+
+var source = Project.read("main.go")
+var result = Project.test("./...")
+if (result.exit_code != 0) fail(result.stderr)</code></pre>
+
+          <p class="block-label">AVAILABLE OPERATIONS</p>
+          <div class="native-reference">
+            <article><h3><code>cmd</code></h3><p><code>exec(command_or_argv, timeout:)</code></p><p><code>exec_all(commands:, timeout:)</code></p></article>
+            <article><h3><code>fs</code></h3><p><code>read</code> · <code>exists</code> · <code>write</code> · <code>append</code></p><p><code>delete</code> · <code>join</code> · <code>list</code></p></article>
+            <article><h3><code>git</code></h3><p><code>diff</code> · <code>add</code> · <code>commit</code> · <code>status</code></p><p><code>rev_parse</code> · <code>log</code></p></article>
+            <article><h3><code>json</code></h3><p><code>parse</code> · <code>parse_lines</code> · <code>stringify</code></p></article>
+            <article><h3><code>http</code></h3><p><code>post(url:, headers:, body:)</code></p></article>
+            <article><h3><code>log</code></h3><p><code>info</code> · <code>warn</code> · <code>error</code></p></article>
+          </div>
+          <pre class="code-block"><code class="language-mhl">var result = cmd.exec(["git", "status", "--short"], timeout: 30s)
+var response = http.post(
+    url: "https://api.example.com/jobs",
+    headers: {"Authorization": "Bearer " + env("API_TOKEN")},
+    body: {status: "ready"}
+)
+var payload = json.parse(response.body)
+fs.write("result.json", json.stringify(payload))</code></pre>
+          <div class="security-banner"><span>!</span><div><strong>Prefer argv.</strong><p><code>cmd.exec(["program", "arg with spaces"])</code> preserves every argument and avoids accidental shell interpolation. Use a command string only when shell features are actually required.</p></div></div>
+        </section>
+
+        <section class="feature doc-section" id="mcp" data-title="mcp server stdio http sse headers env credential tools alpha">
+          <div class="feature-head"><h2><span class="feature-num">10</span><code>mcp_server</code></h2><span class="status status-partial">Alpha contract</span></div>
+          <p class="feature-lede">Declares a Model Context Protocol server connection. Configuration supports stdio or HTTP transports and secure environment references.</p>
+          <div class="syntax-columns">
+            <div><h3>stdio</h3><pre class="code-block"><code class="language-mhl">mcp_server LocalFiles {
+    transport: "stdio"
+    command: "npx"
+    args: [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "."
+    ]
+    env: {
+        "LOG_LEVEL": "warn"
+    }
+}</code></pre></div>
+            <div><h3>HTTP</h3><pre class="code-block"><code class="language-mhl">mcp_server IssueTracker {
+    transport: "http"
+    url: "https://mcp.example.com"
+    headers: {
+        "Authorization":
+            "Bearer " + env("MCP_TOKEN")
+    }
+}</code></pre></div>
+          </div>
+          <ul class="plain-list">
+            <li><code>transport: "stdio"</code> uses <code>command</code>, <code>args</code>, and <code>env</code>.</li>
+            <li><code>transport: "http"</code> uses <code>url</code> and <code>headers</code>.</li>
+            <li><code>env("NAME")</code> resolves a credential only when needed and keeps it out of source.</li>
+          </ul>
+          <div class="tip-row"><span>ALPHA</span><p>Transport declarations and configuration are part of the language contract. Direct discovery and invocation of MCP tools from a step are not yet public operations; use a skill declaration to define the intended scope.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="pipeline" data-title="pipeline input var step checkpoint resume loop repeat stop when max iterations goto break">
+          <div class="feature-head"><h2><span class="feature-num">11</span><code>pipeline</code> and <code>loop pipeline</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Pipelines are the executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in order unless an explicit transition redirects them.</p>
+
+          <p class="block-label">RECOVERABLE PIPELINE</p>
+          <pre class="code-block"><code class="language-mhl">pipeline Release {
+    input environment: string
+    var approved = false
 
     checkpoint: {
         enabled: true
@@ -438,281 +520,116 @@ mcp_server GitHubServer {
         ttl: 7d
     }
 
-    step Verify {
-        var result = project.test()
-        if (result.exit_code != 0) goto Repair
+    step Validate {
+        var result = cmd.exec(["go", "test", "./..."], timeout: 2m)
+        if (result.exit_code != 0) fail(result.stderr)
+        approved = true
     }
 
-    step Repair {
-        log.warn("corrigir e tentar novamente")
+    step Publish {
+        if (!approved) goto Validate
+        log.info("publishing to", environment)
     }
-}
+}</code></pre>
+          <div class="run-stack">
+            <div class="inline-code"><span>start</span><code>mhl run release.mh --input environment=staging</code></div>
+            <div class="inline-code"><span>resume</span><code>mhl run release.mh --input environment=staging --resume</code></div>
+          </div>
 
-memory Counter { type: "kv" store: "memory" }
+          <p class="block-label">LOOP WITH AN EXPLICIT STOP</p>
+          <pre class="code-block"><code class="language-mhl">loop pipeline PollBuild {
+    mem status = "pending"
+    mem checks = 0
 
-loop pipeline Increment {
     repeat: {
-        stop_when: Counter.get("n", 0) >= 3
-        max_iterations: 10
+        stop_when: status == "passed"
+        max_iterations: 20
     }
-    step Bump {
-        Counter.set("n", Counter.get("n", 0) + 1)
-    }
-}</code></pre>
 
-          <p class="block-label">Fields</p>
-          <div class="reference-table">
-            <div class="table-row table-head"><span>Block</span><span>Fields</span><span>Notes</span></div>
-            <div class="table-row"><span><code>checkpoint</code></span><span><code>enabled</code>, <code>strategy</code>, <code>storage</code>, <code>ttl</code></span><span>only <code>strategy: "per_step"</code> and <code>storage: "file"</code> are ever actually branched on — see gap</span></div>
-            <div class="table-row"><span><code>repeat</code> (<code>loop pipeline</code> only)</span><span><code>stop_when</code>, <code>max_iterations</code></span><span>either or both may be absent; a loop with neither runs forever unless a step <code>break</code>s</span></div>
-          </div>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li>One grammar covers both plain and <code>loop</code> pipelines — <code>Loop</code> is just an optional leading token. <code>checkpoint</code>/<code>repeat</code> aren't dedicated AST nodes, just ordinary properties whose value is a bare object literal, read generically in <code>internal/engine/runtime/pipeline.go</code>.</li>
-            <li>State lives at <code>&lt;root&gt;/.mhl/state/&lt;PipelineName&gt;.json</code>, written atomically (temp file + rename). String variable values are redacted before persisting; non-strings pass through unredacted.</li>
-            <li><code>--resume</code>: if the prior run finished (<code>NextStep == ""</code>), returns immediately; otherwise resumes at the persisted next step with restored variables, and <strong><code>init</code> is skipped entirely</strong> on a resumed run.</li>
-            <li><code>goto</code> target must be a declared step (forward or backward) — validated at the runtime layer, not the interpreter. A goto cycle with no escaping break is capped at 10,000 step-visits.</li>
-            <li><code>stop_when</code> runs in a <strong>brand-new, empty environment</strong> — it has no access to any pipeline or step <code>var</code>, only to <code>memory</code> stores. State a loop condition needs to observe across iterations must go through <code>memory</code>, exactly like a step would use it.</li>
-            <li>Loop terminal reasons are exactly one of three strings: <code>"max_iterations"</code> (checked at the top of each iteration), <code>"break"</code> (a step's explicit <code>break</code>, checked <em>before</em> <code>stop_when</code> for that iteration — break always wins), or <code>"stop_when"</code> (checked only after a full iteration completes). A genuine step error is not a terminal reason — it propagates straight out, aborting the whole run.</li>
-          </ul>
-
-          <p class="block-label">Errors</p>
-          <div class="reference-table err-table">
-            <div class="table-row table-head"><span>Condition</span><span>Message</span><span>Location</span></div>
-            <div class="table-row"><span><code>goto</code> to an undeclared step</span><span><code>runtime: goto target %q is not a step of pipeline %q</code></span><span class="cite">runner.go:147-148</span></div>
-            <div class="table-row"><span>goto cycle exceeds visit cap</span><span><code>runtime: step %q revisited more than 10000 times (a goto cycle with no break?)</code></span><span class="cite">runner.go:53,118-121</span></div>
-          </div>
-
-          <div class="gap-box"><span>!</span><div><strong>Known gaps</strong><ul class="plain-list">
-            <li><code>checkpoint.strategy</code> — the only value ever branched on is <code>"per_step"</code>; any other value (or none) means no per-step checkpoint is ever saved.</li>
-            <li><code>checkpoint.storage</code> — accepted and stored on the config, but nothing branches on it. File-based JSON under <code>.mhl/state</code> is hardwired regardless of what (or whether) <code>storage:</code> was declared.</li>
-            <li>Resuming into a step no longer present in an edited pipeline isn't validated up front — it only fails once that step is actually reached during execution.</li>
-          </ul></div></div>
-        </section>
-
-        <section class="feature doc-section" id="test" data-title="test describe assertions are_equal is_true incomplete mhl test">
-          <div class="feature-head"><h2><span class="feature-num">09</span><code>test</code> / <code>describe</code></h2><span class="status status-full">Implemented</span></div>
-          <p class="feature-lede">A <code>test</code> block groups named <code>describe</code> cases; assertions are ordinary calls recognized by name, so they can appear nested inside <code>if</code>/<code>while</code>/<code>for-in</code> like any other statement.</p>
-
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">test test_conditional_statements {
-    describe conditional_expression {
-        var result = if (true) "This is true" else "This is false"
-        are_equal(result, "This is true")
-    }
-    describe classical_if_statement {
-        var valueA = 0
-        var valueB = 1
-        var result = if (valueA > valueB) "A" else "B"
-        are_equal(result, "B")
+    step Check {
+        checks = checks + 1
+        var response = http.post(
+            url: "https://ci.example.com/status",
+            body: {attempt: checks}
+        )
+        status = json.parse(response.body).status
+        if (status == "failed") break "build failed"
     }
 }</code></pre>
-
-          <p class="block-label">Variations</p>
-          <p class="feature-lede" style="margin:0">Assertion set: <code>are_equal</code>, <code>are_not_equal</code>/<code>not_equal</code>, <code>is_true</code>, <code>is_false</code>, <code>is_null</code>, <code>not_null</code>, <code>greater_than</code>, <code>less_than</code>, <code>greater_than_or_equal</code>, <code>less_than_or_equal</code>, <code>includes</code>, and <code>incomplete(...)</code> — which records a skip and never evaluates its argument for pass/fail.</p>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li>Each <code>describe</code> runs against a <strong>fresh, empty environment</strong> — nothing declared in one is visible to another. There is no shared setup/teardown between describes, and nested <code>describe</code> blocks aren't supported by the grammar (only one level exists).</li>
-            <li>A wrong assertion argument count/type is a genuine Go error that aborts the whole test run — only a value-level mismatch is recorded as a normal failure and execution continues.</li>
-            <li>No source text or line number is captured for a failing assertion — the reported call is reconstructed from the evaluated name and arguments, not the original source span.</li>
-          </ul>
-
-          <p class="block-label">Errors</p>
-          <div class="reference-table err-table">
-            <div class="table-row table-head"><span>Condition</span><span>Message</span><span>Location</span></div>
-            <div class="table-row"><span>zero test blocks in target</span><span><code>no test blocks declared in %s</code></span><span class="cite">cli.go:296-298</span></div>
-            <div class="table-row"><span>any assertion failed</span><span><code>%d assertion(s) failed</code></span><span class="cite">cli.go:302</span></div>
+          <div class="pipeline-anatomy">
+            <div><b><code>input</code></b><span>a user-supplied value validated by type</span></div>
+            <div><b><code>var</code></b><span>state shared across steps in the current execution</span></div>
+            <div><b><code>mem</code></b><span>persistent state shared across iterations and <code>stop_when</code></span></div>
+            <div><b><code>step</code></b><span>ordered, named, resumable unit</span></div>
+            <div><b><code>goto</code></b><span>explicit transition to another step</span></div>
+            <div><b><code>break</code></b><span>immediate stop with an optional reason</span></div>
           </div>
+          <div class="tip-row"><span>LIMITS</span><p>For loops, always prefer an observable <code>stop_when</code> plus <code>max_iterations</code> as a safety ceiling. Step-local variables are not visible to <code>stop_when</code>; use <code>mem</code> or <code>memory</code>.</p></div>
         </section>
 
-        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence slice index closures lambda if else env fail interpolation array methods">
-          <div class="feature-head"><h2><span class="feature-num">10</span>Expressions</h2><span class="status status-full">Implemented</span></div>
-          <p class="feature-lede">Operators, member/index/slice access, closures, and a fixed set of built-in value methods — no user-defined functions outside <code>tool</code> methods and closures.</p>
-
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">var numbers = [0, 10, 20, 30, 40, 50, 60]
-var slice = numbers[^3..]              // [40, 50, 60] — ^ means "from the end"
-var even = numbers.filter((n) -> n % 2 == 0)
-var found = even.find((n) -> n > 40)
-var sorted = even.sort_by((n) -> -n)
-var ready = retries < 3 && numbers.size() > 0
-var result = if (ready) "continue" else "stop"
-log.info("active:", "${sorted}")</code></pre>
-
-          <p class="block-label">Precedence (lowest → highest)</p>
-          <div class="reference-table">
-            <div class="table-row table-head"><span>Tier</span><span>Operators</span><span>Notes</span></div>
-            <div class="table-row"><span>1 (lowest)</span><span><code>||</code></span><span>short-circuit, requires bool operands</span></div>
-            <div class="table-row"><span>2</span><span><code>&&</code></span><span>short-circuit, requires bool operands</span></div>
-            <div class="table-row"><span>3</span><span><code>==</code> <code>!=</code></span><span></span></div>
-            <div class="table-row"><span>4</span><span><code>&lt;=</code> <code>&gt;=</code> <code>&lt;</code> <code>&gt;</code></span><span></span></div>
-            <div class="table-row"><span>5</span><span><code>+</code> <code>-</code></span><span><code>+</code> overloaded: number, string concat, array concat (fresh copy) — mixing types errors</span></div>
-            <div class="table-row"><span>6</span><span><code>*</code> <code>/</code> <code>%</code></span><span><code>/</code> and <code>%</code> error on division by zero</span></div>
-            <div class="table-row"><span>7</span><span>prefix <code>!</code> <code>-</code></span><span></span></div>
-            <div class="table-row"><span>8 (highest)</span><span><code>.field</code> <code>(...)</code> <code>[i]</code> <code>[a..b]</code></span><span>member, call, index, slice</span></div>
-          </div>
-
-          <p class="block-label">Built-in value methods (complete list)</p>
-          <div class="reference-table">
-            <div class="table-row table-head"><span>Method</span><span>Receiver</span><span>Semantics</span></div>
-            <div class="table-row"><span><code>size()</code></span><span>array/object/string</span><span>element/entry/byte count</span></div>
-            <div class="table-row"><span><code>is_empty()</code></span><span>array/object/string</span><span><code>size() == 0</code></span></div>
-            <div class="table-row"><span><code>get_index(i)</code>, <code>index_of(v)</code></span><span>array</span><span>bounds-checked read; first matching index or <code>-1</code></span></div>
-            <div class="table-row"><span><code>keys()</code>, <code>values()</code></span><span>object</span><span>alphabetically sorted by key</span></div>
-            <div class="table-row"><span><code>split</code>, <code>replace</code>, <code>contains</code>, <code>starts_with</code>, <code>ends_with</code>, <code>trim</code>, <code>to_upper</code>, <code>to_lower</code>, <code>substring</code></span><span>string</span><span>direct wraps of the equivalent Go <code>strings</code> functions</span></div>
-            <div class="table-row"><span><code>filter</code>, <code>find</code>, <code>sort_by</code></span><span>array</span><span>each takes a closure; <code>sort_by</code> returns a new array, stable sort</span></div>
-          </div>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li>Slicing (<code>numbers[1..4]</code>) always copies into a <strong>new</strong> array; out-of-range bounds clamp rather than error. A <code>^</code>-prefixed bound counts from the end (<code>size - value</code>).</li>
-            <li>A closure <code>(x) -> expr</code> captures a <strong>shallow copy</strong> of the enclosing environment at creation time — by value, not by reference. Reassigning an outer variable after creating the closure does not change what the closure sees.</li>
-            <li><code>if (cond) a else b</code> as an <strong>expression</strong> requires both branches and returns a value; the <strong>statement</strong> form (no assignment) makes <code>else</code> optional and runs for side effects only.</li>
-            <li><code>env("KEY")</code> returns <code>os.Getenv</code> directly — a missing variable returns <code>""</code>, with no way to distinguish "unset" from "empty".</li>
-            <li><code>fail(...)</code> returns a <strong>plain error</strong>, not a control-flow signal like <code>break</code>/<code>return</code>/<code>goto</code> — a <code>try { fail(...) } catch (e) { }</code> catches it exactly like any other error. It's the mechanism for marking an <code>mhl run</code> genuinely failed for the process exit code.</li>
-          </ul>
-
-          <div class="gap-box"><span>!</span><div><strong>Known boundary (not a bug)</strong><ul class="plain-list">
-            <li>The array-method list above is complete — there is no <code>map</code>, <code>reduce</code>, <code>join</code>, <code>reverse</code>, <code>first</code>, or <code>last</code>. An unrecognized method errors <code>"%s value has no method %q"</code> rather than silently returning <code>nil</code>.</li>
-          </ul></div></div>
-        </section>
-
-        <section class="feature doc-section" id="statements" data-title="statements var if while for-in try catch finally break return goto assign">
-          <div class="feature-head"><h2><span class="feature-num">11</span>Statements</h2><span class="status status-full">Implemented</span></div>
-          <p class="feature-lede">Imperative statements available in a <code>step</code>, a <code>tool</code> method block, a <code>describe</code>, or a closure block body: <code>var</code>, assignment, <code>if</code>/<code>while</code>/<code>for-in</code>, <code>try/catch/finally</code>, <code>return</code>, <code>break</code>, <code>goto</code>.</p>
-
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">tool T {
-    f() -> {
-        try {
-            return "from-try"
-        } catch (e) {
-            return "from-catch"        // never runs — a control signal skips catch
-        } finally {
-            log("finally-ran")         // always runs
-        }
-    }
+        <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing">
+          <div class="feature-head"><h2><span class="feature-num">12</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">MHL files can be self-verifying examples. Each <code>describe</code> receives a fresh environment and uses the same statement syntax as a step.</p>
+          <pre class="code-block"><code class="language-mhl">tool Normalize {
+    slug(text: string): string ->
+        text.trim().to_lower().replace(" ", "_")
 }
 
-pipeline GuardedRetry {
-    step Implement {
-        var attempts = 4
-        if (attempts > 3) break "too many attempts"
+test normalize_examples {
+    describe basic_slug {
+        are_equal(Normalize.slug(" Feature Title "), "feature_title")
     }
-    step Handoff {
-        var done = true
+
+    describe array_selection {
+        var values = [1, 2, 3, 4]
+        var even = values.filter((n) -> n % 2 == 0)
+        are_equal(even, [2, 4])
+        is_true(even.contains(4))
+        is_false(even.contains(3))
+    }
+
+    describe future_behavior {
+        incomplete("waiting for implementation")
     }
 }</code></pre>
-
-          <p class="block-label">Runtime behavior — try/catch/finally, precisely</p>
-          <ul class="plain-list">
-            <li><code>Body</code> runs. If it errors with a <strong>genuine</strong> error (not a control signal), <code>catch (e)</code> binds <code>e</code> to the error's message and <code>Catch</code> runs, overwriting the result.</li>
-            <li>If <code>Body</code>'s error <strong>was</strong> a control signal (<code>return</code>/<code>break</code>/<code>goto</code>), step 1 is skipped entirely — <strong>Catch never runs</strong> — the control signal keeps propagating.</li>
-            <li><strong>Regardless</strong> of the above, if <code>Finally</code> is present it always runs; if <code>Finally</code> itself errors, that error <strong>unconditionally overrides</strong> the result — even a pending <code>return</code> or <code>break</code> from the try body is discarded in favor of the finally error.</li>
-            <li><code>break</code>/<code>goto</code> inside <code>Body</code>/<code>Catch</code> behave identically to <code>return</code> in this trace — all three are treated as one uniform "control signal" category.</li>
-          </ul>
-
-          <p class="block-label">Runtime behavior — loops, goto, break</p>
-          <ul class="plain-list">
-            <li><code>while</code> and <code>for-in</code> are both capped at 10,000 iterations — exceeding it is a hard error, not a silent stop.</li>
-            <li><code>break</code> has <strong>no special "exit the nearest loop" meaning</strong> — it always exits the enclosing pipeline step (or loop-pipeline iteration), with an optional reason expression. A <code>break</code> outside any loop is not an error; there's just no loop left to also stop.</li>
-            <li>A bare <code>return</code> in a plain pipeline step is legal — it exits the step early, and since a step produces no value in this runtime, any returned value is simply discarded.</li>
-            <li><code>goto</code>'s target step is validated only at the runtime layer (not inside the interpreter), so a typo'd target is caught at execution time, not parse time.</li>
-          </ul>
-
-          <div class="gap-box"><span>!</span><div><strong>No open gaps</strong><ul class="plain-list">
-            <li>This area is fully covered by targeted unit tests, including the subtle finally-overrides-pending-control-signal case above.</li>
-          </ul></div></div>
-        </section>
-
-        <section class="feature doc-section" id="native-ops" data-title="native ops cmd exec fs read write git diff http post json parse log">
-          <div class="feature-head"><h2><span class="feature-num">12</span>Native ops</h2><span class="status status-full">Implemented</span></div>
-          <p class="feature-lede">Exactly six reserved namespaces callable from any expression position: <code>cmd</code>, <code>git</code>, <code>fs</code>, <code>http</code>, <code>json</code>, <code>log</code>. Nothing else is reserved, and there is no mechanism to add a seventh.</p>
-
-          <p class="block-label">Example</p>
-          <pre class="code-block"><code class="language-mhl">tool project {
-    read(path: string) -> fs.read(path)
-    test() -> cmd.exec(["go", "test", "./..."], timeout: 120s)
-}
-
-var diff = git.diff()
-var response = http.post("https://api.example.com/hook", body: {"ok": true})
-var parsed = json.parse(fs.read("config.json"))
-log.warn("attempt", 2, "of", 3)</code></pre>
-
-          <p class="block-label">Every op, exactly</p>
-          <div class="reference-table">
-            <div class="table-row table-head"><span>Op</span><span>Returns</span><span>Non-zero exit / non-2xx is an error?</span></div>
-            <div class="table-row"><span><code>cmd.exec(cmd_or_argv, timeout:)</code></span><span><code>{stdout, stderr, exit_code}</code></span><span>No — surfaces via <code>exit_code</code></span></div>
-            <div class="table-row"><span><code>cmd.exec_all(commands, timeout:)</code></span><span>array of the same 3-field shape</span><span>No, per-command</span></div>
-            <div class="table-row"><span><code>git.diff(target?)</code></span><span>plain string (stdout)</span><span><strong>Yes</strong> — fail-closed</span></div>
-            <div class="table-row"><span><code>git.add(paths)</code>, <code>git.commit(message, paths?)</code>, <code>git.status(paths?)</code></span><span><code>{stdout, stderr, exit_code}</code></span><span>No</span></div>
-            <div class="table-row"><span><code>git.rev_parse(ref)</code>, <code>git.log(n)</code></span><span>plain string</span><span><strong>Yes</strong> — fail-closed</span></div>
-            <div class="table-row"><span><code>fs.read(path)</code></span><span>string</span><span>n/a — errors on read failure</span></div>
-            <div class="table-row"><span><code>fs.exists(path)</code></span><span>bool</span><span>not-found returns <code>false</code>, not an error</span></div>
-            <div class="table-row"><span><code>fs.write(path, content)</code>, <code>fs.append(path, content)</code></span><span>bool (always <code>true</code> on success)</span><span>creates missing parent dirs</span></div>
-            <div class="table-row"><span><code>fs.delete(path)</code></span><span>bool</span><span><strong>Yes</strong> — deleting a nonexistent path errors, unlike <code>fs.exists</code></span></div>
-            <div class="table-row"><span><code>fs.list(dir)</code></span><span>array of string paths, sorted</span><span>one level only, not recursive</span></div>
-            <div class="table-row"><span><code>http.post(url, headers?, body?)</code></span><span><code>{status, body}</code></span><span>No — surfaces via <code>status</code>; fixed 30s timeout, not configurable per-call</span></div>
-            <div class="table-row"><span><code>json.parse(text)</code></span><span>parsed value</span><span>errors on invalid JSON</span></div>
-            <div class="table-row"><span><code>json.parse_lines(text)</code></span><span>array</span><span>a line that fails to parse is silently skipped, not an error</span></div>
-            <div class="table-row"><span><code>json.stringify(value)</code></span><span>string</span><span>errors on encode failure</span></div>
-            <div class="table-row"><span><code>log.info</code>/<code>log.warn</code>/<code>log.error</code></span><span><code>nil</code></span><span>cannot fail; distinct from bare <code>log(...)</code>, which has no level prefix</span></div>
+          <div class="assertion-cloud">
+            <code>are_equal</code><code>are_not_equal</code><code>not_equal</code><code>is_true</code><code>is_false</code><code>is_null</code><code>not_null</code><code>greater_than</code><code>less_than</code><code>greater_than_or_equal</code><code>less_than_or_equal</code><code>includes</code><code>incomplete</code>
           </div>
-
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li><code>cmd.exec</code>/<code>cmd.exec_all</code> run each command in its own process group; a timeout kills the whole group (not just the top process) and raises a genuine catchable error — a timeout is never reported through <code>exit_code</code>.</li>
-            <li>All <code>git.*</code> ops shell out to the literal <code>git</code> binary with no path configurability.</li>
-            <li><code>http.post</code> is the <strong>only</strong> HTTP verb implemented — there is no <code>http.get</code>/<code>put</code>/<code>delete</code>.</li>
-          </ul>
-
-          <div class="gap-box"><span>!</span><div><strong>Known gap</strong><ul class="plain-list">
-            <li><code>internal/lsp</code> contains zero references to any native-op name — <code>mhl lsp</code> currently offers no editor completion for any of the six namespaces, despite <code>CLAUDE.md</code>'s explicit instruction to keep the LSP tables in sync.</li>
-          </ul></div></div>
+          <div class="run-stack">
+            <div class="inline-code"><span>file</span><code>mhl test normalize.mh</code></div>
+            <div class="inline-code"><span>directory</span><code>mhl test examples/</code></div>
+          </div>
         </section>
 
-        <section class="feature doc-section" id="cli" data-title="CLI mhl run test lint skills lsp resume input flags exit codes">
-          <div class="feature-head"><h2><span class="feature-num">13</span>CLI</h2><span class="status status-full">Implemented</span></div>
-          <p class="feature-lede">Five subcommands, dispatched from a single entry point; every non-nil error from <code>cli.Run</code> becomes exit code 1 with an <code>"mhl: &lt;err&gt;"</code> line on stderr.</p>
-
-          <p class="block-label">Commands</p>
+        <section class="feature doc-section" id="cli" data-title="cli run test lint skills list lsp security credentials env diagnostics install">
+          <div class="feature-head"><h2><span class="feature-num">13</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">The <code>mhl</code> binary handles execution, tests, static analysis, skill inspection, and editor integration.</p>
           <div class="cli-grid">
-            <div class="cli-command"><code>mhl run &lt;file.mh&gt; [--input k=v ...] [--resume]</code><span>run pipeline</span></div>
-            <div class="cli-command"><code>mhl test &lt;file.mh|dir&gt;</code><span>run test blocks</span></div>
-            <div class="cli-command"><code>mhl lint [dir]</code><span>validate source and imports</span></div>
-            <div class="cli-command"><code>mhl skills list [dir]</code><span>list declared skills</span></div>
-            <div class="cli-command"><code>mhl lsp</code><span>language server over stdio</span></div>
+            <div class="cli-command"><code>mhl run flow.mh</code><span>run the declared pipeline</span></div>
+            <div class="cli-command"><code>mhl run flow.mh --input key=value</code><span>supply typed inputs</span></div>
+            <div class="cli-command"><code>mhl run flow.mh --resume</code><span>resume a checkpoint</span></div>
+            <div class="cli-command"><code>mhl test file.mh</code><span>run assertions</span></div>
+            <div class="cli-command"><code>mhl test directory/</code><span>discover tests recursively</span></div>
+            <div class="cli-command"><code>mhl lint .</code><span>validate syntax, types, and references</span></div>
+            <div class="cli-command"><code>mhl skills list</code><span>list skill contracts</span></div>
+            <div class="cli-command"><code>mhl lsp</code><span>start the language server</span></div>
           </div>
 
-          <p class="block-label">Runtime behavior</p>
-          <ul class="plain-list">
-            <li><code>--input</code> is repeatable and parsed as <code>key=value</code> via a single <code>strings.Cut</code> on the first <code>=</code>; a later duplicate key silently overwrites an earlier one.</li>
-            <li><code>lint</code>'s target directory is the only positional argument across all five subcommands that defaults (to <code>"."</code>) rather than being required.</li>
-            <li><code>skills list</code> exits 0 with <code>"No skills declared..."</code> when none are found — unlike <code>test</code>, where zero test blocks anywhere is a hard error.</li>
-            <li><code>mhl lsp</code> hands off entirely to <code>internal/lsp</code>, treating its <code>out</code> writer as a raw JSON-RPC protocol stream — the one subcommand where <code>out</code> isn't user-facing text.</li>
-          </ul>
-
-          <p class="block-label">Exit codes</p>
-          <ul class="plain-list">
-            <li><code>run</code> exits 1 on any parse/exec/import error — there's no distinct code for a failed pipeline step versus any other kind of error.</li>
-            <li><code>test</code> exits 1 both when any assertion fails and when zero test blocks are found; an <code>incomplete(...)</code> assertion never counts as a failure.</li>
-            <li><code>lint</code> exits 1 whenever any findings exist, 0 otherwise.</li>
-          </ul>
+          <p class="block-label">OPERATIONAL CHECKLIST</p>
+          <div class="checklist">
+            <div><span>✓</span><p>Use <code>env("TOKEN")</code> for credential references where supported.</p></div>
+            <div><span>✓</span><p>Pass process arguments as an array; avoid concatenating untrusted input.</p></div>
+            <div><span>✓</span><p>Set a timeout, retry policy, and iteration limit for every external operation.</p></div>
+            <div><span>✓</span><p>Run <code>mhl lint .</code> and <code>mhl test .</code> before automating a flow.</p></div>
+            <div><span>✓</span><p>Review log, cache, and state files before sharing a workspace.</p></div>
+          </div>
+          <div class="security-banner"><span>!</span><div><strong>Principle of least privilege</strong><p>A pipeline can run processes, write files, and access the network. Treat <code>.mh</code> files as code: review them before execution, limit available credentials, and run untrusted automation in an isolated environment.</p></div></div>
         </section>
 
-        <section class="crosscut doc-section" id="drift" data-title="LSP completion drift symbols memory methods native ops CLAUDE.md">
-          <h3>Cross-cutting: LSP completion drift</h3>
-          <p class="feature-lede" style="margin-bottom:10px">The project's own <code>CLAUDE.md</code> warns that <code>internal/lsp</code>'s completion tables duplicate the interpreter's knowledge by hand, with no shared source of truth. Two concrete instances of that drift, confirmed while researching this page:</p>
-          <ul class="plain-list">
-            <li><code>internal/lsp/symbols.go</code>'s per-type memory method table omits <code>json</code>'s <code>remove</code> method, even though <code>memory_ops.go</code> implements it.</li>
-            <li><code>internal/lsp</code> contains zero references to any native-op name (<code>cmd.exec</code>, <code>fs.read</code>, <code>git.diff</code>, ...) — editor completion offers nothing for any of the six reserved namespaces.</li>
-          </ul>
-        </section>
-
-        <footer class="site-footer"><span>© MHL · Meta-Harness Language</span><a href="index.html">← Back to the manual</a></footer>
+        <footer class="site-footer">
+          <span>© 2026 MHL · Created by Yan Justino</span>
+          <span><a href="index.html">Overview</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+        </footer>
       </main>
     </div>
     <script src="app.js"></script>

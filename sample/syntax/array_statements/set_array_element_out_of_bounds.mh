@@ -1,0 +1,13 @@
+test set_array_element_out_of_bounds {
+    describe set_array_element_out_of_bounds {
+        var A = [1, 2, 3]
+        var result = ""
+        try {
+            A[3] = 4
+            result = "Set value at index 3"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: index 3 out of range (size 3)")
+    }
+}

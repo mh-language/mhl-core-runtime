@@ -1,0 +1,8 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+test memory_session_mem_with_non_existent_key {
+    describe memory_session_mem_with_non_existent_key {
+        var value = SessionJsonMem.get("non_existent_key")
+        are_equal(value, null) // Accessing a non-existent key returns null
+    }
+}

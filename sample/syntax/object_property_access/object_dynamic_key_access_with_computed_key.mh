@@ -1,0 +1,10 @@
+// The key isn't a literal anywhere -- it's built at runtime, proving obj[...]
+// reads by whatever string the expression evaluates to, not by a name baked
+// in at parse time like obj.field is.
+test object_dynamic_key_access_with_computed_key {
+    describe object_dynamic_key_access_with_computed_key {
+        var obj = {"key1": "value1"}
+        var suffix = "1"
+        are_equal(obj["key" + suffix], "value1")
+    }
+}

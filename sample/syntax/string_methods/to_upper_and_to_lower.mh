@@ -1,0 +1,6 @@
+test to_upper_and_to_lower {
+    describe to_upper_and_to_lower {
+        are_equal("Hello".to_upper(), "HELLO")
+        are_equal("Hello".to_lower(), "hello")
+    }
+}

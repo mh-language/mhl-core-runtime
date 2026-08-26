@@ -1,0 +1,9 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+test memory_session_mem_with_nested_object {
+    describe memory_session_mem_with_nested_object {
+        SessionJsonMem.set({"nested": {"key1": "value1", "key2": "value2"}})
+        are_equal(SessionJsonMem.get("nested").key1, "value1")
+        are_equal(SessionJsonMem.get("nested").key2, "value2")
+    }
+}

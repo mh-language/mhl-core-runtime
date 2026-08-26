@@ -1,0 +1,24 @@
+test array_statements {
+    describe array_statements {
+        var A = [1, 2, 3]
+        are_equal(A.size(), 3)
+        are_equal(A[0], 1)
+        are_equal(A[1], 2)
+        are_equal(A[2], 3)
+        are_equal(A.index_of(2), 1)
+
+        var B = ["a", "b", "c"]
+        are_equal(B.size(), 3)
+        are_equal(B[0], "a")
+        are_equal(B[1], "b")
+        are_equal(B[2], "c")
+        are_equal(B.index_of("b"), 1)
+
+        var C = [true, false, true]
+        are_equal(C.size(), 3)
+        are_equal(C[0], true)
+        are_equal(C[1], false)
+        are_equal(C[2], true)
+        are_equal(C.index_of(true), 0)
+    }
+}

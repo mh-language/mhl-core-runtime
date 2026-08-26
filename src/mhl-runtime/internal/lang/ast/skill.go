@@ -1,5 +1,7 @@
 package ast
 
+import "github.com/alecthomas/participle/v2/lexer"
+
 // Skill declares a modular skill: scoped tools/mcp_servers, typed input/output
 // contracts, and system instructions.
 type Skill struct {
@@ -22,6 +24,7 @@ type FieldBlock struct {
 
 // Field is a typed field declaration, e.g. `target_file: string`.
 type Field struct {
-	Name string `parser:"@Ident ':'"`
-	Type string `parser:"@Ident"`
+	Pos  lexer.Position
+	Name string    `parser:"@Ident ':'"`
+	Type *TypeExpr `parser:"@@"`
 }

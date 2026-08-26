@@ -359,6 +359,34 @@ tool T {
 	}
 }
 
+// TestToolMethodReturnTypeParses covers the `): Type ->` return-type
+// annotation — Param already had `: Type` for its own parameters; Returns
+// mirrors that shape at the method-declaration level, and must stay
+// optional so an unannotated method (untyped return, exactly as before this
+// syntax existed) still parses.
+func TestToolMethodReturnTypeParses(t *testing.T) {
+	src := `
+tool T {
+    double(n: number): number -> n * 2
+    untyped(a, b) -> a + b
+}
+`
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	tool := prog.Decls[0].Tool
+	if tool.Methods[0].Name != "double" || tool.Methods[0].Returns == nil || tool.Methods[0].Returns.String() != "number" {
+		t.Errorf("expected double to have Returns=%q, got %#v", "number", tool.Methods[0])
+	}
+	if tool.Methods[1].Name != "untyped" || tool.Methods[1].Returns != nil {
+		t.Errorf("expected untyped to have empty Returns, got %#v", tool.Methods[1])
+	}
+	if tool.Methods[0].Pos.Line == 0 {
+		t.Errorf("expected ToolMethod.Pos to be populated, got %#v", tool.Methods[0].Pos)
+	}
+}
+
 // TestTestBlockParses covers the `test { describe { ... } }` grammar
 // (internal/lang/ast/test.go): a describe block's Body reuses the exact
 // statement grammar a pipeline step's Body does, so both a flat assertion
@@ -506,6 +534,41 @@ prompt Greeting(name: string) {
 	}
 }
 
+// TestMemDeclParses covers the `mem x = expr` pipeline-body declaration
+// (PipelineMember.Mem) alongside a plain `var`, a `repeat` block referencing
+// the mem name, and a `count.reset()` method call in a step body — the
+// shapes interpreter/exec.go's mem support depends on.
+func TestMemDeclParses(t *testing.T) {
+	prog, err := Parse(`
+loop pipeline P {
+    var attempts = 0
+    mem count = 0
+
+    repeat: {
+        stop_when: count == 10
+    }
+
+    step S {
+        count = count + 1
+        count.reset()
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	body := prog.Decls[0].Pipeline.Body
+	if body[0].Var == nil || body[0].Var.Name != "attempts" {
+		t.Fatalf("expected first member to be var attempts, got %#v", body[0])
+	}
+	if body[1].Mem == nil || body[1].Mem.Name != "count" {
+		t.Fatalf("expected second member to be mem count, got %#v", body[1])
+	}
+	if body[1].Var != nil {
+		t.Errorf("mem decl must not also populate Var")
+	}
+}
+
 // TestMalformedYieldsError is the failure path: a syntactically invalid .mh
 // source must yield a descriptive error rather than a partial/incorrect AST.
 func TestMalformedYieldsError(t *testing.T) {
@@ -519,5 +582,42 @@ func TestMalformedYieldsError(t *testing.T) {
 	}
 	if err.Error() == "" {
 		t.Fatalf("expected a descriptive parse error message")
+	}
+}
+
+// TestTypedDeclPosPopulates confirms PipelineInput/Param/Field's additive Pos
+// field is populated by participle (no parser tag needed), so lint findings
+// anchored to these nodes can carry a real line/column.
+func TestTypedDeclPosPopulates(t *testing.T) {
+	prog, err := Parse(`
+pipeline P {
+    input issue_id: string
+    step S {}
+}
+
+tool T {
+    read_file(path: string) -> fs.read(path)
+}
+
+skill K {
+    input {
+        target_file: string
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	in := prog.Decls[0].Pipeline.Body[0].Input
+	if in == nil || in.Pos.Line == 0 {
+		t.Fatalf("expected PipelineInput.Pos to be populated, got %#v", in)
+	}
+	param := prog.Decls[1].Tool.Methods[0].Params[0]
+	if param.Pos.Line == 0 {
+		t.Fatalf("expected Param.Pos to be populated, got %#v", param)
+	}
+	field := prog.Decls[2].Skill.Body[0].Input.Fields[0]
+	if field.Pos.Line == 0 {
+		t.Fatalf("expected Field.Pos to be populated, got %#v", field)
 	}
 }

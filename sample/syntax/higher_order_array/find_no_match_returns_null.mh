@@ -1,0 +1,7 @@
+test find_no_match_returns_null {
+    describe find_no_match_returns_null {
+        var users = [{"id": 1, "status": "pending"}]
+        var found = users.find((u) -> u.status == "passed")
+        is_null(found)
+    }
+}

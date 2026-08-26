@@ -25,7 +25,7 @@ func TestLoopStopsOnStopWhen(t *testing.T) {
 	res, err := lr.Run(oneStepPipeline(), nil, func(step string, ctx *runtime.RunContext) error {
 		calls++
 		return nil
-	}, func() (bool, error) {
+	}, func(string) (bool, error) {
 		return calls >= 3, nil
 	}, false)
 	if err != nil {
@@ -49,7 +49,7 @@ func TestLoopStopsOnMaxIterations(t *testing.T) {
 
 	res, err := lr.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
 		return nil
-	}, func() (bool, error) {
+	}, func(string) (bool, error) {
 		return false, nil // never satisfied on its own
 	}, false)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestLoopStopsOnBreakBeforeEvaluatingStopWhen(t *testing.T) {
 	stopWhenCalls := 0
 	res, err := lr.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
 		return &runtime.BreakSignal{Reason: "gave up"}
-	}, func() (bool, error) {
+	}, func(string) (bool, error) {
 		stopWhenCalls++
 		return false, nil
 	}, false)
@@ -97,7 +97,7 @@ func TestLoopPropagatesGenuineErrors(t *testing.T) {
 	boom := errSimulatedCrash
 	_, err := lr.Run(oneStepPipeline(), nil, func(step string, ctx *runtime.RunContext) error {
 		return boom
-	}, func() (bool, error) {
+	}, func(string) (bool, error) {
 		return false, nil
 	}, false)
 	if err == nil {
@@ -119,7 +119,7 @@ func TestLoopResumeContinuesAtNextIteration(t *testing.T) {
 			return errSimulatedCrash // "crash" during the 3rd iteration
 		}
 		return nil
-	}, func() (bool, error) {
+	}, func(string) (bool, error) {
 		return false, nil // never stops on its own — only the crash ends this run
 	}, false)
 	if err == nil {
@@ -135,7 +135,7 @@ func TestLoopResumeContinuesAtNextIteration(t *testing.T) {
 		iteration++
 		resumedIterationStarts = append(resumedIterationStarts, iteration)
 		return nil
-	}, func() (bool, error) {
+	}, func(string) (bool, error) {
 		return iteration >= 1, nil // stop right after the first resumed iteration
 	}, true)
 	if err != nil {

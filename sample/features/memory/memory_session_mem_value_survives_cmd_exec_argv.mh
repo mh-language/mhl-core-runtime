@@ -1,0 +1,16 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+// cmd.exec's argv-array form passes each element straight to the process,
+// with no whitespace splitting -- a memory value containing spaces (e.g. a
+// commit message) survives as a single argument, which the plain string form
+// of cmd.exec cannot guarantee.
+test memory_session_mem_value_survives_cmd_exec_argv {
+    describe memory_session_mem_value_survives_cmd_exec_argv {
+        SessionJsonMem.set("commit_message", "feat: complete feature #1 - with spaces")
+        var message = SessionJsonMem.get("commit_message")
+
+        var result = cmd.exec(["echo", "-n", message])
+        are_equal(result.exit_code, 0)
+        are_equal(result.stdout, message)
+    }
+}

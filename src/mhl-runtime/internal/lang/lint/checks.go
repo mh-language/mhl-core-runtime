@@ -9,6 +9,7 @@ import (
 
 	"github.com/yanjustino/mhl-runtime/internal/features/prompt"
 	"github.com/yanjustino/mhl-runtime/internal/lang/ast"
+	"github.com/yanjustino/mhl-runtime/internal/lang/types"
 )
 
 // checkAgentCalls statically mirrors the agent/memory-call checks that
@@ -22,39 +23,74 @@ func checkAgentCalls(file string, prog *ast.Program) []Finding {
 		if decl.Pipeline == nil {
 			continue
 		}
-		pipelineVars := collectPipelineVarNames(decl.Pipeline)
+		pipelineInputs := pipelineInputTypes(decl.Pipeline)
+		pipelineVars := collectPipelineVarNames(prog, decl.Pipeline)
+		pipelineMemVars := collectPipelineMemNames(prog, decl.Pipeline)
 		for _, member := range decl.Pipeline.Body {
 			if member.Step == nil {
 				continue
 			}
-			// A pipeline-level `var` (PipelineMember.Var) is a valid plain-
-			// assignment target inside any of that pipeline's steps too —
-			// see interpreter.execAssign's pipelineEnv fallback — so it
-			// must count as "declared" here the same way a step's own
-			// `var` does, or this would false-positive "undefined
-			// variable" on every step that mutates one.
-			declared := collectVarNames(member.Step.Body)
-			for name := range pipelineVars {
-				declared[name] = true
+			// A pipeline-level `input`, `var`, or `mem` is a valid
+			// plain-assignment target inside any of that pipeline's steps
+			// too — see interpreter.execAssign's pipelineEnv and mem
+			// fallbacks — so all three must count as "declared" here the
+			// same way a step's own `var` does, or this would
+			// false-positive "undefined variable" on every step that
+			// mutates one. Seeded fresh per step (a real copy, not a
+			// shared reference): a step-local var/mem downgrade must not
+			// leak into another step's belief about the same
+			// pipeline-level binding.
+			seed := make(map[string]types.Type, len(pipelineInputs)+len(pipelineVars)+len(pipelineMemVars))
+			for name, t := range pipelineInputs {
+				seed[name] = t
 			}
+			for name, t := range pipelineVars {
+				seed[name] = t
+			}
+			for name, t := range pipelineMemVars {
+				seed[name] = t
+			}
+			declared := collectVarNames(prog, member.Step.Body, seed, nil)
 			findings = append(findings, checkStatements(file, prog, member.Step.Body, declared, nil)...)
 		}
 	}
 	return findings
 }
 
-// collectPipelineVarNames returns the names p declares at its own top
-// level (PipelineMember.Var, ast/pipeline.go) — mirrors
-// interpreter.EvalPipelineVars, which is what actually seeds them at run
-// time.
-func collectPipelineVarNames(p *ast.Pipeline) map[string]bool {
-	names := map[string]bool{}
+// collectPipelineVarNames returns the names (and best statically-known
+// type — see mergeVarType) p declares at its own top level with `var`
+// (PipelineMember.Var, ast/pipeline.go) — mirrors interpreter.EvalPipelineVars,
+// which is what actually seeds them at run time. Deliberately excludes
+// `mem` (collectPipelineMemNames, below): checkLoopStopWhen (loop.go) uses
+// this one alone specifically because a `mem` reference in stop_when is
+// fine — only a `var` one is the footgun that check exists to catch.
+func collectPipelineVarNames(prog *ast.Program, p *ast.Pipeline) map[string]types.Type {
+	known := map[string]types.Type{}
 	for _, member := range p.Body {
 		if member.Var != nil {
-			names[member.Var.Name] = true
+			mergeVarType(known, prog, member.Var.Name, member.Var.Value, nil) // no `self` at pipeline scope
 		}
 	}
-	return names
+	return known
+}
+
+// collectPipelineMemNames returns the names (and best statically-known
+// type) p declares at its own top level with `mem` (PipelineMember.Mem) —
+// mirrors interpreter.PipelineMemInit. Kept separate from
+// collectPipelineVarNames (above) rather than folded into it: callers
+// that need "every valid pipeline-level assignment target" (checkAgentCalls)
+// combine both; checkLoopStopWhen wants var names only. Inferred the same
+// way as `var` — only the declared initializer expression's shape matters
+// here; `mem`'s get-or-init runtime semantics are irrelevant to a purely
+// static reader.
+func collectPipelineMemNames(prog *ast.Program, p *ast.Pipeline) map[string]types.Type {
+	known := map[string]types.Type{}
+	for _, member := range p.Body {
+		if member.Mem != nil {
+			mergeVarType(known, prog, member.Mem.Name, member.Mem.Value, nil)
+		}
+	}
+	return known
 }
 
 // checkToolBlocks statically mirrors internal/engine/interpreter.evalToolCall's Block-body
@@ -75,7 +111,7 @@ func checkToolBlocks(file string, prog *ast.Program) []Finding {
 			if m.Block == nil {
 				continue
 			}
-			declared := collectVarNames(m.Block)
+			declared := collectVarNames(prog, m.Block, nil, decl.Tool)
 			findings = append(findings, checkStatements(file, prog, m.Block, declared, decl.Tool)...)
 		}
 	}
@@ -91,21 +127,40 @@ func checkToolBlocks(file string, prog *ast.Program) []Finding {
 // runs before a given assign at runtime (e.g. one declared inside an `if`
 // branch that isn't taken); that's the same kind of approximation the rest
 // of lint already makes (see checkExprCall's doc comment).
-func collectVarNames(statements []*ast.Statement) map[string]bool {
-	names := map[string]bool{}
+//
+// Beyond names, this also infers each variable's best statically-known
+// Type (types.Any when unknown) via mergeVarType — a single, non-flow-
+// sensitive forward pass: every branch (If/While/ForIn/Try) is visited
+// unconditionally, same as before, and a name's type only ever downgrades
+// to Any on conflict/uncertainty, never back to something more specific.
+// seed pre-populates the map (e.g. a pipeline's typed `input`s/`var`s/`mem`s
+// before a step's own statements run) and may be nil for a fresh map.
+func collectVarNames(prog *ast.Program, statements []*ast.Statement, seed map[string]types.Type, selfTool *ast.Tool) map[string]types.Type {
+	known := seed
+	if known == nil {
+		known = map[string]types.Type{}
+	}
 	var walk func([]*ast.Statement)
 	walk = func(stmts []*ast.Statement) {
 		for _, s := range stmts {
 			switch {
 			case s.Var != nil:
-				names[s.Var.Name] = true
+				mergeVarType(known, prog, s.Var.Name, s.Var.Value, selfTool)
+			case s.Assign != nil:
+				if name, ok := bareAssignName(s.Assign.Target); ok {
+					if _, declared := known[name]; declared {
+						mergeVarType(known, prog, name, s.Assign.Value, selfTool)
+					}
+				}
 			case s.If != nil:
 				walk(s.If.Then)
 				walk(s.If.Else)
 			case s.While != nil:
 				walk(s.While.Body)
 			case s.ForIn != nil:
-				names[s.ForIn.VarName] = true
+				if _, declared := known[s.ForIn.VarName]; !declared {
+					known[s.ForIn.VarName] = types.Any // element type: out of scope for v1
+				}
 				walk(s.ForIn.Body)
 			case s.Try != nil:
 				walk(s.Try.Body)
@@ -115,14 +170,14 @@ func collectVarNames(statements []*ast.Statement) map[string]bool {
 		}
 	}
 	walk(statements)
-	return names
+	return known
 }
 
 // selfTool is nil except when statements is a tool method's own Block
 // (checkToolBlocks), in which case it's that tool — what a `self.method(...)`
 // call inside these statements (or any if/while/try nested within them)
 // resolves against, mirroring interpreter.evalToolCall's childCtx.selfTool.
-func checkStatements(file string, prog *ast.Program, statements []*ast.Statement, declared map[string]bool, selfTool *ast.Tool) []Finding {
+func checkStatements(file string, prog *ast.Program, statements []*ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
 	var findings []Finding
 	for _, statement := range statements {
 		findings = append(findings, checkStatement(file, prog, statement, declared, selfTool)...)
@@ -130,31 +185,31 @@ func checkStatements(file string, prog *ast.Program, statements []*ast.Statement
 	return findings
 }
 
-func checkStatement(file string, prog *ast.Program, statement *ast.Statement, declared map[string]bool, selfTool *ast.Tool) []Finding {
+func checkStatement(file string, prog *ast.Program, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
 	switch {
 	case statement.Var != nil:
-		return checkExprCall(file, prog, statement.Pos, statement.Var.Value, selfTool)
+		return checkExprCall(file, prog, statement.Pos, statement.Var.Value, declared, selfTool)
 	case statement.Return != nil:
 		if statement.Return.Value == nil {
 			return nil
 		}
-		return checkExprCall(file, prog, statement.Pos, statement.Return.Value, selfTool)
+		return checkExprCall(file, prog, statement.Pos, statement.Return.Value, declared, selfTool)
 	case statement.Expr != nil:
-		return checkExprCall(file, prog, statement.Pos, statement.Expr.Expr, selfTool)
+		return checkExprCall(file, prog, statement.Pos, statement.Expr.Expr, declared, selfTool)
 	case statement.Assign != nil:
 		findings := checkAssignTarget(file, statement, declared)
-		return append(findings, checkExprCall(file, prog, statement.Pos, statement.Assign.Value, selfTool)...)
+		return append(findings, checkExprCall(file, prog, statement.Pos, statement.Assign.Value, declared, selfTool)...)
 	case statement.If != nil:
-		findings := checkExprCall(file, prog, statement.Pos, statement.If.Cond, selfTool)
+		findings := checkExprCall(file, prog, statement.Pos, statement.If.Cond, declared, selfTool)
 		findings = append(findings, checkStatements(file, prog, statement.If.Then, declared, selfTool)...)
 		findings = append(findings, checkStatements(file, prog, statement.If.Else, declared, selfTool)...)
 		return findings
 	case statement.While != nil:
-		findings := checkExprCall(file, prog, statement.Pos, statement.While.Cond, selfTool)
+		findings := checkExprCall(file, prog, statement.Pos, statement.While.Cond, declared, selfTool)
 		findings = append(findings, checkStatements(file, prog, statement.While.Body, declared, selfTool)...)
 		return findings
 	case statement.ForIn != nil:
-		findings := checkExprCall(file, prog, statement.Pos, statement.ForIn.Iterable, selfTool)
+		findings := checkExprCall(file, prog, statement.Pos, statement.ForIn.Iterable, declared, selfTool)
 		findings = append(findings, checkStatements(file, prog, statement.ForIn.Body, declared, selfTool)...)
 		return findings
 	case statement.Try != nil:
@@ -171,13 +226,13 @@ func checkStatement(file string, prog *ast.Program, statement *ast.Statement, de
 // the target must be a bare variable or an array-index chain (not a nested
 // field), and its base name must have been `var`-declared somewhere in the
 // step (see collectVarNames).
-func checkAssignTarget(file string, statement *ast.Statement, declared map[string]bool) []Finding {
+func checkAssignTarget(file string, statement *ast.Statement, declared map[string]types.Type) []Finding {
 	name, ok := assignTargetBase(statement.Assign.Target)
 	if !ok {
 		return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
 			Message: "assignment target must be a plain variable or an array index, not a nested field"}}
 	}
-	if !declared[name] {
+	if _, ok := declared[name]; !ok {
 		return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
 			Message: fmt.Sprintf("undefined variable %q", name)}}
 	}
@@ -209,7 +264,7 @@ func assignTargetBase(p *ast.Postfix) (string, bool) {
 // surrounding operator) — `if (session_mem.get("x") == "y")` is not
 // checked, matching the runtime's own narrow, literal-shape recognition for
 // which calls get special dispatch vs. generic evaluation.
-func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast.Expr, selfTool *ast.Tool) []Finding {
+func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast.Expr, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
 	call, agentName, ok := agentRunCall(expr)
 	if !ok {
 		if memCall, target, method, mOk := methodCall(expr); mOk {
@@ -224,20 +279,20 @@ func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast
 					return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 						Message: "self is only valid inside a tool method"}}
 				}
-				if err := checkToolCall(selfTool, method, memCall); err != nil {
+				if err := checkToolCall(selfTool, method, memCall, declared); err != nil {
 					return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 						Message: fmt.Sprintf("self.%s: %s", method, err)}}
 				}
 			default:
 				if mem, found := findMemory(prog, target); found {
-					if err := checkMemoryOp(mem, method, memCall); err != nil {
+					if err := checkMemoryOp(mem, method, memCall, declared); err != nil {
 						return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("%s.%s: %s", target, method, err)}}
 					}
 					break
 				}
 				if tool, found := findTool(prog, target); found {
-					if err := checkToolCall(tool, method, memCall); err != nil {
+					if err := checkToolCall(tool, method, memCall, declared); err != nil {
 						return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("%s.%s: %s", target, method, err)}}
 					}
@@ -258,19 +313,41 @@ func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast
 			Message: fmt.Sprintf("agent %q not found", agentName)}}
 	}
 
-	engine, _ := agentEngine(agent)
+	engine, _ := ast.AgentEngine(agent)
 	switch {
 	case engine == "" || strings.HasPrefix(engine, "cli/"):
-		if _, _, err := agentCommand(agent); err != nil {
+		if _, _, err := ast.AgentCommand(agent); err != nil {
 			return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
 		}
 	case strings.HasPrefix(engine, "ollama/"):
-		if _, _, _, err := agentOllamaConfig(agent, engine); err != nil {
+		if _, _, _, err := ast.AgentOllamaConfig(agent, engine); err != nil {
 			return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
 		}
 	default:
 		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column,
 			Message: fmt.Sprintf("agent %q: engine %q is not supported yet", agentName, engine)}}
+	}
+	if _, _, _, err := ast.AgentRetryConfig(agent); err != nil {
+		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+	}
+	if _, _, _, err := ast.AgentCacheConfig(agent); err != nil {
+		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+	}
+	if _, _, _, _, err := ast.AgentLimiterConfig(agent); err != nil {
+		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+	}
+	if refs, err := ast.AgentFallbackRefs(agent); err != nil {
+		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+	} else {
+		for _, ref := range refs {
+			if ref.Inline != nil {
+				continue
+			}
+			if _, ok := findAgent(prog, ref.Name); !ok {
+				return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column,
+					Message: fmt.Sprintf("agent %q fallback: agent %q is not declared", agent.Name, ref.Name)}}
+			}
+		}
 	}
 
 	promptText, resolved, present, err := resolvePromptArgument(prog, call)
@@ -343,7 +420,12 @@ var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "ht
 // fix.content)`, unlike `prompt Name(param: "x")`'s named convention).
 // Purely structural — lint never executes a tool method body, so it can't
 // validate what's inside it (e.g. a bad native-op argument) beyond this.
-func checkToolCall(tool *ast.Tool, method string, call *ast.Call) error {
+// known is the caller's inferred variable-type map (see varinfer.go): a
+// non-literal argument that's a bare identifier with a known, non-Any type
+// gets checked too, not just a literal — anything else (arithmetic,
+// member/index access, an unresolved name) is still left unchecked, same
+// "can't prove it, don't fail" stance checkMemoryOp already takes.
+func checkToolCall(tool *ast.Tool, method string, call *ast.Call, known map[string]types.Type) error {
 	var m *ast.ToolMethod
 	for _, cand := range tool.Methods {
 		if cand.Name == method {
@@ -356,6 +438,32 @@ func checkToolCall(tool *ast.Tool, method string, call *ast.Call) error {
 	}
 	if len(call.Args) != len(m.Params) {
 		return fmt.Errorf("tool %q: %s requires %d argument(s), got %d", tool.Name, method, len(m.Params), len(call.Args))
+	}
+	for i, p := range m.Params {
+		if p.Type == nil {
+			continue // untyped param: dynamic, exactly as today
+		}
+		paramType, ok := types.FromExpr(p.Type)
+		if !ok {
+			return fmt.Errorf("tool %q: %s: parameter %q has an unrecognized type %q", tool.Name, method, p.Name, p.Type)
+		}
+		if lv, err := literalValue(call.Args[i].Value); err == nil {
+			if err := types.Check(fmt.Sprintf("tool %q: %s: parameter %q", tool.Name, method, p.Name), paramType, lv); err != nil {
+				return err
+			}
+			continue
+		}
+		name, ok := ast.IdentValue(call.Args[i].Value)
+		if !ok {
+			continue
+		}
+		argType, ok := known[name]
+		if !ok || argType.Equal(types.Any) {
+			continue
+		}
+		if err := types.CheckType(fmt.Sprintf("tool %q: %s: parameter %q", tool.Name, method, p.Name), paramType, argType); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -467,14 +575,16 @@ func literalValueAt(expr *ast.Expr, depth int) (any, error) {
 // checkMemoryOp mirrors internal/engine/interpreter.executeMemoryOp's validation as far as
 // it can statically: argument *counts* are always checkable (they don't
 // need any argument's value), but a "this must be a string" check can only
-// fire when the argument in question is recognizably a literal — the
-// runtime now also accepts variables and nested memory/agent calls as
-// memory-op arguments (internal/engine/interpreter/eval.go's evalPositionalValues), whose
-// type lint can't know without executing. Non-literal arguments are simply
-// left unchecked here; the runtime still enforces its own type rules when
-// it actually runs. Purely static either way — no store write, no file
-// write, lint never has side effects.
-func checkMemoryOp(mem *ast.Memory, method string, call *ast.Call) error {
+// fire when the argument in question is recognizably a literal, or — via
+// known (see varinfer.go) — a bare-identifier variable whose type inference
+// already pinned down. The runtime also accepts nested memory/agent calls
+// as memory-op arguments (internal/engine/interpreter/eval.go's
+// evalPositionalValues), whose type lint still can't know without
+// executing. Any argument this can't prove is simply left unchecked here;
+// the runtime still enforces its own type rules when it actually runs.
+// Purely static either way — no store write, no file write, lint never has
+// side effects.
+func checkMemoryOp(mem *ast.Memory, method string, call *ast.Call, known map[string]types.Type) error {
 	memType, _ := memoryProp(mem, "type")
 	n := len(call.Args)
 
@@ -482,11 +592,17 @@ func checkMemoryOp(mem *ast.Memory, method string, call *ast.Call) error {
 		if i >= len(call.Args) {
 			return nil
 		}
-		v, err := literalValue(call.Args[i].Value)
-		if err != nil {
-			return nil // not a literal — can't check statically, not an error
+		if v, err := literalValue(call.Args[i].Value); err == nil {
+			if _, ok := v.(string); !ok {
+				return fmt.Errorf("memory %q: %s must be a string", mem.Name, label)
+			}
+			return nil
 		}
-		if _, ok := v.(string); !ok {
+		name, ok := ast.IdentValue(call.Args[i].Value)
+		if !ok {
+			return nil // not a literal or a bare identifier — can't check statically, not an error
+		}
+		if t, ok := known[name]; ok && !t.Equal(types.Any) && !t.Equal(types.String) {
 			return fmt.Errorf("memory %q: %s must be a string", mem.Name, label)
 		}
 		return nil
@@ -579,63 +695,6 @@ func checkMemoryOp(mem *ast.Memory, method string, call *ast.Call) error {
 		return fmt.Errorf("memory %q: type %q is not supported yet", mem.Name, memType)
 	}
 	return nil
-}
-
-func agentCommand(agent *ast.Agent) (string, []string, error) {
-	command := ""
-	var args []string
-	for _, prop := range agent.Props {
-		switch prop.Name {
-		case "command":
-			command, _ = ast.StringValue(prop.Value)
-		case "args":
-			var ok bool
-			args, ok = ast.StringArrayValue(prop.Value)
-			if !ok {
-				return "", nil, fmt.Errorf("agent %q args must be an array of strings", agent.Name)
-			}
-		}
-	}
-	if command == "" {
-		return "", nil, fmt.Errorf("agent %q has no command", agent.Name)
-	}
-	return command, args, nil
-}
-
-// agentEngine reads the agent's engine property. ok is false when the
-// property is absent or not a string.
-func agentEngine(agent *ast.Agent) (string, bool) {
-	for _, prop := range agent.Props {
-		if prop.Name == "engine" {
-			return ast.StringValue(prop.Value)
-		}
-	}
-	return "", false
-}
-
-// agentOllamaConfig mirrors internal/engine/interpreter.agentOllamaConfig: it reads the
-// endpoint/temperature configuration for an ollama/* engine agent, purely
-// statically (no network call — lint never executes anything). model is
-// derived from engine (the part after "ollama/"). temperature is nil when
-// the agent declares no temperature property.
-func agentOllamaConfig(agent *ast.Agent, engine string) (endpoint, model string, temperature *float64, err error) {
-	model = strings.TrimPrefix(engine, "ollama/")
-	for _, prop := range agent.Props {
-		switch prop.Name {
-		case "endpoint":
-			endpoint, _ = ast.StringValue(prop.Value)
-		case "temperature":
-			t, ok := ast.NumberValue(prop.Value)
-			if !ok {
-				return "", "", nil, fmt.Errorf("agent %q temperature must be a number", agent.Name)
-			}
-			temperature = &t
-		}
-	}
-	if endpoint == "" {
-		return "", "", nil, fmt.Errorf("agent %q has no endpoint", agent.Name)
-	}
-	return endpoint, model, temperature, nil
 }
 
 // resolvePromptArgument statically validates what it can prove about call's

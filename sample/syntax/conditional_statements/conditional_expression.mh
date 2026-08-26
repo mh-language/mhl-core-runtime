@@ -1,0 +1,6 @@
+test conditional_expression {
+    describe conditional_expression {
+        var result = if (true) "This is true" else "This is false"
+        are_equal(result, "This is true")
+    }
+}

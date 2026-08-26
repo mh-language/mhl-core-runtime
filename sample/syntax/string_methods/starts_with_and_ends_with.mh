@@ -1,0 +1,8 @@
+test starts_with_and_ends_with {
+    describe starts_with_and_ends_with {
+        is_true("verify-feature.sh".starts_with("verify"))
+        is_false("verify-feature.sh".starts_with("feature"))
+        is_true("verify-feature.sh".ends_with(".sh"))
+        is_false("verify-feature.sh".ends_with(".txt"))
+    }
+}

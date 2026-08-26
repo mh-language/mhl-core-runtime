@@ -1,0 +1,10 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+test memory_session_mem_with_delete {
+    describe memory_session_mem_with_delete {
+        SessionJsonMem.set({"key3": "value3", "key4": "value4"})
+        SessionJsonMem.remove("key3")
+        are_equal(SessionJsonMem.get("key3"), null)
+        are_equal(SessionJsonMem.get("key4"), "value4")
+    }
+}

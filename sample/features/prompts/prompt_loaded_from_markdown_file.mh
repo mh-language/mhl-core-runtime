@@ -1,0 +1,24 @@
+// `prompt X(...) from "path.md"` loads the template body from an external
+// Markdown file instead of an inline `{ "..." }` block -- the path is
+// resolved relative to this .mh file, read once at import-resolution time,
+// and interpolated exactly like an inline prompt body from then on.
+//
+// `\${TARGET_DIR}` (escaped with a backslash) renders as the literal text
+// `${TARGET_DIR}`, not an interpolation -- the escape exists specifically for
+// Markdown pulled from a file, which is likely to contain incidental
+// `${...}`-looking text (shell examples, JSON, ...) that isn't meant to bind
+// to a declared param.
+prompt Greeting(name: string) from "fixtures/greeting.prompt.md"
+
+test prompt_loaded_from_markdown_file {
+    describe prompt_loaded_from_markdown_file {
+        var rendered = Greeting(name: "World")
+        // Built via concatenation, not a literal "${...}" in this string --
+        // mhl's own string interpolation has no \$ escape (that escape only
+        // exists in prompt.Render, for text loaded from a file), so writing
+        // "${TARGET_DIR}" directly here would itself be interpolated and
+        // fail on the undeclared variable TARGET_DIR.
+        var expected = "hello World, run with " + "$" + "{TARGET_DIR}"
+        are_equal(rendered, expected)
+    }
+}

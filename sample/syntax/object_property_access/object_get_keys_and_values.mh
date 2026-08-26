@@ -1,0 +1,7 @@
+test object_get_keys_and_values {
+    describe object_get_keys_and_values {
+        var obj = {"key1": "value1", "key2": "value2", "key3": "value3"}
+        are_equal(obj.keys(), ["key1", "key2", "key3"])
+        are_equal(obj.values(), ["value1", "value2", "value3"])
+    }
+}

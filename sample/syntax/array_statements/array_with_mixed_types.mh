@@ -1,0 +1,10 @@
+test array_with_mixed_types {
+    describe array_with_mixed_types {
+        var A = [1, "2", 0.03, false]
+        are_equal(A.size(), 4)
+        are_equal(A[0], 1)
+        are_equal(A[1], "2")
+        are_equal(A[2], 0.03)
+        are_equal(A[3], false)
+    }
+}

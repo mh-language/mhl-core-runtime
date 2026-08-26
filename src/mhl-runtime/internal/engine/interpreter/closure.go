@@ -72,6 +72,7 @@ func invokeClosureWithValues(c *Closure, args []any, depth int) (any, error) {
 		out:         c.definingCtx.out,
 		env:         callEnv,
 		pipelineEnv: c.definingCtx.pipelineEnv,
+		mem:         c.definingCtx.mem,
 		file:        c.definingCtx.file,
 		selfTool:    c.definingCtx.selfTool,
 	}

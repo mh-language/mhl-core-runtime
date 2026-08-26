@@ -1,0 +1,10 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+test memory_session_mem_with_nested_delete {
+    describe memory_session_mem_with_nested_delete {
+        SessionJsonMem.set({"nested2": {"key1": "value1", "key2": "value2"}})
+        SessionJsonMem.remove("nested2::key1")
+        are_equal(SessionJsonMem.get("nested2::key1"), null)
+        are_equal(SessionJsonMem.get("nested2::key2"), "value2")
+    }
+}

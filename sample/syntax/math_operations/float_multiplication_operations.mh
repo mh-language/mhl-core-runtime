@@ -1,0 +1,8 @@
+test float_multiplication_operations {
+    describe float_multiplication_operations {
+        var A = 0.001
+        var B = 0.002
+        var C = A * B
+        are_equal(C, 0.000002)
+    }
+}

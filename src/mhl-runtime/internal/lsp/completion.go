@@ -20,6 +20,39 @@ var keywords = []string{
 // switch completion from "everything" to "target's members only".
 var memberAccessRe = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)\.[A-Za-z0-9_]*$`)
 
+// typeAnnotationRe matches an in-progress "name: partialType" at the very
+// end of the text before the cursor — the shape of a `input name: `, tool
+// method `param: `, or skill field `name: ` type annotation (see
+// internal/lang/types' vocabulary). isTypeAnnotationPosition additionally
+// restricts where this fires so it never fires on an ordinary `key: value`
+// property (e.g. `agent { command: }`).
+var typeAnnotationRe = regexp.MustCompile(`\b[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Za-z_]*$`)
+
+// typeKeywords is internal/lang/types' declarable vocabulary, offered
+// whenever the cursor sits in a recognized type-annotation position.
+var typeKeywords = []string{"string", "number", "bool", "array", "object", "any"}
+
+// isTypeAnnotationPosition is a pragmatic heuristic, not a real parse —
+// consistent with blockStack/classifyHeader's own best-effort approach
+// elsewhere in this package. It recognizes two shapes: a pipeline `input
+// name: ` line (line itself starts with "input "), and a tool/prompt method
+// parameter list (`name(param: ` — the enclosing block is blockOther, and
+// the line has an unclosed "(" before the match). It deliberately does NOT
+// recognize a skill's `input { }`/`output { }` field block, since that
+// block is itself classified blockOther indistinguishably from a plain
+// object literal or step body — a small, known gap rather than a source of
+// false positives on ordinary properties.
+func isTypeAnnotationPosition(linePrefix, text string, pos position) bool {
+	if strings.HasPrefix(strings.TrimSpace(linePrefix), "input ") {
+		return true
+	}
+	stack := blockStack(textUpToPosition(text, pos))
+	if len(stack) == 0 || stack[len(stack)-1] != blockOther {
+		return false
+	}
+	return strings.Count(linePrefix, "(") > strings.Count(linePrefix, ")")
+}
+
 // completionAt computes the completion list for path/text at pos, following
 // three modes: member completion right after "target." (only target's own
 // methods), property-name completion when the cursor sits directly inside a
@@ -41,6 +74,14 @@ func completionAt(path, text string, pos position) []completionItem {
 			}
 		}
 		return nil
+	}
+
+	if typeAnnotationRe.MatchString(linePrefix) && isTypeAnnotationPosition(linePrefix, text, pos) {
+		items := make([]completionItem, 0, len(typeKeywords))
+		for _, kw := range typeKeywords {
+			items = append(items, completionItem{Label: kw, Kind: kindKeyword})
+		}
+		return items
 	}
 
 	items := make([]completionItem, 0, len(keywords))

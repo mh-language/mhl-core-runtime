@@ -1,0 +1,13 @@
+test sort_by_number {
+    describe sort_by_number {
+        var features = [
+            {"id": 3, "priority": 2},
+            {"id": 1, "priority": 1},
+            {"id": 2, "priority": 3}
+        ]
+        var sorted = features.sort_by((f) -> f.priority)
+        are_equal(sorted[0].id, 1)
+        are_equal(sorted[1].id, 3)
+        are_equal(sorted[2].id, 2)
+    }
+}

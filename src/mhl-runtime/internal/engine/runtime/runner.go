@@ -13,6 +13,15 @@ import (
 // numbers, bools, arrays and objects, not just strings.
 type RunContext struct {
 	Vars map[string]any
+	// InstanceID identifies which run of this pipeline is executing, for
+	// cli.go's `mem` support (interpreter.MemContext) to namespace a
+	// pipeline's persistent variables by. Set from Pipeline.InstanceID
+	// (below) when Run allocates ctx — "default" for a plain pipeline
+	// (Pipeline.InstanceID is only ever populated by LoopRunner), or a
+	// loop's per-run/per-resume id for a `loop pipeline`, so a `mem` var
+	// stays isolated between two independent (non-resumed) runs of the same
+	// loop but shared across all iterations of one run — see LoopRunner.Run.
+	InstanceID string
 }
 
 // StepFunc executes a single step. Returning a plain error aborts the
@@ -82,7 +91,11 @@ func NewRunner(root string) *Runner {
 // pipeline.
 func (r *Runner) Run(p Pipeline, init InitFunc, exec StepFunc, resume bool) (*RunResult, error) {
 	result := &RunResult{}
-	ctx := &RunContext{Vars: map[string]any{}}
+	instanceID := p.InstanceID
+	if instanceID == "" {
+		instanceID = "default"
+	}
+	ctx := &RunContext{Vars: map[string]any{}, InstanceID: instanceID}
 
 	perStep := p.Checkpoint.Enabled && p.Checkpoint.Strategy == "per_step"
 

@@ -1,0 +1,7 @@
+test filter_no_match_returns_empty_array {
+    describe filter_no_match_returns_empty_array {
+        var numbers = [1, 3, 5]
+        var even = numbers.filter((n) -> n % 2 == 0)
+        are_equal(even.size(), 0)
+    }
+}

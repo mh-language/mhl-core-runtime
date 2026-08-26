@@ -1,0 +1,10 @@
+test object_property_access_with_exception {
+    describe object_property_access_with_exception {
+        var obj = {"key1": "value1"}
+        try {
+            var value = obj.key2 // Accessing a non-existent key throws an exception
+        } catch (e) {
+            are_equal(e, "field \"key2\" not found")
+        }
+    }
+}

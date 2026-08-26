@@ -1,0 +1,11 @@
+test object_property_access_with_non_existent_array_index {
+    describe object_property_access_with_non_existent_array_index {
+        var obj = {"key1": [1, 2, 3]}
+
+        try {
+            var value = obj.key1[3] // Accessing a non-existent array index throws an exception
+        } catch (e) {
+            are_equal(e, "index 3 out of range (size 3)")
+        }
+    }
+}

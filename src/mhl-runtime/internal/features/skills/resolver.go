@@ -141,11 +141,11 @@ func skillFromAST(s *ast.Skill) *SkillDefinition {
 		switch {
 		case m.Input != nil:
 			for _, f := range m.Input.Fields {
-				def.InputSchema[f.Name] = f.Type
+				def.InputSchema[f.Name] = f.Type.String()
 			}
 		case m.Output != nil:
 			for _, f := range m.Output.Fields {
-				def.OutputSchema[f.Name] = f.Type
+				def.OutputSchema[f.Name] = f.Type.String()
 			}
 		case m.Prop != nil:
 			applySkillProp(def, m.Prop)

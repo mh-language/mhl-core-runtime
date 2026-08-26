@@ -1,0 +1,8 @@
+test sort_by_does_not_mutate_the_source_array {
+    describe sort_by_does_not_mutate_the_source_array {
+        var numbers = [3, 1, 2]
+        var sorted = numbers.sort_by((n) -> n)
+        are_equal(numbers, [3, 1, 2])
+        are_equal(sorted, [1, 2, 3])
+    }
+}

@@ -1,0 +1,12 @@
+test filter_predicate_must_return_a_boolean {
+    describe filter_predicate_must_return_a_boolean {
+        var result = ""
+        try {
+            var bad = [1, 2].filter((n) -> n)
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: filter() predicate must return a boolean, got number")
+    }
+}

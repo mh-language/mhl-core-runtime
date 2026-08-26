@@ -1,0 +1,6 @@
+test if_else_statement {
+    describe if_else_statement {
+        var result = if (false) "This is true" else "This is false"
+        are_equal(result, "This is false")
+    }
+}

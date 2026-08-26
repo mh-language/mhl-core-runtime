@@ -1,0 +1,10 @@
+// "-" alone as a full string literal is avoided here: a known, pre-existing
+// parser bug (unrelated to these methods) matches a bare "-"/"!" string token
+// against the unary-operator literal instead of the string primary wherever
+// an expression could start.
+test chained_string_methods {
+    describe chained_string_methods {
+        var cleaned = "  Feature Title  ".trim().to_lower().replace(" ", "_")
+        are_equal(cleaned, "feature_title")
+    }
+}

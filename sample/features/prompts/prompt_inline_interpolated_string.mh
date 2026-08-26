@@ -1,0 +1,9 @@
+use {Echo} from "fixtures/agents.mh"
+
+test prompt_inline_interpolated_string {
+    describe prompt_inline_interpolated_string {
+        var last_error = "index out of range"
+        var response = Echo.run(prompt: "Corrija: ${last_error}")
+        are_equal(response, "Corrija: index out of range")
+    }
+}

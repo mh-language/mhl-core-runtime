@@ -115,21 +115,29 @@ type Tool struct {
 // matches when the content inside `{ }` isn't shaped like `key: value`
 // pairs (see internal/parser's TestToolMethodBlockBody* for the
 // disambiguation this relies on).
+// Returns is a typed method declaration's optional return-type annotation,
+// e.g. `read_file(path: string): string -> fs.read(path)` — the same `:
+// Ident` shape Param already uses, placed after the closing ')' since a
+// method's return type describes the whole call, not one parameter.
 type ToolMethod struct {
-	Name   string       `parser:"@Ident '('"`
-	Params []*Param     `parser:"( @@ ( ',' @@ )* )? ')' '->'"`
-	Body   *Expr        `parser:"( @@"`
-	Block  []*Statement `parser:"| '{' @@* '}' )"`
+	Pos     lexer.Position
+	Name    string       `parser:"@Ident '('"`
+	Params  []*Param     `parser:"( @@ ( ',' @@ )* )? ')'"`
+	Returns *TypeExpr    `parser:"( ':' @@ )?"`
+	Body    *Expr        `parser:"'->' ( @@"`
+	Block   []*Statement `parser:"| '{' @@* '}' )"`
 }
 
 // Param is a typed parameter declaration, e.g. `path: string`.
 type Param struct {
-	Name string `parser:"@Ident"`
-	Type string `parser:"( ':' @Ident )?"`
+	Pos  lexer.Position
+	Name string    `parser:"@Ident"`
+	Type *TypeExpr `parser:"( ':' @@ )?"`
 }
 
 // Property is a `key: value` pair inside a declaration body.
 type Property struct {
+	Pos   lexer.Position
 	Name  string `parser:"@Ident ':'"`
 	Value *Expr  `parser:"@@"`
 }

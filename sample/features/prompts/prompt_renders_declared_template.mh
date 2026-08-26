@@ -1,0 +1,12 @@
+use {SecurityAuditPrompt} from "fixtures/prompts.mh"
+use {Echo} from "fixtures/agents.mh"
+
+test prompt_renders_declared_template {
+    describe prompt_renders_declared_template {
+        var response = Echo.run(prompt: SecurityAuditPrompt(
+            file_path: "user_info.mh",
+            code_content: "var user = {name: 'John Doe', age: 30};"
+        ))
+        are_equal(response, "Voce e um especialista em seguranca de software.\n    Analise o arquivo 'user_info.mh' abaixo:\n\n    ```\n    var user = {name: 'John Doe', age: 30};\n    ```\n\n    Identifique vulnerabilidades (OWASP Top 10) e retorne correcoes objetivas.")
+    }
+}

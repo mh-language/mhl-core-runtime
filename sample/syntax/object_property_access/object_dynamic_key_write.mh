@@ -1,0 +1,10 @@
+test object_dynamic_key_write {
+    describe object_dynamic_key_write {
+        var obj = {"key1": "value1"}
+        var key = "key2"
+        obj[key] = "value2"
+        are_equal(obj.key1, "value1")
+        are_equal(obj.key2, "value2")
+        are_equal(obj[key], "value2")
+    }
+}

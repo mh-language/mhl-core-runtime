@@ -24,6 +24,8 @@ pipeline Build {
 
 O pipeline executa steps em ordem. Uma variável no nível do pipeline é avaliada uma vez no início e pode ser lida/alterada por todos os steps daquela execução. `var` dentro de um step é descartada ao final do step.
 
+Uma variável de pipeline declarada com `var` é reavaliada do zero a cada execução — inclusive a cada iteração de um `loop pipeline` (ver "Loop pipeline" abaixo). Para um valor que precisa sobreviver entre iterações, use `mem` em vez de `var`.
+
 ## Statements
 
 ```mhl
@@ -97,14 +99,42 @@ Se uma execução falhar no segundo step, `mhl run file.mh --resume` restaura o 
 ```mhl
 loop pipeline Poll {
     repeat: {
-        stop_when: session.get("done", false)
+        stop_when: done == true
         max_iterations: 10
     }
 
+    mem done = false
+
     step Check {
-        session.set("done", check())
+        done = check()
     }
 }
 ```
 
 O loop avalia `stop_when` somente após uma iteração completa. `max_iterations` é um teto. O progresso do loop é salvo em `.mhl/state/loop-<pipeline>.json`, separado do checkpoint por step; `--resume` continua na próxima iteração incompleta.
+
+## `mem`: variável de pipeline persistente
+
+`var` reseta a cada iteração de um `loop pipeline`, e `stop_when` não enxerga nenhum `var` — só `mem` (e `memory`). `mem` declara uma variável de pipeline que:
+
+- é **get-or-init**: `mem done = false` só escreve o valor inicial na primeira vez; numa iteração seguinte (ou num `--resume`), o valor já persistido é o que vale;
+- é lida/escrita como qualquer variável (`done = check()`), inclusive dentro de `stop_when`;
+- pode ser reiniciada explicitamente com `nome.reset()` — a próxima leitura ou escrita reexecuta o get-or-init;
+- é isolada por execução: cada `mhl run` de um `loop pipeline` recebe um id de instância novo (persistido em `.mhl/state/loop-<pipeline>.json`, recuperado por `--resume`), então duas execuções independentes nunca compartilham o mesmo contador. Uma `pipeline` sem `loop` usa uma instância fixa, então `mem` persiste entre invocações separadas dela.
+
+```mhl
+loop pipeline Retry {
+    mem attempts = 0
+
+    repeat: {
+        stop_when: attempts >= 3
+    }
+
+    step Try {
+        attempts = attempts + 1
+        log("tentativa ${attempts}")
+    }
+}
+```
+
+O backing store de cada `mem` fica em `.mhl/state/mem/<pipeline>/<instância>.json` — um arquivo por execução, ao lado (nunca colidindo com) o checkpoint por step e o checkpoint do loop.

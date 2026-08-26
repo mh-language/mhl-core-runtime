@@ -1,0 +1,16 @@
+// The original mhl-runtime test suite shipped test_looping_constructs.mh as an
+// empty file (a pre-existing gap, not a removed example) -- there was no
+// migrated occurrence of a for-loop to move here. This example is authored
+// from scratch using the `for (var x in items) { ... }` syntax verified in
+// internal/lang/parser/parser_test.go, so this topic isn't left without an
+// example.
+test for_in_loop {
+    describe for_in_loop {
+        var numbers = [1, 2, 3]
+        var total = 0
+        for (var n in numbers) {
+            total = total + n
+        }
+        are_equal(total, 6)
+    }
+}

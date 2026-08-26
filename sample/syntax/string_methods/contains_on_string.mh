@@ -1,0 +1,6 @@
+test contains_on_string {
+    describe contains_on_string {
+        is_true("hello world".contains("world"))
+        is_false("hello world".contains("xyz"))
+    }
+}

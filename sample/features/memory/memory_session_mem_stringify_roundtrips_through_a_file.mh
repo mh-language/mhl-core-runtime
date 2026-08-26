@@ -1,0 +1,20 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+// json.stringify is the inverse of json.parse: it turns a value built or read
+// from memory back into JSON text, so it can be handed to fs.write (or any
+// other native op) -- round-tripping SessionJsonMem's content through a file
+// confirms the two operations agree on shape.
+test memory_session_mem_stringify_roundtrips_through_a_file {
+    describe memory_session_mem_stringify_roundtrips_through_a_file {
+        SessionJsonMem.set({"key1": "value1", "key2": "value2"})
+        var snapshot = json.stringify({
+            "key1": SessionJsonMem.get("key1"),
+            "key2": SessionJsonMem.get("key2")
+        })
+        fs.write(".mhl/session_mem_export.json", snapshot)
+
+        var restored = json.parse(fs.read(".mhl/session_mem_export.json"))
+        are_equal(restored.key1, "value1")
+        are_equal(restored.key2, "value2")
+    }
+}

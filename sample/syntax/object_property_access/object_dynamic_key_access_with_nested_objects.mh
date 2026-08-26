@@ -1,0 +1,8 @@
+test object_dynamic_key_access_with_nested_objects {
+    describe object_dynamic_key_access_with_nested_objects {
+        var obj = {"key1": {"nestedKey1": "nestedValue1"}, "key2": "value2"}
+        var outerKey = "key1"
+        var innerKey = "nestedKey1"
+        are_equal(obj[outerKey][innerKey], "nestedValue1")
+    }
+}

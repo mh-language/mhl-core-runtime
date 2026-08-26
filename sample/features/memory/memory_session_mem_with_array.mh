@@ -1,0 +1,10 @@
+use {SessionJsonMem} from "fixtures/memory.mh"
+
+test memory_session_mem_with_array {
+    describe memory_session_mem_with_array {
+        SessionJsonMem.set({"array": [1, 2, 3]})
+        are_equal(SessionJsonMem.get("array")[0], 1)
+        are_equal(SessionJsonMem.get("array")[1], 2)
+        are_equal(SessionJsonMem.get("array")[2], 3)
+    }
+}

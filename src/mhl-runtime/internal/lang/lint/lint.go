@@ -53,6 +53,10 @@ func Source(path, src string) []Finding {
 	merged, findings := mergeImports(path, prog)
 	findings = append(findings, checkAgentCalls(path, merged)...)
 	findings = append(findings, checkToolBlocks(path, merged)...)
+	findings = append(findings, checkLoopStopWhen(path, merged)...)
+	findings = append(findings, checkPipelineInputTypes(path, merged)...)
+	findings = append(findings, checkToolMethodReturnTypes(path, merged)...)
+	findings = append(findings, checkSkillFieldTypes(path, merged)...)
 	return findings
 }
 

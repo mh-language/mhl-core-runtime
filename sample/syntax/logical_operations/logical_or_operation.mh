@@ -1,0 +1,15 @@
+test logical_or_operation {
+    describe logical_or_operation {
+        var valueE = true || true
+        are_equal(valueE, true)
+
+        var valueF = true || false
+        are_equal(valueF, true)
+
+        var valueG = false || true
+        are_equal(valueG, true)
+
+        var valueH = false || false
+        are_equal(valueH, false)
+    }
+}

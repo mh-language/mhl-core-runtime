@@ -1,0 +1,7 @@
+test array_index_of_not_found {
+    describe array_index_of_not_found {
+        var A = [1, 2, 3]
+        var index = A.index_of(4)
+        are_equal(index, -1)
+    }
+}

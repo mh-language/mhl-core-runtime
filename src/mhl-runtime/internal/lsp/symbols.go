@@ -25,6 +25,9 @@ const (
 	symPipeline
 	symMCPServer
 	symNative
+	symString
+	symArray
+	symObject
 )
 
 func (k symbolKind) label() string {
@@ -45,6 +48,12 @@ func (k symbolKind) label() string {
 		return "mcp_server"
 	case symNative:
 		return "native"
+	case symString:
+		return "string"
+	case symArray:
+		return "array"
+	case symObject:
+		return "object"
 	default:
 		return ""
 	}
@@ -237,6 +246,173 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 	return 0, false
 }
 
+// stringMethods/arrayMethods/objectMethods mirror the value-kind
+// restrictions internal/engine/interpreter/eval.go's callValueMethod
+// switch actually enforces at runtime (each case's `receiver.(string)` /
+// `receiver.([]any)` / `receiver.(map[string]any)` type assertion) — kept
+// in sync by hand the same way nativeSymbols already is, since there's no
+// single source these are generated from either.
+var (
+	stringMethods = []string{"size", "is_empty", "contains", "split", "replace", "starts_with", "ends_with", "trim", "to_upper", "to_lower", "substring"}
+	arrayMethods  = []string{"size", "is_empty", "contains", "get_index", "index_of", "filter", "find", "sort_by"}
+	objectMethods = []string{"size", "is_empty", "keys", "values"}
+)
+
+func methodsForKind(k symbolKind) []string {
+	switch k {
+	case symString:
+		return stringMethods
+	case symArray:
+		return arrayMethods
+	case symObject:
+		return objectMethods
+	default:
+		return nil
+	}
+}
+
+// localVarSymbols walks every `var` declaration in prog — pipeline-scoped,
+// step-scoped, tool-method-scoped, and describe-scoped, including ones
+// nested inside if/while/for-in/try bodies — and returns a symbol for each
+// one whose initializer expression is simple enough to infer a value kind
+// from: a string/array/object literal, or a `Something.run(...)` call
+// (runAgent always returns a string, see agent.go). A var initialized from
+// anything else (a computed expression, a call other than `.run(...)`, a
+// plain identifier reference, ...) is skipped rather than guessed at —
+// dynamically typed, so a wrong guess offering the wrong method list is
+// worse than offering none. This is the AST-accurate counterpart to
+// localVarSymbolsFromText below, used whenever text parses cleanly.
+func localVarSymbols(prog *ast.Program) []symbol {
+	var syms []symbol
+	add := func(name string, value *ast.Expr) {
+		kind, ok := inferLocalKind(value)
+		if !ok {
+			return
+		}
+		syms = append(syms, symbol{Name: name, Kind: kind, Methods: methodsForKind(kind)})
+	}
+
+	var walkStmts func([]*ast.Statement)
+	walkStmts = func(stmts []*ast.Statement) {
+		for _, st := range stmts {
+			switch {
+			case st.Var != nil:
+				add(st.Var.Name, st.Var.Value)
+			case st.If != nil:
+				walkStmts(st.If.Then)
+				walkStmts(st.If.Else)
+			case st.While != nil:
+				walkStmts(st.While.Body)
+			case st.ForIn != nil:
+				walkStmts(st.ForIn.Body)
+			case st.Try != nil:
+				walkStmts(st.Try.Body)
+				walkStmts(st.Try.Catch)
+				walkStmts(st.Try.Finally)
+			}
+		}
+	}
+
+	for _, decl := range prog.Decls {
+		switch {
+		case decl.Pipeline != nil:
+			for _, m := range decl.Pipeline.Body {
+				if m.Var != nil {
+					add(m.Var.Name, m.Var.Value)
+				}
+				if m.Step != nil {
+					walkStmts(m.Step.Body)
+				}
+			}
+		case decl.Tool != nil:
+			for _, meth := range decl.Tool.Methods {
+				walkStmts(meth.Block)
+			}
+		case decl.Test != nil:
+			for _, d := range decl.Test.Describes {
+				walkStmts(d.Body)
+			}
+		}
+	}
+	return syms
+}
+
+// inferLocalKind classifies value's shape as a string/array/object literal,
+// or as a `X.run(...)` call (always a string), returning ok=false for
+// anything else — see localVarSymbols' doc comment for the rationale.
+func inferLocalKind(value *ast.Expr) (symbolKind, bool) {
+	if _, ok := ast.StringValue(value); ok {
+		return symString, true
+	}
+	if ast.BareArray(value) != nil {
+		return symArray, true
+	}
+	if ast.BareObject(value) != nil {
+		return symObject, true
+	}
+	if isRunCall(value) {
+		return symString, true
+	}
+	return 0, false
+}
+
+// isRunCall reports whether value is shaped like `<expr>.run(...)` — a
+// member-access trailer named "run" immediately followed by a call trailer.
+// A `.replace(...).run(...)`-style chain still matches (only the final two
+// trailers are inspected), same as any other postfix chain.
+func isRunCall(value *ast.Expr) bool {
+	pf := ast.BarePostfix(value)
+	if pf == nil || len(pf.Ops) < 2 {
+		return false
+	}
+	last := pf.Ops[len(pf.Ops)-1]
+	prev := pf.Ops[len(pf.Ops)-2]
+	return prev.Member == "run" && last.Call != nil
+}
+
+// varDeclLineRe recognizes a single-line `var name = <rest of line>`
+// declaration in source that doesn't fully parse yet — the common case
+// while the user is mid-edit, same rationale as declRe above (most
+// obviously: the exact moment they've typed "content." and are choosing a
+// member off it, which is invalid syntax — and therefore breaks the whole
+// file's parse — until the member name is finished).
+var varDeclLineRe = regexp.MustCompile(`(?m)^\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$`)
+
+// runCallSuffixRe recognizes an initializer text ending in a `.run(...)`
+// call, the text-scanning counterpart to isRunCall.
+var runCallSuffixRe = regexp.MustCompile(`\.run\([^()]*\)\s*$`)
+
+// localVarSymbolsFromText is localVarSymbols' regex-based fallback for
+// source that doesn't parse, classifying each `var` initializer by its
+// leading/trailing punctuation instead of walking a real AST.
+func localVarSymbolsFromText(src string) []symbol {
+	var syms []symbol
+	for _, m := range varDeclLineRe.FindAllStringSubmatch(src, -1) {
+		name, rhs := m[1], strings.TrimSpace(m[2])
+		kind, ok := inferKindFromText(rhs)
+		if !ok {
+			continue
+		}
+		syms = append(syms, symbol{Name: name, Kind: kind, Methods: methodsForKind(kind)})
+	}
+	return syms
+}
+
+func inferKindFromText(rhs string) (symbolKind, bool) {
+	switch {
+	case strings.HasPrefix(rhs, `"`):
+		return symString, true
+	case strings.HasPrefix(rhs, "["):
+		return symArray, true
+	case strings.HasPrefix(rhs, "{"):
+		return symObject, true
+	case runCallSuffixRe.MatchString(rhs):
+		return symString, true
+	default:
+		return 0, false
+	}
+}
+
 // nativeSymbols are the built-in cmd/git/fs/http/json/log namespaces —
 // never declared in any .mh source, so symbolsFromProgram/symbolsFromText
 // can't find them, yet a .mh author calls their members constantly. Method
@@ -268,8 +444,10 @@ func documentSymbols(path, text string) []symbol {
 	syms := append([]symbol{}, nativeSymbols...)
 	if prog, err := parser.Parse(text); err == nil {
 		syms = append(syms, symbolsFromProgram(prog)...)
+		syms = append(syms, localVarSymbols(prog)...)
 	} else {
 		syms = append(syms, symbolsFromText(text)...)
+		syms = append(syms, localVarSymbolsFromText(text)...)
 	}
 	syms = append(syms, workspaceSymbols(path)...)
 	return dedupeSymbols(syms)

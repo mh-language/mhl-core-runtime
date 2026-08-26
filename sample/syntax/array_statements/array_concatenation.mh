@@ -1,0 +1,14 @@
+test array_concatenation {
+    describe array_concatenation {
+        var A = [1, 2, 3]
+        var B = [4, 5, 6]
+        var C = A + B
+        are_equal(C.size(), 6)
+        are_equal(C[0], 1)
+        are_equal(C[1], 2)
+        are_equal(C[2], 3)
+        are_equal(C[3], 4)
+        are_equal(C[4], 5)
+        are_equal(C[5], 6)
+    }
+}

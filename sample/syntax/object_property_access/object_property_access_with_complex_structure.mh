@@ -1,0 +1,9 @@
+test object_property_access_with_complex_structure {
+    describe object_property_access_with_complex_structure {
+        var obj = {"key1": {"nestedKey1": [1, 2, 3]}, "key2": "value2"}
+        are_equal(obj.key1.nestedKey1[0], 1)
+        are_equal(obj.key1.nestedKey1[1], 2)
+        are_equal(obj.key1.nestedKey1[2], 3)
+        are_equal(obj.key2, "value2")
+    }
+}

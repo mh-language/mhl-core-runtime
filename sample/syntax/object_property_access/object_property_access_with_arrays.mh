@@ -1,0 +1,9 @@
+test object_property_access_with_arrays {
+    describe object_property_access_with_arrays {
+        var obj = {"key1": [1, 2, 3], "key2": "value2"}
+        are_equal(obj.key1[0], 1)
+        are_equal(obj.key1[1], 2)
+        are_equal(obj.key1[2], 3)
+        are_equal(obj.key2, "value2")
+    }
+}
