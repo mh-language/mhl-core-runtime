@@ -12,16 +12,21 @@ harness*.json
 # folders
 specs/
 dotnet/
+/output/
+/dist/
+/out/
 
 # build artifacts (built by release.yml on tag push, not committed)
 *.vsix
 .DS_Store
 
+# mhl build artifacts
 /mhl
 /mhl.exe
 .mhl/
-/dist/
-/out/
-
 sample/mhl
-/output/
+
+# scripts
+release.sh
+
+
