@@ -16,6 +16,22 @@ type CheckpointConfig struct {
 	TTL      time.Duration // e.g. 7d
 }
 
+// ContextConfig is the resolved `context: { ... }` block of a pipeline: it
+// opts the pipeline into the read-only `context.*` accessor its steps can
+// then read (context.session_id, context.started_at, context.resumed,
+// context.vars). A nil *ContextConfig on Pipeline means the block was not
+// declared at all and `context` stays an undefined identifier.
+//
+// Source selects which prior state context.vars is hydrated from:
+// "latest" (default) follows the .latest pointer to the most recent session
+// of this pipeline; "session:<id>" pins an explicit one. Require makes the
+// run fail when Source resolves to no stored state at all, rather than
+// exposing an empty context.vars.
+type ContextConfig struct {
+	Source  string
+	Require bool
+}
+
 // SpawnConfig is the resolved `spawn { max_concurrency: N }` block of a
 // pipeline: the ceiling on how many `spawn`ed agent calls run their
 // subprocess/HTTP request at once, across all of the pipeline's steps.
@@ -44,6 +60,9 @@ type Pipeline struct {
 	// RunContext.InstanceID for cli.go's `mem` support. Left empty for a
 	// plain (non-`loop`) pipeline — Run treats that as instance "default".
 	InstanceID string
+	// Context is the resolved `context:` block, or nil when the pipeline
+	// declares none — see ContextConfig.
+	Context *ContextConfig
 	// Inputs lists this pipeline's declared `input name: Type` members, in
 	// declaration order. A malformed/unrecognized Type text resolves to
 	// types.Any here (best-effort, same as every other reader in this
@@ -76,6 +95,8 @@ func PipelineFromAST(p *ast.Pipeline) Pipeline {
 			out.Spawn = spawnConfigFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "repeat":
 			out.StopWhen, out.MaxIterations = repeatConfigFromExpr(m.Prop.Value)
+		case m.Prop != nil && m.Prop.Name == "context":
+			out.Context = contextConfigFromExpr(m.Prop.Value)
 		case m.Input != nil:
 			t, ok := types.FromExpr(m.Input.Type)
 			if !ok {
@@ -199,6 +220,40 @@ func spawnConfigFromExpr(e *ast.Expr) SpawnConfig {
 		if key == "max_concurrency" {
 			if n, ok := ast.NumberValue(f.Value); ok && n > 0 {
 				cfg.MaxConcurrency = int(n)
+			}
+		}
+	}
+	return cfg
+}
+
+// contextConfigFromExpr reads a `context: { source, require }` property's
+// object literal via the shared ast literal readers, the same way
+// checkpointFromExpr/spawnConfigFromExpr do. A bare `context: {}` (or an
+// unreadable value) still returns a non-nil config with Source defaulting to
+// "latest" — the block's mere presence is what opts the pipeline into the
+// `context.*` accessor.
+func contextConfigFromExpr(e *ast.Expr) *ContextConfig {
+	cfg := &ContextConfig{Source: "latest"}
+	obj := ast.BareObject(e)
+	if obj == nil {
+		return cfg
+	}
+	for _, f := range obj.Fields {
+		key := ""
+		switch {
+		case f.KeyIdent != nil:
+			key = *f.KeyIdent
+		case f.KeyStr != nil:
+			key = *f.KeyStr
+		}
+		switch key {
+		case "source":
+			if s, ok := ast.StringValue(f.Value); ok && s != "" {
+				cfg.Source = s
+			}
+		case "require":
+			if b, ok := ast.BoolValue(f.Value); ok {
+				cfg.Require = b
 			}
 		}
 	}

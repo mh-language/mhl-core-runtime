@@ -1,8 +1,6 @@
 package runtime
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -34,20 +32,12 @@ type LoopCheckpoint struct {
 }
 
 // newInstanceID returns a fresh random hex id for a new (non-resumed) loop
-// run — deliberately not a real UUID library: this repo has exactly one
-// external dependency (participle) today, and 16 random bytes hex-encoded
-// serves the same "practically unique, opaque" purpose an RFC 4122 UUID
-// would for this — a filename/JSON-key component, never parsed or compared
-// structurally.
+// run. It is an alias for NewSessionID (session.go) — same generator, same
+// rationale (no UUID dependency; an opaque filename/JSON-key component) —
+// kept under this name because LoopCheckpoint.InstanceID and the `mem`
+// backing path already speak of an "instance" id.
 func newInstanceID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		// crypto/rand.Read failing is effectively unrecoverable (no source
-		// of entropy) — fall back to a timestamp rather than panic, so a
-		// pathological environment still gets *an* id, just a weaker one.
-		return "t" + hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))
-	}
-	return hex.EncodeToString(b)
+	return NewSessionID()
 }
 
 // LoopStore persists LoopCheckpoints as JSON files under <root>/.mhl/state,
@@ -56,13 +46,32 @@ func newInstanceID() string {
 // loop pipeline's checkpoint and its own per-step Checkpoint share the same
 // name.
 type LoopStore struct {
-	dir string
-	now func() time.Time
+	dir       string
+	base      string
+	sessionID string
+	now       func() time.Time
 }
 
-// NewLoopStore returns a LoopStore rooted at root.
+// NewLoopStore returns a LoopStore rooted at root. It is unscoped — call
+// Session to isolate one execution, the same way Store does.
 func NewLoopStore(root string) *LoopStore {
-	return &LoopStore{dir: filepath.Join(root, StateDirName), now: time.Now}
+	dir := filepath.Join(root, StateDirName)
+	return &LoopStore{dir: dir, base: dir, now: time.Now}
+}
+
+// Session returns a copy of s whose loop checkpoint lives under
+// <base>/<id>, so it shares one per-execution directory with the wrapped
+// pipeline's own Store. An empty id returns s unchanged.
+func (s *LoopStore) Session(id string) *LoopStore {
+	if id == "" {
+		return s
+	}
+	return &LoopStore{
+		dir:       filepath.Join(s.base, id),
+		base:      s.base,
+		sessionID: id,
+		now:       s.now,
+	}
 }
 
 func (s *LoopStore) path(loop string) string {
@@ -91,6 +100,11 @@ func (s *LoopStore) Save(cp *LoopCheckpoint) error {
 	if err := os.Rename(tmp, s.path(cp.Loop)); err != nil {
 		return fmt.Errorf("runtime: committing loop checkpoint: %w", err)
 	}
+	if s.sessionID != "" {
+		if err := writeLatest(s.base, cp.Loop, s.sessionID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -112,12 +126,16 @@ func (s *LoopStore) Load(loop string) (*LoopCheckpoint, bool, error) {
 }
 
 // LoopResult reports how a loop run ended: how many iterations it completed
-// and which of the three stop conditions fired.
+// and which of the three stop conditions fired. FinalVars is the last
+// completed iteration's accumulated variable state (RunResult.FinalVars),
+// nil when no iteration completed — cli.go persists it as the session's
+// result.json for a `context:` element, exactly as for a plain pipeline.
 type LoopResult struct {
 	Iterations     int
 	TerminalReason string // "stop_when", "max_iterations", or "break"
 	BreakReason    any
 	Resumed        bool
+	FinalVars      map[string]any
 }
 
 // LoopRunner repeats a `loop pipeline`, once per iteration, checkpointing
@@ -137,6 +155,14 @@ type LoopRunner struct {
 // NewLoopRunner returns a LoopRunner backed by stores rooted at root.
 func NewLoopRunner(root string) *LoopRunner {
 	return &LoopRunner{Runner: NewRunner(root), Store: NewLoopStore(root)}
+}
+
+// Session scopes both of the LoopRunner's stores to one per-execution
+// directory, so a `loop pipeline`'s loop checkpoint and the wrapped
+// pipeline's per-step checkpoints share it. An empty id leaves the runner
+// unscoped.
+func (lr *LoopRunner) Session(id string) *LoopRunner {
+	return &LoopRunner{Runner: lr.Runner.Session(id), Store: lr.Store.Session(id)}
 }
 
 // Run repeats p, once per iteration via exec, until evalStopWhen reports
@@ -168,6 +194,7 @@ func NewLoopRunner(root string) *LoopRunner {
 func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen func(instanceID string) (bool, error), resume bool) (*LoopResult, error) {
 	iteration := 0
 	resumed := false
+	var finalVars map[string]any
 	instanceID := ""
 	if resume {
 		cp, ok, err := lr.Store.Load(p.Name)
@@ -190,7 +217,7 @@ func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen
 			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "max_iterations", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
-			return &LoopResult{Iterations: iteration, TerminalReason: "max_iterations", Resumed: resumed}, nil
+			return &LoopResult{Iterations: iteration, TerminalReason: "max_iterations", Resumed: resumed, FinalVars: finalVars}, nil
 		}
 
 		result, err := lr.Runner.Run(p, init, exec, false)
@@ -201,8 +228,9 @@ func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen
 			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "break", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
-			return &LoopResult{Iterations: iteration + 1, TerminalReason: "break", BreakReason: result.BreakReason, Resumed: resumed}, nil
+			return &LoopResult{Iterations: iteration + 1, TerminalReason: "break", BreakReason: result.BreakReason, Resumed: resumed, FinalVars: finalVars}, nil
 		}
+		finalVars = result.FinalVars
 
 		iteration++
 		done, err := evalStopWhen(instanceID)
@@ -213,7 +241,7 @@ func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen
 			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "stop_when", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
-			return &LoopResult{Iterations: iteration, TerminalReason: "stop_when", Resumed: resumed}, nil
+			return &LoopResult{Iterations: iteration, TerminalReason: "stop_when", Resumed: resumed, FinalVars: finalVars}, nil
 		}
 
 		if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "", InstanceID: instanceID}); err != nil {

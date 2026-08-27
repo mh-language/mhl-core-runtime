@@ -1,0 +1,44 @@
+// A `context:` block opts a pipeline into the read-only `context` accessor
+// its steps can read: this run's own session metadata, plus the variable
+// state left behind by the previous completed run of the same pipeline. Run
+// it twice to see the carry-over:
+//
+//   mhl run sample/features/pipelines/context_pipeline_example.mh
+//   mhl run sample/features/pipelines/context_pipeline_example.mh
+//
+// Each run prints its own `session: <id>` line and gets its own directory
+// under .mhl/state/<id>/, so two concurrent runs never clobber each other's
+// checkpoint. `context.vars` is empty on the very first run — a run has to
+// complete once (writing .mhl/state/<id>/result.json) before the next run
+// has anything to read. `--session <id>` pins the directory name; a bare
+// `--resume` follows the .latest pointer.
+
+pipeline BuildCounter {
+    checkpoint: {
+        enabled: true
+        strategy: "per_step"
+        ttl: 7d
+    }
+
+    // source: "latest" (the default) reads the most recent completed run.
+    // require: false lets the first run proceed with an empty context.vars.
+    context: {
+        source: "latest"
+        require: false
+    }
+
+    var build = 1
+
+    step Report {
+        log.info("[ctx] session id: ${context.session_id}")
+        log.info("[ctx] resumed:    ${context.resumed}")
+
+        if (context.vars.keys().contains("build")) {
+            var previous = context.vars["build"]
+            build = previous + 1
+            log.info("[ctx] previous build was ${previous}; this is build ${build}")
+        } else {
+            log.info("[ctx] no previous run; starting at build ${build}")
+        }
+    }
+}

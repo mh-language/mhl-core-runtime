@@ -1794,6 +1794,92 @@ pipeline P {
 	}
 }
 
+func TestCheckPipelineContextUnknownKey(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+pipeline MainPipeline {
+    context: {
+        source: "latest"
+        sauce: "typo"
+    }
+
+    step Step1 {
+        var x = 1
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `unknown key "sauce"`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckPipelineContextUnrecognizedSource(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+pipeline MainPipeline {
+    context: {
+        source: "yesterday"
+    }
+
+    step Step1 {
+        var x = 1
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `context source "yesterday" is not recognized`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckPipelineContextSessionSourceIsClean(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+pipeline MainPipeline {
+    context: {
+        source: "session:abc123"
+    }
+
+    step Step1 {
+        var x = 1
+    }
+}
+`)
+	if findings := lint.File(main); len(findings) != 0 {
+		t.Fatalf("expected no findings for source: \"session:<id>\", got: %+v", findings)
+	}
+}
+
+func TestCheckPipelineContextStepReferenceIsClean(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+pipeline MainPipeline {
+    context: {
+        source: "latest"
+    }
+
+    step Step1 {
+        log(context.session_id)
+        log(context.vars)
+    }
+}
+`)
+	if findings := lint.File(main); len(findings) != 0 {
+		t.Fatalf("expected no findings for a step reading context.*, got: %+v", findings)
+	}
+}
+
 func TestCheckLoopStopWhenReferencesPipelineVar(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")

@@ -50,6 +50,11 @@ func checkAgentCalls(file string, prog *ast.Program) []Finding {
 			for name, t := range pipelineMemVars {
 				seed[name] = t
 			}
+			// A `context:` block makes the read-only identifier `context`
+			// resolve to an object inside every step (interpreter.isContextRef).
+			if pipelineHasContextProp(decl.Pipeline) {
+				seed["context"] = types.Object
+			}
 			declared := collectVarNames(prog, member.Step.Body, seed, nil)
 			findings = append(findings, checkStatements(file, prog, member.Step.Body, declared, nil)...)
 		}
