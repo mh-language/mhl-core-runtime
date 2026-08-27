@@ -25,7 +25,7 @@ import (
 // MemContext (memvar.go). file is the .mh path being run, used only to
 // prefix a failing statement's error with its position (see
 // execStatement's positionedError wrap below).
-func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext) error {
+func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, spawnSem chan struct{}) (err error) {
 	var step *ast.Step
 	for _, decl := range prog.Decls {
 		if decl.Pipeline == nil {
@@ -42,7 +42,20 @@ func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *mem
 	}
 
 	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, file: file}
-	err := execBlock(ctx, step.Body)
+	// A non-nil spawnSem enables `spawn`/`wait` for this step and confines
+	// them to it: drainAtStepEnd joins whatever the step body left running,
+	// so no spawned goroutine ever outlives the step (and no handle is live
+	// across a checkpoint boundary). On a genuine step failure it cancels
+	// those stragglers first rather than blocking on work the step will
+	// never consume; a normal finish (including `return`/`break`/`goto`)
+	// lets them run to completion.
+	if spawnSem != nil {
+		ctx.spawns = &spawnRegistry{sem: spawnSem}
+		defer func() {
+			ctx.spawns.drainAtStepEnd(out, err != nil && !isControlSignal(err))
+		}()
+	}
+	err = execBlock(ctx, step.Body)
 	var sig *returnSignal
 	if errors.As(err, &sig) {
 		// A bare `return` inside a step just exits it early — steps don't
@@ -247,6 +260,10 @@ func execStatementBody(ctx *evalCtx, statement *ast.Statement) error {
 		return &breakSignal{reason: reason}
 	case statement.Goto != nil:
 		return &gotoSignal{target: statement.Goto.Target}
+	case statement.Spawn != nil:
+		return execSpawn(ctx, statement.Spawn)
+	case statement.Wait != nil:
+		return execWait(ctx, statement.Wait)
 	case statement.Assign != nil:
 		return execAssign(ctx, statement.Assign)
 	case statement.If != nil:

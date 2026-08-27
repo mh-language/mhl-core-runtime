@@ -103,7 +103,39 @@ func (c *Cache) set(key string, value any, ttl time.Duration) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(c.path(key), data, 0o600)
+	return writeFileAtomic(c.path(key), data, 0o600)
+}
+
+// writeFileAtomic writes data to a sibling temp file and renames it over
+// path, so a reader (or a concurrent writer for the same key — several
+// `spawn`ed goroutines can run the same agent at once) never observes a
+// half-written cache entry. A stale temp file from a crashed write is left
+// behind rather than risking removal of the wrong one; the next successful
+// write for that key replaces it.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
 }
 
 func (c *Cache) path(key string) string { return filepath.Join(c.Dir, key+".json") }

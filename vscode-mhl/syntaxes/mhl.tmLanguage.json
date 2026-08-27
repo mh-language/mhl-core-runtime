@@ -57,7 +57,7 @@
       "patterns": [
         {
           "name": "keyword.control.mhl",
-          "match": "\\b(if|else|while|for|in|try|catch|finally|fail|return|mem|var|goto|break|self)\\b"
+          "match": "\\b(if|else|while|for|in|try|catch|finally|fail|return|mem|var|goto|break|spawn|wait|self)\\b"
         }
       ]
     },

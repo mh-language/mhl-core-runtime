@@ -1,7 +1,6 @@
 package interpreter
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -200,7 +199,7 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 	}
 
 	call := func() (traffic.Result, error) {
-		if err := limiter.Acquire(context.Background()); err != nil {
+		if err := limiter.Acquire(goctxOf(ctx)); err != nil {
 			return traffic.Result{}, fmt.Errorf("agent %q: rate limit: %w", agentName, err)
 		}
 		defer limiter.Release()
@@ -228,14 +227,20 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 				return traffic.Result{}, fmt.Errorf("agent %q: %w", agentName, argErr)
 			}
 			cmd := tools.Cmd{}
-			if logPath, hasLog := agentLogPath(agent); hasLog {
+			// Under `spawn`, an agent's `log:` file is deliberately ignored:
+			// several goroutines can be running the same agent at once, and
+			// AppendWriter streams many small O_APPEND writes that would
+			// interleave into one unreadable file. The subprocess output
+			// still reaches the step log through ctx.out (the per-handle
+			// buffer, flushed in spawn order by wait/drainAtStepEnd).
+			if logPath, hasLog := agentLogPath(agent); hasLog && (ctx == nil || !ctx.inSpawn) {
 				logWriter := nativeops.AppendWriter(logPath)
 				defer logWriter.Close()
 				cmd.Stdout = logWriter
 			}
-			result, runErr = (adapters.CLI{Command: cmd}).Run(context.Background(), command, finalArgs...)
+			result, runErr = (adapters.CLI{Command: cmd}).Run(goctxOf(ctx), command, finalArgs...)
 		} else {
-			result, runErr = (adapters.Ollama{}).Run(context.Background(), endpoint, model, promptText, temperature, schemaText)
+			result, runErr = (adapters.Ollama{}).Run(goctxOf(ctx), endpoint, model, promptText, temperature, schemaText)
 		}
 		if runErr != nil {
 			detail := strings.TrimSpace(result.Stderr)

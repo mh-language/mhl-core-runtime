@@ -16,6 +16,14 @@ type CheckpointConfig struct {
 	TTL      time.Duration // e.g. 7d
 }
 
+// SpawnConfig is the resolved `spawn { max_concurrency: N }` block of a
+// pipeline: the ceiling on how many `spawn`ed agent calls run their
+// subprocess/HTTP request at once, across all of the pipeline's steps.
+// MaxConcurrency <= 0 means "use the interpreter default".
+type SpawnConfig struct {
+	MaxConcurrency int
+}
+
 // Pipeline is the runtime-facing view of an ast.Pipeline: its name, ordered
 // step names, checkpoint configuration, and — when Loop is set — the repeat
 // policy LoopRunner enforces (StopWhen re-evaluated after every iteration,
@@ -25,6 +33,7 @@ type Pipeline struct {
 	Name          string
 	Steps         []string
 	Checkpoint    CheckpointConfig
+	Spawn         SpawnConfig
 	Loop          bool
 	StopWhen      *ast.Expr
 	MaxIterations int
@@ -63,6 +72,8 @@ func PipelineFromAST(p *ast.Pipeline) Pipeline {
 			out.Steps = append(out.Steps, m.Step.Name)
 		case m.Prop != nil && m.Prop.Name == "checkpoint":
 			out.Checkpoint = checkpointFromExpr(m.Prop.Value)
+		case m.Prop != nil && m.Prop.Name == "spawn":
+			out.Spawn = spawnConfigFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "repeat":
 			out.StopWhen, out.MaxIterations = repeatConfigFromExpr(m.Prop.Value)
 		case m.Input != nil:
@@ -168,6 +179,32 @@ func repeatConfigFromExpr(e *ast.Expr) (stopWhen *ast.Expr, maxIterations int) {
 // via the shared ast literal readers (internal/lang/ast/literal.go) — the
 // same readers internal/engine/interpreter uses for agent/memory config —
 // rather than keeping its own copy of "what counts as a bare literal".
+// spawnConfigFromExpr reads a `spawn { max_concurrency: N }` block. An
+// absent, non-numeric, or non-positive value leaves MaxConcurrency at 0,
+// which the interpreter reads as "use the default".
+func spawnConfigFromExpr(e *ast.Expr) SpawnConfig {
+	cfg := SpawnConfig{}
+	obj := ast.BareObject(e)
+	if obj == nil {
+		return cfg
+	}
+	for _, f := range obj.Fields {
+		key := ""
+		switch {
+		case f.KeyIdent != nil:
+			key = *f.KeyIdent
+		case f.KeyStr != nil:
+			key = *f.KeyStr
+		}
+		if key == "max_concurrency" {
+			if n, ok := ast.NumberValue(f.Value); ok && n > 0 {
+				cfg.MaxConcurrency = int(n)
+			}
+		}
+	}
+	return cfg
+}
+
 func checkpointFromExpr(e *ast.Expr) CheckpointConfig {
 	cfg := CheckpointConfig{}
 	obj := ast.BareObject(e)

@@ -511,7 +511,7 @@ var info = IssueTracker.discover()</code></pre></div>
           <div class="tip-row"><span>STATELESS</span><p>There is no session or handshake between calls — each <code>.call(...)</code>/<code>.list_tools()</code>/<code>.discover()</code> is fully independent, matching MCP spec 2026-07-28's stateless model. Every request self-identifies (protocol version, capabilities, and <code>{name: "mhl"}</code> as <code>clientInfo</code>). A credential that fails to resolve aborts the call instead of sending a request with an empty header.</p></div>
         </section>
 
-        <section class="feature doc-section" id="pipeline" data-title="pipeline input var step checkpoint resume loop repeat stop when max iterations goto break">
+        <section class="feature doc-section" id="pipeline" data-title="pipeline input var step checkpoint resume loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent">
           <div class="feature-head"><h2><span class="feature-num">10</span><code>pipeline</code> and <code>loop pipeline</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Pipelines are the executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in order unless an explicit transition redirects them.</p>
 
@@ -563,6 +563,27 @@ var info = IssueTracker.discover()</code></pre></div>
         if (status == "failed") break "build failed"
     }
 }</code></pre>
+          <p class="block-label">CONCURRENT SUB-AGENTS IN A STEP</p>
+          <pre class="code-block"><code class="language-mhl">pipeline Review {
+    input diff: string
+
+    spawn: { max_concurrency: 4 }   // run-wide ceiling; default 4
+
+    step Analyze {
+        spawn rev   = Reviewer.run(prompt: "review:\n${diff}")
+        spawn tests = Tester.run(prompt: "run the tests for:\n${diff}")
+        spawn sec   = Security.run(prompt: "security pass:\n${diff}")
+
+        wait rev, tests, sec timeout: 90s        // wait-all, fail-fast
+        // wait any rev, tests, sec              // first success, cancels the rest
+        // wait 2 of rev, tests, sec             // first N successes (quorum)
+        // wait rev, tests on_error: "collect"   // never fails the step; read .ok / .error
+
+        log(rev.result)
+        if (!tests.ok) log("tests failed: ${tests.error}")
+    }
+}</code></pre>
+
           <div class="pipeline-anatomy">
             <div><b><code>input</code></b><span>a user-supplied value validated by type</span></div>
             <div><b><code>var</code></b><span>state shared across steps in the current execution</span></div>
@@ -570,8 +591,11 @@ var info = IssueTracker.discover()</code></pre></div>
             <div><b><code>step</code></b><span>ordered, named, resumable unit</span></div>
             <div><b><code>goto</code></b><span>explicit transition to another step</span></div>
             <div><b><code>break</code></b><span>immediate stop with an optional reason</span></div>
+            <div><b><code>spawn</code></b><span>start an <code>Agent.run(...)</code> in the background; binds a <code>task</code> handle (<code>.result</code>, <code>.ok</code>, <code>.error</code>, <code>.status</code>, <code>.duration_ms</code>)</span></div>
+            <div><b><code>wait</code></b><span>join handles — all (fail-fast), <code>any</code> (first success), or <code>N of</code> (quorum); options <code>timeout:</code> and <code>on_error: "collect"</code></span></div>
           </div>
           <div class="tip-row"><span>LIMITS</span><p>For loops, always prefer an observable <code>stop_when</code> plus <code>max_iterations</code> as a safety ceiling. Step-local variables are not visible to <code>stop_when</code>; use <code>mem</code> or <code>memory</code>.</p></div>
+          <div class="tip-row"><span>SPAWN</span><p><code>spawn</code>/<code>wait</code> are step-scoped: any handle not joined by a <code>wait</code> is joined automatically when the step ends, so nothing runs across a checkpoint. If the process dies mid-step, <code>--resume</code> re-runs the whole step and re-issues every <code>spawn</code> — keep them idempotent (or give the agent a <code>cache</code>). A spawned agent cannot itself <code>spawn</code>, and an agent's <code>log:</code> file is ignored under <code>spawn</code> (its output goes to the step log instead).</p></div>
         </section>
 
         <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing">

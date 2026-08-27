@@ -83,6 +83,10 @@ func formatValue(v any) string {
 		// json.Marshal would either choke on it or produce noise, so it
 		// gets a fixed, deliberately uninformative representation instead.
 		return "<function>"
+	case *spawnHandle:
+		// A spawn handle is a live reference to a background call, not
+		// data; its readable state is reached through `.result`/`.status`.
+		return fmt.Sprintf("<task %s>", t.agentName)
 	case float64:
 		return strconv.FormatFloat(t, 'f', -1, 64)
 	case bool:

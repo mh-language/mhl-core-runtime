@@ -2,6 +2,7 @@ package ast
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -191,6 +192,15 @@ func DurationValue(e *Expr) (time.Duration, bool) {
 func ParseDuration(s string) (time.Duration, bool) {
 	if len(s) < 2 {
 		return 0, false
+	}
+	// "ms" is the one two-character unit the lexer's Duration pattern
+	// accepts; every other unit is a single trailing letter.
+	if strings.HasSuffix(s, "ms") {
+		n, err := strconv.ParseFloat(s[:len(s)-2], 64)
+		if err != nil {
+			return 0, false
+		}
+		return time.Duration(n * float64(time.Millisecond)), true
 	}
 	unit := s[len(s)-1]
 	numStr := s[:len(s)-1]

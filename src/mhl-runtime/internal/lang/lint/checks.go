@@ -146,6 +146,11 @@ func collectVarNames(prog *ast.Program, statements []*ast.Statement, seed map[st
 			switch {
 			case s.Var != nil:
 				mergeVarType(known, prog, s.Var.Name, s.Var.Value, selfTool)
+			case s.Spawn != nil:
+				// A spawn binds a task handle — no static Type for it, but
+				// the name must count as declared so a later `wait s` /
+				// `s.result` isn't flagged "undefined".
+				known[s.Spawn.Name] = types.Any
 			case s.Assign != nil:
 				if name, ok := bareAssignName(s.Assign.Target); ok {
 					if _, declared := known[name]; declared {
@@ -194,6 +199,10 @@ func checkStatement(file string, prog *ast.Program, statement *ast.Statement, de
 			return nil
 		}
 		return checkExprCall(file, prog, statement.Pos, statement.Return.Value, declared, selfTool)
+	case statement.Spawn != nil:
+		return checkSpawnStmt(file, prog, statement, declared, selfTool)
+	case statement.Wait != nil:
+		return checkWaitStmt(file, statement, declared, selfTool)
 	case statement.Expr != nil:
 		return checkExprCall(file, prog, statement.Pos, statement.Expr.Expr, declared, selfTool)
 	case statement.Assign != nil:
@@ -220,6 +229,50 @@ func checkStatement(file string, prog *ast.Program, statement *ast.Statement, de
 		return findings
 	}
 	return nil
+}
+
+// checkSpawnStmt mirrors interpreter.execSpawn's static rules: `spawn` is a
+// step-only statement, and its right-hand side must be an `<Agent>.run(...)`
+// call — which is then validated (known agent, non-empty prompt) exactly
+// like a plain `Agent.run(...)` statement.
+func checkSpawnStmt(file string, prog *ast.Program, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
+	pos := statement.Pos
+	if selfTool != nil {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: "spawn is only valid inside a pipeline step, not a tool method"}}
+	}
+	if _, _, ok := agentRunCall(statement.Spawn.Call); !ok {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("spawn %q: right-hand side must be an <Agent>.run(...) call", statement.Spawn.Name)}}
+	}
+	return checkExprCall(file, prog, pos, statement.Spawn.Call, declared, selfTool)
+}
+
+// checkWaitStmt mirrors interpreter.execWait's static rules: `wait` is a
+// step-only statement and every name it lists must have been introduced in
+// this step (by `spawn`, in practice — collectVarNames records the handle
+// name).
+func checkWaitStmt(file string, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
+	pos := statement.Pos
+	if selfTool != nil {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: "wait is only valid inside a pipeline step, not a tool method"}}
+	}
+	var findings []Finding
+	seen := map[string]bool{}
+	for _, name := range statement.Wait.Names {
+		if seen[name] {
+			findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+				Message: fmt.Sprintf("wait: handle %q listed twice", name)})
+			continue
+		}
+		seen[name] = true
+		if _, ok := declared[name]; !ok {
+			findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+				Message: fmt.Sprintf("wait: %q is not a spawned handle in this step", name)})
+		}
+	}
+	return findings
 }
 
 // checkAssignTarget mirrors internal/engine/interpreter.execAssign's two static rules:
