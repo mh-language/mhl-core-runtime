@@ -98,12 +98,23 @@ func completionAt(path, text string, pos position) []completionItem {
 func methodItems(s symbol) []completionItem {
 	items := make([]completionItem, 0, len(s.Methods))
 	for _, m := range s.Methods {
-		items = append(items, completionItem{
+		item := completionItem{
 			Label:      m,
 			Kind:       kindMethod,
 			Detail:     s.Kind.label() + " method",
 			InsertText: m + "(",
-		})
+		}
+		// Replace the generic "<kind> method" detail with the real
+		// signature, and attach its parameter doc, whenever one is known
+		// (every native op, collection method, and declared-construct
+		// method — see signatures.go).
+		if sg, ok := signatureForMethod(s.Kind, s.Name, m); ok {
+			item.Detail = sg.Label
+			if sg.Doc != "" {
+				item.Documentation = &markupContent{Kind: "markdown", Value: sg.Doc}
+			}
+		}
+		items = append(items, item)
 	}
 	return items
 }

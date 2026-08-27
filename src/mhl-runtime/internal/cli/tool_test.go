@@ -512,6 +512,74 @@ func TestGitCommitRequiresMessage(t *testing.T) {
 	}
 }
 
+// TestGitDirArgument runs the whole Handoff cycle through `dir:` without the
+// process ever chdir'ing into the target repo — the shape a real pipeline
+// needs, where the checkout lives under some target_dir rather than the
+// interpreter's own working directory.
+func TestGitDirArgument(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available in PATH")
+	}
+	repo := t.TempDir()
+	runGit := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t.com",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	runGit("init")
+	runGit("config", "user.email", "t@t.com")
+	runGit("config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(repo, "f.txt"), []byte("v1\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGit("add", "f.txt")
+	runGit("commit", "-m", "initial")
+	if err := os.WriteFile(filepath.Join(repo, "f.txt"), []byte("v2\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	out, err := run(t, wrapStep(`
+        var target = "`+repo+`"
+        log(git.diff(dir: target).contains("v2"))
+        log(git.add(["."], dir: target).exit_code)
+        log(git.commit("feat: work in a target dir", dir: target).exit_code)
+        log(git.status(dir: target).stdout.is_empty())
+        log(git.rev_parse("HEAD", dir: target).is_empty())
+        log(git.log(5, dir: target).contains("target dir"))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "true\n0\n0\ntrue\nfalse\ntrue\n") {
+		t.Errorf("unexpected output for dir-scoped git ops:\n%s", out)
+	}
+}
+
+// TestGitDirArgumentOutsideRepo confirms a dir-scoped status against a
+// non-repo directory is a normal, inspectable non-zero exit — the check a
+// Handoff step makes before deciding whether to commit — not a raised error.
+func TestGitDirArgumentOutsideRepo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available in PATH")
+	}
+	notARepo := t.TempDir()
+	out, err := run(t, wrapStep(`
+        var s = git.status(dir: "`+notARepo+`")
+        log(s.exit_code != 0)
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "true\n") {
+		t.Errorf("expected a non-zero exit_code for a non-repo dir, got:\n%s", out)
+	}
+}
+
 // --- fs.read / fs.write -------------------------------------------------
 
 func TestToolFSWriteThenRead(t *testing.T) {

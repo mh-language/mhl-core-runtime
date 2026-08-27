@@ -156,7 +156,7 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		return out, nil
 	case "git.diff":
 		target, _ := args.stringNamedOrFirst("target")
-		result, err := nativeops.Diff(context.Background(), target)
+		result, err := nativeops.Diff(context.Background(), target, args.stringNamed("dir"))
 		if err != nil {
 			return nil, err
 		}
@@ -166,7 +166,7 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("git.add requires an array of path strings as its first argument")
 		}
-		result, err := nativeops.Add(context.Background(), paths)
+		result, err := nativeops.Add(context.Background(), paths, args.stringNamed("dir"))
 		if err != nil {
 			return nil, err
 		}
@@ -177,14 +177,14 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, fmt.Errorf("git.commit requires a string message as its first argument")
 		}
 		paths, _ := args.stringSliceNamedOrAt("paths", 1)
-		result, err := nativeops.Commit(context.Background(), message, paths)
+		result, err := nativeops.Commit(context.Background(), message, paths, args.stringNamed("dir"))
 		if err != nil {
 			return nil, err
 		}
 		return result, nil
 	case "git.status":
 		paths, _ := args.stringSliceNamedOrAt("paths", 0)
-		result, err := nativeops.Status(context.Background(), paths)
+		result, err := nativeops.Status(context.Background(), paths, args.stringNamed("dir"))
 		if err != nil {
 			return nil, err
 		}
@@ -194,13 +194,13 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("git.rev_parse requires a string ref as its first argument")
 		}
-		return nativeops.RevParse(context.Background(), ref)
+		return nativeops.RevParse(context.Background(), ref, args.stringNamed("dir"))
 	case "git.log":
 		n, ok := args.intNamedOrAt("n", 0)
 		if !ok {
 			return nil, fmt.Errorf("git.log requires an integer n (number of entries) as its first argument")
 		}
-		return nativeops.Log(context.Background(), n)
+		return nativeops.Log(context.Background(), n, args.stringNamed("dir"))
 	case "fs.read":
 		path, ok := args.stringAt(0)
 		if !ok {
@@ -498,6 +498,19 @@ func (a callArgs) stringNamedOrAt(name string, i int) (string, bool) {
 		return s, ok
 	}
 	return a.stringAt(i)
+}
+
+// stringNamed reads a named-only string argument, returning "" when it was
+// not supplied — used for genuinely optional named parameters like the
+// git.* ops' `dir:` (the working directory to run git in), where absence
+// means "use the current directory", not an error.
+func (a callArgs) stringNamed(name string) string {
+	if v, ok := a.named[name]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 func (a callArgs) duration(name string) (time.Duration, bool) {

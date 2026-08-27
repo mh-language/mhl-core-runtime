@@ -1,0 +1,27 @@
+// Every git.* op takes an optional named `dir:` argument — it maps to
+// `git -C <dir>`, so a pipeline can act on a checkout other than the one it
+// was launched in (a "handoff" step that commits work in a target project
+// directory, for example). Omitting `dir:` runs git in the current working
+// directory, exactly as before.
+test git_ops_accept_a_dir_argument {
+    describe git_dir_argument_selects_the_directory_git_runs_in {
+        // "." (the working dir) and ".." (its parent) are both inside this
+        // same repository, so pointing `dir:` at either resolves the same
+        // HEAD — proof `dir:` actually changed where git ran.
+        var here = git.rev_parse("HEAD", dir: ".")
+        var from_parent = git.rev_parse("HEAD", dir: "..")
+        is_false(here.is_empty())
+        are_equal(here, from_parent)
+
+        are_equal(git.status(dir: ".").exit_code, 0)
+    }
+
+    describe git_dir_argument_outside_a_repository_is_inspectable {
+        // A directory that is not a git repository is a non-zero exit_code on
+        // the structured ops (status/add/commit) — a value to branch on, the
+        // way a handoff step checks before deciding to commit — not a raised
+        // error.
+        var outside = git.status(dir: "/")
+        is_true(outside.exit_code != 0)
+    }
+}

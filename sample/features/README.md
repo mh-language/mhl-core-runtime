@@ -9,3 +9,4 @@ how they're wired together at runtime.
 - [pipelines/](pipelines/README.md) — wiring an agent into a `pipeline` `step`
 - [mcp/](mcp/README.md) — declaring an `mcp_server` and calling it with `.call(...)`
 - [time/](time/README.md) — datetime as plain RFC3339 strings: `time.now/parse/format/add/diff/compare`
+- [git/](git/README.md) — the `git` native namespace: `git.status/diff/log/rev_parse/add/commit`
