@@ -20,6 +20,7 @@ const (
 	blockPipeline
 	blockLoopPipeline
 	blockCheckpoint
+	blockSpawn
 	blockRepeat
 	blockRetry
 	blockCache
@@ -42,6 +43,7 @@ var headerRe = []struct {
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
 	{blockMCPServer, regexp.MustCompile(`\bmcp_server\s+\w+\s*$`)},
 	{blockCheckpoint, regexp.MustCompile(`\bcheckpoint\s*:\s*$`)},
+	{blockSpawn, regexp.MustCompile(`\bspawn\s*:\s*$`)},
 	{blockRepeat, regexp.MustCompile(`\brepeat\s*:\s*$`)},
 	{blockRetry, regexp.MustCompile(`\bretry\s*:\s*$`)},
 	{blockCache, regexp.MustCompile(`\bcache\s*:\s*$`)},

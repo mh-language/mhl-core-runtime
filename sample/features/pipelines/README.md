@@ -14,3 +14,10 @@ not `mhl test` — pipelines aren't assertions, they're programs.
   ```
   mhl run sample/features/pipelines/loop_poll_pipeline_example.mh
   ```
+- [concurrent_agents_pipeline_example.mh](concurrent_agents_pipeline_example.mh) — `spawn`
+  starts an agent call in the background and binds a task handle; `wait` joins them
+  (`wait a, b`, `wait any a, b`, `wait 2 of a, b, c`, `on_error: "collect"`), bounded by a
+  pipeline-wide `spawn: { max_concurrency: N }`. Run with:
+  ```
+  mhl run sample/features/pipelines/concurrent_agents_pipeline_example.mh --input topic=caching
+  ```

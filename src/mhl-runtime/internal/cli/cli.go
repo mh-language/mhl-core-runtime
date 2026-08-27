@@ -150,6 +150,10 @@ func runPipeline(args []string, out io.Writer) error {
 		return err
 	}
 
+	// One semaphore for the whole run: `spawn: { max_concurrency: N }` caps
+	// concurrent spawned agent calls across every step, not per step.
+	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
+
 	exec := func(step string, ctx *runtime.RunContext) error {
 		for k, v := range coercedInputs {
 			ctx.Vars[k] = v
@@ -157,7 +161,7 @@ func runPipeline(args []string, out io.Writer) error {
 		ctx.Vars["__last_step"] = step
 		fmt.Fprintf(out, "step: %s\n", step)
 		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
-		err := interpreter.RunStep(prog, step, file, out, store, jsonStore, ctx.Vars, mem)
+		err := interpreter.RunStep(prog, step, file, out, store, jsonStore, ctx.Vars, mem, spawnSem)
 		// interpreter and runtime each define their own break/goto signal
 		// type and stay independent of one another (see runtime/signal.go);
 		// this closure is the one place both are in scope to translate

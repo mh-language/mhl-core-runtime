@@ -18,6 +18,12 @@ func propertyItem(name, detail string) completionItem {
 // list rather than folded into it.
 var pipelinePropertyItems = []completionItem{
 	propertyItem("checkpoint", "{ enabled, strategy, storage, ttl }"),
+	propertyItem("spawn", "{ max_concurrency } — run-wide ceiling on concurrent spawned agent calls"),
+}
+
+// spawnFieldItems mirrors runtime.spawnConfigFromExpr's field switch.
+var spawnFieldItems = []completionItem{
+	propertyItem("max_concurrency", "integer > 0; default 4"),
 }
 
 var loopPipelineExtraPropertyItems = []completionItem{
@@ -119,6 +125,8 @@ func propertyItemsFor(stack []blockKind) []completionItem {
 		return agentPropertyItems
 	case blockCheckpoint:
 		return checkpointFieldItems
+	case blockSpawn:
+		return spawnFieldItems
 	case blockRepeat:
 		return repeatFieldItems
 	case blockRetry:

@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -79,6 +80,39 @@ type evalCtx struct {
 	// tool's declared name. Nil everywhere else (a pipeline step, a
 	// `describe` block, a stop_when condition), where `self` has no meaning.
 	selfTool *ast.Tool
+	// goctx is the Go context governing blocking work started from this
+	// evaluation — today only an agent subprocess/HTTP call (see
+	// runAgentAttempt in agent.go). It is nil on the many evalCtx literals
+	// built outside a pipeline run (tool method childCtx, describe blocks,
+	// EvalCondition) and on the nil *evalCtx agent_test.go passes straight
+	// into runAgentAttempt; goctxOf normalizes that to context.Background().
+	// A spawned agent goroutine (spawn.go) swaps in a cancellable child so a
+	// `wait ... timeout:` or a fail-fast sibling cancellation can abort the
+	// underlying subprocess.
+	goctx context.Context
+	// spawns is the registry of background agent handles created by `spawn`
+	// statements in the currently executing step — non-nil only inside
+	// RunStep's own step body (never a tool method, describe block, or
+	// stop_when condition), which is what makes `spawn` a step-only
+	// statement. drainAtStepEnd joins whatever is left in it when the step
+	// returns.
+	spawns *spawnRegistry
+	// inSpawn is true while evaluating inside a spawned agent goroutine. It
+	// blocks a nested `spawn` (an agent is an opaque CLI process; there is
+	// no channel to drive one from) and redirects an agent's `log:` output
+	// to the handle buffer so concurrent spawns of the same agent don't
+	// interleave writes to one file.
+	inSpawn bool
+}
+
+// goctxOf returns the Go context governing blocking work for this evaluation,
+// falling back to context.Background() for the many evalCtx literals (and the
+// nil *evalCtx from agent_test.go) that never set one.
+func goctxOf(ctx *evalCtx) context.Context {
+	if ctx == nil || ctx.goctx == nil {
+		return context.Background()
+	}
+	return ctx.goctx
 }
 
 // maxValueDepth caps how deeply nested an array/object literal may be, so a
@@ -620,6 +654,14 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 			}
 			i++ // the Call trailer was consumed together with its Member
 		case op.Member != "":
+			if h, ok := v.(*spawnHandle); ok {
+				next, err := handleField(h, op.Member)
+				if err != nil {
+					return nil, err
+				}
+				v = next
+				break
+			}
 			m, ok := v.(map[string]any)
 			if !ok {
 				return nil, fmt.Errorf("cannot access field %q on a %s value", op.Member, typeName(v))
@@ -1302,6 +1344,8 @@ func typeName(v any) string {
 		return "object"
 	case *Closure:
 		return "function"
+	case *spawnHandle:
+		return "task"
 	default:
 		return fmt.Sprintf("%T", v)
 	}

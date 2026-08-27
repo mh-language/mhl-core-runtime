@@ -95,6 +95,8 @@ ShapeField     ::= Ident ":" TypeExpr ;
 
 Pipeline       ::= [ "loop" ] "pipeline" Ident "{" { PipelineMember } "}" ;
 PipelineMember ::= "input" PipelineInput | VarDecl | MemDecl | Step | Property ;
+                   (* a `spawn` Property holds `{ max_concurrency: Number }`,
+                      the run-wide ceiling on concurrent spawned agent calls *)
 PipelineInput  ::= Ident ":" TypeExpr ;
 MemDecl        ::= "mem" Ident "=" Expr ;
                    (* pipeline-scoped, persistent, get-or-init across
@@ -108,13 +110,24 @@ Describe       ::= "describe" Ident "{" { Statement } "}" ;
                       like are_equal(a, b) is recognized as an assertion by
                       the interpreter, not the parser *)
 
-Statement      ::= VarDecl | ReturnStmt | BreakStmt | GotoStmt | IfStmt
+Statement      ::= VarDecl | ReturnStmt | BreakStmt | GotoStmt
+                  | SpawnStmt | WaitStmt | IfStmt
                   | WhileStmt | ForInStmt | TryStmt | AssignStmt | ExprStmt ;
 
 VarDecl        ::= "var" Ident "=" Expr ;
 ReturnStmt     ::= "return" [ Expr ] ;
 BreakStmt      ::= "break" [ Expr ] ;
 GotoStmt       ::= "goto" Ident ;
+SpawnStmt      ::= "spawn" Ident "=" Expr ;
+                   (* Expr must be an `Agent.run(...)` call; the handle is a
+                      "task" value with .result/.ok/.error/.status/.duration_ms,
+                      readable only after a `wait` (or the step's end) joins it.
+                      Only valid directly in a Step body *)
+WaitStmt       ::= "wait" [ "any" | Number "of" ] Ident { "," Ident }
+                   { ( "timeout" | "on_error" ) ":" Expr } ;
+                   (* plain: wait all, fail-fast; `any`: first success;
+                      `N of`: first N successes. `on_error: "collect"` (plain
+                      wait only) never fails the step *)
 IfStmt         ::= "if" "(" Expr ")" Block [ "else" Block ] ;
 WhileStmt      ::= "while" "(" Expr ")" Block ;
 ForInStmt      ::= "for" "(" "var" Ident "in" Expr ")" Block ;

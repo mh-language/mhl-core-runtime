@@ -72,6 +72,8 @@ type Statement struct {
 	Return *ReturnStmt `parser:"| @@"`
 	Break  *BreakStmt  `parser:"| @@"`
 	Goto   *GotoStmt   `parser:"| @@"`
+	Spawn  *SpawnStmt  `parser:"| @@"`
+	Wait   *WaitStmt   `parser:"| @@"`
 	If     *IfStmt     `parser:"| @@"`
 	While  *WhileStmt  `parser:"| @@"`
 	ForIn  *ForInStmt  `parser:"| @@"`
@@ -105,6 +107,43 @@ type ReturnStmt struct {
 // run's terminal status (see runtime.BreakSignal).
 type BreakStmt struct {
 	Reason *Expr `parser:"'break' @@?"`
+}
+
+// SpawnStmt starts an agent call on a background goroutine and binds its
+// handle to Name in the step's variable environment:
+// `spawn review = Reviewer.run(prompt: "...")`. Call must be an
+// `<Agent>.run(...)` expression — the grammar accepts any expression here and
+// the interpreter rejects anything else, keeping this node small. The handle
+// is joined by a later WaitStmt, or automatically when the step body ends
+// (drainAtStepEnd). `spawn` is only meaningful directly inside a step body;
+// the interpreter errors if evaluated anywhere else (a tool method, a
+// `describe` block).
+type SpawnStmt struct {
+	Name string `parser:"'spawn' @Ident '='"`
+	Call *Expr  `parser:"@@"`
+}
+
+// WaitStmt joins one or more spawned handles by name. `wait a, b` waits for
+// all of them, failing the step on the first error (and cancelling the
+// rest); `wait any a, b` returns as soon as one succeeds; `wait 2 of a, b, c`
+// returns once that many have succeeded. Trailing `timeout: <duration>` and
+// `on_error: "collect"` options reuse the `key: value` shape of the config
+// blocks rather than introducing a braced options block. `any` and `of` are
+// effectively reserved in this position — a spawn handle should not be named
+// either.
+type WaitStmt struct {
+	Any    bool       `parser:"'wait' ( @'any'"`
+	Quorum string     `parser:"| ( @Number 'of' ) )?"`
+	Names  []string   `parser:"@Ident ( ',' @Ident )*"`
+	Opts   []*WaitOpt `parser:"@@*"`
+}
+
+// WaitOpt is one trailing `timeout: 30s` / `on_error: "collect"` option on a
+// WaitStmt. Key is restricted to those two literals so the repetition stops
+// cleanly at the next statement.
+type WaitOpt struct {
+	Key   string `parser:"@( 'timeout' | 'on_error' ) ':'"`
+	Value *Expr  `parser:"@@"`
 }
 
 // GotoStmt transfers control to another named step in the same pipeline,
