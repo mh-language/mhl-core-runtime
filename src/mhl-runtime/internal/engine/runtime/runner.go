@@ -22,6 +22,11 @@ type RunContext struct {
 	// stays isolated between two independent (non-resumed) runs of the same
 	// loop but shared across all iterations of one run — see LoopRunner.Run.
 	InstanceID string
+	// SessionID is the per-execution id of the directory this run's
+	// checkpoints live under (Runner.SessionID / Store.Session). Empty for an
+	// unscoped runner. cli.go exposes it to a pipeline's `context:` element as
+	// context.session_id.
+	SessionID string
 }
 
 // StepFunc executes a single step. Returning a plain error aborts the
@@ -45,13 +50,18 @@ type InitFunc func(ctx *RunContext) error
 // RunResult reports which steps actually executed and which were skipped by
 // a resume, plus how the run ended when that wasn't by simply completing:
 // Broke is true when a step's `break` stopped the run outright, with
-// BreakReason carrying whatever value (if any) it evaluated.
+// BreakReason carrying whatever value (if any) it evaluated. FinalVars is
+// the accumulated variable state as it stood when the run finished — set on
+// normal completion (before the checkpoint is cleared) so cli.go can persist
+// it as this session's result.json for a later run's `context:` to read;
+// nil when the run broke or failed.
 type RunResult struct {
 	Executed    []string
 	Skipped     []string
 	Resumed     bool
 	Broke       bool
 	BreakReason any
+	FinalVars   map[string]any
 }
 
 // maxStepVisits caps how many times Run may (re-)enter the same step name,
@@ -65,11 +75,25 @@ const maxStepVisits = 10_000
 // the pipeline's checkpoint config is enabled with the per_step strategy.
 type Runner struct {
 	Store *Store
+	// SessionID is the per-execution id whose directory Store is scoped to
+	// (see Store.Session), surfaced on RunContext.SessionID and used by
+	// cli.go's `context:` support. Empty for an unscoped runner — the legacy
+	// single-file layout, still used by a --resume that fell back to a
+	// pre-session checkpoint and by tests that construct a Runner directly.
+	SessionID string
 }
 
-// NewRunner returns a Runner backed by a Store rooted at root.
+// NewRunner returns a Runner backed by a Store rooted at root. It is
+// unscoped — call Session to isolate one execution's checkpoints.
 func NewRunner(root string) *Runner {
 	return &Runner{Store: NewStore(root)}
+}
+
+// Session returns a copy of r whose Store writes under a per-execution
+// directory named id, so two concurrent runs of the same pipeline never
+// clobber each other's checkpoint. An empty id returns an unscoped runner.
+func (r *Runner) Session(id string) *Runner {
+	return &Runner{Store: r.Store.Session(id), SessionID: id}
 }
 
 // Run executes the pipeline, starting at its first declared step and then
@@ -91,11 +115,17 @@ func NewRunner(root string) *Runner {
 // pipeline.
 func (r *Runner) Run(p Pipeline, init InitFunc, exec StepFunc, resume bool) (*RunResult, error) {
 	result := &RunResult{}
+	// Opportunistic housekeeping: drop long-abandoned session directories
+	// left by runs that were hard-killed and never resumed. Best-effort and
+	// bounded (see PruneExpired) so it never slows a run down noticeably.
+	if r.SessionID != "" {
+		_ = PruneExpired(r.Store.base)
+	}
 	instanceID := p.InstanceID
 	if instanceID == "" {
 		instanceID = "default"
 	}
-	ctx := &RunContext{Vars: map[string]any{}, InstanceID: instanceID}
+	ctx := &RunContext{Vars: map[string]any{}, InstanceID: instanceID, SessionID: r.SessionID}
 
 	perStep := p.Checkpoint.Enabled && p.Checkpoint.Strategy == "per_step"
 
@@ -178,6 +208,11 @@ func (r *Runner) Run(p Pipeline, init InitFunc, exec StepFunc, resume bool) (*Ru
 			current, ok = next, hasNext
 		}
 	}
+
+	// Capture the final variable state before the checkpoint is cleared, so
+	// cli.go can persist it as this session's result.json for a later run's
+	// `context:` to read.
+	result.FinalVars = copyVars(ctx.Vars)
 
 	// Successful completion clears checkpoint state (checkpoint.clear()).
 	if p.Checkpoint.Enabled {

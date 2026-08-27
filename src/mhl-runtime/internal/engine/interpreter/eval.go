@@ -54,6 +54,13 @@ type evalCtx struct {
 	// unlike a pipeline `var`, a `mem` var is exactly what `stop_when` is
 	// meant to be able to read — see MemContext's doc comment (memvar.go).
 	mem *MemContext
+	// cctx backs a pipeline's `context:` element (PipelineMember.Prop named
+	// "context") — nil wherever the pipeline declares none. Checked as the
+	// fourth and last fallback tier by evalPrimary's Ident case, after env,
+	// pipelineEnv and mem, and set (like mem) in EvalCondition and
+	// EvalPipelineVars too. It is read-only: execAssign refuses to assign to
+	// `context`. See ContextView (contextview.go).
+	cctx *ContextView
 	// file is the entry .mh file RunStep was called with, used only to
 	// prefix a runtime error with its statement's position (see
 	// execStatement's positionedError wrap in exec.go). A declaration
@@ -1301,6 +1308,9 @@ func evalPrimary(ctx *evalCtx, p *ast.Primary, depth int) (any, error) {
 		}
 		if isMemVar(ctx, p.Ident) {
 			return readMemVar(ctx, p.Ident)
+		}
+		if isContextRef(ctx, p.Ident) {
+			return contextSnapshot(ctx.cctx), nil
 		}
 		return nil, fmt.Errorf("undefined variable %q", p.Ident)
 	case p.Agent != nil:

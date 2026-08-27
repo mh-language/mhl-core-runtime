@@ -25,7 +25,7 @@ import (
 // MemContext (memvar.go). file is the .mh path being run, used only to
 // prefix a failing statement's error with its position (see
 // execStatement's positionedError wrap below).
-func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, spawnSem chan struct{}) (err error) {
+func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView, spawnSem chan struct{}) (err error) {
 	var step *ast.Step
 	for _, decl := range prog.Decls {
 		if decl.Pipeline == nil {
@@ -41,7 +41,7 @@ func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *mem
 		return fmt.Errorf("pipeline step %q not found", stepName)
 	}
 
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, file: file}
+	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file}
 	// A non-nil spawnSem enables `spawn`/`wait` for this step and confines
 	// them to it: drainAtStepEnd joins whatever the step body left running,
 	// so no spawned goroutine ever outlives the step (and no handle is live
@@ -75,8 +75,9 @@ func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *mem
 // initial values again the next time Run() executes the pipeline (e.g. the
 // next loop iteration), since that calls this fresh rather than reusing
 // the prior run's map. A pipeline with no `var` declarations returns an
-// empty, non-nil Env — not an error.
-func EvalPipelineVars(prog *ast.Program, pipelineName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore) (Env, error) {
+// empty, non-nil Env — not an error. cctx (may be nil) is visible to a
+// var's initializer expression, so `var id = context.session_id` works.
+func EvalPipelineVars(prog *ast.Program, pipelineName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, cctx *ContextView) (Env, error) {
 	var pipeline *ast.Pipeline
 	for _, decl := range prog.Decls {
 		if decl.Pipeline != nil && decl.Pipeline.Name == pipelineName {
@@ -89,7 +90,7 @@ func EvalPipelineVars(prog *ast.Program, pipelineName, file string, out io.Write
 	}
 
 	env := Env{}
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: env, file: file}
+	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: env, cctx: cctx, file: file}
 	for _, member := range pipeline.Body {
 		if member.Var == nil {
 			continue
@@ -346,6 +347,9 @@ func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
 		if _, declared = ctx.pipelineEnv[name]; !declared {
 			if isMemVar(ctx, name) {
 				return execMemAssign(ctx, name, assign)
+			}
+			if isContextRef(ctx, name) {
+				return fmt.Errorf("cannot assign to %q: the pipeline's context is read-only", name)
 			}
 			return fmt.Errorf("undefined variable %q", name)
 		}

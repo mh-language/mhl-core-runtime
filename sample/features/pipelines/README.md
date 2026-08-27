@@ -21,3 +21,12 @@ not `mhl test` — pipelines aren't assertions, they're programs.
   ```
   mhl run sample/features/pipelines/concurrent_agents_pipeline_example.mh --input topic=caching
   ```
+- [context_pipeline_example.mh](context_pipeline_example.mh) — a `context: { source, require }`
+  block exposes the read-only `context` accessor (`context.session_id`, `context.started_at`,
+  `context.resumed`, `context.vars`) to every step, carrying the previous completed run's
+  variable state forward. Each run gets its own `.mhl/state/<session-id>/` directory;
+  `--session <id>` pins it, a bare `--resume` follows the `.latest` pointer. Run it twice:
+  ```
+  mhl run sample/features/pipelines/context_pipeline_example.mh
+  mhl run sample/features/pipelines/context_pipeline_example.mh
+  ```

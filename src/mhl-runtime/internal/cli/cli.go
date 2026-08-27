@@ -73,7 +73,7 @@ func runLSP(out io.Writer) error {
 
 // runPipeline implements:
 //
-//	mhl run <pipeline.mh> [--input key=value ...] [--resume]
+//	mhl run <pipeline.mh> [--input key=value ...] [--resume] [--session <id>]
 //
 // It executes a pipeline from the start, or resumes it from the last saved
 // checkpoint when --resume is given (IF-1).
@@ -83,11 +83,18 @@ func runPipeline(args []string, out io.Writer) error {
 	}
 	file := args[0]
 	resume := false
+	sessionFlag := ""
 	inputs := map[string]string{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--resume":
 			resume = true
+		case "--session":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--session requires an id argument")
+			}
+			i++
+			sessionFlag = args[i]
 		case "--input":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--input requires a key=value argument")
@@ -122,6 +129,39 @@ func runPipeline(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+
+	// Every execution gets its own session directory under .mhl/state, so two
+	// concurrent `mhl run`s of one pipeline never clobber each other's
+	// checkpoint. A bare --resume follows the .latest pointer; --session pins
+	// an explicit one. An empty id means "resume a pre-session checkpoint" —
+	// the runner stays unscoped for back-compat.
+	baseStore := runtime.NewStore(".")
+	sessionID := runtime.ResolveSession(baseStore, pipeline.Name, sessionFlag, resume)
+	if sessionID != "" {
+		fmt.Fprintf(out, "session: %s\n", sessionID)
+	}
+
+	// contextView backs a pipeline's `context:` element — nil when it
+	// declares none. It carries this run's session metadata plus the variable
+	// state left by a prior run (per context.source), read-only, into every
+	// step, the stop_when condition, and pipeline-level `var` initializers.
+	var contextView *interpreter.ContextView
+	if pipeline.Context != nil {
+		priorVars, err := runtime.PriorVars(baseStore, pipeline.Name, pipeline.Context.Source)
+		if err != nil {
+			return err
+		}
+		if pipeline.Context.Require && len(priorVars) == 0 {
+			return fmt.Errorf("context: source %q resolved to no stored state for pipeline %q", pipeline.Context.Source, pipeline.Name)
+		}
+		contextView = &interpreter.ContextView{
+			SessionID: sessionID,
+			StartedAt: time.Now().UTC().Format(time.RFC3339),
+			Resumed:   resume,
+			Vars:      priorVars,
+		}
+	}
+
 	// Coerce each --input value toward its declared `input name: Type`
 	// (types.Any, i.e. a raw string, for anything not declared) once, before
 	// any step runs — a malformed value (e.g. --input count=abc against
@@ -161,7 +201,7 @@ func runPipeline(args []string, out io.Writer) error {
 		ctx.Vars["__last_step"] = step
 		fmt.Fprintf(out, "step: %s\n", step)
 		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
-		err := interpreter.RunStep(prog, step, file, out, store, jsonStore, ctx.Vars, mem, spawnSem)
+		err := interpreter.RunStep(prog, step, file, out, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
 		// interpreter and runtime each define their own break/goto signal
 		// type and stay independent of one another (see runtime/signal.go);
 		// this closure is the one place both are in scope to translate
@@ -176,16 +216,19 @@ func runPipeline(args []string, out io.Writer) error {
 		return err
 	}
 
-	init := pipelineVarsInit(prog, pipeline.Name, file, out, store, jsonStore)
+	init := pipelineVarsInit(prog, pipeline.Name, file, out, store, jsonStore, contextView)
 
 	// A `loop pipeline` repeats itself until its stop_when is satisfied, its
 	// max_iterations ceiling is hit, or a step explicitly `break`s — see
 	// runtime.LoopRunner. A plain pipeline (the common case today) falls
 	// straight through to running once, unchanged.
 	if !pipeline.Loop {
-		runner := runtime.NewRunner(".")
+		runner := runtime.NewRunner(".").Session(sessionID)
 		res, err := runner.Run(pipeline, init, exec, resume)
 		if err != nil {
+			return err
+		}
+		if err := persistContextResult(runner.Store, pipeline, res.FinalVars); err != nil {
 			return err
 		}
 		if res.Resumed {
@@ -203,11 +246,14 @@ func runPipeline(args []string, out io.Writer) error {
 			return false, nil
 		}
 		mem := memContextFor(memInit, pipeline.Name, instanceID)
-		return interpreter.EvalCondition(prog, pipeline.StopWhen, file, out, store, jsonStore, mem)
+		return interpreter.EvalCondition(prog, pipeline.StopWhen, file, out, store, jsonStore, mem, contextView)
 	}
-	loopRunner := runtime.NewLoopRunner(".")
+	loopRunner := runtime.NewLoopRunner(".").Session(sessionID)
 	res, err := loopRunner.Run(pipeline, init, exec, evalStopWhen, resume)
 	if err != nil {
+		return err
+	}
+	if err := persistContextResult(loopRunner.Runner.Store, pipeline, res.FinalVars); err != nil {
 		return err
 	}
 	if res.Resumed {
@@ -234,9 +280,9 @@ func runPipeline(args []string, out io.Writer) error {
 // interpreter.RunStep — a pipeline var and an --input flag sharing a name
 // would collide there, the same class of foot-gun as any other
 // reserved-name collision in the language.
-func pipelineVarsInit(prog *ast.Program, pipelineName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore) runtime.InitFunc {
+func pipelineVarsInit(prog *ast.Program, pipelineName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, contextView *interpreter.ContextView) runtime.InitFunc {
 	return func(ctx *runtime.RunContext) error {
-		env, err := interpreter.EvalPipelineVars(prog, pipelineName, file, out, store, jsonStore)
+		env, err := interpreter.EvalPipelineVars(prog, pipelineName, file, out, store, jsonStore, contextView)
 		if err != nil {
 			return err
 		}
@@ -245,6 +291,26 @@ func pipelineVarsInit(prog *ast.Program, pipelineName, file string, out io.Write
 		}
 		return nil
 	}
+}
+
+// persistContextResult writes a completed run's final variable state as this
+// session's result.json (and refreshes the .latest pointer), but only when
+// the pipeline declared a `context:` block — the one consumer of it. A nil
+// finalVars (the run broke or failed) writes nothing.
+func persistContextResult(store *runtime.Store, pipeline runtime.Pipeline, finalVars map[string]any) error {
+	if pipeline.Context == nil || finalVars == nil {
+		return nil
+	}
+	// Drop the runtime's own bookkeeping entries (e.g. __last_step) so
+	// context.vars only ever exposes the pipeline's declared inputs and vars.
+	clean := make(map[string]any, len(finalVars))
+	for k, v := range finalVars {
+		if strings.HasPrefix(k, "__") {
+			continue
+		}
+		clean[k] = v
+	}
+	return store.WriteResult(pipeline.Name, clean)
 }
 
 // memContextFor builds the interpreter.MemContext backing pipelineName's

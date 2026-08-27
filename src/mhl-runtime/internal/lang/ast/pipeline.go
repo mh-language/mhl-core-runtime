@@ -29,7 +29,10 @@ type Pipeline struct {
 // `loop pipeline` iterations and `--resume` — see
 // interpreter.readMemVar/writeMemVar (memvar.go) and MemContext. 'var' and
 // 'mem' are each a hard disambiguator against Step ('step') and Prop (bare
-// Ident ':'), so this adds no backtracking ambiguity.
+// Ident ':'), so this adds no backtracking ambiguity. Prop also carries the
+// named config blocks read by name in runtime.PipelineFromAST — 'checkpoint',
+// 'spawn', 'repeat', and 'context' (the last opting the pipeline into the
+// read-only `context.*` accessor its steps can read).
 type PipelineMember struct {
 	Input *PipelineInput `parser:"( 'input' @@"`
 	Var   *VarDecl       `parser:"| @@"`

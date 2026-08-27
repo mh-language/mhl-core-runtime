@@ -55,16 +55,40 @@ func (c *Checkpoint) Expired(now time.Time) bool {
 	return now.After(deadline)
 }
 
-// Store persists checkpoints as JSON files under <root>/.mhl/state.
+// Store persists checkpoints as JSON files under <root>/.mhl/state. When
+// Session has scoped it to a per-execution id, dir is <base>/<sessionID> and
+// checkpoints for two concurrent runs of the same pipeline never collide;
+// base still points at the shared .mhl/state so the .latest pointer can be
+// written there.
 type Store struct {
-	dir string
-	now func() time.Time
+	dir       string
+	base      string
+	sessionID string
+	now       func() time.Time
 }
 
 // NewStore returns a Store rooted at root; checkpoint files live under
-// root/.mhl/state.
+// root/.mhl/state. It is unscoped — call Session to isolate one execution.
 func NewStore(root string) *Store {
-	return &Store{dir: filepath.Join(root, StateDirName), now: time.Now}
+	dir := filepath.Join(root, StateDirName)
+	return &Store{dir: dir, base: dir, now: time.Now}
+}
+
+// Session returns a copy of s whose checkpoint files live under
+// <base>/<id>, isolating this execution from any other run of the same
+// pipeline. An empty id returns s unchanged (the legacy, unscoped layout),
+// which is what a --resume that fell back to a pre-session checkpoint, and
+// direct-construction unit tests, rely on.
+func (s *Store) Session(id string) *Store {
+	if id == "" {
+		return s
+	}
+	return &Store{
+		dir:       filepath.Join(s.base, id),
+		base:      s.base,
+		sessionID: id,
+		now:       s.now,
+	}
 }
 
 // WithClock overrides the store's clock; used in tests to simulate TTL expiry.
@@ -88,18 +112,7 @@ func (s *Store) Save(cp *Checkpoint) error {
 	}
 	cp.SavedAt = s.now()
 	redacted := *cp
-	redacted.Variables = make(map[string]any, len(cp.Variables))
-	for key, value := range cp.Variables {
-		// auth.Redact only knows how to scrub a string; a number, bool,
-		// array or object (possible now that Variables holds a pipeline's
-		// arbitrary `var` values, not just --input strings) passes through
-		// unredacted, same as it would inside a logged array/object today.
-		if s, ok := value.(string); ok {
-			redacted.Variables[key] = auth.Redact(s)
-		} else {
-			redacted.Variables[key] = value
-		}
-	}
+	redacted.Variables = redactVars(cp.Variables)
 	data, err := json.MarshalIndent(&redacted, "", "  ")
 	if err != nil {
 		return fmt.Errorf("runtime: encoding checkpoint: %w", err)
@@ -111,6 +124,13 @@ func (s *Store) Save(cp *Checkpoint) error {
 	// Atomic replace so a crash mid-write never leaves a torn file.
 	if err := os.Rename(tmp, s.path(cp.Pipeline)); err != nil {
 		return fmt.Errorf("runtime: committing checkpoint: %w", err)
+	}
+	// Record this session as the pipeline's most recent, so a later bare
+	// `mhl run --resume` knows which per-session directory to continue.
+	if s.sessionID != "" {
+		if err := writeLatest(s.base, cp.Pipeline, s.sessionID); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -139,11 +159,65 @@ func (s *Store) Load(pipeline string) (*Checkpoint, bool, error) {
 	return &cp, true, nil
 }
 
-// Clear removes any checkpoint for a pipeline. It is idempotent.
+// Clear removes any checkpoint for a pipeline. It is idempotent. For a
+// session-scoped store it also drops the session directory once nothing else
+// is left in it, and removes a legacy top-level <base>/<pipeline>.json left
+// by a pre-session mhl so a subsequent run doesn't resume from stale state.
 func (s *Store) Clear(pipeline string) error {
 	err := os.Remove(s.path(pipeline))
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("runtime: clearing checkpoint: %w", err)
 	}
+	if s.sessionID != "" {
+		legacy := filepath.Join(s.base, pipeline+".json")
+		if rmErr := os.Remove(legacy); rmErr != nil && !os.IsNotExist(rmErr) {
+			return fmt.Errorf("runtime: clearing legacy checkpoint: %w", rmErr)
+		}
+		// Best-effort: succeeds only when the session dir is now empty.
+		_ = os.Remove(s.dir)
+	}
 	return nil
+}
+
+// redactVars returns a copy of vars with every string value scrubbed through
+// auth.Redact. A number, bool, array or object passes through unredacted —
+// the same coarse-grained treatment a logged array/object already gets. It
+// is shared by checkpoint Save and result.json WriteResult so both persist
+// resolved secrets the same way.
+func redactVars(vars map[string]any) map[string]any {
+	out := make(map[string]any, len(vars))
+	for key, value := range vars {
+		if s, ok := value.(string); ok {
+			out[key] = auth.Redact(s)
+		} else {
+			out[key] = value
+		}
+	}
+	return out
+}
+
+// WriteResult persists a completed run's final variable state as result.json
+// in this (session-scoped) store's directory, and records the session as the
+// pipeline's most recent — the two things a later run's `context:` element
+// reads back. Strings are redacted exactly as a checkpoint's are. A no-op on
+// an unscoped store (there is no session directory to write into).
+func (s *Store) WriteResult(pipeline string, vars map[string]any) error {
+	if s.sessionID == "" {
+		return nil
+	}
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return fmt.Errorf("runtime: creating session dir: %w", err)
+	}
+	data, err := json.MarshalIndent(redactVars(vars), "", "  ")
+	if err != nil {
+		return fmt.Errorf("runtime: encoding result: %w", err)
+	}
+	tmp := filepath.Join(s.dir, "result.json.tmp")
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("runtime: writing result: %w", err)
+	}
+	if err := os.Rename(tmp, filepath.Join(s.dir, "result.json")); err != nil {
+		return fmt.Errorf("runtime: committing result: %w", err)
+	}
+	return writeLatest(s.base, pipeline, s.sessionID)
 }

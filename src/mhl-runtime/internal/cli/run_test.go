@@ -57,10 +57,29 @@ func TestRunPipelineFromStart(t *testing.T) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
 	}
-	// A completed pipeline clears its checkpoint.
-	if _, err := os.Stat(filepath.Join(dir, ".mhl", "state", "AutoFixPipeline.json")); !os.IsNotExist(err) {
-		t.Errorf("expected checkpoint cleared after successful run")
+	// Every run gets its own session directory under .mhl/state; a completed
+	// pipeline clears its checkpoint and, with nothing else left in it, the
+	// session directory too.
+	sessionID := sessionIDFromOutput(t, out)
+	if _, err := os.Stat(filepath.Join(dir, ".mhl", "state", sessionID)); !os.IsNotExist(err) {
+		t.Errorf("expected session dir %s cleaned up after successful run", sessionID)
 	}
+	if _, err := os.Stat(filepath.Join(dir, ".mhl", "state", "AutoFixPipeline.json")); !os.IsNotExist(err) {
+		t.Errorf("no legacy top-level checkpoint should ever be written")
+	}
+}
+
+// sessionIDFromOutput extracts the id from the "session: <id>" line cli.Run
+// prints at the start of every `mhl run`.
+func sessionIDFromOutput(t *testing.T, out string) string {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "session: ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "session: "))
+		}
+	}
+	t.Fatalf("no 'session:' line in output:\n%s", out)
+	return ""
 }
 
 func TestRunResumeFlagParsed(t *testing.T) {

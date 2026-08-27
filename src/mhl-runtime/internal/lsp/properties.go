@@ -19,6 +19,7 @@ func propertyItem(name, detail string) completionItem {
 var pipelinePropertyItems = []completionItem{
 	propertyItem("checkpoint", "{ enabled, strategy, storage, ttl }"),
 	propertyItem("spawn", "{ max_concurrency } — run-wide ceiling on concurrent spawned agent calls"),
+	propertyItem("context", "{ source, require } — expose read-only context.session_id / .vars to steps"),
 }
 
 // spawnFieldItems mirrors runtime.spawnConfigFromExpr's field switch.
@@ -42,6 +43,12 @@ var checkpointFieldItems = []completionItem{
 var repeatFieldItems = []completionItem{
 	propertyItem("stop_when", "condition expression, re-evaluated after every iteration"),
 	propertyItem("max_iterations", "integer ceiling"),
+}
+
+// contextFieldItems mirrors runtime.contextConfigFromExpr's field switch.
+var contextFieldItems = []completionItem{
+	propertyItem("source", `"latest" (default) or "session:<id>" — which prior run context.vars is read from`),
+	propertyItem("require", "boolean: fail the run when source resolves to no stored state"),
 }
 
 // agentPropertyItems lists only what internal/engine/interpreter/agent.go
@@ -129,6 +136,8 @@ func propertyItemsFor(stack []blockKind) []completionItem {
 		return spawnFieldItems
 	case blockRepeat:
 		return repeatFieldItems
+	case blockContext:
+		return contextFieldItems
 	case blockRetry:
 		return retryFieldItems
 	case blockCache:

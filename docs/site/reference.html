@@ -511,7 +511,7 @@ var info = IssueTracker.discover()</code></pre></div>
           <div class="tip-row"><span>STATELESS</span><p>There is no session or handshake between calls — each <code>.call(...)</code>/<code>.list_tools()</code>/<code>.discover()</code> is fully independent, matching MCP spec 2026-07-28's stateless model. Every request self-identifies (protocol version, capabilities, and <code>{name: "mhl"}</code> as <code>clientInfo</code>). A credential that fails to resolve aborts the call instead of sending a request with an empty header.</p></div>
         </section>
 
-        <section class="feature doc-section" id="pipeline" data-title="pipeline input var step checkpoint resume loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent">
+        <section class="feature doc-section" id="pipeline" data-title="pipeline input var step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent">
           <div class="feature-head"><h2><span class="feature-num">10</span><code>pipeline</code> and <code>loop pipeline</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Pipelines are the executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in order unless an explicit transition redirects them.</p>
 
@@ -541,7 +541,29 @@ var info = IssueTracker.discover()</code></pre></div>
           <div class="run-stack">
             <div class="inline-code"><span>start</span><code>mhl run release.mh --input environment=staging</code></div>
             <div class="inline-code"><span>resume</span><code>mhl run release.mh --input environment=staging --resume</code></div>
+            <div class="inline-code"><span>pin</span><code>mhl run release.mh --session nightly-42 --resume</code></div>
           </div>
+          <div class="tip-row"><span>SESSIONS</span><p>Every run gets its own directory <code>.mhl/state/&lt;session-id&gt;/</code>, so two concurrent runs of the same pipeline never clobber each other's checkpoint. Each run prints a <code>session: &lt;id&gt;</code> line; a bare <code>--resume</code> follows the most recent one (via a <code>.mhl/state/&lt;pipeline&gt;.latest</code> pointer), and <code>--session &lt;id&gt;</code> pins an exact one. Abandoned session directories past their TTL are swept automatically at the start of a later run.</p></div>
+
+          <p class="block-label">READING THE PREVIOUS RUN'S STATE</p>
+          <pre class="code-block"><code class="language-mhl">pipeline BuildCounter {
+    checkpoint: { enabled: true, strategy: "per_step", ttl: 7d }
+
+    context: {
+        source: "latest"     // or "session:&lt;id&gt;"; default "latest"
+        require: false        // true = fail the run when no prior state exists
+    }
+
+    var build = 1
+
+    step Report {
+        log.info("session ${context.session_id}, resumed=${context.resumed}")
+        if (context.vars.keys().contains("build")) {
+            build = context.vars["build"] + 1
+        }
+    }
+}</code></pre>
+          <div class="tip-row"><span>CONTEXT</span><p><code>context</code> is read-only. <code>context.session_id</code>, <code>context.started_at</code> and <code>context.resumed</code> describe the current run; <code>context.vars</code> is the variable state the <em>previous completed</em> run of this pipeline finished with (persisted as <code>result.json</code> in that run's session directory). It is empty until a run has completed once — guard with <code>context.vars.keys().contains(...)</code>.</p></div>
 
           <p class="block-label">LOOP WITH AN EXPLICIT STOP</p>
           <pre class="code-block"><code class="language-mhl">loop pipeline PollBuild {
@@ -588,6 +610,7 @@ var info = IssueTracker.discover()</code></pre></div>
             <div><b><code>input</code></b><span>a user-supplied value validated by type</span></div>
             <div><b><code>var</code></b><span>state shared across steps in the current execution</span></div>
             <div><b><code>mem</code></b><span>persistent state shared across iterations and <code>stop_when</code></span></div>
+            <div><b><code>context</code></b><span>read-only view of this session and the previous run's <code>vars</code></span></div>
             <div><b><code>step</code></b><span>ordered, named, resumable unit</span></div>
             <div><b><code>goto</code></b><span>explicit transition to another step</span></div>
             <div><b><code>break</code></b><span>immediate stop with an optional reason</span></div>

@@ -163,14 +163,26 @@ func TestCompletionPropertyPosition(t *testing.T) {
 		skip []string // must NOT be offered — proves the context classifier actually narrowed things
 	}{
 		{
-			name: "plain pipeline body offers checkpoint but not repeat",
+			name: "plain pipeline body offers checkpoint and context but not repeat",
 			src: `
 pipeline P {
     §
 }
 `,
-			want: []string{"checkpoint"},
+			want: []string{"checkpoint", "context"},
 			skip: []string{"repeat"},
+		},
+		{
+			name: "inside context object",
+			src: `
+pipeline P {
+    context: {
+        §
+    }
+}
+`,
+			want: []string{"source", "require"},
+			skip: []string{"checkpoint", "enabled"},
 		},
 		{
 			name: "loop pipeline body offers checkpoint and repeat",

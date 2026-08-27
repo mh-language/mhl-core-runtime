@@ -61,6 +61,45 @@ func TestPipelineConfigFromAST(t *testing.T) {
 	}
 }
 
+func TestContextConfigFromAST(t *testing.T) {
+	const src = `
+pipeline WithContext {
+    context: {
+        source: "session:abc123"
+        require: true
+    }
+    step S { var x = 1 }
+}
+`
+	prog, err := parser.Parse(src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	p, err := runtime.FindPipeline(prog, "")
+	if err != nil {
+		t.Fatalf("find pipeline: %v", err)
+	}
+	if p.Context == nil {
+		t.Fatal("expected Context to be non-nil")
+	}
+	if p.Context.Source != "session:abc123" || !p.Context.Require {
+		t.Errorf("context config = %+v", p.Context)
+	}
+
+	// A pipeline with no context: block leaves Context nil.
+	p2 := parsePipeline(t)
+	if p2.Context != nil {
+		t.Errorf("expected nil Context for a pipeline without the block, got %+v", p2.Context)
+	}
+
+	// A bare context: {} still opts in, with Source defaulting to "latest".
+	prog3, _ := parser.Parse("pipeline P { context: {}\n step S { var x = 1 } }")
+	p3, _ := runtime.FindPipeline(prog3, "")
+	if p3.Context == nil || p3.Context.Source != "latest" {
+		t.Errorf("bare context block = %+v", p3.Context)
+	}
+}
+
 // AC-6: a checkpoint file is written under .mhl/state per step, and clearing on
 // success removes it.
 func TestCheckpointSaveWritesFileAndClearRemoves(t *testing.T) {

@@ -22,6 +22,7 @@ const (
 	blockCheckpoint
 	blockSpawn
 	blockRepeat
+	blockContext
 	blockRetry
 	blockCache
 	blockRateLimit
@@ -45,6 +46,7 @@ var headerRe = []struct {
 	{blockCheckpoint, regexp.MustCompile(`\bcheckpoint\s*:\s*$`)},
 	{blockSpawn, regexp.MustCompile(`\bspawn\s*:\s*$`)},
 	{blockRepeat, regexp.MustCompile(`\brepeat\s*:\s*$`)},
+	{blockContext, regexp.MustCompile(`\bcontext\s*:\s*$`)},
 	{blockRetry, regexp.MustCompile(`\bretry\s*:\s*$`)},
 	{blockCache, regexp.MustCompile(`\bcache\s*:\s*$`)},
 	{blockRateLimit, regexp.MustCompile(`\brate_limit\s*:\s*$`)},
