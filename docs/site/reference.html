@@ -30,6 +30,7 @@
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
         <a class="github-link" href="index.html">Overview</a>
+        <a class="github-link" href="stdlib.html">Standard library</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
       </div>
     </header>
@@ -180,6 +181,7 @@ var text = "${label}: ${total}"</code></pre>
             <article><h3>Array</h3><code>get_index()</code><code>index_of()</code><code>contains()</code><code>filter()</code><code>find()</code><code>sort_by()</code></article>
             <article><h3>Object</h3><code>keys()</code><code>values()</code><p>Keys are returned in stable order.</p></article>
           </div>
+          <div class="tip-row"><span>SIGNATURES</span><p>Every method's parameters, types, and return value are in the <a href="stdlib.html#collections">Standard Library</a>.</p></div>
 
           <p class="block-label">DETERMINISTIC SELECTION EXAMPLE</p>
           <pre class="code-block"><code class="language-mhl">var passed_ids = [10]
@@ -461,6 +463,7 @@ if (result.exit_code != 0) fail(result.stderr)</code></pre>
             <article><h3><code>log</code></h3><p><code>info</code> · <code>warn</code> · <code>error</code></p></article>
             <article><h3><code>time</code></h3><p><code>now()</code> · <code>parse(text, layout:)</code> · <code>format(value, layout:)</code></p><p><code>add(value, duration)</code> · <code>diff(a, b)</code> · <code>compare(a, b)</code></p></article>
           </div>
+          <div class="tip-row"><span>SIGNATURES</span><p>Full parameter names, types, and return shapes for every native operation are in the <a href="stdlib.html#native">Standard Library</a>.</p></div>
           <pre class="code-block"><code class="language-mhl">var result = cmd.exec(["git", "status", "--short"], timeout: 30s)
 var response = http.post(
     url: "https://api.example.com/jobs",
@@ -471,6 +474,19 @@ var payload = json.parse(response.body)
 fs.write("result.json", json.stringify(payload))
 var expires_at = time.add(time.now(), 7d)</code></pre>
           <p class="feature-lede"><code>time.parse</code>/<code>time.format</code>'s <code>layout</code> accepts either a raw Go reference-time layout (<code>"2006-01-02"</code>) or the friendlier <code>yyyy</code>/<code>MM</code>/<code>dd</code>/<code>HH</code>/<code>mm</code>/<code>ss</code> tokens (e.g. <code>time.format(dt, "dd/MM/yyyy")</code>) — case matters where a unit would otherwise be ambiguous: <code>MM</code> is always month, <code>mm</code> is always minute; <code>HH</code> is always 24-hour, <code>hh</code> is always 12-hour.</p>
+          <pre class="code-block"><code class="language-mhl">var target = input.repo_dir                       // some checkout, not this one
+
+if (git.status(dir: target).exit_code != 0) fail("${target} is not a git repository")
+
+var diff = git.diff("HEAD", dir: target)
+if (!diff.is_empty()) {
+    git.add(["src/", ":(exclude).harness"], dir: target)
+    var committed = git.commit("chore: sync generated files", dir: target)
+    if (committed.exit_code != 0) fail(committed.stderr)
+}
+var sha = git.rev_parse("HEAD", dir: target)      // short hash, e.g. "0661a80"
+var recent = git.log(5, dir: target)             // --oneline text, newest first</code></pre>
+          <p class="feature-lede"><code>git</code> operations run <code>git</code> in the interpreter's working directory — or in a <code>dir:</code> argument when given (every <code>git.*</code> op accepts one; it maps to <code>git -C &lt;dir&gt;</code>), so a pipeline can act on a checkout other than its own. <code>status</code>, <code>add</code> and <code>commit</code> return the same inspectable <code>{stdout, stderr, exit_code}</code> shape as <code>cmd.exec</code> — a non-zero exit is a value to check, not a raised error — while <code>diff</code>, <code>log</code> and <code>rev_parse</code> return plain text and fail closed, raising on a bad ref. <code>add</code> requires at least one path, <code>commit</code> a non-empty message, <code>log</code> a positive count, and <code>rev_parse</code> a non-empty ref; each is validated before <code>git</code> is invoked. <code>commit</code>'s message is passed as its own argument, never shell-quoted, so spaces survive intact; <code>diff</code> takes an optional <code>target</code> ref, and <code>status</code>/<code>commit</code> an optional trailing <code>paths</code> filter.</p>
           <div class="security-banner"><span>!</span><div><strong>Prefer argv.</strong><p><code>cmd.exec(["program", "arg with spaces"])</code> preserves every argument and avoids accidental shell interpolation. Use a command string only when shell features are actually required.</p></div></div>
         </section>
 
@@ -683,7 +699,7 @@ test normalize_examples {
 
         <footer class="site-footer">
           <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="index.html">Overview</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+          <span><a href="index.html">Overview</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
         </footer>
       </main>
     </div>

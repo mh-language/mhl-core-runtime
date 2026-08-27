@@ -70,20 +70,54 @@ const (
 )
 
 type completionItem struct {
-	Label      string `json:"label"`
-	Kind       int    `json:"kind"`
-	Detail     string `json:"detail,omitempty"`
-	InsertText string `json:"insertText,omitempty"`
-	SortText   string `json:"sortText,omitempty"`
+	Label         string         `json:"label"`
+	Kind          int            `json:"kind"`
+	Detail        string         `json:"detail,omitempty"`
+	Documentation *markupContent `json:"documentation,omitempty"`
+	InsertText    string         `json:"insertText,omitempty"`
+	SortText      string         `json:"sortText,omitempty"`
+}
+
+// markupContent is LSP's MarkupContent: a string plus how to render it
+// ("markdown" or "plaintext"). Used for a completion item's hover doc and a
+// signature's explanation text.
+type markupContent struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
 }
 
 type serverCapabilities struct {
-	TextDocumentSync   int               `json:"textDocumentSync"` // 1=Full
-	CompletionProvider completionOptions `json:"completionProvider"`
+	TextDocumentSync      int                  `json:"textDocumentSync"` // 1=Full
+	CompletionProvider    completionOptions    `json:"completionProvider"`
+	SignatureHelpProvider signatureHelpOptions `json:"signatureHelpProvider"`
 }
 
 type completionOptions struct {
 	TriggerCharacters []string `json:"triggerCharacters"`
+}
+
+type signatureHelpOptions struct {
+	TriggerCharacters   []string `json:"triggerCharacters"`
+	RetriggerCharacters []string `json:"retriggerCharacters"`
+}
+
+// signatureHelp and its nested types are LSP's SignatureHelp response: the
+// list of overloads that could apply at the cursor, which one is active, and
+// which parameter within it the cursor currently sits on.
+type signatureHelp struct {
+	Signatures      []signatureInformation `json:"signatures"`
+	ActiveSignature int                    `json:"activeSignature"`
+	ActiveParameter int                    `json:"activeParameter"`
+}
+
+type signatureInformation struct {
+	Label         string                 `json:"label"`
+	Documentation *markupContent         `json:"documentation,omitempty"`
+	Parameters    []parameterInformation `json:"parameters"`
+}
+
+type parameterInformation struct {
+	Label string `json:"label"`
 }
 
 type initializeResult struct {

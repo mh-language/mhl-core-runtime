@@ -1,0 +1,28 @@
+// git.status/rev_parse/log are the read-only half of the `git` native
+// namespace: they run `git` in the interpreter's working directory and hand
+// back its output. status() mirrors cmd.exec's inspectable
+// {stdout, stderr, exit_code} shape (a non-zero exit is a normal outcome,
+// not a raised error); rev_parse() and log() are plain text, fail-closed on
+// a bad ref. These assertions only lean on facts true of any checkout with
+// at least one commit, never on this repo's specific history.
+test git_read_ops_report_repo_state {
+    describe git_status_returns_the_cmd_exec_result_shape {
+        var result = git.status()
+        are_equal(result.exit_code, 0)
+        is_true(result.keys().contains("stdout"))
+        is_true(result.keys().contains("stderr"))
+        is_true(result.keys().contains("exit_code"))
+    }
+
+    describe git_rev_parse_resolves_head_to_a_short_sha {
+        var sha = git.rev_parse("HEAD")
+        is_false(sha.is_empty())
+        is_false(sha.contains("\n"))
+        is_true(sha.size() >= 7)
+    }
+
+    describe git_log_lists_recent_commits_as_oneline_text {
+        var recent = git.log(3)
+        is_false(recent.trim().is_empty())
+    }
+}

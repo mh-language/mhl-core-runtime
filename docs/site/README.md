@@ -1,6 +1,6 @@
 # MHL documentation site
 
-This directory contains the public, self-contained en-US documentation for the Meta-Harness Language, ready for static publishing. The home page covers motivation, positioning, a quickstart, an applied example, the reference research, and contributions. `reference.html` documents the syntax and every language construct with complete examples.
+This directory contains the public, self-contained en-US documentation for the Meta-Harness Language, ready for static publishing. The home page covers motivation, positioning, a quickstart, an applied example, the reference research, and contributions. `reference.html` documents the syntax and every language construct with complete examples. `stdlib.html` is the method reference: every callable — collection methods, `agent`/`prompt`/`memory`/`mcp_server` methods, native operations, and test assertions — with its parameters, types, and return values.
 
 ## Publishing
 

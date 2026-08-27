@@ -1,0 +1,18 @@
+// The canonical use of git.diff (language-design.md section 8): capture the working
+// tree diff once and stash it in a memory store so later steps can read it
+// back without shelling out again. diff() returns plain text -- empty when
+// the tree is clean, the unified diff otherwise -- so the round-trip is the
+// assertion: whatever came out of git.diff is exactly what the store gives
+// back.
+memory DiffCache {
+    type: "kv"
+    store: "memory"
+}
+
+test git_diff_text_round_trips_through_memory {
+    describe git_diff_text_round_trips_through_memory {
+        var diff = git.diff("HEAD")
+        DiffCache.set("current_diff", diff)
+        are_equal(DiffCache.get("current_diff"), diff)
+    }
+}

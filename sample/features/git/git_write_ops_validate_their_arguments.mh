@@ -1,0 +1,43 @@
+// git.add and git.commit are the mutating half of the `git` namespace, so
+// these examples deliberately stay on their argument-validation paths --
+// each of these calls raises inside the runtime *before* any `git`
+// subprocess runs, so a sample run never stages or commits anything in the
+// working tree. git.log's `n` and git.rev_parse's `ref` are validated the
+// same fail-closed way.
+test git_write_ops_validate_their_arguments {
+    describe git_add_requires_at_least_one_path {
+        try {
+            git.add([])
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("at least one path is required"))
+        }
+    }
+
+    describe git_commit_requires_a_nonempty_message {
+        try {
+            git.commit("   ")
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("message must not be empty"))
+        }
+    }
+
+    describe git_rev_parse_rejects_an_empty_ref {
+        try {
+            git.rev_parse("")
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("ref must not be empty"))
+        }
+    }
+
+    describe git_log_rejects_a_non_positive_count {
+        try {
+            git.log(0)
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("n must be positive"))
+        }
+    }
+}

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="MHL standard-library reference: every callable method and function — collection methods, agent/prompt/memory/mcp_server methods, native operations, and test assertions — with parameters, types, and return values." />
+    <meta name="theme-color" content="#10161f" />
+    <meta property="og:title" content="MHL Standard Library — method reference" />
+    <meta property="og:description" content="Every callable in MHL, with parameter names, types, and return values." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="assets/mhl-logo-rebrand.png" />
+    <title>MHL Standard Library — method reference</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* scoped: signature tables reuse .reference-table but need 4 columns and top-aligned code */
+      .sig-table .table-row { grid-template-columns:1.4fr 1.5fr .8fr 1.6fr; align-items:start; }
+      .sig-table .table-row > code { color:var(--teal); font-size:10px; white-space:normal; word-break:break-word; }
+      .sig-table .table-row .p { display:block; }
+      .sig-table .table-row .p + .p { margin-top:5px; }
+      .sig-table .table-row .p code, .sig-table .table-row span code { color:var(--ink); background:var(--soft); border-radius:3px; padding:1px 4px; font-size:9px; }
+      .sig-note { color:var(--muted); font-size:11px; margin:10px 0 0; }
+      .ns-block { margin:34px 0 0; }
+      .ns-block > h3 { font-size:13px; margin:0 0 4px; }
+      .ns-block > h3 code { color:var(--teal); }
+      .ns-block > p { color:var(--muted); font-size:11px; margin:0 0 6px; }
+      @media (max-width:900px) {
+        .sig-table .table-row { grid-template-columns:1fr; gap:6px; }
+        .sig-table .table-row span:last-child { display:block; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="index.html" aria-label="MHL home">
+        <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
+        <span><strong>MHL</strong><small>Meta-Harness Language</small></span>
+      </a>
+      <div class="top-actions">
+        <label class="search" for="site-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="site-search" type="search" placeholder="Search the standard library" autocomplete="off" />
+          <kbd>/</kbd>
+        </label>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
+        <a class="github-link" href="reference.html">Reference</a>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </div>
+    </header>
+
+    <div class="layout" id="top">
+      <aside class="sidebar" aria-label="Standard library navigation">
+        <p class="eyebrow">STANDARD LIBRARY</p>
+        <nav id="toc">
+          <a class="nav-link active" href="#overview">How to read this page</a>
+          <a class="nav-link" href="#globals">Global functions</a>
+          <a class="nav-link" href="#collections">Collection methods</a>
+          <a class="nav-link" href="#agent">agent</a>
+          <a class="nav-link" href="#prompt">prompt</a>
+          <a class="nav-link" href="#memory">memory and mem</a>
+          <a class="nav-link" href="#mcp">mcp_server</a>
+          <a class="nav-link" href="#native">Native operations</a>
+          <a class="nav-link" href="#assertions">Test assertions</a>
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <span>Alpha reference<br /><small>generated from the interpreter surface</small></span>
+        </div>
+      </aside>
+
+      <main class="content reference-content">
+        <section class="ref-hero doc-section" id="overview" data-title="standard library how to read signature notation types optional variadic named argument return">
+          <p class="eyebrow accent">MHL · STANDARD LIBRARY · METHOD REFERENCE</p>
+          <h1>Every callable, with its types.</h1>
+          <p class="lead">This page lists each method and built-in function you can call from an MHL program — the parameters it takes, the types it expects, and what it returns. For the language itself (declarations, syntax, control flow), see the <a href="reference.html">Language Reference</a>.</p>
+
+          <p class="block-label">SIGNATURE NOTATION</p>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Notation</span><span>Means</span><span>Example</span></div>
+            <div class="table-row"><code>string number bool null any</code><span>The primitive value types. <code>any</code> is "no constraint".</span><span><code>fs.read(path: string)</code></span></div>
+            <div class="table-row"><code>T[]</code><span>An array whose elements are <code>T</code>.</span><span><code>string[]</code>, <code>any[]</code></span></div>
+            <div class="table-row"><code>{ field: T, ... }</code><span>An object with those named fields.</span><span><code>{stdout: string, exit_code: number}</code></span></div>
+            <div class="table-row"><code>{ string: T }</code><span>An object used as a string-keyed map.</span><span><code>headers: {string: string}</code></span></div>
+            <div class="table-row"><code>duration</code><span>A duration literal.</span><span><code>30s</code>, <code>2m</code>, <code>7d</code></span></div>
+            <div class="table-row"><code>(p: T) -&gt; R</code><span>A lambda taking <code>p</code> and returning <code>R</code>.</span><span><code>filter((f) -&gt; f.ok)</code></span></div>
+            <div class="table-row"><code>name:</code><span>A <em>named</em> argument — written with its label at the call site.</span><span><code>agent.run(prompt: "…")</code></span></div>
+            <div class="table-row"><code>param?</code><span>Optional — may be omitted.</span><span><code>get(key, default?)</code></span></div>
+            <div class="table-row"><code>...param</code><span>Variadic — zero or more of that argument.</span><span><code>log(...values)</code></span></div>
+            <div class="table-row"><code>-&gt; null</code><span>Call produces no useful value (evaluates to <code>null</code>).</span><span><code>log.info(...) -&gt; null</code></span></div>
+            <div class="table-row"><code>-&gt; never</code><span>Always raises; execution does not continue past it unless caught.</span><span><code>fail(...) -&gt; never</code></span></div>
+          </div>
+          <p class="sig-note">A "raises" outcome unwinds like any evaluation error: it aborts the step/run unless a <code>try { … } catch (e) { … }</code> around the call catches it. A non-zero process <code>exit_code</code> is <em>not</em> a raise — it is a field on the returned value for you to inspect.</p>
+        </section>
+
+        <section class="feature doc-section" id="globals" data-title="global functions log fail env builtin print environment variable error">
+          <div class="feature-head"><h2><span class="feature-num">01</span>Global functions</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Available in any expression position — a step body, a <code>describe</code> block, a <code>tool</code> method, a condition.</p>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row">
+              <code>log(...values: any) -&gt; null</code>
+              <span><span class="p"><code>values</code> — any number of values of any type</span></span>
+              <span><code>null</code></span>
+              <span>Formats each value (strings raw, numbers trimmed, objects as JSON) and writes one space-joined line to stdout.</span>
+            </div>
+            <div class="table-row">
+              <code>fail(...values: any) -&gt; never</code>
+              <span><span class="p"><code>values</code> — same formatting as <code>log</code></span></span>
+              <span><em>raises</em></span>
+              <span>Raises an error whose message is the joined values. An uncaught <code>fail</code> makes <code>mhl run</code> exit non-zero. Catchable with <code>try/catch</code>.</span>
+            </div>
+            <div class="table-row">
+              <code>env(name: string) -&gt; string</code>
+              <span><span class="p"><code>name</code> — the environment variable name</span></span>
+              <span><code>string</code></span>
+              <span>Reads an OS environment variable. Returns <code>""</code> when unset (no separate null). Exactly one argument.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="collections" data-title="collection methods string array object size is_empty split replace contains starts_with ends_with trim to_upper to_lower substring get_index index_of filter find sort_by keys values lambda">
+          <div class="feature-head"><h2><span class="feature-num">02</span>Collection methods</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Called on a value with <code>.</code> — <code>name.size()</code>, <code>path.split("/")</code>, <code>items.filter((x) -&gt; x.ok)</code>. They never mutate the receiver; <code>filter</code>, <code>sort_by</code>, concatenation, and slices return a new array. Indexing (<code>arr[i]</code>, <code>arr[a..b]</code>, <code>obj[key]</code>) and index-assignment (<code>arr[i] = v</code>) are language syntax, not methods — see the <a href="reference.html#expressions">Language Reference</a>.</p>
+
+          <div class="ns-block">
+            <h3>Common <span style="color:var(--muted);font-weight:400;font-size:11px;">— string, array, object</span></h3>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>size() -&gt; number</code><span><span class="p">none</span></span><span><code>number</code></span><span>Element count (array), entry count (object), or byte length (string).</span></div>
+            <div class="table-row"><code>is_empty() -&gt; bool</code><span><span class="p">none</span></span><span><code>bool</code></span><span>Equivalent to <code>size() == 0</code>.</span></div>
+          </div>
+
+          <div class="ns-block"><h3>String</h3></div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>split(separator: string) -&gt; string[]</code><span><span class="p"><code>separator</code> — substring to split on</span></span><span><code>string[]</code></span><span>Splits on every occurrence. An empty separator splits between every byte.</span></div>
+            <div class="table-row"><code>replace(old: string, new: string) -&gt; string</code><span><span class="p"><code>old</code> — substring to find</span><span class="p"><code>new</code> — replacement</span></span><span><code>string</code></span><span>Replaces <em>all</em> occurrences.</span></div>
+            <div class="table-row"><code>contains(sub: string) -&gt; bool</code><span><span class="p"><code>sub</code> — substring to look for</span></span><span><code>bool</code></span><span>—</span></div>
+            <div class="table-row"><code>starts_with(prefix: string) -&gt; bool</code><span><span class="p"><code>prefix</code></span></span><span><code>bool</code></span><span>—</span></div>
+            <div class="table-row"><code>ends_with(suffix: string) -&gt; bool</code><span><span class="p"><code>suffix</code></span></span><span><code>bool</code></span><span>—</span></div>
+            <div class="table-row"><code>trim() -&gt; string</code><span><span class="p">none</span></span><span><code>string</code></span><span>Strips leading and trailing whitespace.</span></div>
+            <div class="table-row"><code>to_upper() -&gt; string</code><span><span class="p">none</span></span><span><code>string</code></span><span>—</span></div>
+            <div class="table-row"><code>to_lower() -&gt; string</code><span><span class="p">none</span></span><span><code>string</code></span><span>—</span></div>
+            <div class="table-row"><code>substring(start: number, end: number) -&gt; string</code><span><span class="p"><code>start</code> — start byte index (integer)</span><span class="p"><code>end</code> — end byte index, exclusive</span></span><span><code>string</code></span><span>Both bounds must be integers within <code>[0, size()]</code>; out-of-range raises.</span></div>
+          </div>
+
+          <div class="ns-block"><h3>Array</h3></div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>get_index(index: number) -&gt; any</code><span><span class="p"><code>index</code> — integer, <code>0</code>-based</span></span><span><code>any</code></span><span>Raises when out of range. (<code>arr[i]</code> is the operator form.)</span></div>
+            <div class="table-row"><code>index_of(value: any) -&gt; number</code><span><span class="p"><code>value</code> — value to search for</span></span><span><code>number</code></span><span>First deep-equal position, or <code>-1</code>.</span></div>
+            <div class="table-row"><code>contains(value: any) -&gt; bool</code><span><span class="p"><code>value</code></span></span><span><code>bool</code></span><span>Deep equality against each element.</span></div>
+            <div class="table-row"><code>filter(predicate: (item: any) -&gt; bool) -&gt; any[]</code><span><span class="p"><code>predicate</code> — lambda; must return <code>bool</code></span></span><span><code>any[]</code></span><span>New array of the elements for which <code>predicate</code> is true.</span></div>
+            <div class="table-row"><code>find(predicate: (item: any) -&gt; bool) -&gt; any</code><span><span class="p"><code>predicate</code> — lambda; must return <code>bool</code></span></span><span><code>any</code></span><span>First matching element, or <code>null</code> if none.</span></div>
+            <div class="table-row"><code>sort_by(key: (item: any) -&gt; any) -&gt; any[]</code><span><span class="p"><code>key</code> — lambda returning the sort key for an element</span></span><span><code>any[]</code></span><span>New array, ascending by key.</span></div>
+          </div>
+
+          <div class="ns-block"><h3>Object</h3></div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>keys() -&gt; string[]</code><span><span class="p">none</span></span><span><code>string[]</code></span><span>Keys in stable (sorted) order.</span></div>
+            <div class="table-row"><code>values() -&gt; any[]</code><span><span class="p">none</span></span><span><code>any[]</code></span><span>Values in the same order as <code>keys()</code>.</span></div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="agent" data-title="agent run prompt schema method call model response string template">
+          <div class="feature-head"><h2><span class="feature-num">03</span><code>agent</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A declared <code>agent</code> exposes one method. Its declaration (<code>engine</code>, <code>retry</code>, <code>cache</code>, <code>fallback</code>, <code>before</code>/<code>after</code>, …) is covered in the <a href="reference.html#agent">Language Reference</a>.</p>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row">
+              <code>&lt;Agent&gt;.run(prompt:, schema:?) -&gt; string</code>
+              <span>
+                <span class="p"><code>prompt:</code> <strong>required</strong> — a string literal (<code>${…}</code>-interpolated) <em>or</em> a reference to a declared <code>prompt</code> template with its arguments, e.g. <code>prompt: AuditPrompt(service: "auth")</code>. Must be non-empty.</span>
+                <span class="p"><code>schema:</code> optional — any expression that evaluates to a <code>string</code> (commonly <code>json.stringify({...})</code>); passed to the model as the requested output shape.</span>
+              </span>
+              <span><code>string</code></span>
+              <span>The model's response text. Honors the agent's <code>retry</code>/<code>fallback</code> and runs its <code>before</code>/<code>after</code> hooks. Raises if every attempt (and every fallback) fails.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="prompt" data-title="prompt template render call named parameters interpolation from composition string">
+          <div class="feature-head"><h2><span class="feature-num">04</span><code>prompt</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A declared <code>prompt</code> is called like a function to render it to a string.</p>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row">
+              <code>&lt;Prompt&gt;(name: value, …) -&gt; string</code>
+              <span><span class="p">Named arguments, one per declared parameter — <code>value</code> is any expression (variable, field access, another prompt call, literal).</span></span>
+              <span><code>string</code></span>
+              <span>Renders the template with parameters interpolated. Use anywhere a string is expected, most often <code>agent.run(prompt: …)</code>. <code>from: [A, B]</code> composition is declaration-level, not a call — see the <a href="reference.html#prompt">Language Reference</a>.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="memory" data-title="memory mem kv json append_log jsonl set get remove append reset backend store path nested key default">
+          <div class="feature-head"><h2><span class="feature-num">05</span><code>memory</code> and <code>mem</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">The methods a declared <code>memory</code> exposes depend on its <code>type:</code>. Keys are always strings; calling a method the backend doesn't have (or declaring an unimplemented <code>type:</code> such as <code>"vector"</code>) raises. <code>set</code>/<code>append</code> return the value they wrote (handy for <code>log(mem.set("n", 1))</code>).</p>
+
+          <div class="ns-block">
+            <h3><code>type: "kv"</code> <span style="color:var(--muted);font-weight:400;font-size:11px;">— requires <code>store: "memory"</code>; process-lifetime, not persisted</span></h3>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>set(key: string, value: any) -&gt; any</code><span><span class="p"><code>key</code> — string</span><span class="p"><code>value</code> — any value</span></span><span><code>any</code></span><span>Returns <code>value</code>.</span></div>
+            <div class="table-row"><code>get(key: string, default?: any) -&gt; any</code><span><span class="p"><code>key</code> — string</span><span class="p"><code>default</code> — returned when the key is absent</span></span><span><code>any</code></span><span>Absent key with no <code>default</code> yields <code>null</code>.</span></div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>type: "json"</code> <span style="color:var(--muted);font-weight:400;font-size:11px;">— requires <code>path:</code>; persisted as a JSON object file</span></h3>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>set(key: string, value: any) -&gt; any</code><span><span class="p"><code>key</code> — string</span><span class="p"><code>value</code> — any value</span></span><span><code>any</code></span><span>Returns <code>value</code>.</span></div>
+            <div class="table-row"><code>set(values: object) -&gt; object</code><span><span class="p"><code>values</code> — an object; every entry is written</span></span><span><code>object</code></span><span>Bulk form — pass a single object instead of a key/value pair.</span></div>
+            <div class="table-row"><code>get(key: string, default?: any) -&gt; any</code><span><span class="p"><code>key</code> — string; may navigate nested values with <code>::</code> segments, e.g. <code>"cfg::retries"</code> or <code>"tags::0"</code></span><span class="p"><code>default</code> — returned when the path is absent</span></span><span><code>any</code></span><span>—</span></div>
+            <div class="table-row"><code>remove(key: string) -&gt; any</code><span><span class="p"><code>key</code> — string</span></span><span><code>any</code></span><span>Deletes the entry.</span></div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>type: "append_log"</code> <span style="color:var(--muted);font-weight:400;font-size:11px;">— requires <code>path:</code>; append-only text file</span></h3>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>append(text: string) -&gt; string</code><span><span class="p"><code>text</code> — a string; a structured value raises</span></span><span><code>string</code></span><span>Appends one line. Returns <code>text</code>.</span></div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>type: "jsonl"</code> <span style="color:var(--muted);font-weight:400;font-size:11px;">— requires <code>path:</code>; append-only JSON-lines file</span></h3>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>append(value: any) -&gt; any</code><span><span class="p"><code>value</code> — any value; serialized to one JSON line</span></span><span><code>any</code></span><span>Returns <code>value</code>.</span></div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>mem</code> <span style="color:var(--muted);font-weight:400;font-size:11px;">— the pipeline-scoped ephemeral store keyword</span></h3>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>&lt;memvar&gt;.reset() -&gt; null</code><span><span class="p">none</span></span><span><code>null</code></span><span>Clears the ephemeral store. Its only method — read/write is field-style (<code>mem.x</code>, <code>mem.x = 1</code>).</span></div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="mcp" data-title="mcp_server call list_tools discover tool arguments json-rpc stateless">
+          <div class="feature-head"><h2><span class="feature-num">06</span><code>mcp_server</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A declared <code>mcp_server</code> exposes three methods. Each issues exactly one stateless JSON-RPC request; an unresolved <code>env(...)</code> credential aborts the call. Configuration (transport, <code>url</code>, <code>headers</code>) is in the <a href="reference.html#mcp">Language Reference</a>.</p>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row">
+              <code>&lt;Server&gt;.call(tool: string, arguments?: object) -&gt; any</code>
+              <span>
+                <span class="p"><code>tool</code> — tool name; positional or named <code>tool:</code></span>
+                <span class="p"><code>arguments</code> — object of tool arguments; positional (2nd) or named <code>arguments:</code>. Defaults to <code>{}</code>.</span>
+              </span>
+              <span><code>any</code></span>
+              <span>Issues <code>tools/call</code>; returns the decoded result. A server asking for elicitation/sampling input (<code>input_required</code>) raises.</span>
+            </div>
+            <div class="table-row"><code>&lt;Server&gt;.list_tools() -&gt; any</code><span><span class="p">none</span></span><span><code>any</code></span><span>Issues <code>tools/list</code>. One page only — a paginated catalog is truncated.</span></div>
+            <div class="table-row"><code>&lt;Server&gt;.discover() -&gt; any</code><span><span class="p">none</span></span><span><code>any</code></span><span>Issues <code>server/discover</code> — supported versions, capabilities, identity.</span></div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="native" data-title="native operations cmd exec exec_all fs read exists write append delete join list git diff add commit status rev_parse log http post json parse parse_lines stringify log info warn error time now parse format add diff compare timeout duration">
+          <div class="feature-head"><h2><span class="feature-num">07</span>Native operations</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">The fixed namespaces any expression (or a <code>tool</code> method body) can call: <code>cmd</code>, <code>fs</code>, <code>git</code>, <code>http</code>, <code>json</code>, <code>log</code>, <code>time</code>. They accept a mix of positional and named arguments. Unless noted, a failure to perform the operation raises; a completed process with a non-zero exit is returned, not raised.</p>
+
+          <div class="ns-block">
+            <h3><code>cmd</code></h3>
+            <p>Subprocess execution. Prefer the argv-array form — it passes each argument verbatim with no shell parsing.</p>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row">
+              <code>cmd.exec(command: string | string[], timeout?: duration) -&gt; {stdout: string, stderr: string, exit_code: number}</code>
+              <span><span class="p"><code>command</code> — a command string (run via shell) <em>or</em> an argv array</span><span class="p"><code>timeout:</code> — max run time; cancels the process group on expiry</span></span>
+              <span><code>{stdout, stderr, exit_code}</code></span>
+              <span>Non-zero <code>exit_code</code> is a value to inspect, not a raise.</span>
+            </div>
+            <div class="table-row">
+              <code>cmd.exec_all(commands: (string | string[])[], timeout?: duration) -&gt; {stdout, stderr, exit_code}[]</code>
+              <span><span class="p"><code>commands:</code> — array of commands, each a string or an argv array; positional or named</span><span class="p"><code>timeout:</code> — applies per command</span></span>
+              <span>array of results</span>
+              <span>One result object per command, in order.</span>
+            </div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>fs</code></h3>
+            <p>Filesystem access, relative to the interpreter's working directory. <code>write</code>/<code>append</code> create missing parent directories.</p>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>fs.read(path: string) -&gt; string</code><span><span class="p"><code>path</code></span></span><span><code>string</code></span><span>Full file contents. Raises if unreadable.</span></div>
+            <div class="table-row"><code>fs.exists(path: string) -&gt; bool</code><span><span class="p"><code>path</code></span></span><span><code>bool</code></span><span>A stat error other than "not found" (e.g. permissions) raises.</span></div>
+            <div class="table-row"><code>fs.write(path: string, content: string) -&gt; bool</code><span><span class="p"><code>path</code> — positional or named</span><span class="p"><code>content</code> — positional or named</span></span><span><code>bool</code></span><span>Truncates and writes. Returns <code>true</code>.</span></div>
+            <div class="table-row"><code>fs.append(path: string, content: string) -&gt; bool</code><span><span class="p"><code>path</code> — positional or named</span><span class="p"><code>content</code> — positional or named</span></span><span><code>bool</code></span><span>Appends. Returns <code>true</code>.</span></div>
+            <div class="table-row"><code>fs.delete(path: string) -&gt; bool</code><span><span class="p"><code>path</code></span></span><span><code>bool</code></span><span>Removes a file or empty directory. Raises if it can't.</span></div>
+            <div class="table-row"><code>fs.join(...segments: string) -&gt; string</code><span><span class="p"><code>segments</code> — one or more path parts</span></span><span><code>string</code></span><span>OS-appropriate path join.</span></div>
+            <div class="table-row"><code>fs.list(dir: string) -&gt; string[]</code><span><span class="p"><code>dir</code></span></span><span><code>string[]</code></span><span>Entries in <code>dir</code>.</span></div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>git</code></h3>
+            <p>Runs <code>git</code> in the working directory, or in <code>dir:</code> when given (maps to <code>git -C &lt;dir&gt;</code>). <code>status</code>/<code>add</code>/<code>commit</code> return the <code>cmd.exec</code> result shape; <code>diff</code>/<code>log</code>/<code>rev_parse</code> return plain text and raise on a bad ref.</p>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>git.diff(target?: string, dir?: string) -&gt; string</code><span><span class="p"><code>target</code> — a ref or range; positional or named <code>target:</code></span><span class="p"><code>dir:</code> — directory to run in; named only</span></span><span><code>string</code></span><span><code>git [-C dir] diff [target]</code>. Non-zero exit raises.</span></div>
+            <div class="table-row"><code>git.add(paths: string[], dir?: string) -&gt; {stdout, stderr, exit_code}</code><span><span class="p"><code>paths</code> — at least one path; positional or named <code>paths:</code></span><span class="p"><code>dir:</code> — directory to run in; named only</span></span><span><code>{stdout, stderr, exit_code}</code></span><span><code>git [-C dir] add -A -- &lt;paths&gt;</code>. Empty array raises.</span></div>
+            <div class="table-row"><code>git.commit(message: string, paths?: string[], dir?: string) -&gt; {stdout, stderr, exit_code}</code><span><span class="p"><code>message</code> — non-empty; passed as one argument, never shell-quoted</span><span class="p"><code>paths</code> — optional path filter</span><span class="p"><code>dir:</code> — directory to run in; named only</span></span><span><code>{stdout, stderr, exit_code}</code></span><span>Empty/blank message raises.</span></div>
+            <div class="table-row"><code>git.status(paths?: string[], dir?: string) -&gt; {stdout, stderr, exit_code}</code><span><span class="p"><code>paths</code> — optional path filter</span><span class="p"><code>dir:</code> — directory to run in; named only</span></span><span><code>{stdout, stderr, exit_code}</code></span><span><code>git [-C dir] status --short</code>. A non-zero exit (e.g. <code>dir</code> is not a repo) is a value to inspect, not a raise.</span></div>
+            <div class="table-row"><code>git.rev_parse(ref: string, dir?: string) -&gt; string</code><span><span class="p"><code>ref</code> — non-empty; positional or named <code>ref:</code></span><span class="p"><code>dir:</code> — directory to run in; named only</span></span><span><code>string</code></span><span><code>git [-C dir] rev-parse --short &lt;ref&gt;</code>, trimmed. Bad ref raises.</span></div>
+            <div class="table-row"><code>git.log(n: number, dir?: string) -&gt; string</code><span><span class="p"><code>n</code> — positive integer; positional or named <code>n:</code></span><span class="p"><code>dir:</code> — directory to run in; named only</span></span><span><code>string</code></span><span><code>git [-C dir] log -n &lt;n&gt; --oneline</code>. <code>n &lt;= 0</code> raises.</span></div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>http</code></h3>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row">
+              <code>http.post(url: string, headers?: {string: string}, body?: any) -&gt; {status: number, body: string}</code>
+              <span><span class="p"><code>url</code> — named <code>url:</code> or first positional</span><span class="p"><code>headers:</code> — string→string map</span><span class="p"><code>body:</code> — any value; JSON-encoded</span></span>
+              <span><code>{status, body}</code></span>
+              <span>Sets <code>Content-Type: application/json</code>. A transport failure raises; an HTTP error status is returned in <code>status</code>.</span>
+            </div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>json</code></h3>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>json.parse(text: string) -&gt; any</code><span><span class="p"><code>text</code> — JSON document</span></span><span><code>any</code></span><span>Object → object, array → array, etc. Invalid JSON raises.</span></div>
+            <div class="table-row"><code>json.parse_lines(text: string) -&gt; any[]</code><span><span class="p"><code>text</code> — JSON-lines (one value per line)</span></span><span><code>any[]</code></span><span>—</span></div>
+            <div class="table-row"><code>json.stringify(value: any) -&gt; string</code><span><span class="p"><code>value</code> — any value</span></span><span><code>string</code></span><span>Object keys are emitted in sorted order.</span></div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>log</code></h3>
+            <p>Same formatting as the global <code>log(...)</code>, with a level prefix.</p>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>log.info(...values: any) -&gt; null</code><span><span class="p"><code>values</code></span></span><span><code>null</code></span><span>Writes <code>[INFO] …</code>.</span></div>
+            <div class="table-row"><code>log.warn(...values: any) -&gt; null</code><span><span class="p"><code>values</code></span></span><span><code>null</code></span><span>Writes <code>[WARN] …</code>.</span></div>
+            <div class="table-row"><code>log.error(...values: any) -&gt; null</code><span><span class="p"><code>values</code></span></span><span><code>null</code></span><span>Writes <code>[ERROR] …</code>. Does not raise or change the exit code.</span></div>
+          </div>
+
+          <div class="ns-block">
+            <h3><code>time</code></h3>
+            <p>Datetimes are plain RFC3339 UTC strings — there is no dedicated type. <code>layout</code> accepts a Go reference layout (<code>"2006-01-02"</code>) or friendly tokens (<code>dd/MM/yyyy</code>, <code>HH:mm:ss</code>).</p>
+          </div>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row"><code>time.now() -&gt; string</code><span><span class="p">none</span></span><span><code>string</code></span><span>Current instant, RFC3339 UTC.</span></div>
+            <div class="table-row"><code>time.parse(text: string, layout?: string) -&gt; string</code><span><span class="p"><code>text</code> — the timestamp to read</span><span class="p"><code>layout</code> — input layout; positional (2nd) or named <code>layout:</code>. Defaults to RFC3339.</span></span><span><code>string</code></span><span>Normalizes to RFC3339 UTC. Unparseable input raises.</span></div>
+            <div class="table-row"><code>time.format(value: string, layout?: string) -&gt; string</code><span><span class="p"><code>value</code> — an RFC3339 string</span><span class="p"><code>layout</code> — output layout; positional (2nd) or named <code>layout:</code></span></span><span><code>string</code></span><span>—</span></div>
+            <div class="table-row"><code>time.add(value: string, duration: duration) -&gt; string</code><span><span class="p"><code>value</code> — an RFC3339 string</span><span class="p"><code>duration</code> — a duration literal (<code>7d</code>); positional (2nd) or named <code>duration:</code></span></span><span><code>string</code></span><span>Returns <code>value + duration</code>, RFC3339 UTC.</span></div>
+            <div class="table-row"><code>time.diff(a: string, b: string) -&gt; number</code><span><span class="p"><code>a</code>, <code>b</code> — RFC3339 strings</span></span><span><code>number</code></span><span>Seconds in <code>a - b</code> (negative when <code>a</code> is earlier).</span></div>
+            <div class="table-row"><code>time.compare(a: string, b: string) -&gt; number</code><span><span class="p"><code>a</code>, <code>b</code> — RFC3339 strings</span></span><span><code>number</code></span><span><code>-1</code> if <code>a &lt; b</code>, <code>0</code> if equal, <code>1</code> if <code>a &gt; b</code> — the ordering <code>&lt;</code>/<code>&gt;</code> don't provide for strings.</span></div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="assertions" data-title="test assertions are_equal are_not_equal not_equal is_true is_false is_null not_null greater_than less_than greater_than_or_equal less_than_or_equal includes incomplete describe">
+          <div class="feature-head"><h2><span class="feature-num">08</span>Test assertions</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Callable only inside a <code>describe</code> block (see <a href="reference.html#tests">Language Reference</a>). A wrong argument count or type is a hard error, not a failed assertion. Equality is deep (structural) throughout.</p>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Passes when</span><span>Notes</span></div>
+            <div class="table-row"><code>are_equal(actual: any, expected: any)</code><span><span class="p">two values</span></span><span><code>actual</code> deep-equals <code>expected</code></span><span>—</span></div>
+            <div class="table-row"><code>are_not_equal(a: any, b: any)</code><span><span class="p">two values</span></span><span><code>a</code> does not deep-equal <code>b</code></span><span>Alias: <code>not_equal</code>.</span></div>
+            <div class="table-row"><code>is_true(value: bool)</code><span><span class="p">one value; must be <code>bool</code></span></span><span><code>value</code> is <code>true</code></span><span>A non-bool argument errors.</span></div>
+            <div class="table-row"><code>is_false(value: bool)</code><span><span class="p">one value; must be <code>bool</code></span></span><span><code>value</code> is <code>false</code></span><span>A non-bool argument errors.</span></div>
+            <div class="table-row"><code>is_null(value: any)</code><span><span class="p">one value</span></span><span><code>value</code> is <code>null</code></span><span>—</span></div>
+            <div class="table-row"><code>not_null(value: any)</code><span><span class="p">one value</span></span><span><code>value</code> is not <code>null</code></span><span>—</span></div>
+            <div class="table-row"><code>greater_than(a: number, b: number)</code><span><span class="p">two numbers</span></span><span><code>a &gt; b</code></span><span>Non-number arguments error.</span></div>
+            <div class="table-row"><code>less_than(a: number, b: number)</code><span><span class="p">two numbers</span></span><span><code>a &lt; b</code></span><span>Non-number arguments error.</span></div>
+            <div class="table-row"><code>greater_than_or_equal(a: number, b: number)</code><span><span class="p">two numbers</span></span><span><code>a &gt;= b</code></span><span>—</span></div>
+            <div class="table-row"><code>less_than_or_equal(a: number, b: number)</code><span><span class="p">two numbers</span></span><span><code>a &lt;= b</code></span><span>—</span></div>
+            <div class="table-row"><code>includes(array: any[], value: any)</code><span><span class="p"><code>array</code> — must be an array</span><span class="p"><code>value</code> — element to look for</span></span><span><code>array</code> contains a deep-equal <code>value</code></span><span>Non-array first argument errors.</span></div>
+            <div class="table-row"><code>incomplete(reason?: any)</code><span><span class="p"><code>reason</code> — optional message</span></span><span><em>never fails</em></span><span>Marks the enclosing <code>describe</code> as skipped/pending.</span></div>
+          </div>
+        </section>
+
+        <footer class="site-footer">
+          <span>© 2026 MHL · Created by Yan Justino</span>
+          <span><a href="index.html">Overview</a> · <a href="reference.html">Language reference</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

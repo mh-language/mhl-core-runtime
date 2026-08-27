@@ -50,6 +50,10 @@ func (s *server) handle(msg *rpcMessage) {
 				CompletionProvider: completionOptions{
 					TriggerCharacters: []string{"."},
 				},
+				SignatureHelpProvider: signatureHelpOptions{
+					TriggerCharacters:   []string{"(", ","},
+					RetriggerCharacters: []string{","},
+				},
 			},
 			ServerInfo: serverInfo{Name: "mhl-lsp", Version: "0.1.0"},
 		})
@@ -86,6 +90,14 @@ func (s *server) handle(msg *rpcMessage) {
 		text := s.docs[p.TextDocument.URI]
 		items := completionAt(uriToPath(p.TextDocument.URI), text, p.Position)
 		s.wr.respond(msg.ID, items)
+	case "textDocument/signatureHelp":
+		var p textDocumentPositionParams
+		if json.Unmarshal(msg.Params, &p) != nil {
+			s.wr.respond(msg.ID, nil)
+			return
+		}
+		text := s.docs[p.TextDocument.URI]
+		s.wr.respond(msg.ID, signatureHelpAt(uriToPath(p.TextDocument.URI), text, p.Position))
 	default:
 		if msg.ID != nil {
 			s.wr.respondError(msg.ID, -32601, "method not found: "+msg.Method)

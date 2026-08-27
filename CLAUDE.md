@@ -112,10 +112,14 @@ Key packages:
 - **`internal/cli`** — argument parsing/dispatch only; hands off immediately to the packages
   above.
 - **`internal/lsp`** — the `mhl lsp` server. Completion (`completion.go`, `blockcontext.go`,
-  `properties.go`) and symbol discovery (`symbols.go`) **duplicate the interpreter's knowledge
-  by hand** — there is no shared source of truth. When adding/changing a native op
-  (`tool.go`'s `nativeOpCall`) or a declaration property (`agent.go`, `runtime/pipeline.go`),
-  update the matching LSP tables too, or completion will silently drift out of sync.
+  `properties.go`), symbol discovery (`symbols.go`), and the callable-signature catalogue
+  (`signatures.go`, powering completion `detail`/`documentation` and `textDocument/signatureHelp`)
+  **duplicate the interpreter's knowledge by hand** — there is no shared source of truth. When
+  adding/changing a native op (`tool.go`'s `nativeOpCall`), a value method (`eval.go`'s
+  `callValueMethod`), a memory/mcp method, or a declaration property (`agent.go`,
+  `runtime/pipeline.go`), update the matching LSP tables too — including `signatures.go` and
+  `docs/site/stdlib.html`. `signatures_test.go` fails when the method *sets* drift, but not
+  when a signature's parameter list or prose goes stale.
 
 ### Docs vs. implementation
 
