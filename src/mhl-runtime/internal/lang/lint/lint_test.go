@@ -2181,6 +2181,48 @@ pipeline P {
 	}
 }
 
+// TestCheckMCPServerProtocolRejectsUnknownValue proves an mcp_server's
+// `protocol:` is validated the same way retry.backoff is: only "auto",
+// "2026-07-28", "2025-11-25", and "2025-06-18" are accepted, and anything
+// else is a lint finding rather than a silent fall-through to auto.
+func TestCheckMCPServerProtocolRejectsUnknownValue(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+mcp_server Wiki {
+    transport: "stdio"
+    command: "docker"
+    protocol: "1999-01-01"
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `mcp_server "Wiki" protocol "1999-01-01" is not supported`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+// TestCheckMCPServerProtocolAcceptsEveryValidValue proves each of the four
+// recognized `protocol:` values lints clean.
+func TestCheckMCPServerProtocolAcceptsEveryValidValue(t *testing.T) {
+	for _, v := range []string{"auto", "2026-07-28", "2025-11-25", "2025-06-18"} {
+		dir := t.TempDir()
+		main := filepath.Join(dir, "main.mh")
+		write(t, main, `
+mcp_server Wiki {
+    transport: "stdio"
+    command: "docker"
+    protocol: "`+v+`"
+}
+`)
+		if findings := lint.File(main); len(findings) != 0 {
+			t.Errorf("protocol %q: expected 0 findings, got %+v", v, findings)
+		}
+	}
+}
+
 // TestCheckAgentCacheStrategyRejectsUnimplementedValue proves
 // `cache.strategy` is validated: traffic.Cache only implements exact-match
 // caching, so declaring any other strategy must be a lint finding instead

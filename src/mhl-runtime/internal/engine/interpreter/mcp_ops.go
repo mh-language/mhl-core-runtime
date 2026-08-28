@@ -249,8 +249,11 @@ func resolveMCPServerConfig(ctx *evalCtx, server *ast.MCPServer, op string) (mcp
 }
 
 // issueMCPServerCall issues request against cfg and decodes a successful
-// result's raw JSON back into an ordinary MHL value. op names the calling
-// `.mh` method, only for error messages. A "input_required" resultType
+// result's raw JSON back into an ordinary MHL value. Protocol negotiation
+// (stateless SpecVersion first, automatic handshake fallback, or a pinned
+// `protocol:`) happens inside mcp.Client.CallTool, so `.call()`,
+// `.list_tools()`, and `.discover()` all inherit it here for free. op names
+// the calling `.mh` method, only for error messages. A "input_required" resultType
 // (spec 2026-07-28's Multi Round-Trip Requests pattern — the server needs
 // elicitation/sampling input before it can finish) is rejected outright:
 // this client has no way to gather and resubmit `inputResponses`, so

@@ -33,13 +33,34 @@ func BuildRegistry(prog *ast.Program) *Registry {
 }
 
 // BuildRegistryWithError is the fail-closed registry builder. It validates all
-// credential references before returning a registry, so missing credentials
-// cannot become empty command arguments or headers.
+// credential references and `protocol:` values before returning a registry, so
+// a missing credential cannot become an empty argument/header and an
+// unrecognized protocol cannot silently fall through to ProtocolAuto.
 func BuildRegistryWithError(prog *ast.Program) (*Registry, error) {
 	if err := validateCredentials(prog); err != nil {
 		return nil, err
 	}
+	if err := validateServers(prog); err != nil {
+		return nil, err
+	}
 	return BuildRegistry(prog), nil
+}
+
+// validateServers rejects any mcp_server whose `protocol:` is set to a value
+// ParseProtocol does not recognize.
+func validateServers(prog *ast.Program) error {
+	if prog == nil {
+		return nil
+	}
+	for _, d := range prog.Decls {
+		if d == nil || d.MCPServer == nil {
+			continue
+		}
+		if _, err := ast.MCPServerProtocol(d.MCPServer); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateCredentials(prog *ast.Program) error {
@@ -130,6 +151,15 @@ func serverFromAST(m *ast.MCPServer) ServerConfig {
 			cfg.Args = evalStringArray(p.Value)
 		case "headers":
 			cfg.Headers = evalStringObject(p.Value)
+		case "protocol":
+			if v, ok := evalString(p.Value); ok {
+				// A bad value is rejected upstream by validateServers /
+				// mhl lint; ParseProtocol maps anything unrecognized (and
+				// empty) to ProtocolAuto here so the lenient BuildRegistry
+				// path stays usable.
+				proto, _ := ParseProtocol(v)
+				cfg.Protocol = proto
+			}
 		}
 	}
 	return cfg

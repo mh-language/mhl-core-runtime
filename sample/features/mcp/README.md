@@ -9,15 +9,17 @@ Credential resolution is fail-closed — a header referencing an unset env var a
 rather than sending one with an empty value — and no session or connection is kept between calls
 on either transport.
 
-Per spec 2026-07-28 (the revision this client targets — `mcp.SpecVersion`), MCP has no
-`initialize` handshake or protocol-level session: every request is self-describing instead. The
-client sets `params._meta`'s `io.modelcontextprotocol/protocolVersion`, `clientCapabilities`, and
-`clientInfo` (`{name: "mhl"}`) on every request, and on the `http` transport also sends the three
-headers the transport spec requires (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`),
-Base64-sentinel-encoding a header value that isn't safe plain ASCII. A response whose `resultType`
-is `"input_required"` (the Multi Round-Trip Requests pattern — the server wants elicitation/
-sampling input) is rejected with a clear error, since this client can't gather and resubmit that
-input.
+By default (`protocol: "auto"`) the client first tries the stateless `2026-07-28` form —
+`mcp.SpecVersion`, no `initialize` handshake, every request self-describing via `params._meta`'s
+`io.modelcontextprotocol/protocolVersion`, `clientCapabilities`, and `clientInfo` (`{name: "mhl"}`),
+and on `http` the three transport headers (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`).
+If the server rejects that with a protocol-incompatibility error (JSON-RPC `-32602`/`-32600`, or
+HTTP `400`), the client automatically falls back to the standard `initialize` /
+`notifications/initialized` handshake used by MCP revisions `2025-11-25` and `2025-06-18`
+(dropping `_meta`, threading any `Mcp-Session-Id`). `protocol:` can pin any one of `"auto"`,
+`"2026-07-28"`, `"2025-11-25"`, `"2025-06-18"`. A response whose `resultType` is
+`"input_required"` (the Multi Round-Trip Requests pattern — the server wants elicitation/sampling
+input) is rejected with a clear error, since this client can't gather and resubmit that input.
 
 - [stdio_mock_server_proves_tools_call_wiring.mh](stdio_mock_server_proves_tools_call_wiring.mh)
   — a mocked `stdio` server (a one-line shell script standing in for a real one) proves the
@@ -29,6 +31,10 @@ input.
 - [stdio_mock_server_rejects_input_required_result.mh](stdio_mock_server_rejects_input_required_result.mh)
   — a mocked `"input_required"` result proves `.call()` rejects it instead of returning it as if
   it were real tool data
+- [stdio_mock_server_negotiates_handshake_protocol.mh](stdio_mock_server_negotiates_handshake_protocol.mh)
+  — a mocked *handshake* server (`initialize` → `notifications/initialized` → `tools/call`, no
+  `_meta`) proves `protocol: "2025-11-25"` drives that lifecycle, and that `.discover()` maps to
+  the `initialize` result when `server/discover` isn't available
 - [github_mcp_calls_the_real_api.mh](github_mcp_calls_the_real_api.mh) — the real GitHub remote
   MCP server (`https://api.githubcopilot.com/mcp/`) over `http`, gated behind `GITHUB_TOKEN`
   being set to a real personal access token

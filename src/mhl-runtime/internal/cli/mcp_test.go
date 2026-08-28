@@ -2,12 +2,190 @@ package cli_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// handshakeMCPServer is an httptest.Server that speaks the standard MCP
+// connection lifecycle (revisions 2025-11-25 / 2025-06-18): it rejects any POST
+// carrying params._meta with HTTP 400 (as a conformant handshake server does),
+// answers `initialize` with a session id and the negotiated protocol version,
+// `notifications/initialized` with 202, and any other method with a canned
+// result echoing the method name.
+func handshakeMCPServer(t *testing.T, answerVersion string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), `"_meta"`) {
+			http.Error(w, "params._meta not accepted", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			ID     int             `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		_ = json.Unmarshal(body, &req)
+		w.Header().Set("Content-Type", "application/json")
+		switch req.Method {
+		case "initialize":
+			w.Header().Set("Mcp-Session-Id", "sess-abc")
+			_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":{"protocolVersion":%q,"capabilities":{},"serverInfo":{"name":"Wikipedia MCP"}}}`, req.ID, answerVersion)
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusAccepted)
+		case "tools/list":
+			_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":{"tools":[{"name":"get_article"},{"name":"search"}]}}`, req.ID)
+		default:
+			_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":{"echo":%q,"session":%q}}`, req.ID, req.Method, r.Header.Get("Mcp-Session-Id"))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestMCPServerCallHandshakeHTTP proves the interpreter wires a `protocol:`
+// pinned handshake through to features/mcp: `.call()` completes the
+// initialize / notifications/initialized sequence and the tool result lands
+// back as an ordinary MHL value.
+func TestMCPServerCallHandshakeHTTP(t *testing.T) {
+	srv := handshakeMCPServer(t, "2025-06-18")
+	src := `
+mcp_server Wiki {
+    transport: "http"
+    url: "` + srv.URL + `"
+    protocol: "2025-06-18"
+}
+` + wrapStep(`
+        var result = Wiki.call("get_article", { title: "Model Context Protocol" })
+        log("echo: ${result.echo}")
+        log("session: ${result.session}")
+    `)
+
+	out, err := run(t, src)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "echo: tools/call\n") {
+		t.Errorf("output missing decoded handshake result, got: %s", out)
+	}
+	if !strings.Contains(out, "session: sess-abc\n") {
+		t.Errorf("session id not threaded through to the real call, got: %s", out)
+	}
+}
+
+// TestMCPServerListToolsAndDiscoverHandshakeHTTP proves `.list_tools()` and
+// `.discover()` inherit the same handshake negotiation. `.discover()` has no
+// `server/discover` method to call in this revision, so it surfaces the
+// initialize result's identity instead.
+func TestMCPServerListToolsAndDiscoverHandshakeHTTP(t *testing.T) {
+	srv := handshakeMCPServer(t, "2025-11-25")
+	src := `
+mcp_server Wiki {
+    transport: "http"
+    url: "` + srv.URL + `"
+    protocol: "2025-11-25"
+}
+` + wrapStep(`
+        var tools = Wiki.list_tools()
+        log("tool count: ${tools.tools.size()}")
+        var info = Wiki.discover()
+        log("protocol: ${info.protocolVersion}")
+        log("name: ${info.serverInfo.name}")
+    `)
+
+	out, err := run(t, src)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "tool count: 2\n") {
+		t.Errorf("output missing decoded tool count, got: %s", out)
+	}
+	if !strings.Contains(out, "protocol: 2025-11-25\n") {
+		t.Errorf("discover should surface the initialize result, got: %s", out)
+	}
+	if !strings.Contains(out, "name: Wikipedia MCP\n") {
+		t.Errorf("discover should surface serverInfo, got: %s", out)
+	}
+}
+
+// TestMCPServerCallAutoNegotiatesHandshakeHTTP proves the default `auto` mode
+// falls back: the first stateless attempt is rejected (HTTP 400 on _meta) and
+// the call still succeeds via the handshake, with no `protocol:` declared.
+func TestMCPServerCallAutoNegotiatesHandshakeHTTP(t *testing.T) {
+	srv := handshakeMCPServer(t, "2025-11-25")
+	src := `
+mcp_server Wiki {
+    transport: "http"
+    url: "` + srv.URL + `"
+}
+` + wrapStep(`
+        var result = Wiki.call("get_article", { title: "MCP" })
+        log("echo: ${result.echo}")
+    `)
+
+	out, err := run(t, src)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "echo: tools/call\n") {
+		t.Errorf("auto mode should have fallen back to the handshake, got: %s", out)
+	}
+}
+
+// TestMCPServerCallHandshakeStdio proves the stdio transport also completes the
+// handshake: a mock shell server does the three-read initialize / initialized /
+// call exchange on one long-lived process.
+func TestMCPServerCallHandshakeStdio(t *testing.T) {
+	initResp := `{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"serverInfo\":{\"name\":\"mock\"}}}`
+	callResp := `{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"article\":\"Model Context Protocol\"}}`
+	script := `read a; printf '` + initResp + `\n'; read b; read c; printf '` + callResp + `\n'`
+	src := `
+mcp_server Wiki {
+    transport: "stdio"
+    command: "sh"
+    args: ["-c", "` + script + `"]
+    protocol: "2025-11-25"
+}
+` + wrapStep(`
+        var result = Wiki.call("get_article", { title: "MCP" })
+        log("article: ${result.article}")
+    `)
+
+	out, err := run(t, src)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "article: Model Context Protocol\n") {
+		t.Errorf("output missing decoded handshake result, got: %s", out)
+	}
+}
+
+// TestMCPServerProtocolUnknownValueRejected proves BuildRegistryWithError
+// fails closed on an unrecognized `protocol:` value, naming the server and the
+// bad value.
+func TestMCPServerProtocolUnknownValueRejected(t *testing.T) {
+	src := `
+mcp_server Wiki {
+    transport: "stdio"
+    command: "sh"
+    protocol: "1999-01-01"
+}
+` + wrapStep(`
+        var result = Wiki.call("get_article", {})
+    `)
+
+	_, err := run(t, src)
+	if err == nil {
+		t.Fatal("expected an error for an unrecognized protocol value, got nil")
+	}
+	if !strings.Contains(err.Error(), `Wiki`) || !strings.Contains(err.Error(), "1999-01-01") {
+		t.Errorf("error should name the server and the bad value, got: %v", err)
+	}
+}
 
 // TestMCPServerCallDispatchesToolsCallOverHTTP proves the end-to-end wiring
 // added for `<mcp_server>.call(...)`: a declared mcp_server's `http`
