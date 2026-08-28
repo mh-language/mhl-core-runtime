@@ -236,7 +236,7 @@ func buildRequest(request ToolRequest) ([]byte, error) {
 	params["_meta"] = RequestMeta{
 		ProtocolVersion:    SpecVersion,
 		ClientCapabilities: map[string]interface{}{},
-		ClientInfo:         mhlClientInfo,
+		ClientInfo:         mhlClientInfo(),
 	}
 	p, err := json.Marshal(params)
 	if err != nil {

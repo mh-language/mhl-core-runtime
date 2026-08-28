@@ -68,7 +68,7 @@ func buildInitializeRequest(version string, id int) ([]byte, error) {
 	p, err := json.Marshal(handshakeInitializeParams{
 		ProtocolVersion: version,
 		Capabilities:    map[string]interface{}{},
-		ClientInfo:      mhlClientInfo,
+		ClientInfo:      mhlClientInfo(),
 	})
 	if err != nil {
 		return nil, err

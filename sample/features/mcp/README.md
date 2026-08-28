@@ -11,7 +11,7 @@ on either transport.
 
 By default (`protocol: "auto"`) the client first tries the stateless `2026-07-28` form —
 `mcp.SpecVersion`, no `initialize` handshake, every request self-describing via `params._meta`'s
-`io.modelcontextprotocol/protocolVersion`, `clientCapabilities`, and `clientInfo` (`{name: "mhl"}`),
+`io.modelcontextprotocol/protocolVersion`, `clientCapabilities`, and `clientInfo` (`{name: "mhl", version}`),
 and on `http` the three transport headers (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`).
 If the server rejects that with a protocol-incompatibility error (JSON-RPC `-32602`/`-32600`, or
 HTTP `400`), the client automatically falls back to the standard `initialize` /

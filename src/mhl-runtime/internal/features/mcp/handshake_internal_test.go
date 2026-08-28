@@ -74,6 +74,9 @@ func TestBuildInitializeRequestAdvertisesVersion(t *testing.T) {
 	if p.ClientInfo == nil || p.ClientInfo.Name != "mhl" {
 		t.Errorf("clientInfo = %+v, want {name: mhl}", p.ClientInfo)
 	}
+	if p.ClientInfo != nil && p.ClientInfo.Version == "" {
+		t.Error("clientInfo.version must be non-empty — some servers reject an empty version")
+	}
 	if p.Capabilities == nil {
 		t.Error("capabilities must be present (empty object)")
 	}

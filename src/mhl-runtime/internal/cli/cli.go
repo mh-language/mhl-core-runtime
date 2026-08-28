@@ -17,6 +17,7 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
+	"github.com/mh-language/mhl-core-runtime/internal/features/mcp"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
@@ -32,6 +33,11 @@ import (
 // built outside that Makefile (or without a tag reachable from HEAD) always
 // says "dev" rather than a stale or fabricated version number.
 var Version = "dev"
+
+// The MCP client (internal/features/mcp) reports a clientInfo.version on its
+// handshake; it sits below this package in the dependency order and can't read
+// Version itself, so hand it over. Some MCP servers reject an empty version.
+func init() { mcp.ClientVersion = Version }
 
 // Run dispatches a mhl subcommand. It writes user-facing output to out and
 // returns a non-nil error on failure.

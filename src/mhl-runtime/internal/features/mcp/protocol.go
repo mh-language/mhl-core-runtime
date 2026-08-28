@@ -109,20 +109,30 @@ type RequestMeta struct {
 	ClientInfo         *ClientInfo            `json:"io.modelcontextprotocol/clientInfo,omitempty"`
 }
 
-// ClientInfo self-identifies this client in a request's `_meta` — purely
-// informational (spec: "not verified by the protocol... intended for
-// display, logging, and debugging"). Version is deliberately left empty:
-// this package sits below internal/cli in mhl's dependency order (lang →
-// engine → features → cli), so it has no access to cli.Version, and adding
-// a second, package-local version constant that could drift from the real
-// one would be worse than reporting none.
+// ClientInfo self-identifies this client in a request's `_meta` / the
+// handshake `initialize` params. The spec calls it informational only ("not
+// verified by the protocol... intended for display, logging, and debugging"),
+// but some servers (e.g. the wikipedia-mcp Docker image) reject a handshake
+// whose `clientInfo.version` is empty — so this client always sends a
+// non-empty Version.
 type ClientInfo struct {
 	Name    string `json:"name"`
-	Version string `json:"version,omitempty"`
+	Version string `json:"version"`
 }
 
-// mhlClientInfo is the fixed self-identification every request carries.
-var mhlClientInfo = &ClientInfo{Name: "mhl"}
+// ClientVersion is the string reported as clientInfo.version. internal/cli
+// overwrites it with its own build Version at startup; this package sits below
+// internal/cli in the dependency order (lang → engine → features → cli) and
+// cannot import it, so the "0" fallback is what a direct library user or a
+// test that never goes through cli reports — non-empty on purpose (see
+// ClientInfo).
+var ClientVersion = "0"
+
+// mhlClientInfo is this client's self-identification, rebuilt per call so a
+// ClientVersion that internal/cli sets after package init is picked up.
+func mhlClientInfo() *ClientInfo {
+	return &ClientInfo{Name: "mhl", Version: ClientVersion}
+}
 
 // handshakeInitializeParams is the `params` of the `initialize` request that
 // opens a handshake session (MCP 2025-11-25 / 2025-06-18 §Lifecycle). mhl is a

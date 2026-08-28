@@ -786,6 +786,7 @@ func TestCallToolAutoBothProtocolsFailNamesBothStdio(t *testing.T) {
 type handshakeCapture struct {
 	requests            int
 	initAdvertised      string
+	initClientVersion   string
 	initializedSession  string
 	realSession         string
 	realProtoHeader     string
@@ -810,9 +811,13 @@ func newHandshakeHTTPServer(t *testing.T, answerVersion string, rejectMeta bool)
 		case "initialize":
 			var p struct {
 				ProtocolVersion string `json:"protocolVersion"`
+				ClientInfo      struct {
+					Version string `json:"version"`
+				} `json:"clientInfo"`
 			}
 			_ = json.Unmarshal(msg.Params, &p)
 			capture.initAdvertised = p.ProtocolVersion
+			capture.initClientVersion = p.ClientInfo.Version
 			ver := p.ProtocolVersion
 			if answerVersion != "" {
 				ver = answerVersion
@@ -853,6 +858,9 @@ func TestCallToolHTTPHandshake(t *testing.T) {
 	}
 	if capture.initAdvertised != "2025-11-25" {
 		t.Errorf("initialize advertised %q, want 2025-11-25", capture.initAdvertised)
+	}
+	if capture.initClientVersion == "" {
+		t.Error("initialize clientInfo.version must be non-empty — some servers reject an empty version")
 	}
 	if capture.initializedSession != "sess-123" || capture.realSession != "sess-123" {
 		t.Errorf("session id not echoed: initialized=%q real=%q", capture.initializedSession, capture.realSession)
