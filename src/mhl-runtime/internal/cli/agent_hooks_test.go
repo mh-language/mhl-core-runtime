@@ -6,13 +6,13 @@ import (
 )
 
 // TestAgentBeforeHookFetchesRealDataForPromptInterpolation proves the
-// end-to-end wiring for `before: (mcp, tool) -> {...}`: the hook's `mcp`/
-// `tool` parameters are maps navigable by declared name
-// (`mcp.GitHub.call(...)`, `tool.execution.read_file(...)`), its returned
+// end-to-end wiring for `before: (mcp, tools) -> {...}`: the hook's `mcp`/
+// `tools` parameters are maps navigable by declared name
+// (`mcp.GitHub.call(...)`, `tools.execution.read_file(...)`), its returned
 // object's fields become real "${...}" bindings in the prompt, and `after`
 // post-processes the agent's response. Unlike the `tools:`/`mcp_servers:`
 // scope text (agent_scope.go), nothing here is a hint the model may ignore
-// — mcp/tool are real calls executed by mhl itself before the agent ever
+// — mcp/tools are real calls executed by mhl itself before the agent ever
 // runs.
 func TestAgentBeforeHookFetchesRealDataForPromptInterpolation(t *testing.T) {
 	src := `
@@ -22,12 +22,12 @@ agent Echo {
     tools: [execution]
     mcp_servers: [GitHub]
 
-    before: (mcp, tool) -> {
+    before: (mcp, tools) -> {
         var mcp_result = mcp.GitHub.call("search", {})
-        var tool_result = tool.execution.read_file("x")
+        var tool_result = tools.execution.read_file("x")
         return { mcp_result: mcp_result, tool_result: tool_result }
     }
-    after: (mcp, tool, result) -> {
+    after: (mcp, tools, result) -> {
         return result + " [processed]"
     }
 }
@@ -63,7 +63,7 @@ mcp_server GitHub {
 
 // TestAgentBeforeHookNavigatesMultipleToolsAndMCPServers proves that
 // declaring more than one entry in `tools:`/`mcp_servers:` makes every one
-// of them reachable by name off the hook's `mcp`/`tool` maps — not just
+// of them reachable by name off the hook's `mcp`/`tools` maps — not just
 // the first, which a single-reference design would have left stranded.
 func TestAgentBeforeHookNavigatesMultipleToolsAndMCPServers(t *testing.T) {
 	src := `
@@ -73,10 +73,10 @@ agent Echo {
     tools: [execution, storage]
     mcp_servers: [GitHub, Jira]
 
-    before: (mcp, tool) -> {
+    before: (mcp, tools) -> {
         return {
-            a: tool.execution.read_file("x"),
-            b: tool.storage.write_json("y"),
+            a: tools.execution.read_file("x"),
+            b: tools.storage.write_json("y"),
             c: mcp.GitHub.call("search", {}),
             d: mcp.Jira.call("search", {})
         }
@@ -143,8 +143,8 @@ agent Echo {
 // TestAgentBeforeHookCannotReachUndeclaredTool proves the scoping is real:
 // a before hook only receives handles to the agent's own declared
 // tools:/mcp_servers:, not any other declaration in the program — calling
-// a method through the `tool` map when the agent declared no `tools:` at
-// all (so `tool` is nil, not a map with anything in it) fails instead of
+// a method through the `tools` map when the agent declared no `tools:` at
+// all (so `tools` is nil, not a map with anything in it) fails instead of
 // silently reaching some other global declaration.
 func TestAgentBeforeHookCannotReachUndeclaredTool(t *testing.T) {
 	src := `
@@ -152,8 +152,8 @@ agent Echo {
     command: "echo"
     args: ["${prompt}"]
 
-    before: (mcp, tool) -> {
-        var x = tool.execution.read_file("x")
+    before: (mcp, tools) -> {
+        var x = tools.execution.read_file("x")
         return { mcp_result: "", tool_result: x }
     }
 }
@@ -167,7 +167,7 @@ tool execution {
 
 	_, err := run(t, src)
 	if err == nil {
-		t.Fatal("expected an error navigating the tool map when no tools: were declared, got nil")
+		t.Fatal("expected an error navigating the tools map when no tools: were declared, got nil")
 	}
 }
 
@@ -183,8 +183,8 @@ agent Echo {
     args: ["${prompt}"]
     tools: [execution.read_file]
 
-    before: (mcp, tool) -> {
-        var x = tool.execution.write_file("x", "y")
+    before: (mcp, tools) -> {
+        var x = tools.execution.write_file("x", "y")
         return { mcp_result: "", tool_result: x }
     }
 }
@@ -215,8 +215,8 @@ agent Echo {
     args: ["${prompt}"]
     tools: [execution.read_file]
 
-    before: (mcp, tool) -> {
-        return { mcp_result: "", tool_result: tool.execution.read_file("x") }
+    before: (mcp, tools) -> {
+        return { mcp_result: "", tool_result: tools.execution.read_file("x") }
     }
 }
 
@@ -250,8 +250,8 @@ agent Echo {
     args: ["${prompt}"]
     tools: [execution.read_file, execution]
 
-    before: (mcp, tool) -> {
-        return { mcp_result: "", tool_result: tool.execution.write_file("x", "y") }
+    before: (mcp, tools) -> {
+        return { mcp_result: "", tool_result: tools.execution.write_file("x", "y") }
     }
 }
 
@@ -282,7 +282,7 @@ agent Echo {
     command: "echo"
     args: ["${prompt}"]
 
-    after: (mcp, tool, result) -> {
+    after: (mcp, tools, result) -> {
         log("saw response: ${result}")
     }
 }

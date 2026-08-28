@@ -7,10 +7,10 @@ export agent Reviewer {
     retry: { max_attempts: 3, delay: 2s, retry_on: [500, "timeout"] }
     cache: { ttl: 1h, storage: "disk" }
     rate_limit: { requests_per_minute: 30, concurrency: 2 }
-    before: (mcp, tool) -> {
-        return { diff: tool.execution.git_diff() }
+    before: (mcp, tools) -> {
+        return { diff: tools.execution.git_diff() }
     }
-    after: (mcp, tool, result) -> {
+    after: (mcp, tools, result) -> {
         log("review is ${result.size()} characters")
     }
     fallback: [Backup]

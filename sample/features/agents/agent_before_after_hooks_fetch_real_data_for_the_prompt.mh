@@ -15,16 +15,16 @@ agent Echo {
     // fields become "${...}" bindings the prompt argument can interpolate
     // — real fetched data, not a hope that the model reads and acts on an
     // instruction.
-    before: (mcp, tool) -> {
+    before: (mcp, tools) -> {
         var mcp_result = mcp.GitHub.call("search_repositories", { query: "mhl" })
-        var tool_result = tool.execution.read_file("README.md")
+        var tool_result = tools.execution.read_file("README.md")
         return { mcp_result: mcp_result, tool_result: tool_result }
     }
 
     // `after` runs once, on whichever leg (primary or fallback) produced
     // the final response — a plain side effect here, but a non-nil string
     // return would replace what `.run()` gives back to the caller.
-    after: (mcp, tool, result) -> {
+    after: (mcp, tools, result) -> {
         log("agent responded with ${result.size()} character(s)")
     }
 }

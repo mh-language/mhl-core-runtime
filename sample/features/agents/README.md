@@ -32,13 +32,13 @@ environment — they need real network access and credentials, not just `mhl tes
   allowed-scope instruction (best-effort only — see `sample/features/mcp/` for the mcp_server
   side of this)
 - [agent_before_after_hooks_fetch_real_data_for_the_prompt.mh](agent_before_after_hooks_fetch_real_data_for_the_prompt.mh)
-  — `before: (mcp, tool) -> {...}` calls the agent's declared mcp_server/tool for real before the
-  prompt is built, feeding its result into `${...}` interpolation; `after: (mcp, tool, result) ->
+  — `before: (mcp, tools) -> {...}` calls the agent's declared mcp_server/tool for real before the
+  prompt is built, feeding its result into `${...}` interpolation; `after: (mcp, tools, result) ->
   {...}` runs once the response is in. Unlike `tools:`/`mcp_servers:`'s prompt text, this is real
   data mhl fetched itself, not a hint the model may ignore
 - [agent_before_hook_navigates_multiple_tools_and_mcp_servers.mh](agent_before_hook_navigates_multiple_tools_and_mcp_servers.mh)
-  — `mcp`/`tool` are maps keyed by declared name, so a `before` hook can reach every entry in
+  — `mcp`/`tools` are maps keyed by declared name, so a `before` hook can reach every entry in
   `tools:`/`mcp_servers:`, not just the first
 - [agent_before_hook_scopes_tool_access_by_method.mh](agent_before_hook_scopes_tool_access_by_method.mh)
-  — a dotted `tools:` entry (`execution.read_file`) narrows a hook's `tool.execution` binding to
+  — a dotted `tools:` entry (`execution.read_file`) narrows a hook's `tools.execution` binding to
   exactly that method; naming the same tool bare anywhere in the list removes the restriction

@@ -293,9 +293,9 @@ var result = json.parse(raw)</code></pre>
             <div class="table-row"><span><code>cache</code></span><code>{ttl: 1h, storage: "disk"}</code><span>Reuses a response by exact key.</span></div>
             <div class="table-row"><span><code>rate_limit</code></span><code>{requests_per_minute: 20, concurrency: 2}</code><span>Controls frequency and concurrency.</span></div>
             <div class="table-row"><span><code>fallback</code></span><code>[Backup, agent {...}]</code><span>Tries agents in declaration order.</span></div>
-            <div class="table-row"><span><code>tools</code> / <code>mcp_servers</code></span><code>[execution] · [GitHub]</code><span>Folded into every <code>.run()</code> prompt as an allowed-scope instruction, and what <code>before</code>/<code>after</code> below bind their <code>tool</code>/<code>mcp</code> parameters to.</span></div>
-            <div class="table-row"><span><code>before</code></span><code>(mcp, tool) -> {...}</code><span>Runs once, before the prompt is built.</span></div>
-            <div class="table-row"><span><code>after</code></span><code>(mcp, tool, result) -> {...}</code><span>Runs once, on the final response.</span></div>
+            <div class="table-row"><span><code>tools</code> / <code>mcp_servers</code></span><code>[execution] · [GitHub]</code><span>Folded into every <code>.run()</code> prompt as an allowed-scope instruction, and what <code>before</code>/<code>after</code> below bind their <code>tools</code>/<code>mcp</code> parameters to.</span></div>
+            <div class="table-row"><span><code>before</code></span><code>(mcp, tools) -> {...}</code><span>Runs once, before the prompt is built.</span></div>
+            <div class="table-row"><span><code>after</code></span><code>(mcp, tools, result) -> {...}</code><span>Runs once, on the final response.</span></div>
           </div>
           <div class="security-banner"><span>!</span><div><strong>Do not place secrets in <code>args</code>.</strong><p>Prefer environment variables resolved by the invoked process. To preserve spaces and special characters in prompts, keep <code>"${prompt}"</code> as one complete array element.</p></div></div>
 
@@ -307,13 +307,13 @@ var result = json.parse(raw)</code></pre>
     tools: [execution]
     mcp_servers: [GitHub]
 
-    before: (mcp, tool) -> {
+    before: (mcp, tools) -> {
         return {
             issue: mcp.GitHub.call("get_issue", { number: 42 }),
-            diff: tool.execution.git_diff()
+            diff: tools.execution.git_diff()
         }
     }
-    after: (mcp, tool, result) -> {
+    after: (mcp, tools, result) -> {
         log("review is ${result.size()} characters")
     }
 }
@@ -322,7 +322,7 @@ var review = Reviewer.run(
     prompt: "Issue: ${issue}\nDiff: ${diff}\nWrite a review."
 )</code></pre>
           <ul class="plain-list">
-            <li><code>mcp</code>/<code>tool</code> are maps keyed by declared name — <code>mcp.GitHub</code>, <code>tool.execution</code> — covering every entry in that agent's own <code>mcp_servers:</code>/<code>tools:</code>, not any other declaration in the program.</li>
+            <li><code>mcp</code>/<code>tools</code> are maps keyed by declared name — <code>mcp.GitHub</code>, <code>tools.execution</code> — covering every entry in that agent's own <code>mcp_servers:</code>/<code>tools:</code>, not any other declaration in the program.</li>
             <li>A dotted entry in <code>tools:</code> (<code>tools: [execution.read_file]</code>) narrows that tool's binding to just that method; calling any other method on it is rejected. Naming the same tool bare anywhere in the list removes the restriction.</li>
             <li><code>before</code>'s returned object's fields become real <code>"${...}"</code> bindings available to that call's <code>prompt:</code>/<code>schema:</code> arguments.</li>
             <li><code>after</code> runs once, against whichever leg — the primary agent or a successful <code>fallback</code> — produced the final response. A non-<code>null</code> string return replaces that response; anything else (including no <code>return</code>) passes it through unchanged.</li>

@@ -9,11 +9,11 @@ import (
 
 // toolRef and mcpServerRef are first-class runtime values binding to one
 // declared `tool`/`mcp_server` — what a hook navigates to by name off its
-// `tool`/`mcp` parameter (see hookRefValues). Unlike a bare declaration
+// `tools`/`mcp` parameter (see hookRefValues). Unlike a bare declaration
 // name (which findTool/findMCPServer resolve globally, against the whole
 // program), a value of one of these types only exists inside the map the
-// hook call binds `tool`/`mcp` to: applyTrailers' dispatch (eval.go) is
-// what makes `tool.execution.read_file(...)`/`mcp.GitHub.call(...)` work
+// hook call binds `tools`/`mcp` to: applyTrailers' dispatch (eval.go) is
+// what makes `tools.execution.read_file(...)`/`mcp.GitHub.call(...)` work
 // off a map field holding one of these, reusing the exact same
 // evalToolCall/evalMCPServerCall a declared name's own dispatch already
 // calls into. This is real scoping, not the best-effort prompt-text kind
@@ -40,10 +40,10 @@ type mcpServerRef struct{ server *ast.MCPServer }
 
 // hookRefValues resolves an agent's declared `tools:`/`mcp_servers:` scope
 // (agentToolScope, agent_scope.go) into the two bound values a `before`/
-// `after` hook receives: `tool`/`mcp` are each a map from declared name to
+// `after` hook receives: `tools`/`mcp` are each a map from declared name to
 // a *toolRef/*mcpServerRef, one entry per distinct tool/mcp_server named in
-// `tools:`/`mcp_servers:` — so `before: (mcp, tool) -> {
-// tool.execution.read_file(...) }` navigates to whichever of the agent's
+// `tools:`/`mcp_servers:` — so `before: (mcp, tools) -> {
+// tools.execution.read_file(...) }` navigates to whichever of the agent's
 // declared tools it needs by name, not just a single implicit one. Either
 // return is nil when the agent declares none of that kind, or when every
 // declared name failed to resolve (already caught earlier by
@@ -122,12 +122,12 @@ func evalHookClosure(ctx *evalCtx, agentName, hookName string, expr *ast.Expr, d
 	}
 	closure, ok := v.(*Closure)
 	if !ok {
-		return nil, fmt.Errorf("%s.%s must be a lambda, e.g. (mcp, tool) -> { ... }", agentName, hookName)
+		return nil, fmt.Errorf("%s.%s must be a lambda, e.g. (mcp, tools) -> { ... }", agentName, hookName)
 	}
 	return closure, nil
 }
 
-// runAgentBeforeHook evaluates an agent's `before: (mcp, tool) -> {...}`
+// runAgentBeforeHook evaluates an agent's `before: (mcp, tools) -> {...}`
 // hook, if declared, and returns the object it returned — nil, nil when
 // the agent declares no `before` at all. The hook is an ordinary closure
 // (newClosure/evalPrimary's Lambda case), so it captures ctx's env at the
@@ -139,8 +139,8 @@ func evalHookClosure(ctx *evalCtx, agentName, hookName string, expr *ast.Expr, d
 // pipeline hand an agent real, already-fetched data instead of hoping the
 // model reads and acts on a text instruction: its returned object's fields
 // become named bindings runAgent makes available to the prompt's own
-// "${...}" interpolation, so `before: (mcp, tool) -> { return {mcp_result:
-// mcp.GitHub.call(...), tool_result: tool.execution.method(...)} }` really
+// "${...}" interpolation, so `before: (mcp, tools) -> { return {mcp_result:
+// mcp.GitHub.call(...), tool_result: tools.execution.method(...)} }` really
 // does make `${mcp_result}`/`${tool_result}` resolve inside `prompt: "..."`
 // — with real, already-executed values, not a hint the model may or may
 // not act on.
@@ -168,7 +168,7 @@ func runAgentBeforeHook(ctx *evalCtx, agentName string, agent *ast.Agent, depth 
 	return obj, nil
 }
 
-// runAgentAfterHook evaluates an agent's `after: (mcp, tool, result) ->
+// runAgentAfterHook evaluates an agent's `after: (mcp, tools, result) ->
 // {...}` hook, if declared, against response — response unchanged, nil
 // when the agent declares no `after`. A non-nil string return replaces
 // response as what `.run()` ultimately returns to the caller; any other

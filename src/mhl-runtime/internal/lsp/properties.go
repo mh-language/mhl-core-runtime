@@ -72,8 +72,8 @@ var agentPropertyItems = []completionItem{
 	propertyItem("fallback", "array of inline agent {...} literals or declared agent names"),
 	propertyItem("tools", "array of declared tool names or tool.method references; folded into every .run() prompt as an allowed-scope instruction"),
 	propertyItem("mcp_servers", "array of declared mcp_server names; folded into every .run() prompt as an allowed-scope instruction"),
-	propertyItem("before", "(mcp, tool) -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),
-	propertyItem("after", "(mcp, tool, result) -> {...}: runs once on the final response; a returned string replaces it"),
+	propertyItem("before", "(mcp, tools) -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),
+	propertyItem("after", "(mcp, tools, result) -> {...}: runs once on the final response; a returned string replaces it"),
 }
 
 // mcpServerPropertyItems mirrors registry.serverFromAST's field switch

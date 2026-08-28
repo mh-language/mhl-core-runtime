@@ -6,13 +6,13 @@ agent Echo {
     tools: [execution, storage]
     mcp_servers: [GitHub, Jira]
 
-    // `mcp`/`tool` are maps keyed by declared name, one entry per item in
+    // `mcp`/`tools` are maps keyed by declared name, one entry per item in
     // `mcp_servers:`/`tools:` — every declared tool/server is reachable,
     // not just the first one.
-    before: (mcp, tool) -> {
+    before: (mcp, tools) -> {
         return {
-            file_result: tool.execution.read_file("main.go"),
-            json_result: tool.storage.write_json("main.go"),
+            file_result: tools.execution.read_file("main.go"),
+            json_result: tools.storage.write_json("main.go"),
             github_result: mcp.GitHub.call("search", {}),
             jira_result: mcp.Jira.call("search", {})
         }

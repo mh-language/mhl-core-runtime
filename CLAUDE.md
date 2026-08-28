@@ -131,7 +131,7 @@ letting a second copy of this explanation drift. For agents specifically,
 `mcp_servers`, `before`, `after` — `tools`/`mcp_servers` fold into every `.run()` call as an
 explicit allowed-scope instruction in the prompt (best-effort only; mhl has no structural channel
 to enforce it against a CLI-backed agent), while `before`/`after` (agent_hooks.go) are real:
-`before: (mcp, tool) -> {...}` runs before the prompt is built, with `mcp`/`tool` bound to maps of
+`before: (mcp, tools) -> {...}` runs before the prompt is built, with `mcp`/`tools` bound to maps of
 exactly that agent's declared `mcp_servers:`/`tools:`, and its returned object's fields become
 `${...}` bindings the prompt can interpolate. Fields the docs may still show (`api_key`,
 `timeout`, `system_instructions`) are not read anywhere in `agent.go` and are silently ignored if

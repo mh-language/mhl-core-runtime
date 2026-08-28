@@ -1,5 +1,5 @@
 // A dotted `tools:` entry (`execution.read_file`) narrows a before/after
-// hook's `tool.execution` binding to exactly that method — every other
+// hook's `tools.execution` binding to exactly that method — every other
 // method the tool declares stays unreachable through the hook, even
 // though `execution` itself has more than one.
 agent Restricted {
@@ -7,8 +7,8 @@ agent Restricted {
     args: ["${prompt}"]
     tools: [execution.read_file]
 
-    before: (mcp, tool) -> {
-        return { result: tool.execution.write_file("x", "y") }
+    before: (mcp, tools) -> {
+        return { result: tools.execution.write_file("x", "y") }
     }
 }
 
@@ -17,8 +17,8 @@ agent Allowed {
     args: ["${prompt}"]
     tools: [execution.read_file]
 
-    before: (mcp, tool) -> {
-        return { result: tool.execution.read_file("x") }
+    before: (mcp, tools) -> {
+        return { result: tools.execution.read_file("x") }
     }
 }
 
@@ -30,8 +30,8 @@ agent Unrestricted {
     args: ["${prompt}"]
     tools: [execution.read_file, execution]
 
-    before: (mcp, tool) -> {
-        return { result: tool.execution.write_file("x", "y") }
+    before: (mcp, tools) -> {
+        return { result: tools.execution.write_file("x", "y") }
     }
 }
 
