@@ -82,6 +82,17 @@ func TestSignatureHelpDeclaredMemory(t *testing.T) {
 	}
 }
 
+func TestSignatureHelpDeclaredA2AAgent(t *testing.T) {
+	src, pos := posAtMarker(t, "a2a_agent Remote {\n url: \"http://x/a2a\"\n}\npipeline P {\n step S {\n  Remote.send(§)\n }\n}\n")
+	sh := signatureHelpAt("main.mh", src, pos)
+	if sh == nil {
+		t.Fatal("expected signature help inside Remote.send(...)")
+	}
+	if !strings.HasPrefix(sh.Signatures[0].Label, "send(message: string, context?: string)") {
+		t.Errorf("label = %q", sh.Signatures[0].Label)
+	}
+}
+
 func TestSignatureHelpOutsideAnyCallIsNil(t *testing.T) {
 	src, pos := posAtMarker(t, "pipeline P {\n step S {\n  var x = 1 §\n }\n}\n")
 	if sh := signatureHelpAt("main.mh", src, pos); sh != nil {

@@ -23,6 +23,7 @@ const (
 	symPrompt
 	symPipeline
 	symMCPServer
+	symA2AAgent
 	symNative
 	symString
 	symArray
@@ -43,6 +44,8 @@ func (k symbolKind) label() string {
 		return "pipeline"
 	case symMCPServer:
 		return "mcp_server"
+	case symA2AAgent:
+		return "a2a_agent"
 	case symNative:
 		return "native"
 	case symString:
@@ -86,6 +89,8 @@ func symbolsFromProgram(prog *ast.Program) []symbol {
 			syms = append(syms, symbol{Name: decl.Pipeline.Name, Kind: symPipeline})
 		case decl.MCPServer != nil:
 			syms = append(syms, symbol{Name: decl.MCPServer.Name, Kind: symMCPServer, Methods: mcpServerMethods})
+		case decl.A2AAgent != nil:
+			syms = append(syms, symbol{Name: decl.A2AAgent.Name, Kind: symA2AAgent, Methods: a2aAgentMethods})
 		}
 	}
 	return syms
@@ -108,6 +113,11 @@ func memoryMethods(mem *ast.Memory) []string {
 // exposes to `.mh` code today.
 var mcpServerMethods = []string{"call", "list_tools", "discover"}
 
+// a2aAgentMethods mirrors internal/engine/interpreter/a2a_ops.go's
+// evalA2AAgentCall dispatch — the only operations a declared a2a_agent
+// exposes to `.mh` code today.
+var a2aAgentMethods = []string{"send", "agent_card", "get_task", "cancel"}
+
 func memoryMethodsForType(memType string) []string {
 	switch memType {
 	case "kv", "json":
@@ -129,7 +139,7 @@ func memoryMethodsForType(memType string) []string {
 // when the buffer won't parse. An optional leading `loop` (as in `loop
 // pipeline X`) is skipped, not captured — it's a modifier on `pipeline`, not
 // a declaration kind of its own.
-var declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|memory|tool|prompt|pipeline|mcp_server)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+var declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|memory|tool|prompt|pipeline|mcp_server|a2a_agent)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 
 func symbolsFromText(src string) []symbol {
 	var syms []symbol
@@ -148,6 +158,8 @@ func symbolsFromText(src string) []symbol {
 			s.Methods = toolMethodsFromText(src, m[2])
 		case symMCPServer:
 			s.Methods = mcpServerMethods
+		case symA2AAgent:
+			s.Methods = a2aAgentMethods
 		}
 		syms = append(syms, s)
 	}
@@ -242,6 +254,8 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 		return symPipeline, true
 	case "mcp_server":
 		return symMCPServer, true
+	case "a2a_agent":
+		return symA2AAgent, true
 	}
 	return 0, false
 }

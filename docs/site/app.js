@@ -27,7 +27,7 @@
     'import from use as export loop var mem if else while try catch finally return break goto for in self fail'.split(' ')
   );
   const declarations = new Set(
-    'agent memory tool pipeline prompt mcp_server step input output test describe'.split(' ')
+    'agent memory tool pipeline prompt mcp_server a2a_agent step input output test describe'.split(' ')
   );
   const constants = new Set(['true', 'false', 'null']);
 

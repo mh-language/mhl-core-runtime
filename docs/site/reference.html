@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Self-contained MHL language reference: syntax, agents, prompts, memory, tools, MCP, pipelines, and tests." />
+    <meta name="description" content="Self-contained MHL language reference: syntax, agents, prompts, memory, tools, MCP, A2A, pipelines, and tests." />
     <meta name="theme-color" content="#10161f" />
     <meta property="og:title" content="MHL Reference — Meta-Harness Language" />
     <meta property="og:description" content="Syntax and complete examples for every MHL construct." />
@@ -50,6 +50,7 @@
           <a class="nav-link" href="#memory">memory and mem</a>
           <a class="nav-link" href="#tool">tool and native ops</a>
           <a class="nav-link" href="#mcp">mcp_server</a>
+          <a class="nav-link" href="#a2a">a2a_agent</a>
           <a class="nav-link" href="#pipeline">pipeline</a>
           <a class="nav-link" href="#tests">test and describe</a>
           <a class="nav-link" href="#cli">CLI and security</a>
@@ -152,7 +153,7 @@ pipeline Import {
 }</code></pre>
 
           <p class="block-label">PRACTICAL GRAMMAR</p>
-          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | memory | tool | mcp_server | pipeline | test)
+          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | memory | tool | mcp_server | a2a_agent | pipeline | test)
 variable     := "var" identifier "=" expression
 property     := identifier ":" expression
 call         := expression "(" [argument {"," argument}] ")"
@@ -534,8 +535,40 @@ var info = IssueTracker.discover()</code></pre></div>
           <div class="tip-row"><span>STATELESS</span><p>There is no session or handshake between calls — each <code>.call(...)</code>/<code>.list_tools()</code>/<code>.discover()</code> is fully independent, matching MCP spec 2026-07-28's stateless model. Every request self-identifies (protocol version, capabilities, and <code>{name: "mhl"}</code> as <code>clientInfo</code>). A credential that fails to resolve aborts the call instead of sending a request with an empty header.</p></div>
         </section>
 
+        <section class="feature doc-section" id="a2a" data-title="a2a agent2agent protocol remote agent send agent_card get_task cancel task message json-rpc message/send tasks/get tasks/cancel well-known agent-card poll blocking context">
+          <div class="feature-head"><h2><span class="feature-num">10</span><code>a2a_agent</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Declares a stateless connection to a remote agent that speaks the <a href="https://a2a-protocol.org/latest/specification/">Agent2Agent (A2A)</a> protocol, revision 0.2.x: JSON-RPC 2.0 over HTTP(S) with header-based auth. Send it a message with <code>Agent.send("...")</code>, read its published capabilities with <code>Agent.agent_card()</code>, and poll or abort a running task with <code>Agent.get_task(id)</code> / <code>Agent.cancel(id)</code>.</p>
+          <div class="syntax-columns">
+            <div><h3>Declaration</h3><pre class="code-block"><code class="language-mhl">a2a_agent Translator {
+    url: "https://translator.example.com/a2a"
+    headers: {
+        "Authorization":
+            "Bearer " + env("A2A_TOKEN")
+    }
+    poll_interval: 1s     // optional, default 1s
+    poll_timeout: 120s    // optional, default 120s
+}</code></pre></div>
+            <div><h3>Use</h3><pre class="code-block"><code class="language-mhl">var reply = Translator.send("Translate 'hello' to French")
+log(reply.text)                       // -> "bonjour"
+
+var card = Translator.agent_card()    // /.well-known/agent-card.json
+var again = Translator.send("and to German?", context: reply.context_id)
+
+var status = Translator.get_task(reply.task_id)
+var stopped = Translator.cancel(reply.task_id)</code></pre></div>
+          </div>
+          <ul class="plain-list">
+            <li><code>url</code> is the remote agent's JSON-RPC endpoint; <code>headers</code> carry auth, with <code>env("NAME")</code> resolving a credential only when needed and keeping it out of source.</li>
+            <li><code>.send(message, context?)</code> issues <code>message/send</code> with the string as a single text part. If the reply is a Task that is not yet in a terminal state, it polls <code>tasks/get</code> every <code>poll_interval</code> until the task finishes or <code>poll_timeout</code> elapses. <code>context:</code> sets <code>contextId</code> for a follow-up turn.</li>
+            <li>The result is a normalized object: a message is <code>{kind: "message", text, parts, message_id, context_id}</code>; a task is <code>{kind: "task", task_id, context_id, state, text, artifacts, history, status}</code>. <code>text</code> is the concatenation of every text part — a convenience; the raw <code>parts</code>/<code>artifacts</code> are still there.</li>
+            <li><code>.agent_card()</code> GETs <code>&lt;origin&gt;/.well-known/agent-card.json</code>. <code>.get_task(id, history_length?)</code> issues <code>tasks/get</code>; <code>.cancel(id)</code> issues <code>tasks/cancel</code>.</li>
+            <li>A task that stops in <code>input-required</code> or <code>auth-required</code> is rejected with a clear error — mhl's A2A client cannot gather and resubmit that input.</li>
+          </ul>
+          <div class="tip-row"><span>STATELESS</span><p>Every method is one or more independent requests with no session between them; a blocking <code>.send</code> that polls keeps no state beyond the task id. A credential that fails to resolve aborts the call before any request. Streaming (<code>message/stream</code>) and push notifications are not implemented yet.</p></div>
+        </section>
+
         <section class="feature doc-section" id="pipeline" data-title="pipeline input var step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent">
-          <div class="feature-head"><h2><span class="feature-num">10</span><code>pipeline</code> and <code>loop pipeline</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">11</span><code>pipeline</code> and <code>loop pipeline</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Pipelines are the executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in order unless an explicit transition redirects them.</p>
 
           <p class="block-label">RECOVERABLE PIPELINE</p>
@@ -645,7 +678,7 @@ var info = IssueTracker.discover()</code></pre></div>
         </section>
 
         <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing">
-          <div class="feature-head"><h2><span class="feature-num">11</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">12</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">MHL files can be self-verifying examples. Each <code>describe</code> receives a fresh environment and uses the same statement syntax as a step.</p>
           <pre class="code-block"><code class="language-mhl">tool Normalize {
     slug(text: string): string ->
@@ -679,7 +712,7 @@ test normalize_examples {
         </section>
 
         <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp version security credentials env diagnostics install">
-          <div class="feature-head"><h2><span class="feature-num">12</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">13</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The <code>mhl</code> binary handles execution, tests, static analysis, and editor integration.</p>
           <div class="cli-grid">
             <div class="cli-command"><code>mhl init</code><span>scaffold an immediately-runnable main.mh (never overwrites)</span></div>

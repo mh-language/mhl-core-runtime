@@ -63,7 +63,7 @@ literals — see [features/prompts/prompt_loaded_from_markdown_file.mh](features
 Program        ::= { Declaration } ;
 
 Declaration    ::= [ "export" ]
-                    ( Import | Use | Prompt | MCPServer
+                    ( Import | Use | Prompt | MCPServer | A2AAgent
                     | Agent | Memory | Tool | Pipeline | Test ) ;
 
 Import         ::= "import" String "as" Ident ;
@@ -71,6 +71,7 @@ Use            ::= "use" "{" UseItem { "," UseItem } "}" "from" String ;
 UseItem        ::= Ident [ "as" Ident ] ;
 
 MCPServer      ::= "mcp_server" Ident "{" { Property } "}" ;
+A2AAgent       ::= "a2a_agent" Ident "{" { Property } "}" ;
 Memory         ::= "memory" Ident "{" { Property } "}" ;
 Agent          ::= "agent" [ Ident ] "{" { Property } "}" ;
                    (* Name is omitted for an inline agent literal, e.g. inside

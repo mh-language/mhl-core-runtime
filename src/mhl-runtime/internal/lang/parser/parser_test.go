@@ -611,3 +611,34 @@ tool T {
 		t.Fatalf("expected Param.Pos to be populated, got %#v", param)
 	}
 }
+
+// TestA2AAgentDeclParses confirms the `a2a_agent` declaration keyword binds a
+// name and a property-bag body, the same shape as `mcp_server`.
+func TestA2AAgentDeclParses(t *testing.T) {
+	prog, err := Parse(`
+a2a_agent Translator {
+    url: "https://translator.example.com/a2a"
+    headers: {
+        "Authorization": "Bearer " + env("A2A_TOKEN")
+    }
+    poll_interval: 1s
+    poll_timeout: 120s
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(prog.Decls) != 1 || prog.Decls[0].A2AAgent == nil {
+		t.Fatalf("expected a single a2a_agent declaration, got %#v", prog.Decls)
+	}
+	a := prog.Decls[0].A2AAgent
+	if a.Name != "Translator" {
+		t.Fatalf("expected name Translator, got %q", a.Name)
+	}
+	if len(a.Props) != 4 {
+		t.Fatalf("expected 4 properties, got %d", len(a.Props))
+	}
+	if a.Props[0].Name != "url" {
+		t.Fatalf("expected first property url, got %q", a.Props[0].Name)
+	}
+}

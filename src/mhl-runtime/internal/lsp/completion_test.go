@@ -235,6 +235,16 @@ mcp_server GitHub {
 			skip: []string{"engine", "retry"},
 		},
 		{
+			name: "a2a_agent body",
+			src: `
+a2a_agent Translator {
+    §
+}
+`,
+			want: []string{"url", "headers", "poll_interval", "poll_timeout"},
+			skip: []string{"engine", "transport"},
+		},
+		{
 			name: "inside agent retry object",
 			src: `
 agent X {
