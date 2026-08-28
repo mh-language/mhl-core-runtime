@@ -11,6 +11,7 @@ import "strings"
 //   - collection   -> internal/engine/interpreter/eval.go   (callValueMethod)
 //   - memory       -> internal/engine/interpreter/memory_ops.go
 //   - mcp_server   -> internal/engine/interpreter/mcp_ops.go
+//   - a2a_agent    -> internal/engine/interpreter/a2a_ops.go
 //   - agent.run    -> internal/engine/interpreter/agent.go
 //   - globals      -> internal/engine/interpreter/eval.go   (log/fail/env)
 //   - assertions   -> internal/engine/interpreter/test.go   (runAssertion)
@@ -170,6 +171,13 @@ var mcpServerMethodSigs = map[string]sig{
 	"discover":   {Label: "discover() -> any", Params: nil, Doc: "Issues `server/discover` — supported versions, capabilities, identity."},
 }
 
+var a2aAgentMethodSigs = map[string]sig{
+	"send":       {Label: "send(message: string, context?: string) -> object", Params: []string{"message", "context"}, Doc: "Sends `message/send` (one text part) and, if the reply is a non-terminal Task, polls `tasks/get` to a terminal state. Returns `{kind, text, ...}` — a normalized message or task. `context:` sets `contextId` for a follow-up turn."},
+	"agent_card": {Label: "agent_card() -> object", Params: nil, Doc: "GETs the public Agent Card from `<origin>/.well-known/agent-card.json`."},
+	"get_task":   {Label: "get_task(id: string, history_length?: number) -> object", Params: []string{"id", "history_length"}, Doc: "Issues `tasks/get` for a task id; returns the normalized task."},
+	"cancel":     {Label: "cancel(id: string) -> object", Params: []string{"id"}, Doc: "Issues `tasks/cancel` for a task id; returns the normalized task."},
+}
+
 var agentMethodSigs = map[string]sig{
 	"run": {
 		Label:  "run(prompt: string | Prompt(...), schema?: string) -> string",
@@ -222,6 +230,9 @@ func signatureForMethod(kind symbolKind, receiver, method string) (sig, bool) {
 		return s, ok
 	case symMCPServer:
 		s, ok := mcpServerMethodSigs[method]
+		return s, ok
+	case symA2AAgent:
+		s, ok := a2aAgentMethodSigs[method]
 		return s, ok
 	case symAgent:
 		s, ok := agentMethodSigs[method]

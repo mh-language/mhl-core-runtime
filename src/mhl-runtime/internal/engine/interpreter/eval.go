@@ -489,6 +489,13 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 				}
 				return applyTrailers(ctx, v, p.Ops[2:], depth)
 			}
+			if agent, ok := findA2AAgent(ctx.prog, name); ok {
+				v, err := evalA2AAgentCall(ctx, agent, member, call, depth)
+				if err != nil {
+					return nil, err
+				}
+				return applyTrailers(ctx, v, p.Ops[2:], depth)
+			}
 			if isMemoryMethod(member) {
 				return nil, fmt.Errorf("memory %q not found", name)
 			}

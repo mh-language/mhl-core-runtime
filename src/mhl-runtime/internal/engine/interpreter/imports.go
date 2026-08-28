@@ -184,6 +184,8 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 		return "prompt", decl.Prompt.Name, true
 	case decl.MCPServer != nil:
 		return "mcp_server", decl.MCPServer.Name, true
+	case decl.A2AAgent != nil:
+		return "a2a_agent", decl.A2AAgent.Name, true
 	case decl.Agent != nil:
 		return "agent", decl.Agent.Name, true
 	case decl.Memory != nil:
@@ -250,6 +252,8 @@ func findExport(module *ast.Program, name string) (*ast.Declaration, bool) {
 		case decl.Agent != nil && decl.Agent.Name == name:
 			return decl, true
 		case decl.MCPServer != nil && decl.MCPServer.Name == name:
+			return decl, true
+		case decl.A2AAgent != nil && decl.A2AAgent.Name == name:
 			return decl, true
 		case decl.Memory != nil && decl.Memory.Name == name:
 			return decl, true

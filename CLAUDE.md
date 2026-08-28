@@ -27,7 +27,7 @@ All Go commands run from `src/mhl-runtime`:
 ```sh
 make build            # builds dist/mhl and sample/mhl
 make test             # go test ./...
-make functional-test  # runs `mhl test` against test/e2e/features and test/e2e/lang/syntax
+make functional-test  # runs `mhl test` against sample/syntax and sample/features
 go vet ./...
 make release          # cross-compiles linux-amd64, darwin-arm64, windows-amd64
 make verify-release   # release + asserts each binary is non-empty

@@ -36,6 +36,7 @@ type Declaration struct {
 	Use       *Use       `parser:"| @@"`
 	Prompt    *Prompt    `parser:"| @@"`
 	MCPServer *MCPServer `parser:"| @@"`
+	A2AAgent  *A2AAgent  `parser:"| @@"`
 	Agent     *Agent     `parser:"| @@"`
 	Memory    *Memory    `parser:"| @@"`
 	Tool      *Tool      `parser:"| @@"`
@@ -81,6 +82,15 @@ func (u *Use) Names() []string {
 // MCPServer declares a stateless MCP server endpoint.
 type MCPServer struct {
 	Name  string      `parser:"'mcp_server' @Ident"`
+	Props []*Property `parser:"'{' @@* '}'"`
+}
+
+// A2AAgent declares a stateless connection to a remote agent that speaks the
+// Agent2Agent (A2A) protocol. Like MCPServer it is a bag of properties
+// (url, headers, poll_interval, poll_timeout) interpreted at the feature
+// layer, not in the grammar.
+type A2AAgent struct {
+	Name  string      `parser:"'a2a_agent' @Ident"`
 	Props []*Property `parser:"'{' @@* '}'"`
 }
 

@@ -37,6 +37,9 @@ func TestSignatureCatalogueMatchesSymbolTables(t *testing.T) {
 	// mcp_server
 	checkExact(t, "mcpServerMethodSigs", mcpServerMethods, mcpServerMethodSigs)
 
+	// a2a_agent
+	checkExact(t, "a2aAgentMethodSigs", a2aAgentMethods, a2aAgentMethodSigs)
+
 	// memory: every method any backend type exposes must resolve, plus the
 	// ephemeral mem's reset().
 	memMethods := map[string]bool{"reset": true}
@@ -123,7 +126,7 @@ func TestSignatureLabelsNonEmpty(t *testing.T) {
 	all := []map[string]sig{
 		nativeSigs, commonMethodSigs, stringMethodSigs, arrayMethodSigs,
 		objectMethodSigs, memoryMethodSigs, mcpServerMethodSigs,
-		agentMethodSigs, globalSigs, assertionSigs,
+		a2aAgentMethodSigs, agentMethodSigs, globalSigs, assertionSigs,
 	}
 	for _, table := range all {
 		for name, s := range table {

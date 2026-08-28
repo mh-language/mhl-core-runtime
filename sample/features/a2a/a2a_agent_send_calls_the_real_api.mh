@@ -1,0 +1,41 @@
+// A remote agent speaking the Agent2Agent (A2A) protocol: stateless JSON-RPC
+// 2.0 over HTTP, authenticated with a bearer header. `env("A2A_TEST_URL")`
+// and `env("A2A_TOKEN")` are resolved by features/a2a.BuildRegistryWithError
+// before any request goes out — an unset variable fails the call closed
+// instead of sending an empty header.
+//
+// Deterministic, network-free proof of the same request/response wiring
+// (message/send -> tasks/get polling, agent_card, cancel, input-required
+// rejection) lives in src/mhl-runtime/internal/cli/a2a_test.go and
+// src/mhl-runtime/internal/features/a2a/client_test.go, using httptest.
+a2a_agent Remote {
+    url: env("A2A_TEST_URL")
+    headers: {
+        "Authorization": "Bearer " + env("A2A_TOKEN")
+    }
+    poll_interval: 1s
+    poll_timeout: 60s
+}
+
+test a2a_agent_send_calls_the_real_api {
+    describe a2a_agent_send_returns_the_agents_reply {
+        if (env("A2A_TEST_URL") != "") {
+            var reply = Remote.send("Reply with the single word: pong")
+            log("A2A send result: ${json.stringify(reply)}")
+            not_null(reply)
+            not_null(reply.kind)
+        } else {
+            incomplete("set A2A_TEST_URL (and A2A_TOKEN if the agent needs auth) to run this against a real A2A agent")
+        }
+    }
+
+    describe a2a_agent_card_lists_capabilities {
+        if (env("A2A_TEST_URL") != "") {
+            var card = Remote.agent_card()
+            log("A2A agent card: ${json.stringify(card)}")
+            not_null(card)
+        } else {
+            incomplete("set A2A_TEST_URL to run this against a real A2A agent")
+        }
+    }
+}

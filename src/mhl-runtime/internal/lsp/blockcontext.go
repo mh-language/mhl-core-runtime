@@ -27,6 +27,7 @@ const (
 	blockCache
 	blockRateLimit
 	blockMCPServer
+	blockA2AAgent
 )
 
 // headerRe pairs a blockKind with the regex that recognizes the token(s)
@@ -43,6 +44,7 @@ var headerRe = []struct {
 	{blockPipeline, regexp.MustCompile(`\bpipeline\s+\w+\s*$`)},
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
 	{blockMCPServer, regexp.MustCompile(`\bmcp_server\s+\w+\s*$`)},
+	{blockA2AAgent, regexp.MustCompile(`\ba2a_agent\s+\w+\s*$`)},
 	{blockCheckpoint, regexp.MustCompile(`\bcheckpoint\s*:\s*$`)},
 	{blockSpawn, regexp.MustCompile(`\bspawn\s*:\s*$`)},
 	{blockRepeat, regexp.MustCompile(`\brepeat\s*:\s*$`)},

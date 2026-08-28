@@ -86,6 +86,15 @@ var mcpServerPropertyItems = []completionItem{
 	propertyItem("headers", `"http" transport: e.g. { "Authorization": "Bearer " + env("TOKEN") }`),
 }
 
+// a2aAgentPropertyItems mirrors a2a.configFromAST's field switch
+// (features/a2a/registry.go).
+var a2aAgentPropertyItems = []completionItem{
+	propertyItem("url", "the remote agent's A2A JSON-RPC endpoint"),
+	propertyItem("headers", `e.g. { "Authorization": "Bearer " + env("A2A_TOKEN") }`),
+	propertyItem("poll_interval", "duration between tasks/get polls in a blocking send; default 1s"),
+	propertyItem("poll_timeout", "duration a blocking send waits for a terminal task state; default 120s"),
+}
+
 // retryFieldItems mirrors agentRetry's field switch. backoff is listed even
 // though ast.AgentRetryConfig rejects any value other than "exponential" —
 // it's valid syntax, just constrained to the one implemented value.
@@ -146,6 +155,8 @@ func propertyItemsFor(stack []blockKind) []completionItem {
 		return rateLimitFieldItems
 	case blockMCPServer:
 		return mcpServerPropertyItems
+	case blockA2AAgent:
+		return a2aAgentPropertyItems
 	default:
 		return nil
 	}

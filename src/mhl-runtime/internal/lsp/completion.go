@@ -9,7 +9,7 @@ import (
 // offered as a plain keyword completion whenever the cursor isn't in a
 // member-access position.
 var keywords = []string{
-	"agent", "memory", "tool", "prompt", "pipeline", "mcp_server", "loop",
+	"agent", "memory", "tool", "prompt", "pipeline", "mcp_server", "a2a_agent", "loop",
 	"import", "use", "from", "as", "export", "input", "step", "test", "describe",
 	"var", "if", "else", "while", "for", "in", "try", "catch", "finally",
 	"return", "break", "goto", "spawn", "wait", "true", "false", "null",
@@ -123,7 +123,7 @@ func symbolItemKind(k symbolKind) int {
 	switch k {
 	case symAgent, symTool, symMemory:
 		return kindClass
-	case symPrompt, symPipeline, symMCPServer:
+	case symPrompt, symPipeline, symMCPServer, symA2AAgent:
 		return kindProperty
 	case symNative:
 		return kindModule

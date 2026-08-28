@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="MHL standard-library reference: every callable method and function — collection methods, agent/prompt/memory/mcp_server methods, native operations, and test assertions — with parameters, types, and return values." />
+    <meta name="description" content="MHL standard-library reference: every callable method and function — collection methods, agent/prompt/memory/mcp_server/a2a_agent methods, native operations, and test assertions — with parameters, types, and return values." />
     <meta name="theme-color" content="#10161f" />
     <meta property="og:title" content="MHL Standard Library — method reference" />
     <meta property="og:description" content="Every callable in MHL, with parameter names, types, and return values." />
@@ -59,6 +59,7 @@
           <a class="nav-link" href="#prompt">prompt</a>
           <a class="nav-link" href="#memory">memory and mem</a>
           <a class="nav-link" href="#mcp">mcp_server</a>
+          <a class="nav-link" href="#a2a">a2a_agent</a>
           <a class="nav-link" href="#native">Native operations</a>
           <a class="nav-link" href="#assertions">Test assertions</a>
         </nav>
@@ -263,8 +264,36 @@
           </div>
         </section>
 
+        <section class="feature doc-section" id="a2a" data-title="a2a_agent agent2agent send agent_card get_task cancel task message json-rpc message/send tasks/get tasks/cancel well-known poll blocking stateless">
+          <div class="feature-head"><h2><span class="feature-num">07</span><code>a2a_agent</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A declared <code>a2a_agent</code> exposes four methods for talking to a remote agent over the A2A protocol (revision 0.2.x, JSON-RPC 2.0 over HTTP). Each is stateless; an unresolved <code>env(...)</code> credential aborts the call. Configuration (<code>url</code>, <code>headers</code>, <code>poll_interval</code>, <code>poll_timeout</code>) is in the <a href="reference.html#a2a">Language Reference</a>.</p>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row">
+              <code>&lt;Agent&gt;.send(message: string, context?: string) -&gt; object</code>
+              <span>
+                <span class="p"><code>message</code> — the user message; positional or named <code>message:</code>. Sent as one text part.</span>
+                <span class="p"><code>context</code> — a prior <code>context_id</code> for a follow-up turn; positional (2nd) or named <code>context:</code>.</span>
+              </span>
+              <span><code>object</code></span>
+              <span>Issues <code>message/send</code>, then polls <code>tasks/get</code> every <code>poll_interval</code> to a terminal state (or <code>poll_timeout</code>). Returns a normalized <code>{kind, text, ...}</code> — a message or a task. A task stuck in <code>input-required</code>/<code>auth-required</code> raises.</span>
+            </div>
+            <div class="table-row"><code>&lt;Agent&gt;.agent_card() -&gt; object</code><span><span class="p">none</span></span><span><code>object</code></span><span>GETs <code>&lt;origin&gt;/.well-known/agent-card.json</code> and decodes it.</span></div>
+            <div class="table-row">
+              <code>&lt;Agent&gt;.get_task(id: string, history_length?: number) -&gt; object</code>
+              <span>
+                <span class="p"><code>id</code> — task id; positional or named <code>id:</code></span>
+                <span class="p"><code>history_length</code> — max history messages to include; positional (2nd) or named. Omitted when &le; 0.</span>
+              </span>
+              <span><code>object</code></span>
+              <span>Issues <code>tasks/get</code>; returns the normalized task.</span>
+            </div>
+            <div class="table-row"><code>&lt;Agent&gt;.cancel(id: string) -&gt; object</code><span><span class="p"><code>id</code> — task id; positional or named <code>id:</code></span></span><span><code>object</code></span><span>Issues <code>tasks/cancel</code>; returns the normalized task.</span></div>
+          </div>
+        </section>
+
         <section class="feature doc-section" id="native" data-title="native operations cmd exec exec_all fs read exists write append delete join list git diff add commit status rev_parse log http get post put patch delete head options download query headers body text form timeout follow_redirects raise_for_status auth bearer basic tls cert key ca insecure mtls client certificate proxy json parse parse_lines stringify log info warn error time now parse format add diff compare timeout duration">
-          <div class="feature-head"><h2><span class="feature-num">07</span>Native operations</h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">08</span>Native operations</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The fixed namespaces any expression (or a <code>tool</code> method body) can call: <code>cmd</code>, <code>fs</code>, <code>git</code>, <code>http</code>, <code>json</code>, <code>log</code>, <code>time</code>. They accept a mix of positional and named arguments. Unless noted, a failure to perform the operation raises; a completed process with a non-zero exit is returned, not raised.</p>
 
           <div class="ns-block">
@@ -386,7 +415,7 @@
         </section>
 
         <section class="feature doc-section" id="assertions" data-title="test assertions are_equal are_not_equal not_equal is_true is_false is_null not_null greater_than less_than greater_than_or_equal less_than_or_equal includes incomplete describe">
-          <div class="feature-head"><h2><span class="feature-num">08</span>Test assertions</h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">09</span>Test assertions</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Callable only inside a <code>describe</code> block (see <a href="reference.html#tests">Language Reference</a>). A wrong argument count or type is a hard error, not a failed assertion. Equality is deep (structural) throughout.</p>
           <div class="reference-table sig-table">
             <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Passes when</span><span>Notes</span></div>

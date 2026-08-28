@@ -1,0 +1,19 @@
+a2a_agent Translator {
+    url: "https://translator.example.test/a2a"
+    headers: {
+        "Authorization": "Bearer " + env("A2A_TOKEN")
+    }
+    poll_interval: 1s
+    poll_timeout: 120s
+}
+
+pipeline UseA2A {
+    step Translate {
+        var reply = Translator.send("Translate 'hello' to French")
+        var card = Translator.agent_card()
+        var status = Translator.get_task(reply.task_id)
+        log(reply.text)
+        log(card)
+        log(status)
+    }
+}
