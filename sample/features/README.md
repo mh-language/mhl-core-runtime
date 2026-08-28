@@ -10,3 +10,4 @@ how they're wired together at runtime.
 - [mcp/](mcp/README.md) — declaring an `mcp_server` and calling it with `.call(...)`
 - [time/](time/README.md) — datetime as plain RFC3339 strings: `time.now/parse/format/add/diff/compare`
 - [git/](git/README.md) — the `git` native namespace: `git.status/diff/log/rev_parse/add/commit`
+- [http/](http/README.md) — the `http` native namespace: one op per verb (`get/post/put/patch/delete/head/options`) plus `download`, with `query`, `body`/`text`/`form`, `auth`, `tls` (PEM client certificates), `proxy`, and secret redaction

@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
@@ -259,16 +262,34 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			out[i] = p
 		}
 		return out, nil
+	case "http.get":
+		return httpCall("GET", args)
 	case "http.post":
+		return httpCall("POST", args)
+	case "http.put":
+		return httpCall("PUT", args)
+	case "http.patch":
+		return httpCall("PATCH", args)
+	case "http.delete":
+		return httpCall("DELETE", args)
+	case "http.head":
+		return httpCall("HEAD", args)
+	case "http.options":
+		return httpCall("OPTIONS", args)
+	case "http.download":
 		url, ok := args.stringNamedOrFirst("url")
 		if !ok {
-			return nil, fmt.Errorf("http.post requires a string url")
+			return nil, fmt.Errorf("http.download requires a string url")
 		}
-		headers, err := args.stringMap("headers")
+		path, ok := args.stringNamedOrAt("path", 1)
+		if !ok {
+			return nil, fmt.Errorf("http.download requires a string destination path")
+		}
+		opts, err := httpOptions(args)
 		if err != nil {
 			return nil, err
 		}
-		return nativeops.Post(context.Background(), url, headers, args.named["body"])
+		return nativeops.Download(context.Background(), url, path, opts)
 	case "json.parse":
 		text, ok := args.stringAt(0)
 		if !ok {
@@ -344,6 +365,191 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 	default:
 		return nil, fmt.Errorf("%s.%s is not a supported native operation", namespace, op)
 	}
+}
+
+// httpCall is the shared body of every http.<verb> native op: it resolves
+// the URL (named `url:` or first positional, like http.post always allowed),
+// reads the optional parameters into a nativeops.Options, and issues the
+// request. context.Background() matches the other native ops — the
+// interpreter does not thread a cancellable context in, so nativeops.Do
+// applies its own `timeout:` bound.
+func httpCall(method string, args callArgs) (any, error) {
+	url, ok := args.stringNamedOrFirst("url")
+	if !ok {
+		return nil, fmt.Errorf("http.%s requires a string url", strings.ToLower(method))
+	}
+	opts, err := httpOptions(args)
+	if err != nil {
+		return nil, err
+	}
+	return nativeops.Do(context.Background(), method, url, opts)
+}
+
+// httpOptions reads every optional named argument an http.<verb> call
+// accepts into a nativeops.Options. `headers`/`query`/`form` are
+// string→string maps; `body` is any value; `text` is a raw string;
+// `timeout` is a duration; `follow_redirects`/`raise_for_status` are bools;
+// `auth` and `tls` are nested objects.
+func httpOptions(args callArgs) (nativeops.Options, error) {
+	var opts nativeops.Options
+
+	headers, err := args.stringMap("headers")
+	if err != nil {
+		return opts, err
+	}
+	opts.Headers = headers
+	for name, value := range headers {
+		switch http.CanonicalHeaderKey(name) {
+		case "Authorization", "Proxy-Authorization", "Cookie":
+			auth.Register(value)
+		}
+	}
+
+	query, err := args.stringMap("query")
+	if err != nil {
+		return opts, err
+	}
+	opts.Query = query
+
+	form, err := args.stringMap("form")
+	if err != nil {
+		return opts, err
+	}
+	opts.Form = form
+
+	if v, ok := args.named["body"]; ok {
+		opts.Body = v
+	}
+	if v, ok := args.named["text"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return opts, fmt.Errorf("text must be a string")
+		}
+		opts.Text = &s
+	}
+
+	if d, ok := args.duration("timeout"); ok {
+		opts.Timeout = d
+	}
+
+	if v, ok := args.named["follow_redirects"]; ok {
+		b, ok := v.(bool)
+		if !ok {
+			return opts, fmt.Errorf("follow_redirects must be a bool")
+		}
+		opts.FollowRedirects = &b
+	}
+	if v, ok := args.named["raise_for_status"]; ok {
+		b, ok := v.(bool)
+		if !ok {
+			return opts, fmt.Errorf("raise_for_status must be a bool")
+		}
+		opts.RaiseForStatus = b
+	}
+
+	if v, ok := args.named["auth"]; ok {
+		auth, err := httpAuth(v)
+		if err != nil {
+			return opts, err
+		}
+		opts.Auth = auth
+	}
+
+	if v, ok := args.named["tls"]; ok {
+		t, err := httpTLS(v)
+		if err != nil {
+			return opts, err
+		}
+		opts.TLS = t
+	}
+
+	if v, ok := args.named["proxy"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return opts, fmt.Errorf("proxy must be a string")
+		}
+		opts.Proxy = s
+		if u, perr := url.Parse(s); perr == nil {
+			if pw, has := u.User.Password(); has {
+				auth.Register(pw)
+			}
+		}
+	}
+
+	return opts, nil
+}
+
+// httpAuth reads a `bearer`/`basic` `auth:` object into an AuthOptions,
+// registering the token / password so it is masked in logs and errors.
+func httpAuth(v any) (*nativeops.AuthOptions, error) {
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("auth must be an object")
+	}
+	a := &nativeops.AuthOptions{}
+	bearer, err := stringField("auth.bearer", obj, "bearer")
+	if err != nil {
+		return nil, err
+	}
+	a.Bearer = bearer
+
+	if bv, ok := obj["basic"]; ok {
+		basic, ok := bv.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("auth.basic must be an object")
+		}
+		if a.BasicUser, err = stringField("auth.basic.user", basic, "user"); err != nil {
+			return nil, err
+		}
+		if a.BasicPassword, err = stringField("auth.basic.password", basic, "password"); err != nil {
+			return nil, err
+		}
+	}
+	auth.Register(a.Bearer)
+	auth.Register(a.BasicPassword)
+	return a, nil
+}
+
+// httpTLS reads a `cert`/`key`/`ca`/`insecure` `tls:` object into a
+// TLSOptions.
+func httpTLS(v any) (*nativeops.TLSOptions, error) {
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("tls must be an object")
+	}
+	t := &nativeops.TLSOptions{}
+	var err error
+	if t.Cert, err = stringField("tls.cert", obj, "cert"); err != nil {
+		return nil, err
+	}
+	if t.Key, err = stringField("tls.key", obj, "key"); err != nil {
+		return nil, err
+	}
+	if t.CA, err = stringField("tls.ca", obj, "ca"); err != nil {
+		return nil, err
+	}
+	if iv, ok := obj["insecure"]; ok {
+		b, ok := iv.(bool)
+		if !ok {
+			return nil, fmt.Errorf("tls.insecure must be a bool")
+		}
+		t.Insecure = b
+	}
+	return t, nil
+}
+
+// stringField reads an optional string entry from an already-evaluated
+// object value; a missing key yields "", a non-string value is an error.
+func stringField(label string, obj map[string]any, key string) (string, error) {
+	v, ok := obj[key]
+	if !ok {
+		return "", nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("%s must be a string", label)
+	}
+	return s, nil
 }
 
 // callArgs buckets an evaluated call's arguments by whether they were

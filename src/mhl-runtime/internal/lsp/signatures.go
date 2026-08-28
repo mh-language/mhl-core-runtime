@@ -1,5 +1,7 @@
 package lsp
 
+import "strings"
+
 // This file is the LSP's hand-maintained catalogue of every built-in
 // callable's signature — the data behind a completion item's `detail`/
 // `documentation` and the whole `textDocument/signatureHelp` response.
@@ -76,10 +78,19 @@ var nativeSigs = map[string]sig{
 	"fs.delete": {Label: "fs.delete(path: string) -> bool", Params: []string{"path"}, Doc: "Removes a file or empty directory. Raises if it can't."},
 	"fs.join":   {Label: "fs.join(...segments: string) -> string", Params: []string{"segments"}, Doc: "OS-appropriate path join of one or more segments."},
 	"fs.list":   {Label: "fs.list(dir: string) -> string[]", Params: []string{"dir"}, Doc: "Entries in `dir`."},
-	"http.post": {
-		Label:  "http.post(url: string, headers?: {string: string}, body?: any) -> {status: number, body: string}",
-		Params: []string{"url", "headers", "body"},
-		Doc:    "JSON-encodes `body`, sets `Content-Type: application/json`. A transport failure raises; an HTTP error status is returned in `status`.",
+	"http.get":     httpSig("get"),
+	"http.post":    httpSig("post"),
+	"http.put":     httpSig("put"),
+	"http.patch":   httpSig("patch"),
+	"http.delete":  httpSig("delete"),
+	"http.head":    httpSig("head"),
+	"http.options": httpSig("options"),
+	"http.download": {
+		Label: "http.download(url: string, path: string, headers?, query?, timeout?: duration, " +
+			"raise_for_status?: bool, auth?, tls?, proxy?: string) -> {status: number, path: string, bytes: number, ok: bool, headers: {string: string}}",
+		Params: []string{"url", "path", "headers", "query", "timeout", "raise_for_status", "auth", "tls", "proxy"},
+		Doc: "Streams a GET response straight to `path` — atomic write, parent directories created — instead of returning the body. " +
+			"On a non-2xx response no file is written and `ok` is false (unless `raise_for_status` is set). Shares the http option surface.",
 	},
 	"json.parse":       {Label: "json.parse(text: string) -> any", Params: []string{"text"}, Doc: "Parses a JSON document. Invalid JSON raises."},
 	"json.parse_lines": {Label: "json.parse_lines(text: string) -> any[]", Params: []string{"text"}, Doc: "Parses JSON-lines (one value per line)."},
@@ -93,6 +104,22 @@ var nativeSigs = map[string]sig{
 	"time.add":         {Label: "time.add(value: string, duration: duration) -> string", Params: []string{"value", "duration"}, Doc: "Returns `value + duration` as an RFC3339 UTC string."},
 	"time.diff":        {Label: "time.diff(a: string, b: string) -> number", Params: []string{"a", "b"}, Doc: "Seconds in `a - b` (negative when `a` is earlier)."},
 	"time.compare":     {Label: "time.compare(a: string, b: string) -> number", Params: []string{"a", "b"}, Doc: "`-1` if `a < b`, `0` if equal, `1` if `a > b`."},
+}
+
+// httpSig builds the signature entry for one http.<verb> native op — they
+// all share the same parameter surface (internal/engine/interpreter/tool.go
+// httpOptions), so only the verb in the label differs.
+func httpSig(verb string) sig {
+	return sig{
+		Label: "http." + verb + "(url: string, headers?, query?, body?, text?, form?, timeout?: duration, " +
+			"follow_redirects?: bool, raise_for_status?: bool, auth?: {bearer, basic}, tls?: {cert, key, ca, insecure}, proxy?: string) " +
+			"-> {status: number, body: string, headers: {string: string}, ok: bool, json: any}",
+		Params: []string{"url", "headers", "query", "body", "text", "form", "timeout", "follow_redirects", "raise_for_status", "auth", "tls", "proxy"},
+		Doc: "Issues an HTTP " + strings.ToUpper(verb) + ". `body` is JSON-encoded (sets `Content-Type: application/json`); " +
+			"`text`/`form` are the raw and form-encoded alternatives (pick one). `tls.cert`/`tls.key` are PEM client-certificate " +
+			"paths. `proxy` overrides `HTTP(S)_PROXY` for this call. A transport failure raises; a non-2xx status is returned in " +
+			"`status` unless `raise_for_status` is set.",
+	}
 }
 
 // --- collection / value methods, keyed by method name -------------------

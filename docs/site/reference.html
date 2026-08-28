@@ -460,7 +460,7 @@ if (result.exit_code != 0) fail(result.stderr)</code></pre>
             <article><h3><code>fs</code></h3><p><code>read</code> · <code>exists</code> · <code>write</code> · <code>append</code></p><p><code>delete</code> · <code>join</code> · <code>list</code></p></article>
             <article><h3><code>git</code></h3><p><code>diff</code> · <code>add</code> · <code>commit</code> · <code>status</code></p><p><code>rev_parse</code> · <code>log</code></p></article>
             <article><h3><code>json</code></h3><p><code>parse</code> · <code>parse_lines</code> · <code>stringify</code></p></article>
-            <article><h3><code>http</code></h3><p><code>post(url:, headers:, body:)</code></p></article>
+            <article><h3><code>http</code></h3><p><code>get</code> · <code>post</code> · <code>put</code> · <code>patch</code> · <code>delete</code> · <code>head</code> · <code>options</code> · <code>download</code></p><p><code>(url:, headers:, query:, body:, text:, form:, timeout:, auth:, tls:, proxy:)</code></p></article>
             <article><h3><code>log</code></h3><p><code>info</code> · <code>warn</code> · <code>error</code></p></article>
             <article><h3><code>time</code></h3><p><code>now()</code> · <code>parse(text, layout:)</code> · <code>format(value, layout:)</code></p><p><code>add(value, duration)</code> · <code>diff(a, b)</code> · <code>compare(a, b)</code></p></article>
           </div>
@@ -471,8 +471,14 @@ var response = http.post(
     headers: {"Authorization": "Bearer " + env("API_TOKEN")},
     body: {status: "ready"}
 )
-var payload = json.parse(response.body)
-fs.write("result.json", json.stringify(payload))
+var jobs = http.get(
+    url: "https://api.example.com/jobs",
+    query: {"state": "ready", "limit": "50"},
+    tls: {cert: "client.pem", key: "client.key"},   // mutual TLS
+    proxy: "http://corp-proxy:3128"                  // else HTTP(S)_PROXY is used
+)
+if (jobs.ok) fs.write("result.json", json.stringify(jobs.json))
+http.download("https://api.example.com/artifacts/build.zip", "build.zip")
 var expires_at = time.add(time.now(), 7d)</code></pre>
           <p class="feature-lede"><code>time.parse</code>/<code>time.format</code>'s <code>layout</code> accepts either a raw Go reference-time layout (<code>"2006-01-02"</code>) or the friendlier <code>yyyy</code>/<code>MM</code>/<code>dd</code>/<code>HH</code>/<code>mm</code>/<code>ss</code> tokens (e.g. <code>time.format(dt, "dd/MM/yyyy")</code>) — case matters where a unit would otherwise be ambiguous: <code>MM</code> is always month, <code>mm</code> is always minute; <code>HH</code> is always 24-hour, <code>hh</code> is always 12-hour.</p>
           <pre class="code-block"><code class="language-mhl">var target = input.repo_dir                       // some checkout, not this one

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/features/adapters"
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
 	"github.com/mh-language/mhl-core-runtime/internal/features/tools"
 	"github.com/mh-language/mhl-core-runtime/internal/features/traffic"
@@ -79,7 +80,7 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 	response, err := runAgentAttempt(ctx, agentName, agent, promptText, schemaText)
 	if err == nil {
 		if agentTrace(agent) {
-			fmt.Fprintf(ctx.out, "agent %s response:\n%s\n", agentName, response)
+			fmt.Fprintf(ctx.out, "agent %s response:\n%s\n", agentName, auth.Redact(response))
 		}
 		return runAgentAfterHook(ctx, agentName, agent, response, depth)
 	}
@@ -96,7 +97,7 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 		response, fbAttemptErr := runAgentAttempt(ctx, fbName, fb, promptText, schemaText)
 		if fbAttemptErr == nil {
 			if agentTrace(fb) {
-				fmt.Fprintf(ctx.out, "agent %s response (via %s):\n%s\n", agentName, fbName, response)
+				fmt.Fprintf(ctx.out, "agent %s response (via %s):\n%s\n", agentName, fbName, auth.Redact(response))
 			}
 			return runAgentAfterHook(ctx, agentName, agent, response, depth)
 		}
