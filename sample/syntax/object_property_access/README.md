@@ -17,6 +17,8 @@ raises when a key is missing or of the wrong type.
 - [object_property_access_with_non_existent_array_index.mh](object_property_access_with_non_existent_array_index.mh)
   — an out-of-range index on a field's array raises a catchable error
 - [object_get_keys_and_values.mh](object_get_keys_and_values.mh) — `.keys()` and `.values()`
+- [object_get_with_default.mh](object_get_with_default.mh) — `.get(key, default)` reads a
+  field without raising when it's absent
 - [object_dynamic_key_access.mh](object_dynamic_key_access.mh) — `obj[key]` with a key held
   in a variable
 - [object_dynamic_key_access_with_computed_key.mh](object_dynamic_key_access_with_computed_key.mh)

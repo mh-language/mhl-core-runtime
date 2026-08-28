@@ -126,8 +126,10 @@ func httpSig(verb string) sig {
 // --- collection / value methods, keyed by method name -------------------
 
 var commonMethodSigs = map[string]sig{
-	"size":     {Label: "size() -> number", Params: nil, Doc: "Element count (array), entry count (object), or byte length (string)."},
-	"is_empty": {Label: "is_empty() -> bool", Params: nil, Doc: "Equivalent to `size() == 0`."},
+	"size":       {Label: "size() -> number", Params: nil, Doc: "Element count (array), entry count (object), or byte length (string)."},
+	"is_empty":   {Label: "is_empty() -> bool", Params: nil, Doc: "Equivalent to `size() == 0`."},
+	"equals":     {Label: "equals(other: any) -> bool", Params: []string{"other"}, Doc: "Type-aware, order-sensitive deep comparison — the same equality `==` and `are_equal` use. Alias: `deep_equal`."},
+	"deep_equal": {Label: "deep_equal(other: any) -> bool", Params: []string{"other"}, Doc: "Alias of `equals`."},
 }
 
 var stringMethodSigs = map[string]sig{
@@ -149,11 +151,19 @@ var arrayMethodSigs = map[string]sig{
 	"filter":    {Label: "filter(predicate: (item: any) -> bool) -> any[]", Params: []string{"predicate"}, Doc: "New array of the elements for which `predicate` is true."},
 	"find":      {Label: "find(predicate: (item: any) -> bool) -> any", Params: []string{"predicate"}, Doc: "First matching element, or `null`."},
 	"sort_by":   {Label: "sort_by(key: (item: any) -> any) -> any[]", Params: []string{"key"}, Doc: "New array, ascending by the key each element maps to."},
+	"map":       {Label: "map(transform: (item: any) -> any) -> any[]", Params: []string{"transform"}, Doc: "New array of `transform` applied to each element."},
+	"reduce":    {Label: "reduce(combine: (acc: any, item: any) -> any, initial: any) -> any", Params: []string{"combine", "initial"}, Doc: "Folds the array left-to-right starting from `initial`."},
+	"any":       {Label: "any(predicate: (item: any) -> bool) -> bool", Params: []string{"predicate"}, Doc: "Whether `predicate` is true for at least one element (`false` for an empty array)."},
+	"all":       {Label: "all(predicate: (item: any) -> bool) -> bool", Params: []string{"predicate"}, Doc: "Whether `predicate` is true for every element (`true` for an empty array)."},
+	"append":    {Label: "append(value: any) -> any[]", Params: []string{"value"}, Doc: "New array with `value` added at the end; the receiver is not mutated."},
+	"join":      {Label: "join(separator: string) -> string", Params: []string{"separator"}, Doc: "Joins the elements with `separator`; non-string elements are formatted the way `log` renders them."},
+	"unique":    {Label: "unique() -> any[]", Params: nil, Doc: "New array with deep-equal duplicates removed, keeping first occurrence order."},
 }
 
 var objectMethodSigs = map[string]sig{
 	"keys":   {Label: "keys() -> string[]", Params: nil, Doc: "Keys in stable (sorted) order."},
 	"values": {Label: "values() -> any[]", Params: nil, Doc: "Values in the same order as `keys()`."},
+	"get":    {Label: "get(key: string, default?: any) -> any", Params: []string{"key", "default"}, Doc: "The value at `key`, or `default` (or `null` when omitted) if the object has no such key — never raises on a missing field."},
 }
 
 // --- declared-construct methods ----------------------------------------
@@ -189,9 +199,16 @@ var agentMethodSigs = map[string]sig{
 // --- bare-name callables (no receiver) --------------------------------
 
 var globalSigs = map[string]sig{
-	"log":  {Label: "log(...values: any) -> null", Params: []string{"values"}, Doc: "Writes one space-joined line to stdout."},
-	"fail": {Label: "fail(...values: any) -> never", Params: []string{"values"}, Doc: "Raises an error whose message is the joined values. Catchable with `try/catch`; uncaught, it makes `mhl run` exit non-zero."},
-	"env":  {Label: "env(name: string) -> string", Params: []string{"name"}, Doc: "Reads an OS environment variable. Returns `\"\"` when unset."},
+	"log":       {Label: "log(...values: any) -> null", Params: []string{"values"}, Doc: "Writes one space-joined line to stdout."},
+	"fail":      {Label: "fail(...values: any) -> never", Params: []string{"values"}, Doc: "Raises an error whose message is the joined values. Catchable with `try/catch`; uncaught, it makes `mhl run` exit non-zero."},
+	"env":       {Label: "env(name: string) -> string", Params: []string{"name"}, Doc: "Reads an OS environment variable. Returns `\"\"` when unset."},
+	"type_of":   {Label: "type_of(value: any) -> string", Params: []string{"value"}, Doc: "The value's kind: `\"string\"`, `\"number\"`, `\"bool\"`, `\"array\"`, `\"object\"`, `\"null\"`, `\"function\"`, or `\"task\"`."},
+	"is_string": {Label: "is_string(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"string\"`."},
+	"is_number": {Label: "is_number(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"number\"`."},
+	"is_bool":   {Label: "is_bool(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"bool\"`."},
+	"is_array":  {Label: "is_array(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"array\"`."},
+	"is_object": {Label: "is_object(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"object\"`."},
+	"is_null":   {Label: "is_null(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `value` is `null`."},
 }
 
 var assertionSigs = map[string]sig{

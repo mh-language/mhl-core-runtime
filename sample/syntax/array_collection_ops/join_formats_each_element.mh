@@ -1,0 +1,8 @@
+test join_formats_each_element {
+    describe join_formats_each_element {
+        are_equal(["a", "b", "c"].join(", "), "a, b, c")
+        // Non-string elements are rendered the way `log` renders them.
+        are_equal([1, 2, 3].join(" + "), "1 + 2 + 3")
+        are_equal([].join(","), "")
+    }
+}

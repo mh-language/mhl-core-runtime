@@ -1,0 +1,10 @@
+test type_of {
+    describe type_of {
+        are_equal(type_of("hi"), "string")
+        are_equal(type_of(42), "number")
+        are_equal(type_of(true), "bool")
+        are_equal(type_of([1, 2]), "array")
+        are_equal(type_of({ a: 1 }), "object")
+        are_equal(type_of(null), "null")
+    }
+}

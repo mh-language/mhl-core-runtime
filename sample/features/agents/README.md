@@ -42,3 +42,7 @@ environment — they need real network access and credentials, not just `mhl tes
 - [agent_before_hook_scopes_tool_access_by_method.mh](agent_before_hook_scopes_tool_access_by_method.mh)
   — a dotted `tools:` entry (`execution.read_file`) narrows a hook's `tools.execution` binding to
   exactly that method; naming the same tool bare anywhere in the list removes the restriction
+- [agent_log_path_interpolates_per_run.mh](agent_log_path_interpolates_per_run.mh)
+  — an agent's `log:` path is interpolated for `${...}` spans against the calling scope, so
+  `${context.session_id}` (or any in-scope var) gives each run its own file instead of every
+  concurrent run of one pipeline appending into a single shared log

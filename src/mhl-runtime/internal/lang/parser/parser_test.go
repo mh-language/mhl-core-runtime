@@ -299,6 +299,51 @@ func TestParseExprParsesASingleExpression(t *testing.T) {
 	}
 }
 
+// TestOptionalChainAndCoalesceParse covers the `?.` optional member trailer
+// (ast.Trailer.Optional) and the `??` null-coalescing operator
+// (ast.Expr.Tail): `?.` lexes as one token and marks its trailer Optional
+// while still filling Member; `??` binds looser than `||`, so its operands
+// are whole OrExprs and `a ?? b ?? c` is a two-entry Tail.
+func TestOptionalChainAndCoalesceParse(t *testing.T) {
+	expr, err := ParseExpr(`metric?.target?.trim() ?? fallback ?? ""`)
+	if err != nil {
+		t.Fatalf("ParseExpr: %v", err)
+	}
+	if len(expr.Tail) != 2 {
+		t.Fatalf("expected 2 `??` continuations, got %d", len(expr.Tail))
+	}
+	for i, op := range expr.Tail {
+		if op.Op != "??" {
+			t.Errorf("Tail[%d].Op = %q, want \"??\"", i, op.Op)
+		}
+	}
+	pf := expr.Or.Head.Head.Head.Head.Head.Head.Operand
+	if pf.Primary.Ident != "metric" {
+		t.Fatalf("expected primary ident \"metric\", got %q", pf.Primary.Ident)
+	}
+	if len(pf.Ops) != 3 {
+		t.Fatalf("expected 3 trailers (?.target, ?.trim, ()), got %d", len(pf.Ops))
+	}
+	if !pf.Ops[0].Optional || pf.Ops[0].Member != "target" {
+		t.Errorf("Ops[0] = %#v, want optional member \"target\"", pf.Ops[0])
+	}
+	if !pf.Ops[1].Optional || pf.Ops[1].Member != "trim" {
+		t.Errorf("Ops[1] = %#v, want optional member \"trim\"", pf.Ops[1])
+	}
+	if pf.Ops[2].Call == nil {
+		t.Errorf("Ops[2] should be a call trailer, got %#v", pf.Ops[2])
+	}
+
+	// A plain `.` member stays non-optional.
+	plain, err := ParseExpr(`a.b`)
+	if err != nil {
+		t.Fatalf("ParseExpr(a.b): %v", err)
+	}
+	if plain.Or.Head.Head.Head.Head.Head.Head.Operand.Ops[0].Optional {
+		t.Errorf("plain `.b` should not be Optional")
+	}
+}
+
 func TestParseExprMalformedYieldsError(t *testing.T) {
 	expr, err := ParseExpr(`1 +`)
 	if err == nil {

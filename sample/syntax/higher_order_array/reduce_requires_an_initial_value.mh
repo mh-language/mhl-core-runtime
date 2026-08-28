@@ -1,0 +1,12 @@
+test reduce_requires_an_initial_value {
+    describe reduce_requires_an_initial_value {
+        var result = ""
+        try {
+            var bad = [1, 2, 3].reduce((acc, n) -> acc + n)
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: reduce() requires exactly two arguments (a combiner lambda and an initial value)")
+    }
+}

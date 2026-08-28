@@ -23,6 +23,9 @@ func BarePostfix(e *Expr) *Postfix {
 	if e == nil || e.Or == nil {
 		return nil
 	}
+	if len(e.Tail) != 0 {
+		return nil
+	}
 	or := e.Or
 	if len(or.Tail) != 0 || or.Head == nil {
 		return nil

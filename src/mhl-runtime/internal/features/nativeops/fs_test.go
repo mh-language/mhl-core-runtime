@@ -1,8 +1,11 @@
 package nativeops_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
@@ -86,6 +89,94 @@ func TestAppendCreatesMissingParentDirs(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected file to exist: %v", err)
+	}
+}
+
+func TestAppendWriterFlushesCompleteLinesAndBuffersTheTail(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sub", "codex.log")
+	w := nativeops.AppendWriter(path)
+
+	// A chunk ending mid-line: the complete line is on disk, the tail is not.
+	if _, err := w.Write([]byte("line one\nline two, par")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	got, err := nativeops.Read(path)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if got != "line one\n" {
+		t.Fatalf("after first Write = %q, want %q (tail must stay buffered)", got, "line one\n")
+	}
+
+	// The newline that finishes the buffered tail flushes it.
+	if _, err := w.Write([]byte("tial\n")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	// A newline-less tail is only flushed by Close.
+	if _, err := w.Write([]byte("no newline here")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if got, _ := nativeops.Read(path); got != "line one\nline two, partial\n" {
+		t.Fatalf("before Close = %q, want %q", got, "line one\nline two, partial\n")
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if got, _ := nativeops.Read(path); got != "line one\nline two, partial\nno newline here" {
+		t.Fatalf("after Close = %q, want full content", got)
+	}
+}
+
+func TestAppendWriterNeverWritesWithoutOutput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "unused.log")
+	w := nativeops.AppendWriter(path)
+	if _, err := w.Write(nil); err != nil {
+		t.Fatalf("Write(nil): %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected no file, stat err = %v", err)
+	}
+}
+
+func TestAppendWriterConcurrentWritersNeverTearALine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shared.log")
+	const perWriter = 200
+	var wg sync.WaitGroup
+	for id := 0; id < 4; id++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			w := nativeops.AppendWriter(path)
+			defer w.Close()
+			line := fmt.Sprintf("writer-%d-%s\n", id, strings.Repeat("x", 5000))
+			for i := 0; i < perWriter; i++ {
+				if _, err := w.Write([]byte(line)); err != nil {
+					t.Errorf("Write: %v", err)
+					return
+				}
+			}
+		}(id)
+	}
+	wg.Wait()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	if last := lines[len(lines)-1]; last == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) != 4*perWriter {
+		t.Fatalf("got %d lines, want %d", len(lines), 4*perWriter)
+	}
+	for _, l := range lines {
+		if !strings.HasSuffix(l, "x\n") || !strings.HasPrefix(l, "writer-") {
+			t.Fatalf("torn line: %.40q...", l)
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -100,6 +101,37 @@ export agent Echo {
 	}
 }
 
+// TestAgentLogPathInterpolatesSpans proves a `log:` path is interpolated for
+// "${...}" spans against the calling ctx exactly like a prompt string, so
+// `log: "logs/run.${run_id}.log"` resolves to a per-run file rather than one
+// shared path every concurrent run appends into.
+func TestAgentLogPathInterpolatesSpans(t *testing.T) {
+	src := `
+export agent Echo {
+    command: "sh"
+    args: ["-c", "echo hi"]
+    log: "logs/run.${run_id}.log"
+}
+`
+	prog, err := parser.Parse(src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	agent, ok := findAgent(prog, "Echo")
+	if !ok {
+		t.Fatal("agent Echo not found")
+	}
+
+	ctx := &evalCtx{prog: prog, env: Env{"run_id": "abc123"}, out: io.Discard}
+	got, hasLog, err := agentLogPath(ctx, agent)
+	if err != nil {
+		t.Fatalf("agentLogPath: %v", err)
+	}
+	if !hasLog || got != "logs/run.abc123.log" {
+		t.Fatalf("agentLogPath = %q (hasLog=%v), want %q", got, hasLog, "logs/run.abc123.log")
+	}
+}
+
 // TestRunAgentAttemptWithoutLogPropertyWritesNoLog proves the log write is
 // opt-in: an agent without a `log:` property must not create any file as a
 // side effect of running.
@@ -122,7 +154,7 @@ export agent Echo {
 	if _, err := runAgentAttempt(nil, "Echo", agent, "hi", ""); err != nil {
 		t.Fatalf("call: %v", err)
 	}
-	if _, hasLog := agentLogPath(agent); hasLog {
-		t.Fatal("agentLogPath reported a log path for an agent with no log property")
+	if _, hasLog, err := agentLogPath(nil, agent); err != nil || hasLog {
+		t.Fatalf("agentLogPath reported a log path for an agent with no log property (hasLog=%v err=%v)", hasLog, err)
 	}
 }

@@ -64,7 +64,7 @@ var agentPropertyItems = []completionItem{
 	propertyItem("args", "cli/* engine: argv (supports ${prompt}/${schema} placeholders)"),
 	propertyItem("endpoint", "ollama/* engine: server URL"),
 	propertyItem("temperature", "ollama/* engine only"),
-	propertyItem("log", "cli/* engine: file path every call's raw stdout is appended to"),
+	propertyItem("log", "cli/* engine: file path every call's raw stdout is appended to (interpolated for ${...} spans, e.g. ${context.session_id}, so each run gets its own file)"),
 	propertyItem("trace", "boolean: echo calling/response lines to the console (default off)"),
 	propertyItem("retry", "{ max_attempts, delay, retry_on, backoff }"),
 	propertyItem("cache", "{ ttl, storage, strategy }"),

@@ -234,7 +234,11 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 			// interleave into one unreadable file. The subprocess output
 			// still reaches the step log through ctx.out (the per-handle
 			// buffer, flushed in spawn order by wait/drainAtStepEnd).
-			if logPath, hasLog := agentLogPath(agent); hasLog && (ctx == nil || !ctx.inSpawn) {
+			logPath, hasLog, logErr := agentLogPath(ctx, agent)
+			if logErr != nil {
+				return traffic.Result{}, fmt.Errorf("agent %q: %w", agentName, logErr)
+			}
+			if hasLog && (ctx == nil || !ctx.inSpawn) {
 				logWriter := nativeops.AppendWriter(logPath)
 				defer logWriter.Close()
 				cmd.Stdout = logWriter
@@ -334,14 +338,31 @@ func agentEngine(agent *ast.Agent) (string, bool) {
 // letting callers skip the write entirely rather than treating "no log" and
 // "empty path" the same way. Not consulted for the ollama/* engine, since
 // that path calls an HTTP endpoint rather than a subprocess.
-func agentLogPath(agent *ast.Agent) (string, bool) {
+//
+// The path is interpolated for "${...}" spans against ctx exactly like a
+// `prompt:` string, so `log: "logs/codex.${context.session_id}.log"` gives
+// each run (or each --session) its own file and two concurrent runs of the
+// same pipeline never share one log. ctx is nil only in agent_test.go's
+// direct calls, which pass plain paths; interpolation is skipped there.
+func agentLogPath(ctx *evalCtx, agent *ast.Agent) (string, bool, error) {
 	for _, prop := range agent.Props {
-		if prop.Name == "log" {
-			path, ok := ast.StringValue(prop.Value)
-			return path, ok && path != ""
+		if prop.Name != "log" {
+			continue
 		}
+		raw, ok := ast.StringValue(prop.Value)
+		if !ok || raw == "" {
+			return "", false, nil
+		}
+		if ctx == nil {
+			return raw, true, nil
+		}
+		path, err := interpolate(ctx, raw)
+		if err != nil {
+			return "", false, fmt.Errorf("agent log path %q: %w", raw, err)
+		}
+		return path, path != "", nil
 	}
-	return "", false
+	return "", false, nil
 }
 
 // agentTrace reads an agent's `trace` property — when true, runAgent and

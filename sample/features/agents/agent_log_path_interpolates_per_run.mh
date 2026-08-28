@@ -1,0 +1,28 @@
+use {MockLoggingCLI} from "fixtures/agents.mh"
+
+// An agent's `log:` path is interpolated for "${...}" spans against the
+// calling scope, just like a `prompt:` string. Here `${run_tag}` resolves to
+// a describe-block var, so switching the tag sends the next call's output to
+// a different file -- the fix for two concurrent `mhl run`s of one pipeline
+// interleaving into a single shared log. A pipeline uses
+// `${context.session_id}` for the same effect. Within one file the writes
+// still append (a second call keeps the first call's line), so the
+// assertions below index by line and stay correct if `mhl test` re-runs and
+// appends again.
+test agent_log_path_interpolates_per_run {
+    describe agent_log_path_interpolates_per_run {
+        var run_tag = "alpha"
+        MockLoggingCLI.run(prompt: "first")
+        MockLoggingCLI.run(prompt: "second")
+
+        run_tag = "beta"
+        MockLoggingCLI.run(prompt: "third")
+
+        var alpha = fs.read(".mhl/logs/agent-run.alpha.log").trim().split("\n")
+        are_equal(alpha[0], "first")
+        are_equal(alpha[1], "second")
+
+        var beta = fs.read(".mhl/logs/agent-run.beta.log").trim().split("\n")
+        are_equal(beta[0], "third")
+    }
+}

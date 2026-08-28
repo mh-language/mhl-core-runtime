@@ -1,0 +1,11 @@
+test map {
+    describe map {
+        var numbers = [1, 2, 3, 4]
+        var doubled = numbers.map((n) -> n * 2)
+        are_equal(doubled.size(), 4)
+        are_equal(doubled[0], 2)
+        are_equal(doubled[3], 8)
+        // The source array is left unchanged.
+        are_equal(numbers[0], 1)
+    }
+}

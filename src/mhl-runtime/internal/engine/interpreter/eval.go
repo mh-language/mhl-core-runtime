@@ -140,7 +140,23 @@ func evalExpr(ctx *evalCtx, expr *ast.Expr) (any, error) {
 }
 
 func evalExprAt(ctx *evalCtx, expr *ast.Expr, depth int) (any, error) {
-	return evalOr(ctx, expr.Or, depth)
+	v, err := evalOr(ctx, expr.Or, depth)
+	if err != nil {
+		return nil, err
+	}
+	// `??` short-circuits: the right-hand side is evaluated only when the
+	// value so far is null. Unlike `||`/`&&` neither side must be a bool —
+	// `a ?? b` is "a unless it's null, otherwise b".
+	for _, op := range expr.Tail {
+		if v != nil {
+			break
+		}
+		v, err = evalOr(ctx, op.Rhs, depth)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return v, nil
 }
 
 func evalOr(ctx *evalCtx, e *ast.OrExpr, depth int) (any, error) {
@@ -416,6 +432,11 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	if p.Primary.Ident == "env" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalEnvCall(ctx, p.Ops[0].Call.Args, depth)
 	}
+	if p.Primary.Ident != "" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
+		if v, handled, err := evalTypeBuiltinCall(ctx, p.Primary.Ident, p.Ops[0].Call.Args, depth); handled {
+			return v, err
+		}
+	}
 	if p.Primary.Ident != "" && len(p.Ops) >= 1 && p.Ops[0].Call != nil {
 		if _, ok := findPrompt(ctx.prog, p.Primary.Ident); ok {
 			rendered, err := renderPromptCallDynamic(ctx, p.Primary.Ident, p.Ops[0].Call, depth)
@@ -425,7 +446,7 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 			return applyTrailers(ctx, rendered, p.Ops[1:], depth)
 		}
 	}
-	if p.Primary.Ident != "" && len(p.Ops) >= 2 && p.Ops[0].Member != "" && p.Ops[1].Call != nil {
+	if p.Primary.Ident != "" && !isBoundVar(ctx, p.Primary.Ident) && len(p.Ops) >= 2 && p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[1].Call != nil {
 		name := p.Primary.Ident
 		member := p.Ops[0].Member
 		call := p.Ops[1].Call
@@ -517,6 +538,23 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 // predates log.info/log.warn/log.error (nativeOpCall, tool.go) and keeps
 // printing unprefixed for backward compatibility with existing .mh scripts
 // and their test assertions.
+// isBoundVar reports whether name is a step-local (`var`) or pipeline-level
+// variable currently in scope. When it is, a `name.method(...)` call is an
+// ordinary value-method call on whatever that variable holds — it must NOT
+// be mistaken for a call on a same-named declared construct (memory, tool,
+// mcp_server, ...) or hit the "memory %q not found" typo guard, which would
+// otherwise shadow value methods like `list.append(x)` or `obj.get(k, d)`.
+func isBoundVar(ctx *evalCtx, name string) bool {
+	if ctx == nil {
+		return false
+	}
+	if _, ok := ctx.env[name]; ok {
+		return true
+	}
+	_, ok := ctx.pipelineEnv[name]
+	return ok
+}
+
 func evalLogCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 	values, err := evalLogArgs(ctx, args, depth)
 	if err != nil {
@@ -595,6 +633,41 @@ func evalFailCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 // step, a describe block's `if`, a tool method body, ...), so a program can
 // gate behavior on an operator-supplied flag, e.g. skipping a describe block
 // that calls a real, paid external API unless `ENABLE_LLM_CALL=1` is set.
+// typeBuiltinWants maps each `is_*` runtime-introspection builtin to the
+// typeName it tests for. `type_of` is handled separately (it returns the
+// name rather than a bool).
+var typeBuiltinWants = map[string]string{
+	"is_string": "string",
+	"is_number": "number",
+	"is_bool":   "bool",
+	"is_array":  "array",
+	"is_object": "object",
+	"is_null":   "null",
+}
+
+// evalTypeBuiltinCall handles the bare, receiver-less introspection calls:
+// `type_of(x)` returns x's kind as a string ("string", "number", "bool",
+// "array", "object", "null", "function", "task"); each `is_<kind>(x)`
+// returns a bool. handled is false when name is not one of them, so the
+// caller falls through to its normal resolution.
+func evalTypeBuiltinCall(ctx *evalCtx, name string, args []*ast.Argument, depth int) (result any, handled bool, err error) {
+	want, isPred := typeBuiltinWants[name]
+	if name != "type_of" && !isPred {
+		return nil, false, nil
+	}
+	if len(args) != 1 {
+		return nil, true, fmt.Errorf("%s() requires exactly one argument", name)
+	}
+	v, err := evalExprAt(ctx, args[0].Value, depth)
+	if err != nil {
+		return nil, true, err
+	}
+	if name == "type_of" {
+		return typeName(v), true, nil
+	}
+	return typeName(v) == want, true, nil
+}
+
 func evalEnvCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("env() requires exactly one argument (the variable name)")
@@ -640,6 +713,11 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 		op := ops[i]
 		switch {
 		case op.Member != "" && i+1 < len(ops) && ops[i+1].Call != nil:
+			// Optional chaining: `x?.method()` on a null `x` collapses the
+			// whole rest of the chain to null instead of raising.
+			if op.Optional && v == nil {
+				return nil, nil
+			}
 			// A *toolRef/*mcpServerRef is what an agent's `before`/`after`
 			// hook navigates to off its `tool`/`mcp` map parameter (e.g.
 			// `tool.execution.read_file(...)`, `mcp.GitHub.call(...)` —
@@ -679,6 +757,12 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 			}
 			i++ // the Call trailer was consumed together with its Member
 		case op.Member != "":
+			// Optional chaining: `x?.name` yields null (and skips the rest
+			// of the chain) when `x` is null or is an object with no such
+			// field, rather than raising.
+			if op.Optional && v == nil {
+				return nil, nil
+			}
 			if h, ok := v.(*spawnHandle); ok {
 				next, err := handleField(h, op.Member)
 				if err != nil {
@@ -693,6 +777,9 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 			}
 			next, ok := m[op.Member]
 			if !ok {
+				if op.Optional {
+					return nil, nil
+				}
 				return nil, fmt.Errorf("field %q not found", op.Member)
 			}
 			v = next
@@ -910,6 +997,14 @@ func callValueMethod(receiver any, name string, args []any, depth int) (any, err
 			return nil, err
 		}
 		return n == 0, nil
+	case "equals", "deep_equal":
+		// Defined for every value kind (not just containers): a type-aware,
+		// order-sensitive deep comparison — the same equality `==` and the
+		// `are_equal` assertion use.
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() requires exactly one argument (the value to compare against)", name)
+		}
+		return reflect.DeepEqual(receiver, args[0]), nil
 	case "get_index":
 		if len(args) != 1 {
 			return nil, fmt.Errorf("get_index() requires exactly one argument (the index)")
@@ -1152,6 +1247,149 @@ func callValueMethod(receiver any, name string, args []any, depth int) (any, err
 			return nil, fmt.Errorf("sort_by() argument must be a lambda, got %s", typeName(args[0]))
 		}
 		return sortByKey(arr, keyFn, depth)
+	case "map":
+		arr, ok := receiver.([]any)
+		if !ok {
+			return nil, fmt.Errorf("map() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 1 {
+			return nil, fmt.Errorf("map() requires exactly one argument (a transform lambda)")
+		}
+		fn, ok := args[0].(*Closure)
+		if !ok {
+			return nil, fmt.Errorf("map() argument must be a lambda, got %s", typeName(args[0]))
+		}
+		out := make([]any, len(arr))
+		for i, item := range arr {
+			r, err := invokeClosureWithValues(fn, []any{item}, depth)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = r
+		}
+		return out, nil
+	case "reduce":
+		arr, ok := receiver.([]any)
+		if !ok {
+			return nil, fmt.Errorf("reduce() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 2 {
+			return nil, fmt.Errorf("reduce() requires exactly two arguments (a combiner lambda and an initial value)")
+		}
+		fn, ok := args[0].(*Closure)
+		if !ok {
+			return nil, fmt.Errorf("reduce() first argument must be a lambda, got %s", typeName(args[0]))
+		}
+		acc := args[1]
+		for _, item := range arr {
+			r, err := invokeClosureWithValues(fn, []any{acc, item}, depth)
+			if err != nil {
+				return nil, err
+			}
+			acc = r
+		}
+		return acc, nil
+	case "any", "all":
+		arr, ok := receiver.([]any)
+		if !ok {
+			return nil, fmt.Errorf("%s() is not defined for a %s value", name, typeName(receiver))
+		}
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() requires exactly one argument (a predicate)", name)
+		}
+		pred, ok := args[0].(*Closure)
+		if !ok {
+			return nil, fmt.Errorf("%s() argument must be a lambda, got %s", name, typeName(args[0]))
+		}
+		for _, item := range arr {
+			r, err := invokeClosureWithValues(pred, []any{item}, depth)
+			if err != nil {
+				return nil, err
+			}
+			b, ok := r.(bool)
+			if !ok {
+				return nil, fmt.Errorf("%s() predicate must return a boolean, got %s", name, typeName(r))
+			}
+			if name == "any" && b {
+				return true, nil
+			}
+			if name == "all" && !b {
+				return false, nil
+			}
+		}
+		return name == "all", nil
+	case "append":
+		arr, ok := receiver.([]any)
+		if !ok {
+			return nil, fmt.Errorf("append() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 1 {
+			return nil, fmt.Errorf("append() requires exactly one argument (the value to add)")
+		}
+		// A fresh slice — the receiver array is never mutated, matching the
+		// copy-on-combine semantics of the `+` array operator.
+		out := make([]any, 0, len(arr)+1)
+		out = append(out, arr...)
+		out = append(out, args[0])
+		return out, nil
+	case "join":
+		arr, ok := receiver.([]any)
+		if !ok {
+			return nil, fmt.Errorf("join() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 1 {
+			return nil, fmt.Errorf("join() requires exactly one argument (the separator string)")
+		}
+		sep, ok := args[0].(string)
+		if !ok {
+			return nil, fmt.Errorf("join() separator must be a string, got %s", typeName(args[0]))
+		}
+		parts := make([]string, len(arr))
+		for i, item := range arr {
+			parts[i] = formatValue(item)
+		}
+		return strings.Join(parts, sep), nil
+	case "unique":
+		arr, ok := receiver.([]any)
+		if !ok {
+			return nil, fmt.Errorf("unique() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 0 {
+			return nil, fmt.Errorf("unique() takes no arguments")
+		}
+		out := make([]any, 0, len(arr))
+		for _, item := range arr {
+			seen := false
+			for _, kept := range out {
+				if reflect.DeepEqual(item, kept) {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				out = append(out, item)
+			}
+		}
+		return out, nil
+	case "get":
+		obj, ok := receiver.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("get() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) < 1 || len(args) > 2 {
+			return nil, fmt.Errorf("get() requires the key and an optional default (1 or 2 arguments)")
+		}
+		key, ok := args[0].(string)
+		if !ok {
+			return nil, fmt.Errorf("get() key must be a string, got %s", typeName(args[0]))
+		}
+		if v, present := obj[key]; present {
+			return v, nil
+		}
+		if len(args) == 2 {
+			return args[1], nil
+		}
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("%s value has no method %q", typeName(receiver), name)
 	}

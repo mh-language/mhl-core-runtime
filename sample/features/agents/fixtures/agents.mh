@@ -37,6 +37,19 @@ export agent OllamaCLI {
     temperature: 0.2
 }
 
+// MockLoggingCLI carries a "${...}" span in its `log:` path. The path is
+// interpolated against the calling scope exactly like a `prompt:` string, so
+// each run resolves it to its own file -- `${context.session_id}` in a
+// pipeline, or any in-scope var here -- instead of every concurrent run of
+// one pipeline appending into a single shared codex.log. command is `echo`
+// so a test can read the file back. See
+// agent_log_path_interpolates_per_run.mh.
+export agent MockLoggingCLI {
+    command: "echo"
+    args: ["${prompt}"]
+    log: ".mhl/logs/agent-run.${run_tag}.log"
+}
+
 // GeminiAPI calls the Gemini REST API directly. mhl's agent engines are
 // currently limited to `cli/*` (subprocess) and `ollama/*` (local HTTP) --
 // there is no generic HTTP/API engine yet -- so a real HTTP API is reached by

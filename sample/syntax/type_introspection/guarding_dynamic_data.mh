@@ -1,0 +1,14 @@
+test guarding_dynamic_data {
+    describe guarding_dynamic_data {
+        // A realistic use: only iterate a field that actually arrived as an
+        // array, and tell "missing" apart from "present but wrong type".
+        var srs = { functionalRequirements: [{ id: "FR-1" }] }
+
+        var reqs = if (is_array(srs?.functionalRequirements)) srs.functionalRequirements else []
+        are_equal(reqs.size(), 1)
+
+        var bad = { functionalRequirements: "oops" }
+        var safe = if (is_array(bad?.functionalRequirements)) bad.functionalRequirements else []
+        are_equal(safe.size(), 0)
+    }
+}

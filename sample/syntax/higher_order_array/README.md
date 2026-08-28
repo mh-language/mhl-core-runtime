@@ -1,6 +1,7 @@
 # higher_order_array
 
-Array methods that take a lambda: `.filter()`, `.find()`, `.sort_by()`.
+Array methods that take a lambda: `.filter()`, `.find()`, `.sort_by()`, `.map()`,
+`.reduce()`, `.any()`, `.all()`.
 
 - [filter.mh](filter.mh) — keep the elements a predicate accepts
 - [filter_no_match_returns_empty_array.mh](filter_no_match_returns_empty_array.mh) — no
@@ -19,3 +20,9 @@ Array methods that take a lambda: `.filter()`, `.find()`, `.sort_by()`.
   function returning any other type raises a catchable error
 - [deterministic_feature_selection.mh](deterministic_feature_selection.mh) — chaining
   `.filter().filter().sort_by()` to pick the next ready item, deterministically
+- [map.mh](map.mh) — transform every element into a new array
+- [reduce.mh](reduce.mh) — fold an array left-to-right from an initial value
+- [reduce_requires_an_initial_value.mh](reduce_requires_an_initial_value.mh) — `.reduce()`
+  called with only the lambda raises a catchable error
+- [any_and_all.mh](any_and_all.mh) — `.any()` / `.all()` existential and universal checks,
+  including their empty-array edge cases

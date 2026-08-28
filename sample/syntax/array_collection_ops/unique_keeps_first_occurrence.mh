@@ -1,0 +1,12 @@
+test unique_keeps_first_occurrence {
+    describe unique_keeps_first_occurrence {
+        var deduped = [3, 1, 2, 2, 3, 1].unique()
+        are_equal(deduped.size(), 3)
+        are_equal(deduped[0], 3)
+        are_equal(deduped[1], 1)
+        are_equal(deduped[2], 2)
+        // Deep equality, so structured elements dedupe too.
+        var objs = [{ id: 1 }, { id: 1 }, { id: 2 }].unique()
+        are_equal(objs.size(), 2)
+    }
+}

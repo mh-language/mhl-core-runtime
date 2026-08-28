@@ -1,0 +1,7 @@
+test optional_member {
+    describe optional_member {
+        var user = { profile: { name: "Ada" } }
+        // `?.` behaves like `.` when the field is present.
+        are_equal(user?.profile?.name, "Ada")
+    }
+}

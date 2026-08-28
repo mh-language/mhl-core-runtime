@@ -1,0 +1,10 @@
+test append_returns_a_new_array {
+    describe append_returns_a_new_array {
+        var base = [1, 2, 3]
+        var more = base.append(4)
+        are_equal(more.size(), 4)
+        are_equal(more[3], 4)
+        // The receiver is not mutated.
+        are_equal(base.size(), 3)
+    }
+}

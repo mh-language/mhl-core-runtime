@@ -1,0 +1,14 @@
+test reduce {
+    describe reduce {
+        var numbers = [1, 2, 3, 4, 5]
+        // reduce(combine, initial) folds left-to-right from `initial`.
+        var sum = numbers.reduce((acc, n) -> acc + n, 0)
+        are_equal(sum, 15)
+
+        var joined = ["a", "b", "c"].reduce((acc, s) -> acc + s, "")
+        are_equal(joined, "abc")
+
+        // The initial value is what an empty array reduces to.
+        are_equal([].reduce((acc, n) -> acc + n, 42), 42)
+    }
+}

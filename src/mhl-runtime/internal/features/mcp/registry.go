@@ -208,7 +208,7 @@ func evalStringObject(e *ast.Expr) map[string]string {
 // evalString evaluates a string-valued expression: string literals, env("KEY")
 // calls (resolved via the environment), and `a + b` concatenations thereof.
 func evalString(e *ast.Expr) (string, bool) {
-	if e == nil || e.Or == nil {
+	if e == nil || e.Or == nil || len(e.Tail) != 0 {
 		return "", false
 	}
 	or := e.Or

@@ -95,6 +95,9 @@ func walkExprIdents(expr *ast.Expr, fn func(name string)) {
 		return
 	}
 	walkOr(expr.Or, fn)
+	for _, op := range expr.Tail {
+		walkOr(op.Rhs, fn)
+	}
 }
 
 func walkOr(e *ast.OrExpr, fn func(string)) {

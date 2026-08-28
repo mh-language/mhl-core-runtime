@@ -1,0 +1,12 @@
+test any_and_all {
+    describe any_and_all {
+        var numbers = [2, 4, 6, 7]
+        are_equal(numbers.any((n) -> n % 2 == 1), true)
+        are_equal(numbers.all((n) -> n % 2 == 0), false)
+        are_equal([2, 4, 6].all((n) -> n % 2 == 0), true)
+
+        // Edge cases on an empty array: any -> false, all -> true.
+        are_equal([].any((n) -> true), false)
+        are_equal([].all((n) -> false), true)
+    }
+}

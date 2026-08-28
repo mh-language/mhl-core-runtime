@@ -1,0 +1,14 @@
+test equals_is_a_deep_comparison {
+    describe equals_is_a_deep_comparison {
+        // `.equals()` / `.deep_equal()` compare by value, recursively, and
+        // are type- and order-sensitive.
+        are_equal([1, 2, 3].equals([1, 2, 3]), true)
+        are_equal([1, 2, 3].equals([3, 2, 1]), false)
+        are_equal({ a: 1, b: [2] }.deep_equal({ a: 1, b: [2] }), true)
+        are_equal("90%".equals("90%"), true)
+        // Replaces comparing two arrays by joining them into a string.
+        var a = ["src/x.mh", "src/y.mh"]
+        var b = ["src/x.mh", "src/y.mh"]
+        are_equal(a.equals(b), true)
+    }
+}

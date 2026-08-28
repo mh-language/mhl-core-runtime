@@ -1,0 +1,8 @@
+test optional_member_short_circuits_on_missing_field {
+    describe optional_member_short_circuits_on_missing_field {
+        var user = { profile: { name: "Ada" } }
+        // A field the object doesn't have yields `null` (and the rest of the
+        // chain is skipped) instead of raising "field ... not found".
+        are_equal(user?.address?.city, null)
+    }
+}

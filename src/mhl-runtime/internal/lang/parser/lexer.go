@@ -10,7 +10,9 @@ import "github.com/alecthomas/participle/v2/lexer"
 // rather than a number followed by an identifier. Within Punct, `..` (the
 // slice-range separator, see ast.Slice) precedes the single-char class so a
 // `..` in source lexes as one token rather than two `.` (member-access)
-// tokens.
+// tokens; likewise `?.` (optional member access, see ast.Trailer) and `??`
+// (the null-coalescing operator, see ast.Expr) precede it so a bare `?` never
+// stands alone.
 var mhlLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Comment", Pattern: `//[^\n]*`},
 	{Name: "Whitespace", Pattern: `[ \t\r\n]+`},
@@ -19,5 +21,5 @@ var mhlLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Duration", Pattern: `[0-9]+(?:ms|s|m|h|d)\b`},
 	{Name: "Number", Pattern: `[0-9]+(?:\.[0-9]+)?`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`},
-	{Name: "Punct", Pattern: `\.\.|->|==|!=|>=|<=|&&|\|\||[-+*/%<>=!^(){}\[\]:,.]`},
+	{Name: "Punct", Pattern: `\.\.|->|==|!=|>=|<=|&&|\|\||\?\.|\?\?|[-+*/%<>=!^(){}\[\]:,.]`},
 })

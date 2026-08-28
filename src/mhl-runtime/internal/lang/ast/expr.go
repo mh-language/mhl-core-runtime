@@ -2,9 +2,24 @@ package ast
 
 // Expr is the entry point of the expression grammar. Expressions appear both
 // as property values (config) and inside pipeline statements. Precedence is
-// encoded structurally, from lowest (logical OR) to highest (unary/postfix).
+// encoded structurally, from lowest (null-coalescing `??`, then logical OR)
+// to highest (unary/postfix).
+//
+// `??` binds looser than every other operator: `a || b ?? c` is
+// `(a || b) ?? c`. Its right-hand side is only evaluated when the left is
+// `null` (short-circuit), and — unlike `||`/`&&` — neither side has to be a
+// bool. `Or` keeps its field name so the many call sites that reach straight
+// for `expr.Or` still compile; `Tail` is empty for every expression that
+// doesn't use `??`.
 type Expr struct {
-	Or *OrExpr `parser:"@@"`
+	Or   *OrExpr       `parser:"@@"`
+	Tail []*CoalesceOp `parser:"@@*"`
+}
+
+// CoalesceOp is one `?? rhs` continuation of an Expr.
+type CoalesceOp struct {
+	Op  string  `parser:"@'??'"`
+	Rhs *OrExpr `parser:"@@"`
 }
 
 // OrExpr handles the `||` logical-or operator.
@@ -94,11 +109,18 @@ type Postfix struct {
 // `arr[3]` the Slice alternative fails to find '..' and backtracks
 // (participle.UseLookahead(MaxLookahead), see internal/lang/parser/parser.go)
 // to the plain Index alternative.
+//
+// A member access may be written `.name` (plain) or `?.name` (optional
+// chaining): when the value to its left is `null`, or is an object that has
+// no such field, the access yields `null` and the rest of the trailer chain
+// is skipped instead of raising. Optional holds whether `?.` was written;
+// Member carries the field name either way.
 type Trailer struct {
-	Member string `parser:"( '.' @Ident )"`
-	Call   *Call  `parser:"| @@"`
-	Slice  *Slice `parser:"| '[' @@ ']'"`
-	Index  *Expr  `parser:"| '[' @@ ']'"`
+	Optional bool   `parser:"( ( @'?.' | '.' )"`
+	Member   string `parser:"    @Ident )"`
+	Call     *Call  `parser:"| @@"`
+	Slice    *Slice `parser:"| '[' @@ ']'"`
+	Index    *Expr  `parser:"| '[' @@ ']'"`
 }
 
 // SliceBound is one side of a slice range — `numbers[1..4]`'s `1` and `4`.

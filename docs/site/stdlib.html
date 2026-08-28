@@ -93,7 +93,7 @@
           <p class="sig-note">A "raises" outcome unwinds like any evaluation error: it aborts the step/run unless a <code>try { … } catch (e) { … }</code> around the call catches it. A non-zero process <code>exit_code</code> is <em>not</em> a raise — it is a field on the returned value for you to inspect.</p>
         </section>
 
-        <section class="feature doc-section" id="globals" data-title="global functions log fail env builtin print environment variable error">
+        <section class="feature doc-section" id="globals" data-title="global functions log fail env builtin print environment variable error type_of is_string is_number is_bool is_array is_object is_null runtime type introspection kind">
           <div class="feature-head"><h2><span class="feature-num">01</span>Global functions</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Available in any expression position — a step body, a <code>describe</code> block, a <code>tool</code> method, a condition.</p>
           <div class="reference-table sig-table">
@@ -116,10 +116,22 @@
               <span><code>string</code></span>
               <span>Reads an OS environment variable. Returns <code>""</code> when unset (no separate null). Exactly one argument.</span>
             </div>
+            <div class="table-row">
+              <code>type_of(value: any) -&gt; string</code>
+              <span><span class="p"><code>value</code> — any value</span></span>
+              <span><code>string</code></span>
+              <span>The value's kind: <code>"string"</code>, <code>"number"</code>, <code>"bool"</code>, <code>"array"</code>, <code>"object"</code>, <code>"null"</code>, <code>"function"</code>, or <code>"task"</code>.</span>
+            </div>
+            <div class="table-row">
+              <code>is_string / is_number / is_bool / is_array / is_object / is_null (value: any) -&gt; bool</code>
+              <span><span class="p"><code>value</code> — any value</span></span>
+              <span><code>bool</code></span>
+              <span>Each is <code>type_of(value) == "&lt;kind&gt;"</code>. Handy with <code>?.</code> to iterate a dynamic field only when it really is an array/object.</span>
+            </div>
           </div>
         </section>
 
-        <section class="feature doc-section" id="collections" data-title="collection methods string array object size is_empty split replace contains starts_with ends_with trim to_upper to_lower substring get_index index_of filter find sort_by keys values lambda">
+        <section class="feature doc-section" id="collections" data-title="collection methods string array object size is_empty equals deep_equal split replace contains starts_with ends_with trim to_upper to_lower substring get_index index_of filter find sort_by map reduce any all append join unique keys values get default lambda">
           <div class="feature-head"><h2><span class="feature-num">02</span>Collection methods</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Called on a value with <code>.</code> — <code>name.size()</code>, <code>path.split("/")</code>, <code>items.filter((x) -&gt; x.ok)</code>. They never mutate the receiver; <code>filter</code>, <code>sort_by</code>, concatenation, and slices return a new array. Indexing (<code>arr[i]</code>, <code>arr[a..b]</code>, <code>obj[key]</code>) and index-assignment (<code>arr[i] = v</code>) are language syntax, not methods — see the <a href="reference.html#expressions">Language Reference</a>.</p>
 
@@ -130,6 +142,7 @@
             <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
             <div class="table-row"><code>size() -&gt; number</code><span><span class="p">none</span></span><span><code>number</code></span><span>Element count (array), entry count (object), or byte length (string).</span></div>
             <div class="table-row"><code>is_empty() -&gt; bool</code><span><span class="p">none</span></span><span><code>bool</code></span><span>Equivalent to <code>size() == 0</code>.</span></div>
+            <div class="table-row"><code>equals(other: any) -&gt; bool</code><span><span class="p"><code>other</code> — value to compare against</span></span><span><code>bool</code></span><span>Type-aware, order-sensitive deep comparison — the same equality <code>==</code> and <code>are_equal</code> use. Defined on every value kind. Alias: <code>deep_equal</code>.</span></div>
           </div>
 
           <div class="ns-block"><h3>String</h3></div>
@@ -155,6 +168,13 @@
             <div class="table-row"><code>filter(predicate: (item: any) -&gt; bool) -&gt; any[]</code><span><span class="p"><code>predicate</code> — lambda; must return <code>bool</code></span></span><span><code>any[]</code></span><span>New array of the elements for which <code>predicate</code> is true.</span></div>
             <div class="table-row"><code>find(predicate: (item: any) -&gt; bool) -&gt; any</code><span><span class="p"><code>predicate</code> — lambda; must return <code>bool</code></span></span><span><code>any</code></span><span>First matching element, or <code>null</code> if none.</span></div>
             <div class="table-row"><code>sort_by(key: (item: any) -&gt; any) -&gt; any[]</code><span><span class="p"><code>key</code> — lambda returning the sort key for an element</span></span><span><code>any[]</code></span><span>New array, ascending by key.</span></div>
+            <div class="table-row"><code>map(transform: (item: any) -&gt; any) -&gt; any[]</code><span><span class="p"><code>transform</code> — lambda called per element</span></span><span><code>any[]</code></span><span>New array of <code>transform</code> applied to each element.</span></div>
+            <div class="table-row"><code>reduce(combine: (acc: any, item: any) -&gt; any, initial: any) -&gt; any</code><span><span class="p"><code>combine</code> — lambda <code>(acc, item)</code></span><span class="p"><code>initial</code> — starting accumulator</span></span><span><code>any</code></span><span>Folds left-to-right from <code>initial</code>. Both arguments are required.</span></div>
+            <div class="table-row"><code>any(predicate: (item: any) -&gt; bool) -&gt; bool</code><span><span class="p"><code>predicate</code> — lambda; must return <code>bool</code></span></span><span><code>bool</code></span><span>True if <code>predicate</code> holds for at least one element (<code>false</code> for an empty array).</span></div>
+            <div class="table-row"><code>all(predicate: (item: any) -&gt; bool) -&gt; bool</code><span><span class="p"><code>predicate</code> — lambda; must return <code>bool</code></span></span><span><code>bool</code></span><span>True if <code>predicate</code> holds for every element (<code>true</code> for an empty array).</span></div>
+            <div class="table-row"><code>append(value: any) -&gt; any[]</code><span><span class="p"><code>value</code> — element to add</span></span><span><code>any[]</code></span><span>New array with <code>value</code> at the end; the receiver is not mutated.</span></div>
+            <div class="table-row"><code>join(separator: string) -&gt; string</code><span><span class="p"><code>separator</code></span></span><span><code>string</code></span><span>Joins the elements; non-string elements are formatted the way <code>log</code> prints them.</span></div>
+            <div class="table-row"><code>unique() -&gt; any[]</code><span><span class="p">none</span></span><span><code>any[]</code></span><span>New array with deep-equal duplicates removed, first-occurrence order kept.</span></div>
           </div>
 
           <div class="ns-block"><h3>Object</h3></div>
@@ -162,6 +182,7 @@
             <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
             <div class="table-row"><code>keys() -&gt; string[]</code><span><span class="p">none</span></span><span><code>string[]</code></span><span>Keys in stable (sorted) order.</span></div>
             <div class="table-row"><code>values() -&gt; any[]</code><span><span class="p">none</span></span><span><code>any[]</code></span><span>Values in the same order as <code>keys()</code>.</span></div>
+            <div class="table-row"><code>get(key: string, default?: any) -&gt; any</code><span><span class="p"><code>key</code> — field name</span><span class="p"><code>default</code> — optional, returned when absent</span></span><span><code>any</code></span><span>The value at <code>key</code>, or <code>default</code> (or <code>null</code>) when the object has no such key. Never raises on a missing field — unlike <code>.key</code> / <code>obj[key]</code>.</span></div>
           </div>
         </section>
 

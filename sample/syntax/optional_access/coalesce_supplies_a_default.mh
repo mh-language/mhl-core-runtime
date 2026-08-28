@@ -1,0 +1,13 @@
+test coalesce_supplies_a_default {
+    describe coalesce_supplies_a_default {
+        var config = { retries: 0 }
+
+        // `??` yields the right side only when the left is null. `0` is a
+        // real value, so it is kept.
+        are_equal(config?.retries ?? 3, 0)
+        are_equal(config?.timeout ?? 3, 3)
+
+        var name = null
+        are_equal(name ?? "anonymous", "anonymous")
+    }
+}

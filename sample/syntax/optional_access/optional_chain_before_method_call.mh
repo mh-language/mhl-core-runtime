@@ -1,0 +1,11 @@
+test optional_chain_before_method_call {
+    describe optional_chain_before_method_call {
+        var metric = { target: "  90%  " }
+        var missing = {}
+
+        // `?.trim()` runs the method when the receiver is non-null...
+        are_equal(metric?.target?.trim(), "90%")
+        // ...and collapses to null when an earlier optional hop was absent.
+        are_equal(missing?.target?.trim(), null)
+    }
+}

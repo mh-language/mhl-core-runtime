@@ -1,0 +1,14 @@
+test object_get_with_default {
+    describe object_get_with_default {
+        var config = { retries: 5, timeout: 0 }
+
+        // `.get(key)` / `.get(key, default)` never raises on a missing key —
+        // unlike `.key` and `obj[key]`, which do.
+        are_equal(config.get("retries"), 5)
+        are_equal(config.get("missing"), null)
+        are_equal(config.get("missing", 3), 3)
+
+        // A present key wins even when its value is falsy.
+        are_equal(config.get("timeout", 30), 0)
+    }
+}

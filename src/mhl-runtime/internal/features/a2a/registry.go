@@ -180,7 +180,7 @@ func evalString(e *ast.Expr) (string, bool) {
 // is false and err is non-nil. When e is not string-shaped at all, ok is
 // false and err is nil.
 func evalStringChecked(e *ast.Expr) (string, bool, error) {
-	if e == nil || e.Or == nil {
+	if e == nil || e.Or == nil || len(e.Tail) != 0 {
 		return "", false, nil
 	}
 	or := e.Or

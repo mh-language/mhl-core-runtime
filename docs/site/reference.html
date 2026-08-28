@@ -160,30 +160,38 @@ call         := expression "(" [argument {"," argument}] ")"
 array        := "[" [expression {"," expression}] "]"
 object       := "{" [key ":" expression {","? key ":" expression}] "}"
 lambda       := "(" [parameters] ")" "->" (expression | block)
-if-expr      := "if" "(" expression ")" expression "else" expression</code></pre>
+if-expr      := "if" "(" expression ")" expression "else" expression
+optional     := expression "?." identifier   // null / missing-field safe
+coalesce     := expression "??" expression   // left unless it is null</code></pre>
         </section>
 
-        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort slice interpolation">
+        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort map reduce any all append join unique equals deep_equal slice interpolation optional chaining null coalescing get default">
           <div class="feature-head"><h2><span class="feature-num">03</span>Expressions and collections</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Expressions produce values. They compose inside variables, arguments, properties, conditions, returns, and string interpolation.</p>
 
           <p class="block-label">PRECEDENCE — LOWEST TO HIGHEST</p>
-          <div class="operator-line"><code>||</code><i>→</i><code>&amp;&amp;</code><i>→</i><code>== !=</code><i>→</i><code>&lt; &gt; &lt;= &gt;=</code><i>→</i><code>+ -</code><i>→</i><code>* / %</code><i>→</i><code>! -</code><i>→</i><code>. () []</code></div>
+          <div class="operator-line"><code>??</code><i>→</i><code>||</code><i>→</i><code>&amp;&amp;</code><i>→</i><code>== !=</code><i>→</i><code>&lt; &gt; &lt;= &gt;=</code><i>→</i><code>+ -</code><i>→</i><code>* / %</code><i>→</i><code>! -</code><i>→</i><code>. ?. () []</code></div>
           <pre class="code-block"><code class="language-mhl">var ready = retries &lt; 3 &amp;&amp; files.size() > 0
 var label = if (ready) "ready" else "blocked"
 var total = price * quantity + shipping
 var dynamic = record[field_name]
 var slice = numbers[1..^1] // index 1 through one before the end
-var text = "${label}: ${total}"</code></pre>
+var text = "${label}: ${total}"
+
+// `?.` reads through null / a missing field without raising;
+// `??` supplies a default only when the left side is null.
+var target = metric?.target?.trim() ?? ""
+var retries = config?.retries ?? 3   // 0 stays 0 — only null is replaced</code></pre>
 
           <p class="block-label">VALUE METHODS</p>
           <div class="method-grid">
-            <article><h3>Common</h3><code>size()</code><code>is_empty()</code><p>Strings, arrays, and objects.</p></article>
+            <article><h3>Common</h3><code>size()</code><code>is_empty()</code><code>equals()</code><code>deep_equal()</code><p>Strings, arrays, and objects. <code>equals</code> works on any value.</p></article>
             <article><h3>String</h3><code>split()</code><code>replace()</code><code>contains()</code><code>starts_with()</code><code>ends_with()</code><code>trim()</code><code>to_upper()</code><code>to_lower()</code><code>substring()</code></article>
-            <article><h3>Array</h3><code>get_index()</code><code>index_of()</code><code>contains()</code><code>filter()</code><code>find()</code><code>sort_by()</code></article>
-            <article><h3>Object</h3><code>keys()</code><code>values()</code><p>Keys are returned in stable order.</p></article>
+            <article><h3>Array</h3><code>get_index()</code><code>index_of()</code><code>contains()</code><code>filter()</code><code>find()</code><code>sort_by()</code><code>map()</code><code>reduce()</code><code>any()</code><code>all()</code><code>append()</code><code>join()</code><code>unique()</code></article>
+            <article><h3>Object</h3><code>keys()</code><code>values()</code><code>get()</code><p>Keys are returned in stable order. <code>get(key, default?)</code> never raises on a missing field.</p></article>
           </div>
           <div class="tip-row"><span>SIGNATURES</span><p>Every method's parameters, types, and return value are in the <a href="stdlib.html#collections">Standard Library</a>.</p></div>
+          <div class="tip-row"><span>RUNTIME TYPES</span><p><code>type_of(x)</code> returns a kind string (<code>"string"</code>, <code>"number"</code>, <code>"bool"</code>, <code>"array"</code>, <code>"object"</code>, <code>"null"</code>, …); <code>is_string</code>, <code>is_number</code>, <code>is_bool</code>, <code>is_array</code>, <code>is_object</code>, <code>is_null</code> are the per-kind predicates. Pair them with <code>?.</code> to branch on a dynamic field's shape.</p></div>
 
           <p class="block-label">DETERMINISTIC SELECTION EXAMPLE</p>
           <pre class="code-block"><code class="language-mhl">var passed_ids = [10]
@@ -201,7 +209,7 @@ var ready = features
     .sort_by((f) -> f.priority)
 
 var next = ready.find((f) -> f.id == 20)</code></pre>
-          <div class="tip-row"><span>IMMUTABLE RESULTS</span><p><code>filter()</code>, <code>sort_by()</code>, concatenation, and slices return new arrays. Assigning to <code>items[index]</code> or <code>object[key]</code> mutates the original collection.</p></div>
+          <div class="tip-row"><span>IMMUTABLE RESULTS</span><p><code>filter()</code>, <code>map()</code>, <code>sort_by()</code>, <code>append()</code>, <code>unique()</code>, concatenation, and slices return new arrays. Assigning to <code>items[index]</code> or <code>object[key]</code> mutates the original collection.</p></div>
         </section>
 
         <section class="feature doc-section" id="statements" data-title="statements control flow var assignment if else while for try catch finally return break goto fail">
@@ -290,6 +298,7 @@ var result = json.parse(raw)</code></pre>
             <div class="table-row table-head"><span>Field</span><span>Example</span><span>Behavior</span></div>
             <div class="table-row"><span><code>engine</code></span><code>"cli/name" · "ollama/model"</code><span>Selects the adapter.</span></div>
             <div class="table-row"><span><code>command</code> / <code>args</code></span><code>"claude" · ["-p", "${prompt}"]</code><span>Builds argv without splitting elements.</span></div>
+            <div class="table-row"><span><code>log</code></span><code>"logs/run.${context.session_id}.log"</code><span>cli/* engine: appends every call's raw stdout to this path. Interpolated for <code>${...}</code> spans like a prompt string, so each run (or <code>--session</code>) can get its own file instead of concurrent runs interleaving into one. Ignored under <code>spawn</code>.</span></div>
             <div class="table-row"><span><code>endpoint</code> / <code>temperature</code></span><code>"http://localhost:11434" · 0.2</code><span>Configures Ollama.</span></div>
             <div class="table-row"><span><code>retry</code></span><code>{max_attempts: 3, delay: 2s}</code><span>Repeats eligible failures.</span></div>
             <div class="table-row"><span><code>cache</code></span><code>{ttl: 1h, storage: "disk"}</code><span>Reuses a response by exact key.</span></div>

@@ -594,3 +594,72 @@ func TestRunToolMethodDoesNotSeePipelineVar(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+const optionalAccessAndCollectionOpsFile = `
+pipeline P {
+    step S {
+        var comma = ","
+        var obj = { profile: { name: "  Ada  " }, retries: 0 }
+        var fallback = "unknown"
+        var rkey = "retries"
+        var mkey = "missing"
+        // ?. reads through a present chain, a missing field, and a null hop
+        log("name=${obj?.profile?.name?.trim()}")
+        log("city=${obj?.address?.city ?? fallback}")
+        // ?? keeps a real 0, only null is replaced
+        log("retries=${obj?.retries ?? 3}")
+
+        var nums = [3, 1, 2, 2, 4]
+        log("mapped=${nums.map((n) -> n * 2).join(comma)}")
+        log("sum=${nums.reduce((a, b) -> a + b, 0)}")
+        log("any=${nums.any((n) -> n > 3)}")
+        log("all=${nums.all((n) -> n > 0)}")
+        log("uniq=${nums.unique().join(comma)}")
+        log("appended=${nums.append(9).join(comma)}")
+        log("eq=${[1,2].equals([1,2])}")
+        log("kind=${type_of(nums)}/${is_array(nums)}/${is_string(nums)}")
+        log("got=${obj.get(rkey, 7)}/${obj.get(mkey, 7)}")
+    }
+}
+`
+
+// End-to-end coverage of the v0.4.x expression additions: the ?. optional
+// member operator, the ?? null-coalescing operator, the new array methods
+// (map/reduce/any/all/append/join/unique), object get(key, default), the
+// universal equals(), and the bare type_of / is_* introspection builtins.
+func TestRunOptionalAccessAndCollectionOps(t *testing.T) {
+	dir := t.TempDir()
+	pip := filepath.Join(dir, "pipeline.mh")
+	if err := os.WriteFile(pip, []byte(optionalAccessAndCollectionOpsFile), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cwd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", "pipeline.mh"}, &buf); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"name=Ada",
+		"city=unknown",
+		"retries=0",
+		"mapped=6,2,4,4,8",
+		"sum=12",
+		"any=true",
+		"all=true",
+		"uniq=3,1,2,4",
+		"appended=3,1,2,2,4,9",
+		"eq=true",
+		"kind=array/true/false",
+		"got=0/7",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}

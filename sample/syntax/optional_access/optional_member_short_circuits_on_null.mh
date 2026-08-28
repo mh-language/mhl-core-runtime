@@ -1,0 +1,8 @@
+test optional_member_short_circuits_on_null {
+    describe optional_member_short_circuits_on_null {
+        var user = { profile: null }
+        // `profile` is present but null, so `?.name` short-circuits to null
+        // rather than raising "cannot access field on a null value".
+        are_equal(user?.profile?.name, null)
+    }
+}

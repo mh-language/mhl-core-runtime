@@ -1,0 +1,13 @@
+test coalesce_chains_left_to_right {
+    describe coalesce_chains_left_to_right {
+        var primary = null
+        var secondary = null
+
+        // `a ?? b ?? c` returns the first non-null, evaluating no further.
+        are_equal(primary ?? secondary ?? "fallback", "fallback")
+
+        // `??` binds looser than every other operator: this is
+        // `(1 + 1) ?? 9`, which is `2`.
+        are_equal(1 + 1 ?? 9, 2)
+    }
+}

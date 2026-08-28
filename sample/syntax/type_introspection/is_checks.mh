@@ -1,0 +1,13 @@
+test is_checks {
+    describe is_checks {
+        // One predicate per kind — each is `type_of(x) == "<kind>"`.
+        are_equal(is_string("x"), true)
+        are_equal(is_string(1), false)
+        are_equal(is_number(3.5), true)
+        are_equal(is_bool(false), true)
+        are_equal(is_array([]), true)
+        are_equal(is_object({}), true)
+        are_equal(is_null(null), true)
+        are_equal(is_null(0), false)
+    }
+}

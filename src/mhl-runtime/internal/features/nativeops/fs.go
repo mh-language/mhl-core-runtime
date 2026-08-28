@@ -1,6 +1,7 @@
 package nativeops
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -69,16 +70,25 @@ func Append(path, content string) (bool, error) {
 	return true, nil
 }
 
-// appendWriter is an io.WriteCloser that appends each Write directly to a
+// appendWriter is an io.WriteCloser that appends a subprocess's output to a
 // file, opening (and creating any missing parent directories for) that file
 // lazily on the first non-empty Write rather than at construction — the same
 // "created on first write" behavior Append has, extended to a stream of
 // writes instead of one already-complete string. A caller that never writes
 // to it, or writes only empty chunks, never touches the filesystem, and
 // Close is a safe no-op in that case too.
+//
+// Writes are re-chunked to line boundaries: each complete line (with its
+// trailing "\n") is flushed as one O_APPEND syscall, and any bytes past the
+// last "\n" are held in buf until the newline that finishes them arrives (or
+// until Close). Because a single O_APPEND write is atomic for a regular file,
+// this keeps two runs that share one `log:` path from splicing a half-line of
+// one run's output into the middle of the other's — their lines interleave,
+// but no line is ever torn. A newline-less tail is flushed whole by Close.
 type appendWriter struct {
 	path string
 	f    *os.File
+	buf  []byte
 }
 
 func (w *appendWriter) Write(p []byte) (int, error) {
@@ -97,26 +107,49 @@ func (w *appendWriter) Write(p []byte) (int, error) {
 		}
 		w.f = f
 	}
-	n, err := w.f.Write(p)
-	if err != nil {
-		return n, fmt.Errorf("fs.append %q: %w", w.path, err)
+	w.buf = append(w.buf, p...)
+	for {
+		nl := bytes.IndexByte(w.buf, '\n')
+		if nl == -1 {
+			break
+		}
+		if _, err := w.f.Write(w.buf[:nl+1]); err != nil {
+			return len(p), fmt.Errorf("fs.append %q: %w", w.path, err)
+		}
+		w.buf = w.buf[nl+1:]
 	}
-	return n, nil
+	// Keep buf from pinning the whole backing array once it's been consumed
+	// down to a short remainder.
+	if len(w.buf) == 0 {
+		w.buf = nil
+	}
+	return len(p), nil
 }
 
 func (w *appendWriter) Close() error {
 	if w.f == nil {
 		return nil
 	}
-	return w.f.Close()
+	var flushErr error
+	if len(w.buf) > 0 {
+		_, flushErr = w.f.Write(w.buf)
+		w.buf = nil
+	}
+	closeErr := w.f.Close()
+	if flushErr != nil {
+		return fmt.Errorf("fs.append %q: %w", w.path, flushErr)
+	}
+	return closeErr
 }
 
-// AppendWriter returns an io.WriteCloser that streams writes to path one
-// chunk at a time instead of requiring the full content up front like
+// AppendWriter returns an io.WriteCloser that streams a subprocess's output
+// to path as it arrives instead of requiring the full content up front like
 // Append does — for a caller (e.g. an agent's `log:` property) that wants to
-// persist a subprocess's output as it arrives rather than buffering the
-// whole thing in memory until the process exits. The caller is responsible
-// for calling Close once it's done writing.
+// persist output incrementally rather than buffering the whole thing in
+// memory until the process exits. Output is flushed one line at a time so
+// concurrent writers sharing a path never tear each other's lines (see
+// appendWriter). The caller is responsible for calling Close once it's done
+// writing, which also flushes any newline-less trailing bytes.
 func AppendWriter(path string) io.WriteCloser {
 	return &appendWriter{path: path}
 }
