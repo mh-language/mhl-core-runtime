@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="A step-by-step walkthrough of the mhl.workflow.development sample: plan, set up, implement, verify, replan, and commit software features with MHL and Codex." />
+    <meta name="theme-color" content="#10161f" />
+    <meta property="og:title" content="MHL Sample — Development workflow" />
+    <meta property="og:description" content="Follow a complete MHL development loop in its real execution order." />
+    <meta property="og:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MHL Sample — Development workflow" />
+    <meta name="twitter:description" content="Follow a complete MHL development loop in its real execution order." />
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <link rel="icon" href="assets/mhl-logo-rebrand.png" />
+    <title>MHL Sample — Development workflow</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="index.html" aria-label="MHL home">
+        <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
+        <span><strong>MHL</strong><small>Meta-Harness Language</small></span>
+      </a>
+      <div class="top-actions">
+        <label class="search" for="site-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="site-search" type="search" placeholder="Search the sample" autocomplete="off" />
+          <kbd>/</kbd>
+        </label>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
+        <span class="github-link" aria-current="page">Sample</span>
+        <a class="github-link" href="reference.html">Reference</a>
+        <a class="github-link" href="stdlib.html">Standard library</a>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </div>
+    </header>
+
+    <div class="layout" id="top">
+      <aside class="sidebar sample-sidebar" aria-label="Sample navigation">
+        <p class="eyebrow">DEVELOPMENT SAMPLE</p>
+        <nav id="toc">
+          <a class="nav-link active" href="#overview">Workflow overview</a>
+          <a class="nav-link" href="#run">Prepare and run</a>
+          <a class="nav-link" href="#language">MHL features in use</a>
+          <a class="nav-link" href="#start">01 · Start</a>
+          <a class="nav-link" href="#plan">02 · Plan</a>
+          <a class="nav-link" href="#setup">03 · Setup</a>
+          <a class="nav-link" href="#bearings">04 · Bearings</a>
+          <a class="nav-link" href="#smoke">05 · Smoke</a>
+          <a class="nav-link" href="#pick">06 · Pick</a>
+          <a class="nav-link" href="#implement">07 · Implement</a>
+          <a class="nav-link" href="#verify">08 · Verify</a>
+          <a class="nav-link" href="#replan">09 · Replan</a>
+          <a class="nav-link" href="#handoff">10 · Handoff</a>
+          <a class="nav-link" href="#state">State and safety</a>
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <span>Runnable sample<br /><small>MHL + Codex CLI + Git</small></span>
+        </div>
+      </aside>
+
+      <main class="content reference-content sample-content">
+        <section class="sample-hero doc-section" id="overview" data-title="overview development workflow codex git plan setup implement verify replan handoff">
+          <div>
+            <p class="eyebrow accent">MHL · APPLIED SAMPLE · mhl.workflow.development</p>
+            <h1>A development loop you can inspect.</h1>
+            <p class="lead">This sample uses MHL as the deterministic harness around Codex. MHL owns sequencing, state, retry limits, verification, and commits; Codex is called only for planning and code changes.</p>
+            <div class="hero-actions">
+              <a class="button primary" href="#run">Run the sample <span>↓</span></a>
+              <a class="button secondary" href="https://github.com/mh-language/mhl-workflows" target="_blank" rel="noreferrer">Browse the workflow <span>↗</span></a>
+            </div>
+            <div class="hero-proof" aria-label="Workflow characteristics">
+              <span>dependency-aware</span><span>checkpointed</span><span>verification-gated</span>
+            </div>
+          </div>
+          <div class="hero-card sample-hero-card">
+            <div class="window-bar"><span></span><span></span><span></span><b>main.mh</b></div>
+            <pre class="code-block"><code class="language-mhl">loop pipeline FeatureCycle {
+    repeat: {
+        stop_when: store.has_pending_features() == false
+        max_iterations: 15
+    }
+
+    checkpoint: {
+        enabled: true
+        strategy: "per_step"
+        storage: "file"
+        ttl: 7d
+    }
+
+    step Start { /* load the plan */ }
+    step Implement { /* ask Codex */ }
+    step Verify { /* deterministic gate */ }
+    step Handoff { /* record + commit */ }
+}</code></pre>
+            <div class="hero-card-foot"><span class="pulse"></span> the harness controls the loop; the agent performs bounded work</div>
+          </div>
+        </section>
+
+        <section class="doc-section" data-title="execution order flow path fresh run resume retry replan complete">
+          <div class="section-heading">
+            <p class="eyebrow">THE REAL EXECUTION ORDER</p>
+            <h2>One main path, three controlled branches.</h2>
+            <p>A fresh run follows the numbered stages below. A resumed run can skip plan loading and setup when pending state already exists. Failures return through explicit routes instead of giving the agent control of the loop.</p>
+          </div>
+          <ol class="workflow-track" aria-label="Development workflow execution order">
+            <li><span>01</span><strong>Start</strong><small>load or restore</small></li>
+            <li><span>02</span><strong>Plan</strong><small>only if missing</small></li>
+            <li><span>03</span><strong>Setup</strong><small>configure target</small></li>
+            <li><span>04</span><strong>Bearings</strong><small>capture context</small></li>
+            <li><span>05</span><strong>Smoke</strong><small>bootstrap gate</small></li>
+            <li><span>06</span><strong>Pick</strong><small>ready feature</small></li>
+            <li><span>07</span><strong>Implement</strong><small>bounded Codex run</small></li>
+            <li><span>08</span><strong>Verify</strong><small>deterministic check</small></li>
+            <li><span>09</span><strong>Replan</strong><small>after repeated failure</small></li>
+            <li><span>10</span><strong>Handoff</strong><small>record and commit</small></li>
+          </ol>
+          <div class="branch-grid">
+            <article><span class="branch-label">BOOTSTRAP FAILURE</span><p><code>Smoke → Bearings → Smoke</code> after Codex repairs only the startup process.</p></article>
+            <article><span class="branch-label">VERIFY FAILURE</span><p><code>Verify → Implement</code> with a focused fix prompt and the latest failure evidence.</p></article>
+            <article><span class="branch-label">THIRD FAILURE</span><p><code>Verify → Replan → Bearings</code> while the global replan budget remains.</p></article>
+          </div>
+        </section>
+
+        <section class="doc-section" id="run" data-title="prepare prerequisites install run lint resume specifications active sources target contract">
+          <div class="section-heading">
+            <p class="eyebrow">BEFORE STAGE 01</p>
+            <h2>Prepare the specifications and the execution boundary.</h2>
+            <p>The sample ships with specifications for a .NET and Postgres task-management API. Replace those documents to drive another project, then run MHL from the workflow directory so every relative path resolves correctly.</p>
+          </div>
+          <div class="sample-prereqs">
+            <article><span>01</span><h3>Install the tools</h3><p>Make <code>mhl</code>, <code>codex</code>, <code>git</code>, and <code>bash</code> available. Start Docker when the target specifications require local services.</p></article>
+            <article><span>02</span><h3>Provide the plan</h3><p>Place the approved plan at <code>specs/active/40-development-plan.json</code>. If it is absent or invalid, keep source material in <code>specs/sources/</code> for the fallback planner.</p></article>
+            <article><span>03</span><h3>Review the prompts</h3><p>Codex can edit files and run commands. Review the active specs and Markdown prompts before granting that authority.</p></article>
+          </div>
+          <div class="code-wrap sample-command">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>cd sample/workflows/mhl.workflow.development
+mhl lint .
+mhl run main.mh</code></pre>
+          </div>
+          <div class="run-stack">
+            <div class="inline-code"><span>resume</span><code>mhl run main.mh --resume</code></div>
+            <div class="inline-code"><span>validate</span><code>mhl version &amp;&amp; codex --version &amp;&amp; git --version</code></div>
+          </div>
+          <div class="tip-row"><span>PLAN CONTRACT</span><p>Every feature needs an ID, priority, dependency list, description, traceable references, implementation context, and status. Dependencies must point to existing IDs and form an acyclic graph.</p></div>
+        </section>
+
+        <section class="doc-section" id="language" data-title="mhl features modules use prompt markdown loop pipeline repeat checkpoint mem step goto break fail tool agent">
+          <div class="section-heading">
+            <p class="eyebrow">LANGUAGE ANATOMY</p>
+            <h2>Each MHL feature has one job.</h2>
+            <p>The workflow keeps orchestration in <code>main.mh</code>, reusable deterministic operations in tools, agent integration in an adapter, and natural-language instructions in external Markdown prompts.</p>
+          </div>
+          <div class="reference-table sample-feature-table">
+            <div class="table-row table-head"><span>MHL feature</span><span>Use in this workflow</span><span>Why it matters</span></div>
+            <div class="table-row"><code>use {A as alias} from "…"</code><span>Imports the feature store, configuration, adapters, schemas, and operational tools.</span><span>Keeps the pipeline short and modules independently testable.</span></div>
+            <div class="table-row"><code>prompt Name(...) from "file.md"</code><span>Loads setup, plan, implement, fix, replan, and smoke instructions from Markdown.</span><span>Prompt changes remain reviewable without hiding control flow.</span></div>
+            <div class="table-row"><code>loop pipeline</code> + <code>repeat</code><span>Processes features until none remain, with a hard ceiling of 15 iterations.</span><span>The runtime—not Codex—decides when another cycle starts or stops.</span></div>
+            <div class="table-row"><code>checkpoint</code> + <code>mem</code><span>Persists each completed stage and the current feature counters for seven days.</span><span><code>--resume</code> can continue after interruption without replaying all work.</span></div>
+            <div class="table-row"><code>step</code> + <code>goto</code> + <code>break</code><span>Defines the normal order and every retry, recovery, and completion transition.</span><span>The exceptional paths are visible in the source.</span></div>
+            <div class="table-row"><code>fail(...)</code><span>Stops on invalid plans, blocked dependencies, missing agent output, or exhausted limits.</span><span>Unsafe or ambiguous states fail closed.</span></div>
+            <div class="table-row"><code>tool.method(...)</code><span>Reads plans, captures repository context, runs bootstrap and verification, and commits handoffs.</span><span>Deterministic work stays outside the model.</span></div>
+            <div class="table-row"><code>adapter.execute…(...)</code><span>Invokes the Codex CLI with plain or schema-constrained output.</span><span>Probabilistic work is bounded by a typed, logged interface.</span></div>
+          </div>
+          <div class="file-example sample-files">
+            <div><span>main.mh · imports</span><pre class="code-block"><code class="language-mhl">use {FeatureStore as store, RunConfig as config}
+    from "modules/tools/feature.tool.mh"
+use {CodexAdapter as adapter}
+    from "modules/agents/codex.adapter.mh"
+use {VerifyTool as verify}
+    from "modules/tools/verify.tool.mh"</code></pre></div>
+            <div><span>main.mh · external prompt</span><pre class="code-block"><code class="language-mhl">prompt ImplementPrompt(
+    id: string,
+    title: string,
+    feature_context: string,
+    design_context: string,
+    target_dir: string
+) from "modules/prompts/implement.prompt.md"</code></pre></div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="start" data-title="stage 01 start pending reset import plan resume branch">
+          <div class="feature-head"><h2><span class="feature-num">01</span>Start · restore or initialize</h2><span class="stage-kind">CONTROL</span></div>
+          <p class="feature-lede">The entry stage decides whether this is a continuation or a fresh feature cycle. Existing pending state goes directly to <a href="#bearings"><code>Bearings</code></a>; otherwise the store and configuration are reset before plan import.</p>
+          <div class="stage-layout">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">step Start {
+    if (store.has_pending_features() == true)
+        goto Bearings
+
+    store.reset()
+    config.reset()
+
+    if (store.try_import_preview_plan() == false)
+        goto Plan
+    else
+        goto Setup
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">FEATURES USED</p>
+              <ul class="plain-list">
+                <li><code>step</code> creates a named checkpoint boundary.</li>
+                <li><code>if</code> inspects deterministic persisted state.</li>
+                <li><code>goto</code> makes resume and fallback routes explicit.</li>
+              </ul>
+              <p class="block-label">NEXT</p>
+              <p>A valid published plan goes to <strong>Setup</strong>. A missing or invalid plan goes to <strong>Plan</strong>. Restored pending work goes to <strong>Bearings</strong>.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="plan" data-title="stage 02 plan fallback sources markdown codex json validation">
+          <div class="feature-head"><h2><span class="feature-num">02</span>Plan · create the fallback plan</h2><span class="stage-kind agent-kind">AGENT</span></div>
+          <p class="feature-lede">This stage runs only when the published JSON plan could not be imported. MHL concatenates the source specifications, asks Codex to write the canonical plan, then parses and validates the file before execution can continue.</p>
+          <div class="stage-layout">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">step Plan {
+    var content = store.read_files_in_source_folder(
+        "./specs/sources")
+    var plan_path =
+        "specs/active/40-development-plan.json"
+
+    adapter.execute_without_schema(
+        query: PlanPrompt(
+            plan_path: plan_path,
+            content: content))
+
+    var plan = json.parse(fs.read(plan_path))
+    if (store.set_plan(plan) == false) {
+        fail("Codex did not produce a valid feature list")
+    }
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">FEATURES USED</p>
+              <ul class="plain-list">
+                <li><code>var</code> holds stage-local source and path values.</li>
+                <li>An external <code>prompt</code> receives typed arguments.</li>
+                <li><code>fs.read</code> and <code>json.parse</code> turn the generated artifact back into data.</li>
+                <li><code>fail</code> blocks execution when validation rejects the plan.</li>
+              </ul>
+              <p class="block-label">NEXT</p>
+              <p>Normal step order continues to <strong>Setup</strong>. No feature is implemented from an unvalidated plan.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="setup" data-title="stage 03 setup greenfield brownfield branch target dir verify command schema structured output">
+          <div class="feature-head"><h2><span class="feature-num">03</span>Setup · establish the project contract</h2><span class="stage-kind agent-kind">AGENT + SCHEMA</span></div>
+          <p class="feature-lede">Codex classifies the target as greenfield or brownfield, prepares a safe feature branch, and returns the target directory and verification command. Unlike planning, this call must conform to a JSON schema.</p>
+          <div class="stage-layout">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">step Setup {
+    var schema = schemas.get_setup_schema_path()
+    var result = adapter.execute(
+        prompt: SetupPrompt(),
+        schema_path: schema)
+
+    if (result == null) {
+        fail("Setup returned no result")
+    }
+
+    var raw = json.parse(result)
+    config.setup(raw)
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">FEATURES USED</p>
+              <ul class="plain-list">
+                <li>The adapter constrains agent output with <code>schema_path</code>.</li>
+                <li><code>json.parse</code> converts the response to an object.</li>
+                <li><code>config.setup</code> persists <code>TARGET_DIR</code>, <code>VERIFY_CMD</code>, and limits.</li>
+              </ul>
+              <p class="block-label">TARGET CONTRACT</p>
+              <p>The target must expose idempotent <code>init.sh</code>, real <code>verify-feature.sh</code>, concise <code>progress.txt</code>, and detailed <code>logs/smoke.log</code>.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="bearings" data-title="stage 04 bearings snapshot repository context progress commits session memory">
+          <div class="feature-head"><h2><span class="feature-num">04</span>Bearings · refresh concise context</h2><span class="stage-kind">TOOL</span></div>
+          <p class="feature-lede">Before bootstrap, and again after a smoke repair or accepted replan, the workflow captures a compact repository snapshot. It records the target path, the contents of <code>progress.txt</code>, and the ten most recent commits.</p>
+          <div class="stage-layout compact-stage">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">mem bearingkey = "current_bearings"
+
+step Bearings {
+    session.set(
+        bearingkey,
+        bearings.snapshot())
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">FEATURES USED</p>
+              <ul class="plain-list">
+                <li><code>mem</code> keeps the key across loop iterations and checkpoints.</li>
+                <li>A reusable tool performs deterministic repository inspection.</li>
+                <li>The session module stores the snapshot and emits trace data.</li>
+              </ul>
+              <p class="block-label">NEXT</p>
+              <p>Normal execution continues to <strong>Smoke</strong>.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="smoke" data-title="stage 05 smoke init bootstrap failure retry log codex repair goto">
+          <div class="feature-head"><h2><span class="feature-num">05</span>Smoke · prove the project can start</h2><span class="stage-kind mixed-kind">TOOL → AGENT ON FAILURE</span></div>
+          <p class="feature-lede">The deterministic smoke tool runs <code>&lt;TARGET_DIR&gt;/init.sh</code> and writes the command and detailed result to <code>logs/smoke.log</code>. Codex enters only when that gate fails, with instructions to repair the bootstrap process rather than implement a feature.</p>
+          <div class="stage-layout">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">step Smoke {
+    var result = smoke.execute()
+    if (result.success == false) {
+        adapter.execute_without_schema(
+            query: SmokePrompt(
+                log_path: result.logPath))
+        goto Bearings
+    }
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">FEATURES USED</p>
+              <ul class="plain-list">
+                <li>The tool returns structured success and log-path fields.</li>
+                <li>The failure prompt points Codex to concrete evidence.</li>
+                <li><code>goto Bearings</code> refreshes context, then naturally runs Smoke again.</li>
+              </ul>
+              <p class="block-label">NEXT</p>
+              <p>Success falls through to <strong>Pick</strong>. Failure follows <code>Bearings → Smoke</code> until bootstrap succeeds or execution is externally stopped.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="pick" data-title="stage 06 pick feature dependency priority status pending blocked cycle fail">
+          <div class="feature-head"><h2><span class="feature-num">06</span>Pick · select one ready feature</h2><span class="stage-kind">CONTROL</span></div>
+          <p class="feature-lede">Selection is deterministic: only pending features whose dependencies are complete are eligible, ordered by priority and then ID. Per-feature retry counters are reset exactly when the selection changes.</p>
+          <div class="stage-layout">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">step Pick {
+    if (store.has_pending_features() == false) {
+        break
+    }
+
+    var next_feature = store.pick_next_feature()
+    if (next_feature == null) {
+        fail("Pending features are blocked")
+    }
+
+    current_feature = next_feature
+    feature_steps = 0
+    verify_failures = 0
+    verify_result = ""
+    session.append("current_feature", next_feature)
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">FEATURES USED</p>
+              <ul class="plain-list">
+                <li><code>break</code> ends the loop cleanly when work is complete.</li>
+                <li><code>fail</code> distinguishes “finished” from “pending but impossible to order.”</li>
+                <li>Assignments update checkpointed <code>mem</code> values.</li>
+              </ul>
+              <p class="block-label">NEXT</p>
+              <p>A ready feature continues to <strong>Implement</strong>. A dependency deadlock stops with a pointer to <code>.mhl/feature_list.json</code>.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="implement" data-title="stage 07 implement codex prompt feature design context guard retry fix attempt limit">
+          <div class="feature-head"><h2><span class="feature-num">07</span>Implement · run one bounded coding task</h2><span class="stage-kind agent-kind">AGENT</span></div>
+          <p class="feature-lede">MHL sends Codex only the selected feature, its traceable references, relevant design decisions, the target directory, and—on retries—the latest verification failure. A per-feature guard prevents an endless implement/verify loop.</p>
+          <div class="stage-layout">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">step Implement {
+    feature_steps = feature_steps + 1
+    if (feature_steps &gt; config.steps_per_feature()) {
+        fail("Feature exceeded its attempt limit")
+    }
+
+    var fctx = implement.get_feature_context(
+        feature: current_feature)
+    var dctx = implement.get_design_context()
+
+    if (verify_failures == 0) {
+        adapter.execute_without_schema(
+            query: ImplementPrompt(/* scoped context */))
+    } else {
+        adapter.execute_without_schema(
+            query: FixPrompt(
+                verify_failure: verify_result,
+                /* scoped context */))
+    }
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">FEATURES USED</p>
+              <ul class="plain-list">
+                <li><code>mem feature_steps</code> enforces the default six-cycle budget.</li>
+                <li>Separate external prompts distinguish first implementation from targeted repair.</li>
+                <li>The adapter owns Codex CLI execution, JSON event parsing, logging, and errors.</li>
+              </ul>
+              <p class="block-label">NEXT</p>
+              <p>A non-null agent result falls through to <strong>Verify</strong>. Missing output or an exhausted attempt budget fails the run.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="verify" data-title="stage 08 verify deterministic tests pass fail targeted fix third failure replan">
+          <div class="feature-head"><h2><span class="feature-num">08</span>Verify · gate progress with evidence</h2><span class="stage-kind">DETERMINISTIC GATE</span></div>
+          <p class="feature-lede">The verifier runs <code>verify-feature.sh &lt;feature-id&gt;</code>, falling back to the configured aggregate command when needed. The process exit code—not the agent's opinion—decides whether work passes.</p>
+          <div class="stage-layout">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">step Verify {
+    if (verify.verify_feature(current_feature) == false) {
+        verify_failures = verify_failures + 1
+        verify_result = "FAIL: verification failed"
+
+        if (verify_failures &gt;= 3 &amp;&amp;
+            replans &lt; config.max_replans()) {
+            store.record_observation(/* evidence */)
+            goto Replan
+        }
+
+        goto Implement
+    }
+
+    verify_result = "PASS: verified successfully"
+    store.mark_done(current_feature.id)
+    goto Handoff
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">BRANCH RULES</p>
+              <ul class="plain-list">
+                <li>Pass: mark the feature done, then go to <strong>Handoff</strong>.</li>
+                <li>Failure 1–2: go to <strong>Implement</strong> with a fix prompt.</li>
+                <li>Failure 3+: go to <strong>Replan</strong> while replan budget remains.</li>
+                <li>After the replan budget is spent, fixes can continue only until the per-feature attempt limit stops the run.</li>
+              </ul>
+              <p class="block-label">FEATURES USED</p>
+              <p>Boolean tool results drive <code>if</code>; checkpointed counters drive escalation; <code>goto</code> encodes every outcome.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="replan" data-title="stage 09 replan observations proposal validation atomic apply budget bearings">
+          <div class="feature-head"><h2><span class="feature-num">09</span>Replan · revise the plan under validation</h2><span class="stage-kind mixed-kind">AGENT + VALIDATOR</span></div>
+          <p class="feature-lede">Repeated deterministic failures may reveal a bad decomposition or missing dependency. Codex receives accumulated observations and writes a proposal; the feature store validates positive unique IDs, retention of completed features, dependency existence, self-dependencies, cycles, and size limits, then normalizes statuses before applying it.</p>
+          <div class="stage-layout">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">step Replan {
+    replans = replans + 1
+    if (replans &gt; config.max_replans()) {
+        fail("Reached the replan limit")
+    }
+
+    store.clear_revision_proposal()
+    adapter.execute_without_schema(
+        query: ReplanPrompt(
+            observations: store.get_observations_text(),
+            current_plan: store.current_plan_json(),
+            proposal_path: store.revision_proposal_path()))
+
+    var outcome = store.apply_revision_file()
+    if (outcome.success == false) goto Replan
+
+    verify_failures = 0
+    feature_steps = 0
+    goto Bearings
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">FEATURES USED</p>
+              <ul class="plain-list">
+                <li>The model proposes; a deterministic tool accepts or rejects.</li>
+                <li>A rejected proposal loops inside <code>Replan</code> and consumes the replan budget.</li>
+                <li>An accepted proposal clears feature-local failures but preserves the global replan count.</li>
+              </ul>
+              <p class="block-label">NEXT</p>
+              <p>Accepted plans return to <strong>Bearings</strong>, then pass through Smoke and feature selection again so execution uses fresh context and the revised dependency graph.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature doc-section workflow-stage" id="handoff" data-title="stage 10 handoff progress commit git add message session repeat stop pending">
+          <div class="feature-head"><h2><span class="feature-num">10</span>Handoff · record and commit verified work</h2><span class="stage-kind">TOOL</span></div>
+          <p class="feature-lede">Handoff runs only after Verify marks a feature complete. The tool appends a concise progress entry, stages the target repository, and creates a feature-specific commit when there are changes. The result is written to the session trace.</p>
+          <div class="stage-layout compact-stage">
+            <div class="code-wrap"><button class="copy-button" type="button" data-copy="copy">Copy</button><pre class="code-block"><code class="language-mhl">step Handoff {
+    var result = handoff.commit_feature(
+        current_feature,
+        verify_result)
+
+    session.append("handoff", {
+        feature_id: current_feature.id,
+        verify_result: verify_result,
+        result: result
+    })
+}</code></pre></div>
+            <div class="stage-notes">
+              <p class="block-label">COMMIT FORMAT</p>
+              <div class="commit-pattern"><code>Feature #&lt;id&gt; - &lt;title&gt;: implementation completed [&lt;result&gt;]</code></div>
+              <p class="block-label">WHAT HAPPENS NEXT</p>
+              <p>The loop reevaluates <code>stop_when</code>. If no pending features remain, the pipeline ends. Otherwise the next iteration starts at <strong>Start</strong>, restores state, refreshes Bearings and Smoke, then selects the next dependency-ready feature.</p>
+            </div>
+          </div>
+          <div class="tip-row"><span>BEST EFFORT</span><p><code>progress.txt</code> can still be updated when no commit is created. The tool skips a commit when the target is not a Git repository, there are no staged changes, or Git reports an error; the result remains visible in the trace.</p></div>
+        </section>
+
+        <section class="doc-section" id="state" data-title="state checkpoints files mhl run config feature list observations revision trace logs safety limits autonomy">
+          <div class="section-heading">
+            <p class="eyebrow">STATE AND SAFETY</p>
+            <h2>Everything needed to resume or audit the run is explicit.</h2>
+            <p>MHL writes runtime state under <code>.mhl/</code> inside the workflow directory. Checkpoints retain each completed stage for seven days; supporting files expose configuration, feature status, evidence, proposals, and raw agent events.</p>
+          </div>
+          <div class="state-grid">
+            <article><code>.mhl/run_config.json</code><p>Target directory, verification command, and execution limits.</p></article>
+            <article><code>.mhl/feature_list.json</code><p>The imported or revised feature graph and current status.</p></article>
+            <article><code>.mhl/plan_observations.json</code><p>Verification evidence accumulated for replanning.</p></article>
+            <article><code>.mhl/plan_revision.json</code><p>The temporary revision proposal awaiting validation.</p></article>
+            <article><code>.mhl/session_trace.jsonl</code><p>Selected features, refreshed bearings, and handoff outcomes.</p></article>
+            <article><code>.mhl/logs/codex.log</code><p>Raw Codex CLI JSON events for diagnosis and audit.</p></article>
+          </div>
+          <div class="limit-strip" aria-label="Default workflow limits">
+            <div><strong>15</strong><span>pipeline iterations</span></div>
+            <div><strong>10</strong><span>imported features</span></div>
+            <div><strong>6</strong><span>steps per feature</span></div>
+            <div><strong>2</strong><span>global replans</span></div>
+            <div><strong>7d</strong><span>checkpoint retention</span></div>
+          </div>
+          <div class="security-banner"><span>!</span><div><strong>Run only inside a version-controlled, reviewed workspace</strong><p>This sample authorizes Codex to create and edit files, execute commands, stage changes, and commit after successful verification. Keep secrets in environment-backed references, inspect prompts and specifications first, and isolate untrusted projects.</p></div></div>
+        </section>
+
+        <footer class="site-footer">
+          <span>© 2026 MHL · Created by Yan Justino</span>
+          <span><a href="index.html">Overview</a> · <a href="reference.html">Language reference</a> · <a href="stdlib.html">Standard library</a> · <a href="https://github.com/mh-language/mhl-core-runtime/tree/main/sample/workflows/mhl.workflow.development" target="_blank" rel="noreferrer">Sample source</a></span>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
