@@ -1,0 +1,38 @@
+// A mocked *handshake* MCP server (revisions 2025-11-25 / 2025-06-18): unlike
+// the stateless 2026-07-28 form, it expects an `initialize` request, then a
+// `notifications/initialized`, then the real `tools/call` — all on one
+// long-lived process, and with no `_meta` on the call. The one-line shell
+// script does exactly that three-read exchange: it answers `initialize`, reads
+// (and ignores) the notification, then answers the call. `protocol: "2025-11-25"`
+// pins the handshake so the run is deterministic and fully offline; with the
+// default `protocol: "auto"` the runtime would try the stateless form first and
+// fall back to this same handshake on a protocol-incompatibility error.
+mcp_server MockHandshake {
+    transport: "stdio"
+    command: "sh"
+    args: [
+        "-c",
+        "read a; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"serverInfo\":{\"name\":\"MockHandshake\"}}}\n'; read b; read c; printf '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"title\":\"Model Context Protocol\",\"ok\":true}}\n'"
+    ]
+    protocol: "2025-11-25"
+}
+
+test stdio_mock_server_negotiates_handshake_protocol {
+    describe stdio_mock_server_negotiates_handshake_protocol {
+        var article = MockHandshake.call(
+            tool: "get_article",
+            arguments: { title: "Model Context Protocol" })
+        log("MockHandshake.call result: ${json.stringify(article)}")
+        are_equal(article.title, "Model Context Protocol")
+        are_equal(article.ok, true)
+    }
+
+    describe stdio_mock_server_handshake_discover_maps_to_initialize {
+        // `server/discover` does not exist in the handshake revisions, so
+        // `.discover()` surfaces the `initialize` result's identity instead.
+        var info = MockHandshake.discover()
+        log("MockHandshake.discover result: ${json.stringify(info)}")
+        are_equal(info.protocolVersion, "2025-11-25")
+        are_equal(info.serverInfo.name, "MockHandshake")
+    }
+}

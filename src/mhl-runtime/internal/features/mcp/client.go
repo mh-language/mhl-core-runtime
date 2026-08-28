@@ -32,6 +32,9 @@ const (
 type ServerConfig struct {
 	Name      string
 	Transport Transport
+	// Protocol selects stateless vs handshake behavior. The zero value ("")
+	// means ProtocolAuto: stateless first, handshake fallback.
+	Protocol Protocol
 	// stdio transport
 	Command string
 	Args    []string
@@ -86,21 +89,28 @@ func (r Result) IsInputRequired() bool {
 	return r.ResultType == "input_required"
 }
 
-// Client is a stateless MCP client. A single Client instance may be reused
-// across servers and calls; it holds no per-server session state.
+// Client is an MCP client. A single Client instance may be reused across
+// servers and calls; it holds no per-server session state between calls (a
+// handshake session lives only for the duration of one CallTool).
 type Client struct {
 	// HTTPClient is used for the HTTP transport. If nil, a default client
 	// with a sane timeout is used.
 	HTTPClient *http.Client
-	// Timeout bounds a single stdio call. If zero, a default is used.
+	// Timeout bounds a single stdio call, and one handshake exchange. If zero,
+	// a default is used.
 	Timeout time.Duration
+	// ProbeTimeout bounds the stateless first attempt in ProtocolAuto mode, so
+	// a handshake server that ignores the malformed request is detected quickly
+	// rather than after the full Timeout. If zero, a default is used.
+	ProbeTimeout time.Duration
 }
 
 // NewClient returns a Client with default settings.
 func NewClient() *Client {
 	return &Client{
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
-		Timeout:    30 * time.Second,
+		HTTPClient:   &http.Client{Timeout: 30 * time.Second},
+		Timeout:      30 * time.Second,
+		ProbeTimeout: 5 * time.Second,
 	}
 }
 
@@ -118,16 +128,91 @@ func (c *Client) timeout() time.Duration {
 	return 30 * time.Second
 }
 
-// CallTool issues a single stateless tool call to the given server. Each call
-// is fully independent: the stdio transport spawns a fresh process and the
-// HTTP transport issues a fresh request, with no session/handshake state
-// carried over between calls (RF-3, RF-4).
+func (c *Client) probeTimeout() time.Duration {
+	if c.ProbeTimeout > 0 {
+		return c.ProbeTimeout
+	}
+	return 5 * time.Second
+}
+
+// CallTool issues one tool call to the given server, negotiating the protocol
+// per server.Protocol:
+//
+//   - ProtocolStateless: the stateless SpecVersion form only (this is the
+//     unchanged legacy behavior — a fresh process / fresh request, protocol
+//     context in params._meta, no handshake).
+//   - ProtocolHandshake2511 / ProtocolHandshake2506: the standard
+//     initialize / notifications/initialized handshake, advertising that
+//     revision.
+//   - ProtocolAuto (the zero value): the stateless form first; on a
+//     protocol-incompatibility error (shouldFallBack), a fresh handshake
+//     attempt advertising HandshakeVersionLatest. If both fail, the returned
+//     error names both attempts.
 func (c *Client) CallTool(server ServerConfig, request ToolRequest) (Result, error) {
+	switch server.Protocol {
+	case ProtocolStateless:
+		return c.callStateless(server, request, c.timeout())
+	case ProtocolHandshake2511, ProtocolHandshake2506:
+		return c.callHandshake(server, request, server.Protocol.advertisedVersion(), c.timeout())
+	default: // "", ProtocolAuto, or an unrecognized value (rejected upstream)
+		res, err := c.callStatelessProbe(server, request)
+		if err == nil {
+			return res, nil
+		}
+		if !shouldFallBack(err) {
+			return Result{}, err
+		}
+		hres, herr := c.callHandshake(server, request, HandshakeVersionLatest, c.timeout())
+		if herr == nil {
+			return hres, nil
+		}
+		return Result{}, combinedProtocolError(server, err, herr)
+	}
+}
+
+// callStateless issues the request in the stateless SpecVersion form.
+func (c *Client) callStateless(server ServerConfig, request ToolRequest, timeout time.Duration) (Result, error) {
 	switch server.Transport {
 	case TransportStdio:
-		return c.callStdio(server, request)
+		return c.callStdio(server, request, timeout)
 	case TransportHTTP:
-		return c.callHTTP(server, request)
+		return c.callHTTP(server, request, timeout)
+	default:
+		return Result{}, &MCPError{
+			Server:    server.Name,
+			Transport: string(server.Transport),
+			Message:   fmt.Sprintf("unsupported transport %q", server.Transport),
+		}
+	}
+}
+
+// callStatelessProbe is the ProtocolAuto first attempt: identical wire bytes to
+// callStateless, but bounded by ProbeTimeout and, on stdio, reading the
+// response from a live stream instead of waiting for the process to exit — so a
+// handshake server's -32602 (or silence) is detected in well under a second.
+func (c *Client) callStatelessProbe(server ServerConfig, request ToolRequest) (Result, error) {
+	switch server.Transport {
+	case TransportStdio:
+		return c.callStdioStreaming(server, request, c.probeTimeout())
+	case TransportHTTP:
+		return c.callHTTP(server, request, c.probeTimeout())
+	default:
+		return Result{}, &MCPError{
+			Server:    server.Name,
+			Transport: string(server.Transport),
+			Message:   fmt.Sprintf("unsupported transport %q", server.Transport),
+		}
+	}
+}
+
+// callHandshake issues the request over an initialize/initialized session,
+// advertising protocolVersion `version` (the server may negotiate it down).
+func (c *Client) callHandshake(server ServerConfig, request ToolRequest, version string, timeout time.Duration) (Result, error) {
+	switch server.Transport {
+	case TransportStdio:
+		return c.callHandshakeStdio(server, request, version, timeout)
+	case TransportHTTP:
+		return c.callHandshakeHTTP(server, request, version, timeout)
 	default:
 		return Result{}, &MCPError{
 			Server:    server.Name,
@@ -218,7 +303,7 @@ func decodeResponse(server ServerConfig, data []byte) (Result, error) {
 // callStdio spawns the server process, writes a single JSON-RPC request to its
 // stdin, and reads the JSON-RPC response from its stdout. The process is not
 // reused, so no session state survives the call.
-func (c *Client) callStdio(server ServerConfig, request ToolRequest) (Result, error) {
+func (c *Client) callStdio(server ServerConfig, request ToolRequest, timeout time.Duration) (Result, error) {
 	if server.Command == "" {
 		return Result{}, &MCPError{Server: server.Name, Transport: "stdio", Message: "no command configured"}
 	}
@@ -227,7 +312,7 @@ func (c *Client) callStdio(server ServerConfig, request ToolRequest) (Result, er
 		return Result{}, &MCPError{Server: server.Name, Transport: "stdio", Message: "encoding request", Err: err}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout())
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, server.Command, server.Args...)
@@ -293,7 +378,7 @@ func firstJSONLine(b []byte) ([]byte, error) {
 // callHTTP issues a single stateless HTTP POST carrying the JSON-RPC request,
 // applying the configured headers (e.g. an Authorization bearer token). No
 // cookies or session state are retained.
-func (c *Client) callHTTP(server ServerConfig, request ToolRequest) (Result, error) {
+func (c *Client) callHTTP(server ServerConfig, request ToolRequest, timeout time.Duration) (Result, error) {
 	if server.URL == "" {
 		return Result{}, &MCPError{Server: server.Name, Transport: "http", Message: "no url configured"}
 	}
@@ -302,7 +387,7 @@ func (c *Client) callHTTP(server ServerConfig, request ToolRequest) (Result, err
 		return Result{}, &MCPError{Server: server.Name, Transport: "http", Message: "encoding request", Err: err}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout())
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, bytes.NewReader(reqBytes))

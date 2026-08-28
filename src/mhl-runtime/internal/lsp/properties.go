@@ -84,6 +84,7 @@ var mcpServerPropertyItems = []completionItem{
 	propertyItem("args", `"stdio" transport: argv for the spawned process`),
 	propertyItem("url", `"http" transport: the endpoint URL`),
 	propertyItem("headers", `"http" transport: e.g. { "Authorization": "Bearer " + env("TOKEN") }`),
+	propertyItem("protocol", `"auto" (default), "2026-07-28" (stateless), "2025-11-25", or "2025-06-18" (handshake)`),
 }
 
 // a2aAgentPropertyItems mirrors a2a.configFromAST's field switch

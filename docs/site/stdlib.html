@@ -245,9 +245,9 @@
           </div>
         </section>
 
-        <section class="feature doc-section" id="mcp" data-title="mcp_server call list_tools discover tool arguments json-rpc stateless">
+        <section class="feature doc-section" id="mcp" data-title="mcp_server call list_tools discover tool arguments json-rpc stateless protocol auto handshake initialize 2025-11-25 2025-06-18 negotiation fallback">
           <div class="feature-head"><h2><span class="feature-num">06</span><code>mcp_server</code></h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">A declared <code>mcp_server</code> exposes three methods. Each issues exactly one stateless JSON-RPC request; an unresolved <code>env(...)</code> credential aborts the call. Configuration (transport, <code>url</code>, <code>headers</code>) is in the <a href="reference.html#mcp">Language Reference</a>.</p>
+          <p class="feature-lede">A declared <code>mcp_server</code> exposes three methods. Each auto-negotiates the protocol — the stateless <code>2026-07-28</code> form first, then the standard <code>initialize</code> handshake (revisions <code>2025-11-25</code> / <code>2025-06-18</code>) if the server rejects it — unless <code>protocol:</code> pins one. An unresolved <code>env(...)</code> credential aborts the call. Configuration (transport, <code>url</code>, <code>headers</code>, <code>protocol</code>) is in the <a href="reference.html#mcp">Language Reference</a>.</p>
           <div class="reference-table sig-table">
             <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
             <div class="table-row">
@@ -260,7 +260,7 @@
               <span>Issues <code>tools/call</code>; returns the decoded result. A server asking for elicitation/sampling input (<code>input_required</code>) raises.</span>
             </div>
             <div class="table-row"><code>&lt;Server&gt;.list_tools() -&gt; any</code><span><span class="p">none</span></span><span><code>any</code></span><span>Issues <code>tools/list</code>. One page only — a paginated catalog is truncated.</span></div>
-            <div class="table-row"><code>&lt;Server&gt;.discover() -&gt; any</code><span><span class="p">none</span></span><span><code>any</code></span><span>Issues <code>server/discover</code> — supported versions, capabilities, identity.</span></div>
+            <div class="table-row"><code>&lt;Server&gt;.discover() -&gt; any</code><span><span class="p">none</span></span><span><code>any</code></span><span>Issues <code>server/discover</code> — supported versions, capabilities, identity. Against a handshake server (no such method) it returns the <code>initialize</code> result's identity instead.</span></div>
           </div>
         </section>
 

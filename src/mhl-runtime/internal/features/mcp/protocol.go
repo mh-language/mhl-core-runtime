@@ -1,24 +1,87 @@
-// Package mcp implements a stateless Model Context Protocol (MCP) client
-// conforming to spec 2026-07-28. It speaks JSON-RPC 2.0 over two transports —
-// stdio (a locally spawned process) and HTTP/SSE (a remote endpoint with
-// header-based auth) — under a single client contract:
+// Package mcp implements a Model Context Protocol (MCP) client. It speaks
+// JSON-RPC 2.0 over two transports — stdio (a locally spawned process) and
+// HTTP/SSE (a remote endpoint with header-based auth) — under a single client
+// contract:
 //
 //	Client.CallTool(server, request) (Result, error)
 //
-// No client-side session or handshake state is retained between calls: each
-// invocation is fully independent (RF-3, RF-4, ADR-3).
+// By default (Protocol "" / ProtocolAuto) a call is first attempted in the
+// stateless SpecVersion form: no initialize/initialized handshake, protocol
+// context carried in params._meta, each invocation fully independent. A server
+// that rejects that form with a protocol-incompatibility error (JSON-RPC
+// -32602/-32600, or HTTP 400) triggers an automatic fallback to the standard
+// initialize/notifications/initialized handshake used by MCP revisions
+// 2025-11-25 and 2025-06-18. See ParseProtocol for pinning either mode.
 package mcp
 
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // JSONRPCVersion is the JSON-RPC protocol version used by all requests.
 const JSONRPCVersion = "2.0"
 
-// SpecVersion is the MCP specification revision this client conforms to.
+// SpecVersion is the stateless MCP revision this client speaks on its first
+// (and, for a stateless server, only) attempt.
 const SpecVersion = "2026-07-28"
+
+// Handshake revisions this client can fall back to. Both use the identical
+// initialize/notifications/initialized lifecycle; the constant only selects
+// which protocolVersion string the initialize request advertises. A server may
+// still negotiate the effective version down (e.g. to 2025-03-26) in its
+// initialize response.
+const (
+	HandshakeVersionLatest = "2025-11-25"
+	HandshakeVersionPrev   = "2025-06-18"
+)
+
+// Protocol selects how CallTool talks to a server.
+type Protocol string
+
+const (
+	// ProtocolAuto tries SpecVersion (stateless) first and falls back to the
+	// handshake advertising HandshakeVersionLatest on a protocol-incompatibility
+	// error. It is the zero value's meaning.
+	ProtocolAuto Protocol = "auto"
+	// ProtocolStateless pins the stateless SpecVersion form with no fallback.
+	ProtocolStateless Protocol = "2026-07-28"
+	// ProtocolHandshake2511 pins the handshake, advertising 2025-11-25.
+	ProtocolHandshake2511 Protocol = "2025-11-25"
+	// ProtocolHandshake2506 pins the handshake, advertising 2025-06-18.
+	ProtocolHandshake2506 Protocol = "2025-06-18"
+)
+
+// ParseProtocol normalizes a declared `protocol:` value. An empty string means
+// ProtocolAuto. Any value other than the four recognized ones is an error.
+func ParseProtocol(raw string) (Protocol, error) {
+	switch strings.TrimSpace(raw) {
+	case "", string(ProtocolAuto):
+		return ProtocolAuto, nil
+	case string(ProtocolStateless):
+		return ProtocolStateless, nil
+	case string(ProtocolHandshake2511):
+		return ProtocolHandshake2511, nil
+	case string(ProtocolHandshake2506):
+		return ProtocolHandshake2506, nil
+	default:
+		return "", fmt.Errorf("mcp_server protocol %q is not supported — use %q, %q, %q, or %q",
+			raw, ProtocolAuto, ProtocolStateless, ProtocolHandshake2511, ProtocolHandshake2506)
+	}
+}
+
+// advertisedVersion is the protocolVersion string a handshake in this mode puts
+// in its initialize request. Only meaningful for the handshake protocols;
+// ProtocolAuto's fallback advertises HandshakeVersionLatest.
+func (p Protocol) advertisedVersion() string {
+	switch p {
+	case ProtocolHandshake2506:
+		return HandshakeVersionPrev
+	default:
+		return HandshakeVersionLatest
+	}
+}
 
 // Meta models the JSON-RPC `_meta` object of a *result*. Per spec 2026-07-28
 // it may carry a `ttlMs` field indicating how long a tool result may be
@@ -60,6 +123,37 @@ type ClientInfo struct {
 
 // mhlClientInfo is the fixed self-identification every request carries.
 var mhlClientInfo = &ClientInfo{Name: "mhl"}
+
+// handshakeInitializeParams is the `params` of the `initialize` request that
+// opens a handshake session (MCP 2025-11-25 / 2025-06-18 §Lifecycle). mhl is a
+// minimal client: it advertises no optional capabilities and rejects
+// elicitation/sampling round-trips, so Capabilities is always an empty object.
+type handshakeInitializeParams struct {
+	ProtocolVersion string                 `json:"protocolVersion"`
+	Capabilities    map[string]interface{} `json:"capabilities"`
+	ClientInfo      *ClientInfo            `json:"clientInfo"`
+}
+
+// HandshakeInitializeResult is the `result` of the `initialize` response. The
+// server MAY answer with a ProtocolVersion older than the one advertised; the
+// client honours that negotiated value on the HTTP MCP-Protocol-Version header
+// and returns this whole payload from `.discover()` in handshake mode (the
+// `server/discover` method does not exist before 2026-07-28).
+type HandshakeInitializeResult struct {
+	ProtocolVersion string                 `json:"protocolVersion"`
+	Capabilities    map[string]interface{} `json:"capabilities,omitempty"`
+	ServerInfo      map[string]interface{} `json:"serverInfo,omitempty"`
+	Instructions    string                 `json:"instructions,omitempty"`
+}
+
+// Notification is a JSON-RPC 2.0 notification envelope — a request with no `id`,
+// to which the server sends no response (HTTP: 202 Accepted, no body). Used for
+// `notifications/initialized`.
+type Notification struct {
+	JSONRPC string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
+}
 
 // Request is a JSON-RPC 2.0 request envelope.
 type Request struct {

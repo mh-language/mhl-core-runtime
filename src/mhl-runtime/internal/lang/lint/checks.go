@@ -101,6 +101,38 @@ func collectPipelineMemNames(prog *ast.Program, p *ast.Pipeline) map[string]type
 // checkToolBlocks statically mirrors internal/engine/interpreter.evalToolCall's Block-body
 // execution: it walks every declared `tool` method's Block (the same
 // checkStatements/collectVarNames machinery checkAgentCalls uses for
+// checkMCPServers validates an mcp_server's static config the same way
+// checkExprCall validates an agent's retry/cache/rate_limit — currently just
+// the `protocol:` value, which mcp.ParseProtocol only accepts as one of four
+// revision strings. A bad value is also rejected at run time (fail-closed in
+// mcp.BuildRegistryWithError); this surfaces it before the program runs.
+func checkMCPServers(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.MCPServer == nil {
+			continue
+		}
+		if _, err := ast.MCPServerProtocol(decl.MCPServer); err != nil {
+			pos := propertyPos(decl.MCPServer.Props, "protocol")
+			findings = append(findings, Finding{
+				File: file, Line: pos.Line, Column: pos.Column, Message: err.Error(),
+			})
+		}
+	}
+	return findings
+}
+
+// propertyPos returns the position of the named property, or the zero position
+// if it is absent.
+func propertyPos(props []*ast.Property, name string) lexer.Position {
+	for _, p := range props {
+		if p != nil && p.Name == name {
+			return p.Pos
+		}
+	}
+	return lexer.Position{}
+}
+
 // pipeline steps), so a tool method's own agent/memory calls, assigns, and
 // return values get checked too. Single-expression Body methods have
 // nothing to walk this way — checkExprCall only applies to statement

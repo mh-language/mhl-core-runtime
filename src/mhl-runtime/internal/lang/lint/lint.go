@@ -57,6 +57,7 @@ func Source(path, src string) []Finding {
 	findings = append(findings, checkPipelineContext(path, merged)...)
 	findings = append(findings, checkPipelineInputTypes(path, merged)...)
 	findings = append(findings, checkToolMethodReturnTypes(path, merged)...)
+	findings = append(findings, checkMCPServers(path, merged)...)
 	return findings
 }
 
