@@ -837,6 +837,99 @@ pipeline P {
 	}
 }
 
+// TestToolHTTPGet exercises the non-POST verbs, the query: helper, and the
+// enriched response shape (headers/ok/json) end-to-end through mhl run.
+func TestToolHTTPGet(t *testing.T) {
+	var gotMethod, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotQuery = r.URL.Query().Get("q")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"hits":2}`))
+	}))
+	defer srv.Close()
+
+	out, err := run(t, `
+tool api {
+    search(term) -> http.get(url: "`+srv.URL+`", query: {"q": term})
+}
+
+pipeline P {
+    step S {
+        var resp = api.search("meta harness")
+        log(resp.status)
+        log(resp.ok)
+        log(resp.json.hits)
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if gotMethod != "GET" {
+		t.Errorf("method = %q, want GET", gotMethod)
+	}
+	if gotQuery != "meta harness" {
+		t.Errorf("query q = %q", gotQuery)
+	}
+	for _, want := range []string{"200\n", "true\n", "2\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output %q missing %q", out, want)
+		}
+	}
+}
+
+func TestToolHTTPDownload(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("remote-artifact-contents"))
+	}))
+	defer srv.Close()
+
+	dest := filepath.Join(t.TempDir(), "out", "artifact.txt")
+	out, err := run(t, `
+pipeline P {
+    step S {
+        var saved = http.download("`+srv.URL+`", "`+dest+`")
+        log(saved.ok)
+        log(saved.bytes)
+        log(fs.read(saved.path))
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"true\n", "24\n", "remote-artifact-contents\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output %q missing %q", out, want)
+		}
+	}
+}
+
+// TestToolHTTPSecretRedactedInLog checks that a token read through a
+// credential-shaped env var name is masked in log output. (The final
+// `mhl:` error line is redacted at the process boundary in cmd/mhl.)
+func TestToolHTTPSecretRedactedInLog(t *testing.T) {
+	t.Setenv("MHL_TEST_API_TOKEN", "tok-abcdef-0123456789")
+
+	out, _ := run(t, `
+pipeline P {
+    step S {
+        var token = env("MHL_TEST_API_TOKEN")
+        log("using bearer " + token)
+        log.info("also " + token)
+    }
+}
+`)
+	if strings.Contains(out, "tok-abcdef-0123456789") {
+		t.Errorf("token leaked into log output: %s", out)
+	}
+	if strings.Count(out, "[REDACTED]") < 2 {
+		t.Errorf("expected both log lines redacted, got: %s", out)
+	}
+}
+
 // --- time.* -----------------------------------------------------------
 
 func TestToolTimeNowIsRecentUTC(t *testing.T) {

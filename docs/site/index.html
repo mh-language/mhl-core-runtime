@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="MHL is a declarative language for deterministic, auditable, framework-independent AI agent pipelines." />
+    <meta name="description" content="MHL is a declarative, executable orchestration DSL with imperative control flow for stateful and effectful AI agent workflows." />
     <meta name="theme-color" content="#10161f" />
     <meta property="og:title" content="MHL — Meta-Harness Language" />
     <meta property="og:description" content="Orchestrate agents, prompts, tools, and memory in deterministic pipelines." />
@@ -52,7 +52,7 @@
         </nav>
         <div class="sidebar-note">
           <span class="status-dot"></span>
-          <span>Go runtime<br /><small>declarative programs in .mh files</small></span>
+          <span>Go runtime<br /><small>declarative orchestration with imperative control flow</small></span>
         </div>
       </aside>
 
@@ -61,7 +61,7 @@
           <div class="hero-copy">
             <p class="eyebrow accent">META-HARNESS LANGUAGE · v0.1 ALPHA</p>
             <h1>Control the loop.<br /><em>Not the agent.</em></h1>
-            <p class="lead">MHL is a declarative language that turns AI agents, prompts, tools, memory, and operational policies into reproducible pipelines.</p>
+            <p class="lead">MHL is a declarative, executable orchestration DSL with imperative control flow for stateful and effectful AI agent workflows.</p>
             <div class="hero-actions">
               <a class="button primary" href="#first-program">Get started <span>→</span></a>
               <a class="button secondary" href="reference.html">Explore the language</a>
@@ -131,7 +131,7 @@ pipeline PullRequest {
           </div>
           <div class="comparison">
             <div class="comparison-row comparison-head"><span>Decision</span><span>Agent framework</span><span>MHL</span></div>
-            <div class="comparison-row"><strong>Unit of work</strong><span>Code in the framework's host language</span><span>Declarative, executable <code>.mh</code> file</span></div>
+            <div class="comparison-row"><strong>Unit of work</strong><span>Code in the framework's host language</span><span>Declarative, executable <code>.mh</code> DSL with imperative control flow</span></div>
             <div class="comparison-row"><strong>Flow control</strong><span>Callbacks, graphs, or library conventions</span><span>Steps, loops, <code>goto</code>, <code>break</code>, and explicit policies</span></div>
             <div class="comparison-row"><strong>Replacing an agent</strong><span>Often requires SDK-specific adapters</span><span>Change the <code>agent</code> declaration; keep the pipeline</span></div>
             <div class="comparison-row"><strong>State and recovery</strong><span>Infrastructure added to the application</span><span><code>memory</code>, <code>mem</code>, checkpoints, and <code>--resume</code></span></div>

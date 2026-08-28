@@ -1,0 +1,53 @@
+// Some http.* argument mistakes are caught inside the runtime before any
+// connection is attempted: a request may carry only one of body/text/form,
+// a tls client certificate must actually load from disk, and url is
+// required. Each try below asserts the raise, so no sample run touches the
+// network -- the same fail-closed pattern as git_write_ops_validate_their_arguments.mh.
+test http_argument_validation_raises_before_the_network {
+    describe body_text_and_form_are_mutually_exclusive {
+        var caught = false
+        try {
+            http.post(url: "http://127.0.0.1:1/x", body: {a: 1}, text: "b")
+            is_true(false)
+        } catch (e) {
+            caught = e.contains("mutually exclusive")
+        }
+        is_true(caught)
+    }
+
+    describe tls_client_certificate_must_load_from_disk {
+        var caught = false
+        try {
+            http.get(
+                url: "https://127.0.0.1:1/x",
+                tls: {cert: "/no/such/client.pem", key: "/no/such/client.key"}
+            )
+            is_true(false)
+        } catch (e) {
+            caught = e.contains("client certificate")
+        }
+        is_true(caught)
+    }
+
+    describe url_is_required {
+        var caught = false
+        try {
+            http.get(headers: {"X-A": "1"})
+            is_true(false)
+        } catch (e) {
+            caught = e.contains("requires a string url")
+        }
+        is_true(caught)
+    }
+
+    describe download_requires_a_destination_path {
+        var caught = false
+        try {
+            http.download("https://127.0.0.1:1/artifact.bin")
+            is_true(false)
+        } catch (e) {
+            caught = e.contains("destination path")
+        }
+        is_true(caught)
+    }
+}

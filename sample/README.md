@@ -187,7 +187,8 @@ Array          ::= "[" [ Expr { "," Expr } [ "," ] ] "]" ;
   The reserved namespace/method pairs live in `internal/engine/interpreter/tool.go`'s
   `nativeOpCall` (e.g. `cmd.exec`, `cmd.exec_all`, `git.diff`, `git.add`, `git.commit`,
   `git.status`, `git.rev_parse`, `git.log`, `fs.read`, `fs.exists`, `fs.write`, `fs.append`,
-  `fs.delete`, `fs.join`, `fs.list`, `http.post`, `json.parse`, `json.parse_lines`,
+  `fs.delete`, `fs.join`, `fs.list`, `http.get`, `http.post`, `http.put`, `http.patch`,
+  `http.delete`, `http.head`, `http.options`, `http.download`, `json.parse`, `json.parse_lines`,
   `json.stringify`, `log.info`, `log.warn`, `log.error`, `time.now`, `time.parse`,
   `time.format`, `time.add`, `time.diff`, `time.compare`), not the grammar.
 - **`env(...)`** and assertion calls (`are_equal`, `is_true`, `is_false`, `is_null`,

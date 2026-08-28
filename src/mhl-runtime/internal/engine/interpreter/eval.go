@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
@@ -541,7 +542,9 @@ func writeLog(ctx *evalCtx, level string, values []any) {
 	if level != "" {
 		line = "[" + level + "] " + line
 	}
-	fmt.Fprintln(ctx.out, line)
+	// Mask any resolved credential (env("…_TOKEN"), an http auth token, …)
+	// that made it into a logged value.
+	fmt.Fprintln(ctx.out, auth.Redact(line))
 }
 
 // joinValues formats values the same space-joined way every log/fail
@@ -597,7 +600,15 @@ func evalEnvCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("env() requires a string argument, got %s", typeName(v))
 	}
-	return os.Getenv(name), nil
+	value := os.Getenv(name)
+	// A read through a credential-shaped name (…_TOKEN, …_SECRET, …API_KEY)
+	// is treated as a secret: register it so it is masked in logs, error
+	// output and persisted checkpoints even when the .mh author never went
+	// through a declared credential reference.
+	if value != "" && auth.LooksSecretName(name) {
+		auth.Register(value)
+	}
+	return value, nil
 }
 
 // applyTrailers applies a chain of member-access/call/index trailers

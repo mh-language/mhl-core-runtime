@@ -39,7 +39,7 @@ func TestCompletionNativeNamespaceMembers(t *testing.T) {
 		{"cmd", []string{"exec", "exec_all"}},
 		{"git", []string{"diff", "add", "commit", "status", "rev_parse", "log"}},
 		{"fs", []string{"read", "exists", "write", "append", "delete", "list", "join"}},
-		{"http", []string{"post"}},
+		{"http", []string{"get", "post", "put", "patch", "delete", "head", "options", "download"}},
 		{"json", []string{"parse", "parse_lines", "stringify"}},
 		{"time", []string{"now", "parse", "format", "add", "diff", "compare"}},
 	}

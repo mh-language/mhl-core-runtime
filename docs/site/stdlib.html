@@ -263,7 +263,7 @@
           </div>
         </section>
 
-        <section class="feature doc-section" id="native" data-title="native operations cmd exec exec_all fs read exists write append delete join list git diff add commit status rev_parse log http post json parse parse_lines stringify log info warn error time now parse format add diff compare timeout duration">
+        <section class="feature doc-section" id="native" data-title="native operations cmd exec exec_all fs read exists write append delete join list git diff add commit status rev_parse log http get post put patch delete head options download query headers body text form timeout follow_redirects raise_for_status auth bearer basic tls cert key ca insecure mtls client certificate proxy json parse parse_lines stringify log info warn error time now parse format add diff compare timeout duration">
           <div class="feature-head"><h2><span class="feature-num">07</span>Native operations</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The fixed namespaces any expression (or a <code>tool</code> method body) can call: <code>cmd</code>, <code>fs</code>, <code>git</code>, <code>http</code>, <code>json</code>, <code>log</code>, <code>time</code>. They accept a mix of positional and named arguments. Unless noted, a failure to perform the operation raises; a completed process with a non-zero exit is returned, not raised.</p>
 
@@ -318,14 +318,34 @@
 
           <div class="ns-block">
             <h3><code>http</code></h3>
+            <p>One op per verb — <code>get</code>, <code>post</code>, <code>put</code>, <code>patch</code>, <code>delete</code>, <code>head</code>, <code>options</code> — all sharing the parameter surface below. <code>url</code> is a named <code>url:</code> or the first positional; every other argument is named and optional. A transport failure (DNS, refused connection, timeout, a bad client certificate) raises; a non-2xx response is returned in <code>status</code> unless <code>raise_for_status: true</code>.</p>
           </div>
           <div class="reference-table sig-table">
-            <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
+            <div class="table-row table-head"><span>Parameter</span><span>Type</span><span>Effect</span></div>
+            <div class="table-row"><code>headers:</code><span><code>{string: string}</code></span><span>Request headers. An explicit <code>Authorization</code> here wins over <code>auth:</code>.</span></div>
+            <div class="table-row"><code>query:</code><span><code>{string: string}</code></span><span>URL-encoded and merged into the URL's existing query string.</span></div>
+            <div class="table-row"><code>body:</code><span><code>any</code></span><span>JSON-encoded; sets <code>Content-Type: application/json</code>.</span></div>
+            <div class="table-row"><code>text:</code><span><code>string</code></span><span>Raw request body, sent as-is. No <code>Content-Type</code> is forced.</span></div>
+            <div class="table-row"><code>form:</code><span><code>{string: string}</code></span><span><code>application/x-www-form-urlencoded</code> body. <code>body</code>/<code>text</code>/<code>form</code> are mutually exclusive.</span></div>
+            <div class="table-row"><code>timeout:</code><span><code>duration</code></span><span>Overrides the 30s default.</span></div>
+            <div class="table-row"><code>follow_redirects:</code><span><code>bool</code></span><span>Default <code>true</code>. <code>false</code> returns the 3xx response itself.</span></div>
+            <div class="table-row"><code>raise_for_status:</code><span><code>bool</code></span><span>Default <code>false</code>. <code>true</code> turns a non-2xx response into a raised error.</span></div>
+            <div class="table-row"><code>auth:</code><span><code>{bearer: string}</code> or <code>{basic: {user, password}}</code></span><span>Sets the <code>Authorization</code> header (<code>Bearer …</code> or Basic base64).</span></div>
+            <div class="table-row"><code>tls:</code><span><code>{cert, key, ca: string, insecure: bool}</code></span><span><code>cert</code>/<code>key</code> — PEM client-certificate + key paths for mTLS. <code>ca</code> — extra PEM CA bundle added to the system pool. <code>insecure: true</code> — skip server-cert verification (development only).</span></div>
+            <div class="table-row"><code>proxy:</code><span><code>string</code></span><span>Explicit proxy URL (<code>http://</code>, <code>https://</code>, <code>socks5://</code>) for this call. When unset, the standard <code>HTTP_PROXY</code> / <code>HTTPS_PROXY</code> / <code>NO_PROXY</code> environment variables are honoured.</span></div>
+          </div>
+          <p>A bearer token, basic-auth password, or <code>Authorization</code>/<code>Cookie</code> header value passed to any <code>http.*</code> call — and any <code>env("…_TOKEN"/"…_SECRET"/"…_API_KEY")</code> read — is registered as a secret and masked as <code>[REDACTED]</code> in logs, error output, and persisted checkpoints.</p>
+          <div class="reference-table sig-table">
+            <div class="table-row table-head"><span>Signature</span><span>Returns</span><span>Notes</span></div>
             <div class="table-row">
-              <code>http.post(url: string, headers?: {string: string}, body?: any) -&gt; {status: number, body: string}</code>
-              <span><span class="p"><code>url</code> — named <code>url:</code> or first positional</span><span class="p"><code>headers:</code> — string→string map</span><span class="p"><code>body:</code> — any value; JSON-encoded</span></span>
-              <span><code>{status, body}</code></span>
-              <span>Sets <code>Content-Type: application/json</code>. A transport failure raises; an HTTP error status is returned in <code>status</code>.</span>
+              <code>http.&lt;verb&gt;(url: string, …) -&gt; {status: number, body: string, headers: {string: string}, ok: bool, json: any}</code>
+              <span><code>{status, body, headers, ok, json}</code></span>
+              <span><code>ok</code> is <code>status</code> in 200–299. <code>json</code> is the parsed body when the response Content-Type is JSON, otherwise <code>null</code>. <code>headers</code> joins multi-valued headers with <code>", "</code>.</span>
+            </div>
+            <div class="table-row">
+              <code>http.download(url: string, path: string, …) -&gt; {status: number, path: string, bytes: number, ok: bool, headers: {string: string}}</code>
+              <span><code>{status, path, bytes, ok, headers}</code></span>
+              <span>Streams a GET response straight to <code>path</code> (atomic write, parent directories created) instead of returning the body — for large or binary artifacts. On a non-2xx response no file is written and <code>ok</code> is <code>false</code>, unless <code>raise_for_status</code> is set. Accepts <code>headers</code>/<code>query</code>/<code>timeout</code>/<code>auth</code>/<code>tls</code>/<code>proxy</code>.</span>
             </div>
           </div>
 

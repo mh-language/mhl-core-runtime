@@ -1,0 +1,46 @@
+// The `http` native namespace has one op per verb -- get, post, put, patch,
+// delete, head, options -- and they all take the same optional arguments:
+// headers, query, body/text/form, timeout, follow_redirects,
+// raise_for_status, auth and tls. These examples bind every verb and option
+// against 127.0.0.1:1, a port nothing listens on, so each call raises a
+// transport error the instant it tries to connect -- exercising the
+// argument readers in internal/engine/interpreter/tool.go (httpOptions)
+// without any network dependency, the same way the git write-op samples
+// stay on their validation paths.
+test http_verbs_share_one_option_surface {
+    describe every_verb_accepts_the_shared_option_surface {
+        var url = "http://127.0.0.1:1/unreachable"
+        var refused = 0
+
+        try { http.get(url: url, query: {"state": "ready"}) } catch (e) { refused = refused + 1 }
+        try { http.post(url: url, body: {status: "ready"}) } catch (e) { refused = refused + 1 }
+        try { http.put(url: url, text: "raw payload") } catch (e) { refused = refused + 1 }
+        try { http.patch(url: url, form: {"field": "value"}) } catch (e) { refused = refused + 1 }
+        try { http.delete(url: url, timeout: 2s) } catch (e) { refused = refused + 1 }
+        try { http.head(url: url, headers: {"X-Trace-Id": "abc"}) } catch (e) { refused = refused + 1 }
+        try { http.options(url: url, follow_redirects: false) } catch (e) { refused = refused + 1 }
+
+        are_equal(refused, 7)
+    }
+
+    describe auth_sugar_and_url_as_first_positional {
+        var refused = 0
+        // url may be the first positional argument, exactly as http.post
+        // has always allowed.
+        try { http.get("http://127.0.0.1:1/x", auth: {bearer: "tok"}) } catch (e) { refused = refused + 1 }
+        try { http.get("http://127.0.0.1:1/x", auth: {basic: {user: "ada", password: "pw"}}) } catch (e) { refused = refused + 1 }
+        are_equal(refused, 2)
+    }
+
+    describe proxy_and_download_take_the_same_options {
+        var refused = 0
+        // proxy: routes this call through an explicit proxy (otherwise the
+        // HTTP(S)_PROXY / NO_PROXY env vars are honoured). Pointed at a dead
+        // port here, so the call still refuses immediately.
+        try { http.get("http://127.0.0.1:1/x", proxy: "http://127.0.0.1:1") } catch (e) { refused = refused + 1 }
+        // http.download streams a GET straight to a file; url + path are its
+        // two required arguments, then the shared option surface.
+        try { http.download("http://127.0.0.1:1/artifact.bin", "/tmp/mhl-sample-never-written.bin", timeout: 2s) } catch (e) { refused = refused + 1 }
+        are_equal(refused, 2)
+    }
+}
