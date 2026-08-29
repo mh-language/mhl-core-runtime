@@ -714,3 +714,55 @@ pipeline P {
 		t.Fatalf("expected 0 findings (extra field must be allowed), got %d: %+v", len(findings), findings)
 	}
 }
+
+func TestTypeAliasCyclicAndUnknownReported(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+type A = B
+type B = A
+type C = sting
+pipeline P { step S { log("x") } }
+`)
+	findings := lint.File(main)
+	var msgs []string
+	for _, f := range findings {
+		msgs = append(msgs, f.Message)
+	}
+	joined := strings.Join(msgs, " | ")
+	if !strings.Contains(joined, `type alias "A": cyclic`) ||
+		!strings.Contains(joined, `type alias "C": unrecognized type "sting"`) {
+		t.Fatalf("unexpected findings: %v", msgs)
+	}
+}
+
+func TestTypeAliasResolvesForToolParamCheck(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+type Slug = string
+tool T { make(s: Slug): Slug -> s }
+pipeline P {
+    step S { T.make(42) }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 || !strings.Contains(findings[0].Message, `parameter "s" must be string, got number`) {
+		t.Fatalf("unexpected findings: %+v", findings)
+	}
+}
+
+func TestTypeAliasValidUsageIsClean(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+type Slug = string
+tool T { make(s: Slug): Slug -> s }
+pipeline P {
+    step S { T.make("ok") }
+}
+`)
+	if findings := lint.File(main); len(findings) != 0 {
+		t.Fatalf("expected no findings, got %+v", findings)
+	}
+}

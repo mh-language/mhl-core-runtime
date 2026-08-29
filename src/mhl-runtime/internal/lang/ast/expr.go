@@ -1,5 +1,7 @@
 package ast
 
+import "github.com/alecthomas/participle/v2/lexer"
+
 // Expr is the entry point of the expression grammar. Expressions appear both
 // as property values (config) and inside pipeline statements. Precedence is
 // encoded structurally, from lowest (null-coalescing `??`, then logical OR)
@@ -17,8 +19,16 @@ type Expr struct {
 }
 
 // CoalesceOp is one `?? rhs` continuation of an Expr.
+//
+// Every operator literal in this file is pinned to the Punct token type
+// (`'x':Punct`). Without that pin a bare `'-'` / `'!'` / ... in the grammar
+// matches any token whose *value* is that string — including a String token
+// once participle.Unquote has stripped its quotes, so `["a"].join("-")`
+// would try to read the `"-"` argument as a unary-minus operator and fail
+// with "unexpected token )". The pin makes these rules match punctuation
+// only, never string content.
 type CoalesceOp struct {
-	Op  string  `parser:"@'??'"`
+	Op  string  `parser:"@'??':Punct"`
 	Rhs *OrExpr `parser:"@@"`
 }
 
@@ -29,7 +39,7 @@ type OrExpr struct {
 }
 
 type OrOp struct {
-	Op  string   `parser:"@'||'"`
+	Op  string   `parser:"@'||':Punct"`
 	Rhs *AndExpr `parser:"@@"`
 }
 
@@ -40,7 +50,7 @@ type AndExpr struct {
 }
 
 type AndOp struct {
-	Op  string  `parser:"@'&&'"`
+	Op  string  `parser:"@'&&':Punct"`
 	Rhs *EqExpr `parser:"@@"`
 }
 
@@ -51,7 +61,7 @@ type EqExpr struct {
 }
 
 type EqOp struct {
-	Op  string   `parser:"@( '==' | '!=' )"`
+	Op  string   `parser:"@( '==':Punct | '!=':Punct )"`
 	Rhs *CmpExpr `parser:"@@"`
 }
 
@@ -62,7 +72,7 @@ type CmpExpr struct {
 }
 
 type CmpOp struct {
-	Op  string   `parser:"@( '<=' | '>=' | '<' | '>' )"`
+	Op  string   `parser:"@( '<=':Punct | '>=':Punct | '<':Punct | '>':Punct )"`
 	Rhs *AddExpr `parser:"@@"`
 }
 
@@ -73,7 +83,7 @@ type AddExpr struct {
 }
 
 type AddOp struct {
-	Op  string   `parser:"@( '+' | '-' )"`
+	Op  string   `parser:"@( '+':Punct | '-':Punct )"`
 	Rhs *MulExpr `parser:"@@"`
 }
 
@@ -84,13 +94,16 @@ type MulExpr struct {
 }
 
 type MulOp struct {
-	Op  string `parser:"@( '*' | '/' | '%' )"`
+	Op  string `parser:"@( '*':Punct | '/':Punct | '%':Punct )"`
 	Rhs *Unary `parser:"@@"`
 }
 
-// Unary handles prefix `!` and `-` operators.
+// Unary handles prefix `!` and `-` operators. The `:Punct` pin is what keeps
+// a string literal whose content happens to be exactly `-` or `!` — the
+// classic `["a","b"].join("-")` — from being misread here as a prefix
+// operator with a missing operand.
 type Unary struct {
-	Op      string   `parser:"@( '!' | '-' )?"`
+	Op      string   `parser:"@( '!':Punct | '-':Punct )?"`
 	Operand *Postfix `parser:"@@"`
 }
 
@@ -172,19 +185,51 @@ type Argument struct {
 // (a bare `if` with no "(" after it, if that were ever meaningful, would
 // fall through to Ident the same way `true`/`false`/`null` already do).
 type Primary struct {
-	Duration string   `parser:"( @Duration"`
-	Str      *string  `parser:"| @String"`
-	MultiStr *string  `parser:"| @MLString"`
-	Number   *float64 `parser:"| @Number"`
-	Bool     *string  `parser:"| @( 'true' | 'false' )"`
-	Null     bool     `parser:"| @'null'"`
-	Object   *Object  `parser:"| @@"`
-	Array    *Array   `parser:"| @@"`
-	Agent    *Agent   `parser:"| @@"`
-	Lambda   *Lambda  `parser:"| @@"`
-	IfExpr   *IfExpr  `parser:"| @@"`
-	Ident    string   `parser:"| @Ident"`
-	Sub      *Expr    `parser:"| '(' @@ ')' )"`
+	Duration string     `parser:"( @Duration"`
+	Str      *string    `parser:"| @String"`
+	MultiStr *string    `parser:"| @MLString"`
+	Number   *float64   `parser:"| @Number"`
+	Bool     *string    `parser:"| @( 'true' | 'false' )"`
+	Null     bool       `parser:"| @'null'"`
+	Object   *Object    `parser:"| @@"`
+	Array    *Array     `parser:"| @@"`
+	Agent    *Agent     `parser:"| @@"`
+	Lambda   *Lambda    `parser:"| @@"`
+	IfExpr   *IfExpr    `parser:"| @@"`
+	Match    *MatchExpr `parser:"| @@"`
+	Ident    string     `parser:"| @Ident"`
+	Sub      *Expr      `parser:"| '(' @@ ')' )"`
+}
+
+// MatchExpr is an expression-position multi-way branch:
+//
+//	match status {
+//	    Status.Draft     -> "not ready"
+//	    Status.Published -> "live"
+//	    _                -> "archived"
+//	}
+//
+// Exactly one arm's Body is evaluated and returned. Arms are tried top to
+// bottom: an arm matches when its Pattern evaluates to a value deep-equal
+// to the subject (the same equality `==` uses), or when it is the `_`
+// wildcard. A `match` with no matching arm and no `_` is a runtime error —
+// `mhl lint` flags the statically-provable cases (a non-exhaustive `match`
+// over an `enum` or `bool`) before that.
+type MatchExpr struct {
+	Pos     lexer.Position
+	Subject *Expr       `parser:"'match' @@ '{'"`
+	Arms    []*MatchArm `parser:"@@+ '}'"`
+}
+
+// MatchArm is one `pattern -> body` (or `_ -> body`) entry of a MatchExpr.
+// Pattern is an ordinary expression evaluated at match time — an
+// `Enum.Variant`, a bool/number/string literal, or any other expression
+// whose value is compared against the subject.
+type MatchArm struct {
+	Pos      lexer.Position
+	Wildcard bool  `parser:"( @'_'"`
+	Pattern  *Expr `parser:"| @@ )"`
+	Body     *Expr `parser:"'->' @@"`
 }
 
 // IfExpr is the ternary-like expression form of `if`, usable anywhere an

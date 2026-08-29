@@ -1,0 +1,15 @@
+test const_plus_equals_is_rejected {
+    describe const_plus_equals_is_rejected {
+        // `+=` is `x = x + expr`, so it is an assignment and is rejected
+        // for a const just like a plain `=`.
+        const TOTAL = 10
+        var result = ""
+        try {
+            TOTAL += 5
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: cannot assign to constant \"TOTAL\"")
+    }
+}

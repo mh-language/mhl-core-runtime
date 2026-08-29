@@ -1,0 +1,15 @@
+test match_no_arm_matches_is_rejected {
+    describe match_no_arm_matches_is_rejected {
+        // With no `_` arm and no equal pattern, a `match` raises at run
+        // time. (`mhl lint` only proves exhaustiveness for `enum` / `bool`
+        // subjects — a number subject like this one is left to this check.)
+        var result = ""
+        try {
+            var ignored = match 7 { 1 -> "a" 2 -> "b" }
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: match: no arm matched value 7")
+    }
+}

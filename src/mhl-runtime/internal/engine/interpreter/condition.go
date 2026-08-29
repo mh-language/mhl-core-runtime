@@ -24,7 +24,7 @@ import (
 // cctx (may be nil) is likewise visible here, so a stop_when can read
 // `context.*` — see ContextView.
 func EvalCondition(prog *ast.Program, expr *ast.Expr, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, mem *MemContext, cctx *ContextView) (bool, error) {
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, mem: mem, cctx: cctx, file: file}
+	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, mem: mem, cctx: cctx, file: file, aliasTypes: aliasTypesFor(prog)}
 	v, err := evalExpr(ctx, expr)
 	if err != nil {
 		return false, err

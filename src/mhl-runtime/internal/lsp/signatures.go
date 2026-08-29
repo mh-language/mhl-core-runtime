@@ -202,13 +202,14 @@ var globalSigs = map[string]sig{
 	"log":       {Label: "log(...values: any) -> null", Params: []string{"values"}, Doc: "Writes one space-joined line to stdout."},
 	"fail":      {Label: "fail(...values: any) -> never", Params: []string{"values"}, Doc: "Raises an error whose message is the joined values. Catchable with `try/catch`; uncaught, it makes `mhl run` exit non-zero."},
 	"env":       {Label: "env(name: string) -> string", Params: []string{"name"}, Doc: "Reads an OS environment variable. Returns `\"\"` when unset."},
-	"type_of":   {Label: "type_of(value: any) -> string", Params: []string{"value"}, Doc: "The value's kind: `\"string\"`, `\"number\"`, `\"bool\"`, `\"array\"`, `\"object\"`, `\"null\"`, `\"function\"`, or `\"task\"`."},
+	"type_of":   {Label: "type_of(value: any) -> string", Params: []string{"value"}, Doc: "The value's kind: `\"string\"`, `\"number\"`, `\"bool\"`, `\"array\"`, `\"object\"`, `\"null\"`, `\"enum\"`, `\"function\"`, or `\"task\"`."},
 	"is_string": {Label: "is_string(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"string\"`."},
 	"is_number": {Label: "is_number(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"number\"`."},
 	"is_bool":   {Label: "is_bool(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"bool\"`."},
 	"is_array":  {Label: "is_array(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"array\"`."},
 	"is_object": {Label: "is_object(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"object\"`."},
 	"is_null":   {Label: "is_null(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `value` is `null`."},
+	"is_enum":   {Label: "is_enum(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `value` is an `enum` value (`type_of(value) == \"enum\"`)."},
 }
 
 var assertionSigs = map[string]sig{

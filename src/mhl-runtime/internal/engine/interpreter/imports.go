@@ -194,6 +194,10 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 		return "tool", decl.Tool.Name, true
 	case decl.Pipeline != nil:
 		return "pipeline", decl.Pipeline.Name, true
+	case decl.Type != nil:
+		return "type", decl.Type.Name, true
+	case decl.Enum != nil:
+		return "enum", decl.Enum.Name, true
 	default:
 		return "", "", false
 	}
@@ -262,6 +266,10 @@ func findExport(module *ast.Program, name string) (*ast.Declaration, bool) {
 		case decl.Pipeline != nil && decl.Pipeline.Name == name:
 			return decl, true
 		case decl.Prompt != nil && decl.Prompt.Name == name:
+			return decl, true
+		case decl.Type != nil && decl.Type.Name == name:
+			return decl, true
+		case decl.Enum != nil && decl.Enum.Name == name:
 			return decl, true
 		}
 	}

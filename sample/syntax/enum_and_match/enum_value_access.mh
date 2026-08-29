@@ -1,0 +1,21 @@
+enum Status { Draft, Published, Archived }
+
+test enum_value_access {
+    describe enum_value_access {
+        var s = Status.Published
+
+        // An enum value is its own kind, distinct from a string.
+        are_equal(type_of(s), "enum")
+        is_true(is_enum(s))
+        is_false(is_enum("Published"))
+
+        // Equality is by (enum, variant); it never equals a bare string.
+        is_true(s == Status.Published)
+        is_false(s == Status.Draft)
+        is_false(s == "Published")
+
+        // Display forms use the bare variant name.
+        are_equal("${s}", "Published")
+        are_equal(json.stringify(s), "\"Published\"")
+    }
+}

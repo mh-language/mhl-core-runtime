@@ -16,3 +16,5 @@ rendered prompt text observable via its response).
   X(...) from "path.md"`, loading the template body from
   [fixtures/greeting.prompt.md](fixtures/greeting.prompt.md) instead of an inline block, plus
   the `\${...}` escape for literal placeholders in file-sourced Markdown
+- [prompt_default_parameter.mh](prompt_default_parameter.mh) — a `prompt` parameter with a
+  default value (`lang: string = "en"`), filled in when the caller omits that named argument

@@ -97,7 +97,12 @@ type PipelineInputSpec struct {
 // `repeat`, not `loop`, specifically to avoid reading as `loop pipeline X {
 // loop: {...} }` — the leading `loop` keyword already says this pipeline
 // repeats; the block itself only needs to say how.
-func PipelineFromAST(p *ast.Pipeline) Pipeline {
+// PipelineFromAST projects a parsed pipeline onto the runtime Pipeline
+// value. aliases resolves `type X = ...` declarations for input-type
+// annotations (built by the caller from the whole program via
+// types.Aliases); a nil map just means aliased input types fall back to
+// types.Any, exactly as an unrecognized keyword already does here.
+func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 	out := Pipeline{Name: p.Name, Loop: p.Loop}
 	for _, m := range p.Body {
 		switch {
@@ -120,7 +125,7 @@ func PipelineFromAST(p *ast.Pipeline) Pipeline {
 		case m.Prop != nil && m.Prop.Name == "context":
 			out.Context = contextConfigFromExpr(m.Prop.Value)
 		case m.Input != nil:
-			t, ok := types.FromExpr(m.Input.Type)
+			t, ok := types.FromExprAlias(m.Input.Type, aliases)
 			if !ok {
 				t = types.Any
 			}
@@ -207,12 +212,13 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 	if prog == nil {
 		return Pipeline{}, fmt.Errorf("runtime: nil program")
 	}
+	aliases, _ := types.Aliases(prog)
 	for _, d := range prog.Decls {
 		if d.Pipeline == nil {
 			continue
 		}
 		if name == "" || d.Pipeline.Name == name {
-			return PipelineFromAST(d.Pipeline), nil
+			return PipelineFromAST(d.Pipeline, aliases), nil
 		}
 	}
 	if name == "" {

@@ -13,14 +13,26 @@ import "github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 // Finding; the interpreter: an error) reports it exactly as an unresolved
 // Parse already does, rendering e.String() (see ast.TypeExpr.String) to
 // quote back the surface syntax the user actually wrote.
+//
+// FromExpr does not know about `type X = ...` aliases; a call site that has
+// a program (and therefore an alias table from Aliases) must use
+// FromExprAlias instead.
 func FromExpr(e *ast.TypeExpr) (Type, bool) {
+	return FromExprAlias(e, nil)
+}
+
+// FromExprAlias is FromExpr with a resolved alias table consulted before the
+// bare-keyword base case: a plain Ident that names a `type X = ...` alias
+// (or an `enum`) resolves to that alias's Type. A nil aliases map makes it
+// behave exactly like FromExpr.
+func FromExprAlias(e *ast.TypeExpr, aliases map[string]Type) (Type, bool) {
 	if e == nil {
 		return Any, true
 	}
 	if n := len(e.ArraySuffixes); n > 0 {
 		inner := *e
 		inner.ArraySuffixes = e.ArraySuffixes[:n-1]
-		elem, ok := FromExpr(&inner)
+		elem, ok := FromExprAlias(&inner, aliases)
 		if !ok {
 			return Any, false
 		}
@@ -32,13 +44,16 @@ func FromExpr(e *ast.TypeExpr) (Type, bool) {
 			if _, dup := fields[f.Name]; dup {
 				return Any, false // duplicate field name in the same shape
 			}
-			ft, ok := FromExpr(f.Type)
+			ft, ok := FromExprAlias(f.Type, aliases)
 			if !ok {
 				return Any, false
 			}
 			fields[f.Name] = ft
 		}
 		return ObjectOf(fields), true
+	}
+	if t, ok := aliases[e.Name]; ok {
+		return t, true
 	}
 	return Parse(e.Name)
 }

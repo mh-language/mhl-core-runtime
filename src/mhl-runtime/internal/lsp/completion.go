@@ -11,7 +11,7 @@ import (
 var keywords = []string{
 	"agent", "memory", "tool", "prompt", "pipeline", "mcp_server", "a2a_agent", "loop",
 	"import", "use", "from", "as", "export", "input", "step", "test", "describe",
-	"var", "if", "else", "while", "for", "in", "try", "catch", "finally",
+	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
 	"return", "break", "goto", "spawn", "wait", "parallel", "true", "false", "null",
 }
 
@@ -77,6 +77,13 @@ func completionAt(path, text string, pos position) []completionItem {
 		for _, kw := range typeKeywords {
 			items = append(items, completionItem{Label: kw, Kind: kindKeyword})
 		}
+		// A `type X = ...` alias or an `enum` name is usable anywhere a
+		// builtin type keyword is.
+		for _, s := range documentSymbols(path, text) {
+			if s.Kind == symType || s.Kind == symEnum {
+				items = append(items, completionItem{Label: s.Name, Kind: kindKeyword, Detail: s.Kind.label()})
+			}
+		}
 		return items
 	}
 
@@ -127,6 +134,8 @@ func symbolItemKind(k symbolKind) int {
 		return kindProperty
 	case symNative:
 		return kindModule
+	case symType, symEnum:
+		return kindKeyword
 	default:
 		return kindText
 	}

@@ -23,6 +23,12 @@ func bareAssignName(p *ast.Postfix) (string, bool) {
 // declared Tool. Returns types.Any for any shape this v1 doesn't understand
 // (arithmetic, member/index access, an untyped-return call, an agent/memory
 // call, ...) — deliberately narrow, see varinfer's callers for why.
+//
+// A tool-method return type that is a `type X = ...` alias is NOT resolved
+// here (this reader has no alias table) — it simply infers Any, the same as
+// any other shape it can't prove. The alias-aware checks (checkToolCall,
+// checkToolMethodReturnTypes) and the runtime still enforce it fully; only
+// downstream *inference* from such a value is skipped.
 func inferExprType(prog *ast.Program, expr *ast.Expr, known map[string]types.Type, selfTool *ast.Tool) types.Type {
 	if lv, err := literalValue(expr); err == nil {
 		if t, ok := types.Of(lv); ok {
@@ -35,6 +41,14 @@ func inferExprType(prog *ast.Program, expr *ast.Expr, known map[string]types.Typ
 			return t
 		}
 		return types.Any
+	}
+	// `Enum.Variant` — a declared enum's qualified access — infers as that
+	// enum type, so a `match` over a `var` holding one can be checked for
+	// exhaustiveness.
+	if en, _, ok := patternEnumVariant(expr); ok {
+		if _, isEnum := findEnumDecl(prog, en); isEnum {
+			return types.EnumType(en)
+		}
 	}
 	if _, target, method, ok := methodCall(expr); ok {
 		var tool *ast.Tool

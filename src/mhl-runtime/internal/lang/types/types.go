@@ -26,6 +26,7 @@ const (
 	BoolKind
 	ArrayKind
 	ObjectKind
+	EnumKind
 )
 
 // Type is mhl's statically-checkable type vocabulary. Kind says what shape
@@ -50,7 +51,21 @@ type Type struct {
 	Kind   Kind
 	Elem   *Type
 	Fields map[string]Type
+	// Name is set only when Kind == EnumKind: the declared `enum` name a
+	// value must belong to. An enum type carries no variant list here —
+	// variant validity is enforced where an enum value is constructed
+	// (interpreter.resolveEnumAccess); this vocabulary only needs to answer
+	// "is this a value of enum X".
+	Name string
 }
+
+// EnumType builds a Type describing a value of the named declared enum.
+func EnumType(name string) Type { return Type{Kind: EnumKind, Name: name} }
+
+// EnumCarrier is implemented by a runtime enum value
+// (interpreter.enumValue) so Of/Check can recognise one without this
+// package importing internal/engine.
+type EnumCarrier interface{ EnumName() string }
 
 // Any/String/Number/Bool/Array/Object are the unshaped base values for each
 // Kind — Array/Object here mean "no declared element type / field shape",
@@ -87,6 +102,8 @@ func (t Type) Equal(other Type) bool {
 		return false
 	}
 	switch t.Kind {
+	case EnumKind:
+		return t.Name == other.Name
 	case ArrayKind:
 		if (t.Elem == nil) != (other.Elem == nil) {
 			return false
@@ -129,6 +146,8 @@ func (t Type) String() string {
 		return "number"
 	case BoolKind:
 		return "bool"
+	case EnumKind:
+		return t.Name
 	case ArrayKind:
 		if t.Elem == nil {
 			return "array"
@@ -198,7 +217,7 @@ func Parse(name string) (Type, bool) {
 // internal/lang/lint/varinfer.go), which only ever needs "what flat Kind is
 // this literal," not a full shape reconstruction.
 func Of(v any) (Type, bool) {
-	switch v.(type) {
+	switch tv := v.(type) {
 	case nil:
 		return Any, true
 	case string:
@@ -211,6 +230,8 @@ func Of(v any) (Type, bool) {
 		return Array, true
 	case map[string]any:
 		return Object, true
+	case EnumCarrier:
+		return EnumType(tv.EnumName()), true
 	default:
 		return Any, false
 	}
@@ -247,6 +268,10 @@ func Check(label string, declared Type, v any) error {
 		return fmt.Errorf("%s must be %s, got %s", label, declared, name)
 	}
 	switch declared.Kind {
+	case EnumKind:
+		if actual.Name != declared.Name {
+			return fmt.Errorf("%s must be %s, got %s", label, declared, actual.String())
+		}
 	case ArrayKind:
 		if declared.Elem == nil {
 			return nil
@@ -302,6 +327,10 @@ func CheckType(label string, declared, actual Type) error {
 		return fmt.Errorf("%s must be %s, got %s", label, declared, actual)
 	}
 	switch declared.Kind {
+	case EnumKind:
+		if actual.Name != declared.Name {
+			return fmt.Errorf("%s must be %s, got %s", label, declared, actual)
+		}
 	case ArrayKind:
 		if declared.Elem == nil || actual.Elem == nil {
 			return nil

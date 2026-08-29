@@ -14,6 +14,7 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // Env is a step's variable environment: every `var`/`assign` in a step body
@@ -111,6 +112,23 @@ type evalCtx struct {
 	// to the handle buffer so concurrent spawns of the same agent don't
 	// interleave writes to one file.
 	inSpawn bool
+	// constNames is the set of names bound by `const` and visible in the
+	// current scope — pipeline-level `const` (seeded at the RunStep /
+	// EvalPipelineVars root) plus any `const` declared in the step/tool
+	// body so far. execAssign refuses `=` / `+=` to any name in it. A
+	// `const` *declaration* re-run (a loop body) just rebinds; only
+	// assignment is blocked. nil is treated as empty.
+	constNames map[string]bool
+	// aliasTypes resolves the program's `type X = ...` declarations (see
+	// types.Aliases) so a `: X` annotation on a tool-method param/return
+	// resolves the same way it does in lint. Built once from prog at each
+	// root evalCtx (RunStep / EvalPipelineVars / EvalCondition / RunTests)
+	// and copied into derived contexts (tool method childCtx, closures)
+	// alongside prog. A broken alias (cycle, unknown target) is simply
+	// absent from the map — it then falls through to types.Parse and
+	// surfaces as an "unrecognized type" error at the annotation's use site;
+	// `mhl lint` reports the root cause.
+	aliasTypes map[string]types.Type
 }
 
 // goctxOf returns the Go context governing blocking work for this evaluation,
@@ -529,6 +547,22 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 			}
 		}
 	}
+	// `Status.Draft` — a declared enum name followed by a plain member
+	// trailer — resolves to an enum value. Guarded like the call tiers
+	// above: a local `var` of the same name shadows the enum, and only a
+	// non-optional `.member` (not a call, index or `?.`) heads an enum
+	// access.
+	if p.Primary.Ident != "" && !isBoundVar(ctx, p.Primary.Ident) && len(p.Ops) >= 1 &&
+		p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[0].Call == nil &&
+		p.Ops[0].Slice == nil && p.Ops[0].Index == nil && p.Ops[0].OptIndex == nil {
+		if ev, isEnum, err := resolveEnumAccess(ctx.prog, p.Primary.Ident, p.Ops[0].Member); isEnum {
+			if err != nil {
+				return nil, err
+			}
+			return applyTrailers(ctx, ev, p.Ops[1:], depth)
+		}
+	}
+
 	base, err := evalPrimary(ctx, p.Primary, depth)
 	if err != nil {
 		return nil, err
@@ -650,6 +684,7 @@ var typeBuiltinWants = map[string]string{
 	"is_array":  "array",
 	"is_object": "object",
 	"is_null":   "null",
+	"is_enum":   "enum",
 }
 
 // evalTypeBuiltinCall handles the bare, receiver-less introspection calls:
@@ -1621,6 +1656,8 @@ func evalPrimary(ctx *evalCtx, p *ast.Primary, depth int) (any, error) {
 		return newClosure(ctx, p.Lambda), nil
 	case p.IfExpr != nil:
 		return evalIfExpr(ctx, p.IfExpr, depth)
+	case p.Match != nil:
+		return evalMatchExpr(ctx, p.Match, depth)
 	case p.Ident != "":
 		if v, ok := ctx.env[p.Ident]; ok {
 			return v, nil
@@ -1678,6 +1715,8 @@ func typeName(v any) string {
 		return "function"
 	case *spawnHandle:
 		return "task"
+	case enumValue:
+		return "enum"
 	default:
 		return fmt.Sprintf("%T", v)
 	}

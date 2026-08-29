@@ -41,7 +41,45 @@ type Declaration struct {
 	Memory    *Memory    `parser:"| @@"`
 	Tool      *Tool      `parser:"| @@"`
 	Pipeline  *Pipeline  `parser:"| @@"`
+	Type      *TypeAlias `parser:"| @@"`
+	Enum      *Enum      `parser:"| @@"`
 	Test      *Test      `parser:"| @@ )"`
+}
+
+// Enum declares a closed set of named constants:
+//
+//	enum Status { Draft, Published, Archived }
+//
+// It is intentionally minimal — a variant carries no payload and no
+// associated value. A value of the enum is produced only by qualified
+// access (`Status.Draft`); at run time it is a distinct tagged value, not a
+// plain string (`Status.Draft == "Draft"` is false). `match` over an enum
+// value is checked for exhaustiveness by `mhl lint`. Variants are separated
+// by commas or newlines, with an optional trailing comma.
+type Enum struct {
+	Pos      lexer.Position
+	Name     string   `parser:"'enum' @Ident '{'"`
+	Variants []string `parser:"( @Ident ( ','? @Ident )* ','? )? '}'"`
+}
+
+// TypeAlias binds a name to a type expression so a long or repeated shape can
+// be written once and referred to by name everywhere a `: Type` annotation is
+// accepted (pipeline inputs, tool-method params and returns, object-shape
+// fields):
+//
+//	type Violation = { code: string, severity: string }
+//	type Ids       = string[]
+//
+// The alias is purely a spelling: internal/lang/types.Aliases resolves it to
+// the same types.Type the target expression would produce inline, so an
+// alias never adds a distinct type — a value satisfying `Ids` is exactly a
+// value satisfying `string[]`. Aliases may reference other aliases (and, from
+// the enum work, enum names); a cycle, a duplicate name, an unknown target,
+// or shadowing a builtin keyword is a static error.
+type TypeAlias struct {
+	Pos  lexer.Position
+	Name string    `parser:"'type' @Ident '='"`
+	Type *TypeExpr `parser:"@@"`
 }
 
 // Import binds another module under a local alias:
@@ -137,11 +175,34 @@ type ToolMethod struct {
 	Block   []*Statement `parser:"| '{' @@* '}' )"`
 }
 
-// Param is a typed parameter declaration, e.g. `path: string`.
+// Param is a typed parameter declaration, e.g. `path: string`. It may carry
+// a default value — `mode: string = "0644"` — used when a caller omits the
+// corresponding argument (tool methods and lambdas bind positionally, so a
+// defaulted param must not be followed by a non-defaulted one; `prompt`
+// binds by name, so its defaulted params may appear in any order). Default
+// is nil when none was written. The default expression is evaluated lazily,
+// once per omitting call, in the callee's own scope (see
+// internal/engine/interpreter's evalToolCall / invokeClosureWithValues /
+// renderPromptCallDynamic).
 type Param struct {
-	Pos  lexer.Position
-	Name string    `parser:"@Ident"`
-	Type *TypeExpr `parser:"( ':' @@ )?"`
+	Pos     lexer.Position
+	Name    string    `parser:"@Ident"`
+	Type    *TypeExpr `parser:"( ':' @@ )?"`
+	Default *Expr     `parser:"( '=' @@ )?"`
+}
+
+// RequiredParamCount is how many leading arguments a positional caller
+// (tool method, lambda) must supply: every parameter up to the first one
+// that declares a default. It assumes defaults are contiguous and trailing
+// — a rule lint (checkParamDefaults) enforces — so the first defaulted
+// parameter's index is the count.
+func RequiredParamCount(params []*Param) int {
+	for i, p := range params {
+		if p.Default != nil {
+			return i
+		}
+	}
+	return len(params)
 }
 
 // Property is a `key: value` pair inside a declaration body.

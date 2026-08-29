@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // Finding is one statically-detected problem in a .mh file.
@@ -51,13 +52,19 @@ func Source(path, src string) []Finding {
 	}
 
 	merged, findings := mergeImports(path, prog)
-	findings = append(findings, checkAgentCalls(path, merged)...)
+	aliases, aliasErrs := types.Aliases(merged)
+	for _, e := range aliasErrs {
+		findings = append(findings, Finding{File: path, Line: e.Line, Column: e.Column, Message: e.Message})
+	}
+	findings = append(findings, checkAgentCalls(path, merged, aliases)...)
 	findings = append(findings, checkParallelGroups(path, merged)...)
-	findings = append(findings, checkToolBlocks(path, merged)...)
+	findings = append(findings, checkToolBlocks(path, merged, aliases)...)
 	findings = append(findings, checkLoopStopWhen(path, merged)...)
 	findings = append(findings, checkPipelineContext(path, merged)...)
-	findings = append(findings, checkPipelineInputTypes(path, merged)...)
-	findings = append(findings, checkToolMethodReturnTypes(path, merged)...)
+	findings = append(findings, checkPipelineInputTypes(path, merged, aliases)...)
+	findings = append(findings, checkToolMethodReturnTypes(path, merged, aliases)...)
+	findings = append(findings, checkParamDefaults(path, merged)...)
+	findings = append(findings, checkConstReassign(path, merged)...)
 	findings = append(findings, checkMCPServers(path, merged)...)
 	return findings
 }

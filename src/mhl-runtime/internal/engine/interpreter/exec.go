@@ -31,7 +31,7 @@ func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *mem
 		return fmt.Errorf("pipeline step %q not found", stepName)
 	}
 
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file}
+	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, stepName)}
 	// A non-nil spawnSem enables `spawn`/`wait` for this step and confines
 	// them to it: drainAtStepEnd joins whatever the step body left running,
 	// so no spawned goroutine ever outlives the step (and no handle is live
@@ -105,18 +105,62 @@ func EvalPipelineVars(prog *ast.Program, pipelineName, file string, out io.Write
 	}
 
 	env := Env{}
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: env, cctx: cctx, file: file}
+	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: env, cctx: cctx, file: file, aliasTypes: aliasTypesFor(prog)}
 	for _, member := range pipeline.Body {
-		if member.Var == nil {
-			continue
+		switch {
+		case member.Const != nil:
+			v, err := evalExpr(ctx, member.Const.Value)
+			if err != nil {
+				return nil, err
+			}
+			env[member.Const.Name] = v
+		case member.Var != nil:
+			v, err := evalExpr(ctx, member.Var.Value)
+			if err != nil {
+				return nil, err
+			}
+			env[member.Var.Name] = v
 		}
-		v, err := evalExpr(ctx, member.Var.Value)
-		if err != nil {
-			return nil, err
-		}
-		env[member.Var.Name] = v
 	}
 	return env, nil
+}
+
+// pipelineConstNames is the set of names a pipeline binds with a top-level
+// `const` — seeded into every step's evalCtx so execAssign refuses to
+// reassign one.
+func pipelineConstNames(prog *ast.Program, stepName string) map[string]bool {
+	for _, decl := range prog.Decls {
+		if decl.Pipeline == nil {
+			continue
+		}
+		if !pipelineContainsStep(decl.Pipeline, stepName) {
+			continue
+		}
+		out := map[string]bool{}
+		for _, m := range decl.Pipeline.Body {
+			if m.Const != nil {
+				out[m.Const.Name] = true
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func pipelineContainsStep(p *ast.Pipeline, stepName string) bool {
+	for _, m := range p.Body {
+		if m.Step != nil && m.Step.Name == stepName {
+			return true
+		}
+		if m.Parallel != nil {
+			for _, s := range m.Parallel.Steps {
+				if s.Name == stepName {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // returnSignal is not a real error: it's how a `return` statement's
@@ -247,7 +291,21 @@ func execStatement(ctx *evalCtx, statement *ast.Statement) error {
 
 func execStatementBody(ctx *evalCtx, statement *ast.Statement) error {
 	switch {
+	case statement.Const != nil:
+		v, err := evalExpr(ctx, statement.Const.Value)
+		if err != nil {
+			return err
+		}
+		ctx.env[statement.Const.Name] = v
+		if ctx.constNames == nil {
+			ctx.constNames = map[string]bool{}
+		}
+		ctx.constNames[statement.Const.Name] = true
+		return nil
 	case statement.Var != nil:
+		if ctx.constNames[statement.Var.Name] {
+			return fmt.Errorf("%q is already declared as a constant", statement.Var.Name)
+		}
 		v, err := evalExpr(ctx, statement.Var.Value)
 		if err != nil {
 			return err
@@ -356,6 +414,9 @@ func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
 	name, ok := assignTargetBase(assign.Target)
 	if !ok {
 		return fmt.Errorf("assignment target must be a plain variable or an array index, not a nested field")
+	}
+	if ctx.constNames[name] {
+		return fmt.Errorf("cannot assign to constant %q", name)
 	}
 	target := ctx.env
 	if _, declared := target[name]; !declared {

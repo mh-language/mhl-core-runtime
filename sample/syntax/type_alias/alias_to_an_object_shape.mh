@@ -1,0 +1,26 @@
+type Point = { x: number, y: number }
+
+tool Geometry {
+    // The alias is the parameter/return contract; a value that doesn't
+    // match its shape is rejected.
+    shift(p: Point): Point -> { x: p.x + 1, y: p.y + 1 }
+}
+
+test alias_to_an_object_shape {
+    describe alias_to_an_object_shape {
+        var moved = Geometry.shift({ x: 0, y: 0 })
+        are_equal(moved.x, 1)
+        are_equal(moved.y, 1)
+
+        // Passing an object missing a field the alias's shape requires
+        // fails the same way `{ x: number, y: number }` written inline would.
+        var result = ""
+        try {
+            var bad = Geometry.shift({ x: 5 })
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: Geometry.shift: tool \"Geometry\": shift: parameter \"p\": missing field \"y\" (must be number)")
+    }
+}
