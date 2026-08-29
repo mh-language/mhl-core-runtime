@@ -201,10 +201,14 @@ type TryStmt struct {
 	Finally []*Statement `parser:"( 'finally' '{' @@* '}' )?"`
 }
 
-// AssignStmt assigns to an lvalue: `x = expr` or `obj.field = expr`.
+// AssignStmt assigns to an lvalue: `x = expr`, `arr[i] = expr`, or the
+// compound form `x += expr` — sugar for `x = x + expr` that reuses the
+// binary `+` operator's operand rules exactly (two numbers add, two strings
+// concatenate, two arrays combine into a fresh slice). Op is "=" or "+=".
 type AssignStmt struct {
 	Target *Postfix `parser:"@@"`
-	Value  *Expr    `parser:"'=' @@"`
+	Op     string   `parser:"@( '+=' | '=' )"`
+	Value  *Expr    `parser:"@@"`
 }
 
 // ExprStmt is a bare expression used for its side effects, e.g. a call.

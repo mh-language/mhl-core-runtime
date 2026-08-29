@@ -188,6 +188,55 @@ func TestEvalAssignToUndeclaredVarErrors(t *testing.T) {
 	}
 }
 
+func TestEvalCompoundAddAssign(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var errors = []
+        errors += ["first"]
+        errors += ["second"]
+        var more = ["third", "fourth"]
+        errors += more
+        log(errors.join(" | "))
+
+        var count = 0
+        count += 1
+        count += 4
+        log(count)
+
+        var msg = "a"
+        msg += "b"
+        log(msg)
+
+        var grid = [[1], [2]]
+        grid[0] += [9]
+        log(grid[0].join(","))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"first | second | third | fourth\n", "5\n", "ab\n", "1,9\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in output: %s", want, out)
+		}
+	}
+}
+
+func TestEvalCompoundAddAssignToUndeclaredVarErrors(t *testing.T) {
+	_, err := run(t, wrapStep(`y += 1`))
+	if err == nil || !strings.Contains(err.Error(), `undefined variable "y"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEvalCompoundAddAssignTypeMismatchErrors(t *testing.T) {
+	_, err := run(t, wrapStep(`
+        var msg = "x"
+        msg += 3
+    `))
+	if err == nil || !strings.Contains(err.Error(), "requires both operands to be strings") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestEvalAssignToMemberTargetErrors(t *testing.T) {
 	_, err := run(t, wrapStep(`
         var obj = {a: 1}
@@ -1053,6 +1102,71 @@ func TestEvalBracketIndexReadsElement(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q, got: %s", want, out)
 		}
+	}
+}
+
+// TestEvalOptionalMemberOnNonObject proves `x?.name` yields null — not a
+// type error — when x is a non-null scalar, matching its behavior on a null
+// receiver or a missing field. Plain `x.name` still raises.
+func TestEvalOptionalMemberOnNonObject(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var s = "hello"
+        log(s?.name ?? "none")
+        log((42)?.field ?? "none")
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if strings.Count(out, "none\n") != 2 {
+		t.Errorf("expected two null short-circuits, got: %s", out)
+	}
+
+	_, err = run(t, wrapStep(`
+        var s = "hello"
+        log(s.name)
+    `))
+	if err == nil || !strings.Contains(err.Error(), `cannot access field "name" on a string value`) {
+		t.Fatalf("plain access should still raise, got: %v", err)
+	}
+}
+
+// TestEvalOptionalDynamicIndex covers the `x?.[key]` trailer: a present key,
+// a missing object key, an out-of-range array index, a non-indexable
+// receiver, and a null hop that short-circuits the rest of the chain.
+func TestEvalOptionalDynamicIndex(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var obj = {a: 1, nested: {x: 10}}
+        var arr = [10, 20, 30]
+        var k = "a"
+        log(obj?.[k])
+        log(obj?.["missing"] ?? "def")
+        log(obj?.["nested"]?.["x"])
+        log(obj?.["nope"]?.["x"] ?? "sc")
+        log(arr?.[1])
+        log(arr?.[99] ?? "oob")
+        log("hi"?.[k] ?? "scalar")
+        log(null?.[k] ?? "nil")
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"1\n", "def\n", "10\n", "sc\n", "20\n", "oob\n", "scalar\n", "nil\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestEvalOptionalDynamicIndexKeyTypeStillRaises proves `?.[key]` only
+// swallows *absence* — a key whose type is wrong for the receiver is a real
+// program bug and still errors.
+func TestEvalOptionalDynamicIndexKeyTypeStillRaises(t *testing.T) {
+	_, err := run(t, wrapStep(`
+        var arr = [1, 2]
+        log(arr?.["oops"])
+    `))
+	if err == nil || !strings.Contains(err.Error(), "array index must be a number") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

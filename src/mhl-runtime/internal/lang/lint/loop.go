@@ -187,6 +187,8 @@ func walkPostfix(p *ast.Postfix, fn func(string)) {
 			}
 		case op.Index != nil:
 			walkExprIdents(op.Index, fn)
+		case op.OptIndex != nil:
+			walkExprIdents(op.OptIndex, fn)
 		}
 	}
 }

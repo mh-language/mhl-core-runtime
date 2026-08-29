@@ -273,34 +273,10 @@ func evalAdd(ctx *evalCtx, e *ast.AddExpr, depth int) (any, error) {
 		}
 		switch op.Op {
 		case "+":
-			if ls, ok := v.(string); ok {
-				rs, ok := rv.(string)
-				if !ok {
-					return nil, fmt.Errorf("'+' requires both operands to be strings when the left operand is a string, got %s", typeName(rv))
-				}
-				v = ls + rs
-				continue
+			v, err = addValues(v, rv)
+			if err != nil {
+				return nil, err
 			}
-			if la, ok := v.([]any); ok {
-				ra, ok := rv.([]any)
-				if !ok {
-					return nil, fmt.Errorf("'+' requires both operands to be arrays when the left operand is an array, got %s", typeName(rv))
-				}
-				// A fresh slice: neither operand array is mutated, matching
-				// the rest of the language's copy-on-combine value semantics
-				// (e.g. Closure's captured Env is a snapshot too).
-				combined := make([]any, 0, len(la)+len(ra))
-				combined = append(combined, la...)
-				combined = append(combined, ra...)
-				v = combined
-				continue
-			}
-			lf, ok1 := v.(float64)
-			rf, ok2 := rv.(float64)
-			if !ok1 || !ok2 {
-				return nil, fmt.Errorf("'+' requires two numbers, two strings, or two arrays, got %s and %s", typeName(v), typeName(rv))
-			}
-			v = lf + rf
 		case "-":
 			lf, ok1 := v.(float64)
 			rf, ok2 := rv.(float64)
@@ -311,6 +287,37 @@ func evalAdd(ctx *evalCtx, e *ast.AddExpr, depth int) (any, error) {
 		}
 	}
 	return v, nil
+}
+
+// addValues is the core of the binary `+` operator, shared with the `+=`
+// compound assignment (execAssign): two strings concatenate, two arrays
+// combine into a fresh slice (neither operand mutated, matching the rest of
+// the language's copy-on-combine value semantics), two numbers add. Any
+// other pairing is an error.
+func addValues(l, r any) (any, error) {
+	if ls, ok := l.(string); ok {
+		rs, ok := r.(string)
+		if !ok {
+			return nil, fmt.Errorf("'+' requires both operands to be strings when the left operand is a string, got %s", typeName(r))
+		}
+		return ls + rs, nil
+	}
+	if la, ok := l.([]any); ok {
+		ra, ok := r.([]any)
+		if !ok {
+			return nil, fmt.Errorf("'+' requires both operands to be arrays when the left operand is an array, got %s", typeName(r))
+		}
+		combined := make([]any, 0, len(la)+len(ra))
+		combined = append(combined, la...)
+		combined = append(combined, ra...)
+		return combined, nil
+	}
+	lf, ok1 := l.(float64)
+	rf, ok2 := r.(float64)
+	if !ok1 || !ok2 {
+		return nil, fmt.Errorf("'+' requires two numbers, two strings, or two arrays, got %s and %s", typeName(l), typeName(r))
+	}
+	return lf + rf, nil
 }
 
 func evalMul(ctx *evalCtx, e *ast.MulExpr, depth int) (any, error) {
@@ -758,8 +765,8 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 			i++ // the Call trailer was consumed together with its Member
 		case op.Member != "":
 			// Optional chaining: `x?.name` yields null (and skips the rest
-			// of the chain) when `x` is null or is an object with no such
-			// field, rather than raising.
+			// of the chain) when `x` is null, is not an object at all, or is
+			// an object with no such field, rather than raising.
 			if op.Optional && v == nil {
 				return nil, nil
 			}
@@ -773,6 +780,9 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 			}
 			m, ok := v.(map[string]any)
 			if !ok {
+				if op.Optional {
+					return nil, nil
+				}
 				return nil, fmt.Errorf("cannot access field %q on a %s value", op.Member, typeName(v))
 			}
 			next, ok := m[op.Member]
@@ -783,6 +793,25 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 				return nil, fmt.Errorf("field %q not found", op.Member)
 			}
 			v = next
+		case op.OptIndex != nil:
+			// `x?.[key]` — optional dynamic index. A null or non-indexable
+			// receiver, an out-of-range array index, or a missing object key
+			// all yield null and skip the rest of the chain, exactly like
+			// `x?.name`. A wrong key *type* for the receiver (a string key
+			// into an array, say) is still a real error.
+			switch v.(type) {
+			case []any, map[string]any:
+				got, present, err := optionalIndexRead(ctx, v, op.OptIndex, depth)
+				if err != nil {
+					return nil, err
+				}
+				if !present {
+					return nil, nil
+				}
+				v = got
+			default: // null, or a scalar that cannot be indexed
+				return nil, nil
+			}
 		case op.Call != nil:
 			closure, ok := v.(*Closure)
 			if !ok {
@@ -869,6 +898,43 @@ func indexRead(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int) (any,
 		return v, nil
 	default:
 		panic("resolveIndexKey validated receiver type")
+	}
+}
+
+// optionalIndexRead backs the `x?.[key]` trailer. receiver is already known
+// to be a []any or a map[string]any (the caller short-circuits every other
+// type to null). It reports present=false — never an error — for an
+// out-of-range array index or a missing object key, so the caller can skip
+// the rest of the chain the same way `x?.name` does. A key whose *type* is
+// wrong for the receiver is still returned as an error.
+func optionalIndexRead(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int) (value any, present bool, err error) {
+	idxVal, err := evalExprAt(ctx, indexExpr, depth)
+	if err != nil {
+		return nil, false, err
+	}
+	switch r := receiver.(type) {
+	case []any:
+		idxF, ok := idxVal.(float64)
+		if !ok {
+			return nil, false, fmt.Errorf("array index must be a number, got %s", typeName(idxVal))
+		}
+		idx := int(idxF)
+		if float64(idx) != idxF {
+			return nil, false, fmt.Errorf("array index must be an integer, got %v", idxF)
+		}
+		if idx < 0 || idx >= len(r) {
+			return nil, false, nil
+		}
+		return r[idx], true, nil
+	case map[string]any:
+		key, ok := idxVal.(string)
+		if !ok {
+			return nil, false, fmt.Errorf("object key must be a string, got %s", typeName(idxVal))
+		}
+		v, ok := r[key]
+		return v, ok, nil
+	default:
+		return nil, false, nil
 	}
 }
 

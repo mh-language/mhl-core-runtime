@@ -1,0 +1,21 @@
+test append_to_an_array {
+    describe append_to_an_array {
+        // `acc += expr` is sugar for `acc = acc + expr`, so on arrays it
+        // concatenates — the right-hand side must itself be an array.
+        var acc = []
+        acc += ["SDD_SCHEMA_UNKNOWN: expected schema"]
+        acc += ["second"]
+        are_equal(acc.size(), 2)
+        are_equal(acc[0], "SDD_SCHEMA_UNKNOWN: expected schema")
+        are_equal(acc[1], "second")
+
+        // The right-hand side can be any array-valued expression.
+        var more = ["third", "fourth"]
+        acc += more
+        are_equal(acc.size(), 4)
+        are_equal(acc.join(" | "), "SDD_SCHEMA_UNKNOWN: expected schema | second | third | fourth")
+
+        // Copy-on-combine: `more` is untouched.
+        are_equal(more.size(), 2)
+    }
+}

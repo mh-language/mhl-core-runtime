@@ -1,0 +1,34 @@
+test optional_dynamic_index {
+    describe optional_dynamic_index {
+        var obj = { a: 1, nested: { x: 10 } }
+        var arr = [10, 20, 30]
+        var key = "a"
+
+        // `x?.[expr]` is the dynamic-key twin of `x?.name`: a runtime-computed
+        // key with the same null-on-absence behavior.
+        are_equal(obj?.[key], 1)
+        are_equal(obj?.["missing"], null)
+        are_equal(obj?.["missing"] ?? "def", "def")
+
+        // Chains, short-circuiting the rest when a hop is absent.
+        are_equal(obj?.["nested"]?.["x"], 10)
+        are_equal(obj?.["nope"]?.["x"], null)
+
+        // Arrays: an out-of-range index yields null instead of raising.
+        are_equal(arr?.[1], 20)
+        are_equal(arr?.[99], null)
+
+        // A null or non-indexable receiver yields null too.
+        are_equal("hi"?.[key], null)
+
+        // But a key of the wrong *type* for the receiver is still an error.
+        var result = ""
+        try {
+            var bad = arr?.["oops"]
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: array index must be a number, got string")
+    }
+}

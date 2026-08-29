@@ -111,13 +111,20 @@ type Postfix struct {
 // to the plain Index alternative.
 //
 // A member access may be written `.name` (plain) or `?.name` (optional
-// chaining): when the value to its left is `null`, or is an object that has
-// no such field, the access yields `null` and the rest of the trailer chain
-// is skipped instead of raising. Optional holds whether `?.` was written;
-// Member carries the field name either way.
+// chaining): when the value to its left is `null`, is not an object at all
+// (a string, number, ...), or is an object that has no such field, the
+// access yields `null` and the rest of the trailer chain is skipped instead
+// of raising. Optional holds whether `?.` was written; Member carries the
+// field name either way.
+//
+// OptIndex is the dynamic-key twin, `?.[expr]` — the same null-on-absence
+// behavior as `?.name` but with a runtime-computed key, covering an
+// out-of-range array index and a missing object key. It is a read-only form
+// (never an assignment target, unlike the plain Index trailer).
 type Trailer struct {
 	Optional bool   `parser:"( ( @'?.' | '.' )"`
 	Member   string `parser:"    @Ident )"`
+	OptIndex *Expr  `parser:"| '?.' '[' @@ ']'"`
 	Call     *Call  `parser:"| @@"`
 	Slice    *Slice `parser:"| '[' @@ ']'"`
 	Index    *Expr  `parser:"| '[' @@ ']'"`

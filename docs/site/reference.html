@@ -155,17 +155,19 @@ pipeline Import {
           <p class="block-label">PRACTICAL GRAMMAR</p>
           <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | memory | tool | mcp_server | a2a_agent | pipeline | test)
 variable     := "var" identifier "=" expression
+assignment   := lvalue ("=" | "+=") expression   // "+=" is sugar for `x = x + expr`
 property     := identifier ":" expression
 call         := expression "(" [argument {"," argument}] ")"
 array        := "[" [expression {"," expression}] "]"
 object       := "{" [key ":" expression {","? key ":" expression}] "}"
 lambda       := "(" [parameters] ")" "->" (expression | block)
 if-expr      := "if" "(" expression ")" expression "else" expression
-optional     := expression "?." identifier   // null / missing-field safe
-coalesce     := expression "??" expression   // left unless it is null</code></pre>
+optional     := expression "?." identifier      // null / non-object / missing-field safe
+optional     := expression "?." "[" expression "]"  // same, with a dynamic key
+coalesce     := expression "??" expression      // left unless it is null</code></pre>
         </section>
 
-        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort map reduce any all append join unique equals deep_equal slice interpolation optional chaining null coalescing get default">
+        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort map reduce any all append join unique equals deep_equal slice interpolation optional chaining optional index dynamic key null coalescing get default">
           <div class="feature-head"><h2><span class="feature-num">03</span>Expressions and collections</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Expressions produce values. They compose inside variables, arguments, properties, conditions, returns, and string interpolation.</p>
 
@@ -178,10 +180,12 @@ var dynamic = record[field_name]
 var slice = numbers[1..^1] // index 1 through one before the end
 var text = "${label}: ${total}"
 
-// `?.` reads through null / a missing field without raising;
-// `??` supplies a default only when the left side is null.
+// `?.` reads through null, a non-object, or a missing field without raising;
+// `?.[key]` is the same with a dynamic key; `??` supplies a default only
+// when the left side is null.
 var target = metric?.target?.trim() ?? ""
-var retries = config?.retries ?? 3   // 0 stays 0 — only null is replaced</code></pre>
+var retries = config?.retries ?? 3       // 0 stays 0 — only null is replaced
+var field  = record?.[name] ?? null      // no `is_object(record)` guard needed</code></pre>
 
           <p class="block-label">VALUE METHODS</p>
           <div class="method-grid">
@@ -209,7 +213,7 @@ var ready = features
     .sort_by((f) -> f.priority)
 
 var next = ready.find((f) -> f.id == 20)</code></pre>
-          <div class="tip-row"><span>IMMUTABLE RESULTS</span><p><code>filter()</code>, <code>map()</code>, <code>sort_by()</code>, <code>append()</code>, <code>unique()</code>, concatenation, and slices return new arrays. Assigning to <code>items[index]</code> or <code>object[key]</code> mutates the original collection.</p></div>
+          <div class="tip-row"><span>IMMUTABLE RESULTS</span><p><code>filter()</code>, <code>map()</code>, <code>sort_by()</code>, <code>append()</code>, <code>unique()</code>, concatenation, and slices return new arrays. To accumulate into a list, reassign — <code>acc = acc.append(x)</code> or <code>acc += [x]</code>. Assigning to <code>items[index]</code> or <code>object[key]</code> mutates the original collection.</p></div>
         </section>
 
         <section class="feature doc-section" id="statements" data-title="statements control flow var assignment if else while for try catch finally return break goto fail">
@@ -219,6 +223,7 @@ var next = ready.find((f) -> f.id == 20)</code></pre>
             <div class="table-row table-head"><span>Construct</span><span>Syntax</span><span>Effect</span></div>
             <div class="table-row"><span>Variable</span><code>var x = expression</code><span>Creates a local binding.</span></div>
             <div class="table-row"><span>Assignment</span><code>x = expression</code><span>Updates a variable, field, or index.</span></div>
+            <div class="table-row"><span>Add-assign</span><code>x += expression</code><span>Sugar for <code>x = x + expression</code> — same operand rules as <code>+</code> (numbers, strings, or arrays). Handy for accumulating into a list: <code>errors += ["..."]</code>.</span></div>
             <div class="table-row"><span>Condition</span><code>if (cond) { ... } else { ... }</code><span>Executes a block by condition.</span></div>
             <div class="table-row"><span>Repetition</span><code>while (cond) { ... }</code><span>Repeats while the condition is true.</span></div>
             <div class="table-row"><span>Iteration</span><code>for (var item in items) { ... }</code><span>Iterates over an array.</span></div>

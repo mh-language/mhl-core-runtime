@@ -1,0 +1,21 @@
+test optional_member_on_non_object_yields_null {
+    describe optional_member_on_non_object_yields_null {
+        // `?.` treats "this isn't an object at all" the same as a null hop
+        // or a missing field: it yields null and skips the rest of the
+        // chain, so no `is_object(...)` guard is needed before it.
+        var s = "plain string"
+        are_equal(s?.field, null)
+        are_equal((42)?.field, null)
+        are_equal(s?.field?.trim(), null)
+
+        // The plain `.` form is unchanged — it still raises.
+        var result = ""
+        try {
+            var bad = s.field
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: cannot access field \"field\" on a string value")
+    }
+}

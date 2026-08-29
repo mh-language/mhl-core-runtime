@@ -6,6 +6,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 VERSION=$(node -p "require('./package.json').version")
 VSIX_FILE="mhl-language-${VERSION}.vsix"
 
+echo "Removing old ${VSIX_FILE}..."
+rm -f "*.vsix"
+
 echo "Installing extension dependencies..."
 npm install
 

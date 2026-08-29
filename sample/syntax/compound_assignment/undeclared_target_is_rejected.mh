@@ -1,0 +1,13 @@
+test undeclared_target_is_rejected {
+    describe undeclared_target_is_rejected {
+        // Like plain `=`, `+=` never implicitly declares a variable.
+        var result = ""
+        try {
+            ghost += 1
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: undefined variable \"ghost\"")
+    }
+}

@@ -150,6 +150,35 @@ pipeline InlineDemo {
 	}
 }
 
+// TestCompoundAddAssignParses checks that `x += expr` lexes `+=` as one
+// operator and populates AssignStmt.Op, while a plain `x = expr` keeps Op
+// as "=".
+func TestCompoundAddAssignParses(t *testing.T) {
+	src := `
+pipeline CompoundDemo {
+    step S {
+        var acc = []
+        acc += ["x"]
+        acc = ["y"]
+    }
+}
+`
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("expected `+=` to parse, got: %v", err)
+	}
+	body := prog.Decls[0].Pipeline.Body[0].Step.Body
+	if len(body) != 3 {
+		t.Fatalf("expected 3 statements, got %d", len(body))
+	}
+	if body[1].Assign == nil || body[1].Assign.Op != "+=" {
+		t.Fatalf("expected second statement to be a `+=` assign, got: %#v", body[1])
+	}
+	if body[2].Assign == nil || body[2].Assign.Op != "=" {
+		t.Fatalf("expected third statement to be a plain `=` assign, got: %#v", body[2])
+	}
+}
+
 // exprPrimary drills down a *ast.Expr to its Primary, for tests that only
 // care about a single bare postfix expression (no operators).
 func exprPrimary(t *testing.T, e *ast.Expr) *ast.Primary {
@@ -341,6 +370,37 @@ func TestOptionalChainAndCoalesceParse(t *testing.T) {
 	}
 	if plain.Or.Head.Head.Head.Head.Head.Head.Operand.Ops[0].Optional {
 		t.Errorf("plain `.b` should not be Optional")
+	}
+}
+
+// TestOptionalDynamicIndexParse covers the `?.[expr]` trailer
+// (ast.Trailer.OptIndex): `?.` still lexes as one token, then `[expr]`
+// captures the dynamic key — distinct from both `?.name` (OptIndex nil,
+// Member set) and the plain `[expr]` index (Index set, OptIndex nil).
+func TestOptionalDynamicIndexParse(t *testing.T) {
+	expr, err := ParseExpr(`obj?.[key]?.["x"]`)
+	if err != nil {
+		t.Fatalf("ParseExpr: %v", err)
+	}
+	pf := expr.Or.Head.Head.Head.Head.Head.Head.Operand
+	if len(pf.Ops) != 2 {
+		t.Fatalf("expected 2 trailers, got %d", len(pf.Ops))
+	}
+	if pf.Ops[0].OptIndex == nil || pf.Ops[0].Member != "" || pf.Ops[0].Index != nil {
+		t.Errorf("Ops[0] = %#v, want an OptIndex trailer", pf.Ops[0])
+	}
+	if pf.Ops[1].OptIndex == nil {
+		t.Errorf("Ops[1] = %#v, want an OptIndex trailer", pf.Ops[1])
+	}
+
+	// A plain `[expr]` index is still Index, not OptIndex.
+	plain, err := ParseExpr(`obj[key]`)
+	if err != nil {
+		t.Fatalf("ParseExpr(obj[key]): %v", err)
+	}
+	op := plain.Or.Head.Head.Head.Head.Head.Head.Operand.Ops[0]
+	if op.Index == nil || op.OptIndex != nil {
+		t.Errorf("plain `[key]` should be Index, got %#v", op)
 	}
 }
 

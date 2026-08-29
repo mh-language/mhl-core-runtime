@@ -182,7 +182,7 @@
             <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
             <div class="table-row"><code>keys() -&gt; string[]</code><span><span class="p">none</span></span><span><code>string[]</code></span><span>Keys in stable (sorted) order.</span></div>
             <div class="table-row"><code>values() -&gt; any[]</code><span><span class="p">none</span></span><span><code>any[]</code></span><span>Values in the same order as <code>keys()</code>.</span></div>
-            <div class="table-row"><code>get(key: string, default?: any) -&gt; any</code><span><span class="p"><code>key</code> — field name</span><span class="p"><code>default</code> — optional, returned when absent</span></span><span><code>any</code></span><span>The value at <code>key</code>, or <code>default</code> (or <code>null</code>) when the object has no such key. Never raises on a missing field — unlike <code>.key</code> / <code>obj[key]</code>.</span></div>
+            <div class="table-row"><code>get(key: string, default?: any) -&gt; any</code><span><span class="p"><code>key</code> — field name</span><span class="p"><code>default</code> — optional, returned when absent</span></span><span><code>any</code></span><span>The value at <code>key</code>, or <code>default</code> (or <code>null</code>) when the object has no such key. Never raises on a missing field — unlike <code>.key</code> / <code>obj[key]</code>. The <code>obj?.[key]</code> operator is the null-safe equivalent for the common <code>get(key, null)</code> case, and also tolerates a non-object <code>obj</code>.</span></div>
           </div>
         </section>
 

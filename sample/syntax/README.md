@@ -10,6 +10,8 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
   `.unique()`, `.equals()`/`.deep_equal()`
 - [array_statements/](array_statements/README.md) — array literals, indexing, mutation,
   concatenation, slicing
+- [compound_assignment/](compound_assignment/README.md) — the `+=` operator for arrays,
+  numbers and strings
 - [concatenation/](concatenation/README.md) — string `+` and `${...}` interpolation
 - [conditional_statements/](conditional_statements/README.md) — `if`/`else` as expression and
   as statement

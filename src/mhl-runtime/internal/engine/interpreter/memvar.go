@@ -97,11 +97,29 @@ func execMemAssign(ctx *evalCtx, name string, assign *ast.AssignStmt) error {
 	}
 	ops := assign.Target.Ops
 	if len(ops) == 0 {
+		if assign.Op == "+=" {
+			cur, err := readMemVar(ctx, name)
+			if err != nil {
+				return err
+			}
+			if v, err = addValues(cur, v); err != nil {
+				return err
+			}
+		}
 		return writeMemVar(ctx, name, v)
 	}
 	root, err := readMemVar(ctx, name)
 	if err != nil {
 		return err
+	}
+	if assign.Op == "+=" {
+		cur, err := applyTrailers(ctx, root, ops, 0)
+		if err != nil {
+			return err
+		}
+		if v, err = addValues(cur, v); err != nil {
+			return err
+		}
 	}
 	container, err := applyTrailers(ctx, root, ops[:len(ops)-1], 0)
 	if err != nil {

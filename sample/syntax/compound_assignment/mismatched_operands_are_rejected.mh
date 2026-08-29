@@ -1,0 +1,15 @@
+test mismatched_operands_are_rejected {
+    describe mismatched_operands_are_rejected {
+        // Because `x += y` is `x = x + y`, the operands must match the
+        // binary `+` rules: two numbers, two strings, or two arrays.
+        var msg = "x"
+        var result = ""
+        try {
+            msg += 3
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: '+' requires both operands to be strings when the left operand is a string, got number")
+    }
+}

@@ -361,8 +361,22 @@ func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
 	}
 	ops := assign.Target.Ops
 	if len(ops) == 0 {
+		if assign.Op == "+=" {
+			if v, err = addValues(target[name], v); err != nil {
+				return err
+			}
+		}
 		target[name] = v
 		return nil
+	}
+	if assign.Op == "+=" {
+		cur, err := applyTrailers(ctx, target[name], ops, 0)
+		if err != nil {
+			return err
+		}
+		if v, err = addValues(cur, v); err != nil {
+			return err
+		}
 	}
 	container, err := applyTrailers(ctx, target[name], ops[:len(ops)-1], 0)
 	if err != nil {

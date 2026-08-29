@@ -1,0 +1,14 @@
+test index_target {
+    describe index_target {
+        // An array-index target works too: `grid[0] += [9]` reads
+        // `grid[0]`, combines, and writes the result back in place.
+        var grid = [[1], [2]]
+        grid[0] += [9]
+        are_equal(grid[0], [1, 9])
+        are_equal(grid[1], [2])
+
+        var totals = [10, 20]
+        totals[1] += 5
+        are_equal(totals[1], 25)
+    }
+}

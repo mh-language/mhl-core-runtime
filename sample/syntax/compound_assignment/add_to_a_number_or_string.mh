@@ -1,0 +1,15 @@
+test add_to_a_number_or_string {
+    describe add_to_a_number_or_string {
+        // `+=` reuses the binary `+` operator's rules exactly, so it also
+        // works for the two other types `+` accepts.
+        var count = 0
+        count += 1
+        count += 4
+        are_equal(count, 5)
+
+        var msg = "a"
+        msg += "b"
+        msg += "c"
+        are_equal(msg, "abc")
+    }
+}
