@@ -27,39 +27,163 @@ func checkAgentCalls(file string, prog *ast.Program) []Finding {
 		pipelineVars := collectPipelineVarNames(prog, decl.Pipeline)
 		pipelineMemVars := collectPipelineMemNames(prog, decl.Pipeline)
 		for _, member := range decl.Pipeline.Body {
-			if member.Step == nil {
+			// A `parallel` group's branch steps are checked exactly like
+			// plain steps — the runtime runs them through the same RunStep.
+			var steps []*ast.Step
+			switch {
+			case member.Step != nil:
+				steps = []*ast.Step{member.Step}
+			case member.Parallel != nil:
+				steps = member.Parallel.Steps
+			default:
 				continue
 			}
-			// A pipeline-level `input`, `var`, or `mem` is a valid
-			// plain-assignment target inside any of that pipeline's steps
-			// too — see interpreter.execAssign's pipelineEnv and mem
-			// fallbacks — so all three must count as "declared" here the
-			// same way a step's own `var` does, or this would
-			// false-positive "undefined variable" on every step that
-			// mutates one. Seeded fresh per step (a real copy, not a
-			// shared reference): a step-local var/mem downgrade must not
-			// leak into another step's belief about the same
-			// pipeline-level binding.
-			seed := make(map[string]types.Type, len(pipelineInputs)+len(pipelineVars)+len(pipelineMemVars))
-			for name, t := range pipelineInputs {
-				seed[name] = t
+			for _, step := range steps {
+				// A pipeline-level `input`, `var`, or `mem` is a valid
+				// plain-assignment target inside any of that pipeline's steps
+				// too — see interpreter.execAssign's pipelineEnv and mem
+				// fallbacks — so all three must count as "declared" here the
+				// same way a step's own `var` does, or this would
+				// false-positive "undefined variable" on every step that
+				// mutates one. Seeded fresh per step (a real copy, not a
+				// shared reference): a step-local var/mem downgrade must not
+				// leak into another step's belief about the same
+				// pipeline-level binding.
+				seed := make(map[string]types.Type, len(pipelineInputs)+len(pipelineVars)+len(pipelineMemVars))
+				for name, t := range pipelineInputs {
+					seed[name] = t
+				}
+				for name, t := range pipelineVars {
+					seed[name] = t
+				}
+				for name, t := range pipelineMemVars {
+					seed[name] = t
+				}
+				// A `context:` block makes the read-only identifier `context`
+				// resolve to an object inside every step (interpreter.isContextRef).
+				if pipelineHasContextProp(decl.Pipeline) {
+					seed["context"] = types.Object
+				}
+				declared := collectVarNames(prog, step.Body, seed, nil)
+				findings = append(findings, checkStatements(file, prog, step.Body, declared, nil)...)
 			}
-			for name, t := range pipelineVars {
-				seed[name] = t
-			}
-			for name, t := range pipelineMemVars {
-				seed[name] = t
-			}
-			// A `context:` block makes the read-only identifier `context`
-			// resolve to an object inside every step (interpreter.isContextRef).
-			if pipelineHasContextProp(decl.Pipeline) {
-				seed["context"] = types.Object
-			}
-			declared := collectVarNames(prog, member.Step.Body, seed, nil)
-			findings = append(findings, checkStatements(file, prog, member.Step.Body, declared, nil)...)
 		}
 	}
 	return findings
+}
+
+// checkParallelGroups statically enforces the rules a `parallel` group's
+// atomic-checkpoint / concurrent-branch model depends on, mirroring the
+// guards runtime.Runner.Run applies at run time:
+//   - every step name in a pipeline is unique (a `parallel` branch step
+//     included) — findStep/goto resolve a name to the first match, so a
+//     duplicate is silently ambiguous;
+//   - `goto` is not used from inside a branch step, and does not target a
+//     step that lives inside a group (either would need the pipeline state
+//     machine to jump into or out of a barrier);
+//   - `break` is not used from inside a branch step (it unwinds the whole
+//     pipeline/loop — meaningless from one concurrent branch).
+func checkParallelGroups(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Pipeline == nil {
+			continue
+		}
+
+		// Which step names belong to a parallel group, and every step name
+		// seen so far (for the uniqueness check).
+		inGroup := map[string]bool{}
+		seen := map[string]bool{}
+		for _, m := range decl.Pipeline.Body {
+			switch {
+			case m.Step != nil:
+				if seen[m.Step.Name] {
+					findings = append(findings, Finding{File: file, Line: stepLine(m.Step), Column: 1,
+						Message: fmt.Sprintf("pipeline %q declares more than one step named %q", decl.Pipeline.Name, m.Step.Name)})
+				}
+				seen[m.Step.Name] = true
+			case m.Parallel != nil:
+				for _, s := range m.Parallel.Steps {
+					inGroup[s.Name] = true
+					if seen[s.Name] {
+						findings = append(findings, Finding{File: file, Line: m.Parallel.Pos.Line, Column: m.Parallel.Pos.Column,
+							Message: fmt.Sprintf("pipeline %q declares more than one step named %q", decl.Pipeline.Name, s.Name)})
+					}
+					seen[s.Name] = true
+				}
+			}
+		}
+
+		for _, m := range decl.Pipeline.Body {
+			// `goto <T>` anywhere in the pipeline may not target a grouped step.
+			steps := pipelineMemberSteps(m)
+			branch := m.Parallel != nil
+			for _, step := range steps {
+				walkGotoBreak(step.Body, func(target string, isBreak bool, pos lexer.Position) {
+					switch {
+					case isBreak && branch:
+						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+							Message: fmt.Sprintf("`break` cannot be used inside a parallel group (step %q of group %q)", step.Name, m.Parallel.Name)})
+					case !isBreak && branch:
+						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+							Message: fmt.Sprintf("`goto` cannot be used inside a parallel group (step %q of group %q)", step.Name, m.Parallel.Name)})
+					case !isBreak && inGroup[target]:
+						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+							Message: fmt.Sprintf("`goto %s` targets a step inside a parallel group", target)})
+					}
+				})
+			}
+		}
+	}
+	return findings
+}
+
+// pipelineMemberSteps returns the step(s) a pipeline body member contributes
+// — one for a plain `step`, all branches for a `parallel` group, none
+// otherwise.
+func pipelineMemberSteps(m *ast.PipelineMember) []*ast.Step {
+	switch {
+	case m.Step != nil:
+		return []*ast.Step{m.Step}
+	case m.Parallel != nil:
+		return m.Parallel.Steps
+	default:
+		return nil
+	}
+}
+
+// stepLine reports a step's source line, falling back to 1 when the step's
+// first statement carries no position (an empty body).
+func stepLine(s *ast.Step) int {
+	if len(s.Body) > 0 && s.Body[0].Pos.Line > 0 {
+		return s.Body[0].Pos.Line
+	}
+	return 1
+}
+
+// walkGotoBreak invokes fn for every `goto` and `break` statement reachable
+// in stmts, recursing into if/while/for/try bodies (the same structural,
+// non-flow-sensitive traversal collectVarNames uses).
+func walkGotoBreak(stmts []*ast.Statement, fn func(target string, isBreak bool, pos lexer.Position)) {
+	for _, s := range stmts {
+		switch {
+		case s.Goto != nil:
+			fn(s.Goto.Target, false, s.Pos)
+		case s.Break != nil:
+			fn("", true, s.Pos)
+		case s.If != nil:
+			walkGotoBreak(s.If.Then, fn)
+			walkGotoBreak(s.If.Else, fn)
+		case s.While != nil:
+			walkGotoBreak(s.While.Body, fn)
+		case s.ForIn != nil:
+			walkGotoBreak(s.ForIn.Body, fn)
+		case s.Try != nil:
+			walkGotoBreak(s.Try.Body, fn)
+			walkGotoBreak(s.Try.Catch, fn)
+			walkGotoBreak(s.Try.Finally, fn)
+		}
+	}
 }
 
 // collectPipelineVarNames returns the names (and best statically-known

@@ -337,6 +337,11 @@ func localVarSymbols(prog *ast.Program) []symbol {
 				if m.Step != nil {
 					walkStmts(m.Step.Body)
 				}
+				if m.Parallel != nil {
+					for _, s := range m.Parallel.Steps {
+						walkStmts(s.Body)
+					}
+				}
 			}
 		case decl.Tool != nil:
 			for _, meth := range decl.Tool.Methods {

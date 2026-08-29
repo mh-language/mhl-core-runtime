@@ -392,7 +392,10 @@ func TestEvalWhileLoop(t *testing.T) {
 			t.Errorf("output missing %q, got: %s", want, out)
 		}
 	}
-	if strings.Contains(out, "3\n") {
+	// Match the loop's own output sequence, not a bare "3\n" — the latter
+	// also occurs in the `session: <hex>` banner whenever the random id ends
+	// in 3, which made this assertion flaky.
+	if strings.Contains(out, "2\n3\n") {
 		t.Errorf("loop ran one iteration too many: %s", out)
 	}
 }

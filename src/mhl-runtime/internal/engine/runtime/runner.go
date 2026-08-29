@@ -1,8 +1,13 @@
 package runtime
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"reflect"
+	"strings"
+	"sync"
 )
 
 // RunContext carries the accumulated variable/session state across steps. It is
@@ -27,6 +32,12 @@ type RunContext struct {
 	// unscoped runner. cli.go exposes it to a pipeline's `context:` element as
 	// context.session_id.
 	SessionID string
+	// Out, when non-nil, is the writer this step's output must go to instead
+	// of cli.go's exec closure's default — set by runParallelStage to a
+	// per-branch buffer so concurrent branch steps never interleave on the
+	// real stdout; their buffers are flushed in declared order once the
+	// group joins. nil everywhere else (the closure uses its own writer).
+	Out io.Writer
 }
 
 // StepFunc executes a single step. Returning a plain error aborts the
@@ -81,6 +92,12 @@ type Runner struct {
 	// single-file layout, still used by a --resume that fell back to a
 	// pre-session checkpoint and by tests that construct a Runner directly.
 	SessionID string
+	// Out is where a `parallel` group's per-branch captured output is
+	// flushed, in declared order, once the group joins — the Runner
+	// otherwise never writes step output itself (cli.go's exec closure
+	// does). nil is tolerated (output is discarded); a pipeline with no
+	// `parallel` group never reaches this path at all.
+	Out io.Writer
 }
 
 // NewRunner returns a Runner backed by a Store rooted at root. It is
@@ -93,7 +110,7 @@ func NewRunner(root string) *Runner {
 // directory named id, so two concurrent runs of the same pipeline never
 // clobber each other's checkpoint. An empty id returns an unscoped runner.
 func (r *Runner) Session(id string) *Runner {
-	return &Runner{Store: r.Store.Session(id), SessionID: id}
+	return &Runner{Store: r.Store.Session(id), SessionID: id, Out: r.Out}
 }
 
 // Run executes the pipeline, starting at its first declared step and then
@@ -125,11 +142,22 @@ func (r *Runner) Run(p Pipeline, init InitFunc, exec StepFunc, resume bool) (*Ru
 	if instanceID == "" {
 		instanceID = "default"
 	}
-	ctx := &RunContext{Vars: map[string]any{}, InstanceID: instanceID, SessionID: r.SessionID}
+	ctx := &RunContext{Vars: map[string]any{}, InstanceID: instanceID, SessionID: r.SessionID, Out: r.Out}
+
+	// PipelineFromAST fills Stages, but a Pipeline built as a literal (tests,
+	// and any caller that only sets Steps) may not — derive one singleton
+	// stage per step so the stage walk below is the single code path.
+	if len(p.Stages) == 0 {
+		p.Stages = make([]Stage, len(p.Steps))
+		for i, s := range p.Steps {
+			p.Stages[i] = Stage{Name: s, Steps: []string{s}}
+		}
+	}
 
 	perStep := p.Checkpoint.Enabled && p.Checkpoint.Strategy == "per_step"
 
-	current, ok := p.firstStep()
+	first, ok := p.firstStage()
+	current := first.Name
 	resumedFromCheckpoint := false
 	if resume && p.Checkpoint.Enabled {
 		cp, found, err := r.Store.Load(p.Name)
@@ -163,8 +191,18 @@ func (r *Runner) Run(p Pipeline, init InitFunc, exec StepFunc, resume bool) (*Ru
 			return result, fmt.Errorf("runtime: step %q revisited more than %d times (a goto cycle with no break?)", current, maxStepVisits)
 		}
 
-		err := exec(current, ctx)
-		result.Executed = append(result.Executed, current)
+		stage, found := p.stageByName(current)
+		if !found {
+			return result, fmt.Errorf("runtime: pipeline %q has no step or parallel group %q", p.Name, current)
+		}
+
+		var err error
+		if stage.Parallel {
+			err = r.runParallelStage(p, stage, ctx, exec)
+		} else {
+			err = exec(stage.Steps[0], ctx)
+		}
+		result.Executed = append(result.Executed, stage.Steps...)
 
 		var brk *BreakSignal
 		var gt *GotoSignal
@@ -190,22 +228,25 @@ func (r *Runner) Run(p Pipeline, init InitFunc, exec StepFunc, resume bool) (*Ru
 			if !p.hasStep(gt.Target) {
 				return result, fmt.Errorf("runtime: goto target %q is not a step of pipeline %q", gt.Target, p.Name)
 			}
+			if p.stepInParallelGroup(gt.Target) {
+				return result, fmt.Errorf("runtime: goto target %q is a step inside a parallel group of pipeline %q", gt.Target, p.Name)
+			}
 			if err := r.checkpointStep(p, perStep, current, gt.Target, result.Executed, ctx); err != nil {
 				return result, err
 			}
 			current, ok = gt.Target, true
 
 		case err != nil:
-			// The prior step's checkpoint (if any) is already persisted;
+			// The prior stage's checkpoint (if any) is already persisted;
 			// surface the failure so a later --resume can continue here.
 			return result, fmt.Errorf("runtime: step %q failed: %w", current, err)
 
 		default:
-			next, hasNext := p.stepAfter(current)
-			if err := r.checkpointStep(p, perStep, current, next, result.Executed, ctx); err != nil {
+			next, hasNext := p.stageAfter(current)
+			if err := r.checkpointStep(p, perStep, current, next.Name, result.Executed, ctx); err != nil {
 				return result, err
 			}
-			current, ok = next, hasNext
+			current, ok = next.Name, hasNext
 		}
 	}
 
@@ -248,4 +289,121 @@ func copyVars(in map[string]any) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+// runParallelStage runs every branch step of a `parallel` group concurrently
+// and joins them before returning — the pipeline does not advance past the
+// group until all branches finish. Each branch gets its own deep copy of
+// ctx.Vars (so branches never race on the shared map) and its own output
+// buffer (flushed to r.Out in declared order once the group joins, so
+// concurrent branches never interleave on stdout). The join is fail-slow:
+// even when one branch errors, the rest are allowed to finish before the
+// first error (in declared order) is returned; there is no mid-step
+// cancellation. On success, each branch's writes are merged back into
+// ctx.Vars — a key two branches set to different values is a hard error, so
+// a parallel group's variable outcome is always deterministic.
+func (r *Runner) runParallelStage(p Pipeline, stage Stage, ctx *RunContext, exec StepFunc) error {
+	base := deepCopyVars(ctx.Vars)
+	n := len(stage.Steps)
+	bctxs := make([]*RunContext, n)
+	bufs := make([]*bytes.Buffer, n)
+	errs := make([]error, n)
+
+	var wg sync.WaitGroup
+	for i, name := range stage.Steps {
+		buf := &bytes.Buffer{}
+		bufs[i] = buf
+		bctx := &RunContext{
+			Vars:       deepCopyVars(ctx.Vars),
+			InstanceID: ctx.InstanceID,
+			SessionID:  ctx.SessionID,
+			Out:        buf,
+		}
+		bctxs[i] = bctx
+		wg.Add(1)
+		go func(i int, name string, bctx *RunContext) {
+			defer wg.Done()
+			defer func() {
+				if rec := recover(); rec != nil {
+					errs[i] = fmt.Errorf("parallel step %q panicked: %v", name, rec)
+				}
+			}()
+			errs[i] = exec(name, bctx)
+		}(i, name, bctx)
+	}
+	wg.Wait()
+
+	out := r.Out
+	if out == nil {
+		out = io.Discard
+	}
+	for _, buf := range bufs {
+		if buf.Len() > 0 {
+			_, _ = io.WriteString(out, buf.String())
+		}
+	}
+
+	for i, err := range errs {
+		if err != nil {
+			return fmt.Errorf("parallel group %q: step %q: %w", stage.Name, stage.Steps[i], err)
+		}
+	}
+
+	// writtenBy records which branch first set a given key to a value that
+	// differs from the pre-fork snapshot; a second branch setting the same
+	// key to a different value is a conflict.
+	writtenBy := make(map[string]int, n)
+	for i, bctx := range bctxs {
+		for k, v := range bctx.Vars {
+			if strings.HasPrefix(k, "__") {
+				continue // interpreter bookkeeping (e.g. __last_step)
+			}
+			if reflect.DeepEqual(base[k], v) {
+				continue
+			}
+			if prev, ok := writtenBy[k]; ok {
+				if !reflect.DeepEqual(bctxs[prev].Vars[k], v) {
+					return fmt.Errorf("parallel group %q: steps %q and %q both assigned pipeline var %q",
+						stage.Name, stage.Steps[prev], stage.Steps[i], k)
+				}
+				continue
+			}
+			writtenBy[k] = i
+			ctx.Vars[k] = v
+		}
+	}
+	ctx.Vars["__last_step"] = stage.Name
+	return nil
+}
+
+// deepCopyVars clones the JSON-shaped part of a variable map (arrays and
+// objects) so a concurrently-running parallel branch reading it cannot
+// observe another branch — or the parent — mutating the same structure.
+// Scalars are immutable and shared as-is; this mirrors
+// interpreter.deepCopyValue, which spawn.go uses for the same reason.
+func deepCopyVars(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = deepCopyValue(v)
+	}
+	return out
+}
+
+func deepCopyValue(v any) any {
+	switch t := v.(type) {
+	case []any:
+		c := make([]any, len(t))
+		for i := range t {
+			c[i] = deepCopyValue(t[i])
+		}
+		return c
+	case map[string]any:
+		c := make(map[string]any, len(t))
+		for k := range t {
+			c[k] = deepCopyValue(t[k])
+		}
+		return c
+	default:
+		return v
+	}
 }
