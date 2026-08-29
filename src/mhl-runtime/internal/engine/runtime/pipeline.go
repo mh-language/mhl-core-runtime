@@ -40,14 +40,28 @@ type SpawnConfig struct {
 	MaxConcurrency int
 }
 
+// Stage is one unit the Runner advances through: either a single plain step
+// (Parallel false, Steps has exactly one entry, Name == that step) or a
+// `parallel` group (Parallel true, Steps holds the group's branch step
+// names in declared order, Name is the group label). The Runner walks
+// Stages; Steps (below, on Pipeline) stays as the flattened name list the
+// legacy step-name helpers and resume-skip reporting still use.
+type Stage struct {
+	Name     string
+	Steps    []string
+	Parallel bool
+}
+
 // Pipeline is the runtime-facing view of an ast.Pipeline: its name, ordered
-// step names, checkpoint configuration, and — when Loop is set — the repeat
-// policy LoopRunner enforces (StopWhen re-evaluated after every iteration,
-// MaxIterations as a hard ceiling; either or both may be zero-valued, same
-// as the old standalone `loop` declaration allowed).
+// stages (and the flattened step-name list), checkpoint configuration, and —
+// when Loop is set — the repeat policy LoopRunner enforces (StopWhen
+// re-evaluated after every iteration, MaxIterations as a hard ceiling;
+// either or both may be zero-valued, same as the old standalone `loop`
+// declaration allowed).
 type Pipeline struct {
 	Name          string
 	Steps         []string
+	Stages        []Stage
 	Checkpoint    CheckpointConfig
 	Spawn         SpawnConfig
 	Loop          bool
@@ -89,6 +103,14 @@ func PipelineFromAST(p *ast.Pipeline) Pipeline {
 		switch {
 		case m.Step != nil:
 			out.Steps = append(out.Steps, m.Step.Name)
+			out.Stages = append(out.Stages, Stage{Name: m.Step.Name, Steps: []string{m.Step.Name}})
+		case m.Parallel != nil:
+			names := make([]string, 0, len(m.Parallel.Steps))
+			for _, s := range m.Parallel.Steps {
+				names = append(names, s.Name)
+			}
+			out.Steps = append(out.Steps, names...)
+			out.Stages = append(out.Stages, Stage{Name: m.Parallel.Name, Steps: names, Parallel: true})
 		case m.Prop != nil && m.Prop.Name == "checkpoint":
 			out.Checkpoint = checkpointFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "spawn":
@@ -108,27 +130,63 @@ func PipelineFromAST(p *ast.Pipeline) Pipeline {
 	return out
 }
 
-// firstStep returns the pipeline's first declared step, or ok=false for an
-// empty pipeline.
-func (p Pipeline) firstStep() (string, bool) {
-	if len(p.Steps) == 0 {
-		return "", false
+// firstStage returns the pipeline's first stage, or ok=false for a pipeline
+// with no steps at all.
+func (p Pipeline) firstStage() (Stage, bool) {
+	if len(p.Stages) == 0 {
+		return Stage{}, false
 	}
-	return p.Steps[0], true
+	return p.Stages[0], true
 }
 
-// stepAfter returns the step declared immediately after name in Steps, or
-// ok=false when name is the last one (or not found at all). This is the
-// *default* transition Run falls back to when a step completes normally
+// stageAfter returns the stage declared immediately after the stage named
+// name, or ok=false when it is the last one (or not found). This is the
+// *default* transition Run falls back to when a stage completes normally
 // without a `goto` redirecting it — see Checkpoint.NextStep's doc comment
 // for why a resume never recomputes this after the fact.
-func (p Pipeline) stepAfter(name string) (string, bool) {
-	for i, s := range p.Steps {
-		if s == name && i+1 < len(p.Steps) {
-			return p.Steps[i+1], true
+func (p Pipeline) stageAfter(name string) (Stage, bool) {
+	for i, s := range p.Stages {
+		if s.Name == name && i+1 < len(p.Stages) {
+			return p.Stages[i+1], true
 		}
 	}
-	return "", false
+	return Stage{}, false
+}
+
+// stageByName returns the stage whose Name is name. A plain step's stage is
+// named after the step itself, so this resolves both a `goto <step>` target
+// and a checkpoint's NextStep (which, since `parallel` exists, may name a
+// group rather than a step).
+func (p Pipeline) stageByName(name string) (Stage, bool) {
+	for _, s := range p.Stages {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return Stage{}, false
+}
+
+// stageForStep returns the stage that contains the step named name — the
+// same as stageByName for a plain step, but for a step inside a `parallel`
+// group it returns the group's stage. Used to reject a `goto` aimed inside a
+// group (its target resolves to a stage whose Name != the target).
+func (p Pipeline) stageForStep(name string) (Stage, bool) {
+	for _, s := range p.Stages {
+		for _, st := range s.Steps {
+			if st == name {
+				return s, true
+			}
+		}
+	}
+	return Stage{}, false
+}
+
+// stepInParallelGroup reports whether name is a branch step of some
+// `parallel` group (as opposed to a plain top-level step) — a `goto` may not
+// target such a step.
+func (p Pipeline) stepInParallelGroup(name string) bool {
+	s, ok := p.stageForStep(name)
+	return ok && s.Parallel
 }
 
 // hasStep reports whether name is one of the pipeline's declared steps —

@@ -3,6 +3,9 @@
 // is capped at `max_concurrency` agent calls in flight at once. Run with:
 //
 //   mhl run sample/features/pipelines/concurrent_agents_pipeline_example.mh --input topic=caching
+//
+// To parallelise whole *steps* instead of agent calls within one step, see
+// parallel_steps_pipeline_example.mh (`parallel <Name> { step ... step ... }`).
 
 agent Fast {
     command: "sh"

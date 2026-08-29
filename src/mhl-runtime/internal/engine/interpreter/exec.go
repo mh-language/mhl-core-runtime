@@ -26,17 +26,7 @@ import (
 // prefix a failing statement's error with its position (see
 // execStatement's positionedError wrap below).
 func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView, spawnSem chan struct{}) (err error) {
-	var step *ast.Step
-	for _, decl := range prog.Decls {
-		if decl.Pipeline == nil {
-			continue
-		}
-		for _, member := range decl.Pipeline.Body {
-			if member.Step != nil && member.Step.Name == stepName {
-				step = member.Step
-			}
-		}
-	}
+	step := findStep(prog, stepName)
 	if step == nil {
 		return fmt.Errorf("pipeline step %q not found", stepName)
 	}
@@ -64,6 +54,31 @@ func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *mem
 		return nil
 	}
 	return err
+}
+
+// findStep returns the pipeline step named stepName, whether it is a plain
+// top-level step or a branch step of a `parallel` group (runtime.Runner
+// drives a group's branches by name through RunStep exactly like any other
+// step). Returns nil when no pipeline declares such a step.
+func findStep(prog *ast.Program, stepName string) *ast.Step {
+	for _, decl := range prog.Decls {
+		if decl.Pipeline == nil {
+			continue
+		}
+		for _, member := range decl.Pipeline.Body {
+			if member.Step != nil && member.Step.Name == stepName {
+				return member.Step
+			}
+			if member.Parallel != nil {
+				for _, s := range member.Parallel.Steps {
+					if s.Name == stepName {
+						return s
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // EvalPipelineVars evaluates pipelineName's top-level `var` declarations

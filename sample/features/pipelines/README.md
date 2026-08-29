@@ -21,6 +21,14 @@ not `mhl test` — pipelines aren't assertions, they're programs.
   ```
   mhl run sample/features/pipelines/concurrent_agents_pipeline_example.mh --input topic=caching
   ```
+- [parallel_steps_pipeline_example.mh](parallel_steps_pipeline_example.mh) — a
+  `parallel <Name> { step … step … }` group runs whole steps concurrently and joins them all
+  before the pipeline advances (a barrier); each branch's var writes are merged back on join,
+  with a different-value collision failing the run. The step-level counterpart of `spawn`.
+  Run with:
+  ```
+  mhl run sample/features/pipelines/parallel_steps_pipeline_example.mh --input topic=caching
+  ```
 - [context_pipeline_example.mh](context_pipeline_example.mh) — a `context: { source, require }`
   block exposes the read-only `context` accessor (`context.session_id`, `context.started_at`,
   `context.resumed`, `context.vars`) to every step, carrying the previous completed run's

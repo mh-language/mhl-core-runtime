@@ -1,0 +1,52 @@
+// A `parallel <Name> { step ... step ... }` group runs whole steps
+// concurrently: the pipeline does not advance past the group until every
+// branch step has finished (a barrier), then each branch's variable writes
+// are merged back into the pipeline's shared environment. A key that two
+// branches assign to different values is a hard error, so the outcome is
+// always deterministic.
+//
+// This is the step-level counterpart of `spawn`/`wait`
+// (concurrent_agents_pipeline_example.mh): `spawn` parallelises agent calls
+// *inside one step*; `parallel` parallelises the steps themselves. Run with:
+//
+//   mhl run sample/features/pipelines/parallel_steps_pipeline_example.mh --input topic=caching
+
+agent Fast {
+    command: "sh"
+    args: ["-c", "echo fast-summary"]
+}
+
+agent Slow {
+    command: "sh"
+    args: ["-c", "sleep 0.2; echo slow-summary"]
+}
+
+pipeline Enrichment {
+    input topic: string
+
+    // Pipeline-scoped vars: written by a step with a plain assignment (no
+    // `var`) and visible to every later step of the run.
+    var docs = ""
+    var issues = ""
+
+    // Both branches run at once. Their captured output is still printed in
+    // declared order once the group joins, so the run is reproducible.
+    parallel Gather {
+        step FetchDocs {
+            docs = Fast.run(prompt: "summarize the docs about ${topic}")
+            log("docs step done")
+        }
+
+        step FetchIssues {
+            issues = Slow.run(prompt: "summarize open issues about ${topic}")
+            log("issues step done")
+        }
+    }
+
+    // Runs only after FetchDocs AND FetchIssues have both completed; sees the
+    // merged writes from both branches.
+    step Merge {
+        log("docs   => ${docs}")
+        log("issues => ${issues}")
+    }
+}

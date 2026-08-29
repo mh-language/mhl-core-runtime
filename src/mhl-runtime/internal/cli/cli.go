@@ -205,9 +205,16 @@ func runPipeline(args []string, out io.Writer) error {
 			ctx.Vars[k] = v
 		}
 		ctx.Vars["__last_step"] = step
-		fmt.Fprintf(out, "step: %s\n", step)
+		// A `parallel` branch step runs with ctx.Out set to a per-branch
+		// buffer so concurrent branches never interleave on stdout; every
+		// other step leaves it nil and writes straight to `out`.
+		stepOut := out
+		if ctx.Out != nil {
+			stepOut = ctx.Out
+		}
+		fmt.Fprintf(stepOut, "step: %s\n", step)
 		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
-		err := interpreter.RunStep(prog, step, file, out, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
+		err := interpreter.RunStep(prog, step, file, stepOut, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
 		// interpreter and runtime each define their own break/goto signal
 		// type and stay independent of one another (see runtime/signal.go);
 		// this closure is the one place both are in scope to translate
@@ -230,6 +237,7 @@ func runPipeline(args []string, out io.Writer) error {
 	// straight through to running once, unchanged.
 	if !pipeline.Loop {
 		runner := runtime.NewRunner(".").Session(sessionID)
+		runner.Out = out
 		res, err := runner.Run(pipeline, init, exec, resume)
 		if err != nil {
 			return err
@@ -255,6 +263,7 @@ func runPipeline(args []string, out io.Writer) error {
 		return interpreter.EvalCondition(prog, pipeline.StopWhen, file, out, store, jsonStore, mem, contextView)
 	}
 	loopRunner := runtime.NewLoopRunner(".").Session(sessionID)
+	loopRunner.Runner.Out = out
 	res, err := loopRunner.Run(pipeline, init, exec, evalStopWhen, resume)
 	if err != nil {
 		return err

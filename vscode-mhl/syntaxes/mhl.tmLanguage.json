@@ -9,6 +9,9 @@
       "include": "#comments"
     },
     {
+      "include": "#function-parameters"
+    },
+    {
       "include": "#declarations"
     },
     {
@@ -49,7 +52,7 @@
       "patterns": [
         {
           "name": "storage.type.declaration.mhl",
-          "match": "\\b(import|from|use|as|export|mcp_server|a2a_agent|agent|memory|tool|loop|pipeline|prompt|step|input|test|describe)\\b"
+          "match": "\\b(import|from|use|as|export|mcp_server|a2a_agent|agent|memory|tool|loop|pipeline|prompt|parallel|step|input|test|describe)\\b"
         }
       ]
     },
@@ -70,8 +73,7 @@
           "contentName": "string.unquoted.multiline.mhl",
           "patterns": [
             {
-              "name": "variable.interpolation.mhl",
-              "match": "\\$\\{[^}]+\\}"
+              "include": "#interpolation"
             }
           ]
         },
@@ -85,8 +87,7 @@
               "match": "\\\\."
             },
             {
-              "name": "variable.interpolation.mhl",
-              "match": "\\$\\{[^}]+\\}"
+              "include": "#interpolation"
             }
           ]
         }
@@ -112,6 +113,159 @@
         }
       ]
     },
+    "interpolation": {
+      "begin": "\\$\\{",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.interpolation.begin.mhl"
+        }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.interpolation.end.mhl"
+        }
+      },
+      "contentName": "meta.embedded.expression.mhl",
+      "patterns": [
+        {
+          "include": "#interpolation-expression"
+        }
+      ]
+    },
+    "interpolation-expression": {
+      "patterns": [
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#constants"
+        },
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(\\.)([a-zA-Z_][a-zA-Z0-9_]*)(?=[ \\t]*\\()",
+          "captures": {
+            "1": {
+              "name": "entity.name.namespace.mhl"
+            },
+            "2": {
+              "name": "punctuation.accessor.mhl"
+            },
+            "3": {
+              "name": "entity.name.function.mhl"
+            }
+          }
+        },
+        {
+          "include": "#calls"
+        },
+        {
+          "name": "variable.other.mhl",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        },
+        {
+          "name": "punctuation.accessor.mhl",
+          "match": "\\?\\.|\\."
+        }
+      ]
+    },
+    "function-parameters": {
+      "patterns": [
+        {
+          "begin": "\\b(prompt)[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\([ \\t]*",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.declaration.mhl"
+            },
+            "2": {
+              "name": "entity.name.function.mhl"
+            }
+          },
+          "end": "\\)",
+          "patterns": [
+            {
+              "include": "#parameter-list"
+            }
+          ]
+        },
+        {
+          "begin": "^[ \\t]*([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\([ \\t]*(?=[^()\\n]*\\)[ \\t]*(?::[^()\\n]+)?[ \\t]*->)",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.function.mhl"
+            }
+          },
+          "end": "\\)",
+          "patterns": [
+            {
+              "include": "#parameter-list"
+            }
+          ]
+        },
+        {
+          "begin": "\\([ \\t]*(?=[^()\\n]*\\)[ \\t]*->)",
+          "end": "\\)",
+          "patterns": [
+            {
+              "include": "#parameter-list"
+            }
+          ]
+        }
+      ]
+    },
+    "parameter-list": {
+      "patterns": [
+        {
+          "name": "variable.parameter.function.mhl",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=[ \\t]*:)"
+        },
+        {
+          "name": "variable.parameter.function.mhl",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=[ \\t]*(?:,|\\)))"
+        },
+        {
+          "begin": ":[ \\t]*",
+          "end": "(?=,|\\))",
+          "patterns": [
+            {
+              "include": "#type-annotation"
+            }
+          ]
+        }
+      ]
+    },
+    "type-annotation": {
+      "patterns": [
+        {
+          "name": "storage.type.mhl",
+          "match": "\\b(?:string|number|int|integer|float|bool|boolean|array|object|any|prompt)\\b"
+        },
+        {
+          "include": "#type-object-shape"
+        }
+      ]
+    },
+    "type-object-shape": {
+      "begin": "\\{",
+      "end": "\\}",
+      "patterns": [
+        {
+          "name": "entity.name.tag.property.mhl",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=[ \\t]*:)"
+        },
+        {
+          "begin": ":[ \\t]*",
+          "end": "(?=,|\\})",
+          "patterns": [
+            {
+              "include": "#type-annotation"
+            }
+          ]
+        }
+      ]
+    },
     "properties": {
       "patterns": [
         {
@@ -127,7 +281,7 @@
     "types": {
       "patterns": [
         {
-          "match": ":\\s*((?:string|number|int|integer|float|bool|boolean|array|object|any)\\b(?:\\[\\])*)",
+          "match": ":\\s*((?:string|number|int|integer|float|bool|boolean|array|object|any|prompt)\\b(?:\\[\\])*)",
           "captures": {
             "1": {
               "name": "storage.type.mhl"

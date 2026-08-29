@@ -29,16 +29,35 @@ type Pipeline struct {
 // `loop pipeline` iterations and `--resume` — see
 // interpreter.readMemVar/writeMemVar (memvar.go) and MemContext. 'var' and
 // 'mem' are each a hard disambiguator against Step ('step') and Prop (bare
-// Ident ':'), so this adds no backtracking ambiguity. Prop also carries the
-// named config blocks read by name in runtime.PipelineFromAST — 'checkpoint',
-// 'spawn', 'repeat', and 'context' (the last opting the pipeline into the
-// read-only `context.*` accessor its steps can read).
+// Ident ':'), so this adds no backtracking ambiguity — and so is Parallel's
+// leading 'parallel'. Prop also carries the named config blocks read by name
+// in runtime.PipelineFromAST — 'checkpoint', 'spawn', 'repeat', and 'context'
+// (the last opting the pipeline into the read-only `context.*` accessor its
+// steps can read).
 type PipelineMember struct {
-	Input *PipelineInput `parser:"( 'input' @@"`
-	Var   *VarDecl       `parser:"| @@"`
-	Mem   *MemDecl       `parser:"| @@"`
-	Step  *Step          `parser:"| @@"`
-	Prop  *Property      `parser:"| @@ )"`
+	Input    *PipelineInput `parser:"( 'input' @@"`
+	Var      *VarDecl       `parser:"| @@"`
+	Mem      *MemDecl       `parser:"| @@"`
+	Parallel *ParallelGroup `parser:"| @@"`
+	Step     *Step          `parser:"| @@"`
+	Prop     *Property      `parser:"| @@ )"`
+}
+
+// ParallelGroup is a set of steps that run concurrently: the pipeline does
+// not advance past the group until every step in it has finished (a
+// barrier), then the group's variable writes are merged back into the
+// pipeline's shared environment. Name is required — it is the group's
+// identity in `mhl run` output and, crucially, in the resume checkpoint
+// (runtime.Checkpoint.LastStep/NextStep may name a group, not just a step).
+// A crash mid-group resumes by re-running the whole group, so branch steps
+// must tolerate re-execution the same way any resumed step already does.
+// `goto` may not target a step inside a group nor be used from within one,
+// and `break` may not be used from within one — internal/lang/lint enforces
+// all three (checkParallelGroups).
+type ParallelGroup struct {
+	Pos   lexer.Position
+	Name  string  `parser:"'parallel' @Ident"`
+	Steps []*Step `parser:"'{' @@+ '}'"`
 }
 
 // MemDecl declares and initializes a pipeline-scoped persistent variable:

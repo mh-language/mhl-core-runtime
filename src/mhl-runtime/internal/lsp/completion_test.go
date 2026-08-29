@@ -301,6 +301,27 @@ pipeline P {
 `,
 			skip: []string{"checkpoint", "repeat", "enabled", "stop_when", "engine"},
 		},
+		{
+			name: "plain pipeline body offers the parallel keyword",
+			src: `
+pipeline P {
+    §
+}
+`,
+			want: []string{"parallel", "step"},
+		},
+		{
+			name: "inside a parallel group body offers step, not property noise",
+			src: `
+pipeline P {
+    parallel G {
+        §
+    }
+}
+`,
+			want: []string{"step"},
+			skip: []string{"checkpoint", "enabled", "max_concurrency", "engine"},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
