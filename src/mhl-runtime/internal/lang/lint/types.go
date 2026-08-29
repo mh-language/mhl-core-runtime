@@ -25,16 +25,32 @@ func pipelineInputs(p *ast.Pipeline) []*ast.PipelineInput {
 // that typo is checkPipelineInputTypes' job, not this reader's; variable-
 // type inference (varinfer.go) simply treats an unresolvable input as
 // unknown, the same as anywhere else.
-func pipelineInputTypes(p *ast.Pipeline) map[string]types.Type {
+func pipelineInputTypes(p *ast.Pipeline, aliases map[string]types.Type) map[string]types.Type {
 	m := map[string]types.Type{}
 	for _, in := range pipelineInputs(p) {
-		t, ok := types.FromExpr(in.Type)
+		t, ok := types.FromExprAlias(in.Type, aliases)
 		if !ok {
 			t = types.Any
 		}
 		m[in.Name] = t
 	}
 	return m
+}
+
+// toolMethodParamTypes maps a tool method's declared parameters to their
+// resolved types (alias- and enum-aware), for seeding a scope's known-type
+// map. An untyped or unresolvable parameter maps to types.Any. A fresh map
+// per call — safe to hand to collectVarNames as a seed.
+func toolMethodParamTypes(m *ast.ToolMethod, aliases map[string]types.Type) map[string]types.Type {
+	out := make(map[string]types.Type, len(m.Params))
+	for _, p := range m.Params {
+		t, ok := types.FromExprAlias(p.Type, aliases)
+		if !ok {
+			t = types.Any
+		}
+		out[p.Name] = t
+	}
+	return out
 }
 
 // checkPipelineInputTypes reports every `input name: Type` declaration whose
@@ -44,14 +60,14 @@ func pipelineInputTypes(p *ast.Pipeline) map[string]types.Type {
 // against, and --input values are CLI arguments invisible to lint — the
 // actual coerce-or-fail-fast behavior against a declared type happens at
 // `mhl run` time in internal/cli's runPipeline.
-func checkPipelineInputTypes(file string, prog *ast.Program) []Finding {
+func checkPipelineInputTypes(file string, prog *ast.Program, aliases map[string]types.Type) []Finding {
 	var findings []Finding
 	for _, decl := range prog.Decls {
 		if decl.Pipeline == nil {
 			continue
 		}
 		for _, in := range pipelineInputs(decl.Pipeline) {
-			if _, ok := types.FromExpr(in.Type); !ok {
+			if _, ok := types.FromExprAlias(in.Type, aliases); !ok {
 				findings = append(findings, Finding{
 					File:    file,
 					Line:    in.Pos.Line,
@@ -72,7 +88,7 @@ func checkPipelineInputTypes(file string, prog *ast.Program) []Finding {
 // uses). A Block's non-literal return (a variable, a call) can't be proven
 // statically here — same "can't prove it, don't fail" stance the rest of
 // lint already takes — and is left to evalToolCall's runtime check.
-func checkToolMethodReturnTypes(file string, prog *ast.Program) []Finding {
+func checkToolMethodReturnTypes(file string, prog *ast.Program, aliases map[string]types.Type) []Finding {
 	var findings []Finding
 	for _, decl := range prog.Decls {
 		if decl.Tool == nil {
@@ -82,7 +98,7 @@ func checkToolMethodReturnTypes(file string, prog *ast.Program) []Finding {
 			if m.Returns == nil {
 				continue
 			}
-			declared, ok := types.FromExpr(m.Returns)
+			declared, ok := types.FromExprAlias(m.Returns, aliases)
 			if !ok {
 				findings = append(findings, Finding{
 					File:    file,

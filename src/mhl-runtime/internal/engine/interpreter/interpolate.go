@@ -87,6 +87,11 @@ func formatValue(v any) string {
 		// A spawn handle is a live reference to a background call, not
 		// data; its readable state is reached through `.result`/`.status`.
 		return fmt.Sprintf("<task %s>", t.agentName)
+	case enumValue:
+		// An enum value displays as its bare variant name — the useful
+		// form for a prompt, a log line, or json.stringify. Its enum
+		// identity is still distinct for `==` / `match` / type checks.
+		return t.Variant
 	case float64:
 		return strconv.FormatFloat(t, 'f', -1, 64)
 	case bool:

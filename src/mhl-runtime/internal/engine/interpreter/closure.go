@@ -55,15 +55,13 @@ func callClosure(ctx *evalCtx, c *Closure, call *ast.Call, depth int) (any, erro
 // predicate once per element: there is no source-level call expression at
 // that point, just the element value already sitting in a Go slice.
 func invokeClosureWithValues(c *Closure, args []any, depth int) (any, error) {
-	if len(args) != len(c.def.Params) {
-		return nil, fmt.Errorf("closure requires %d argument(s), got %d", len(c.def.Params), len(args))
+	required := requiredParamCount(c.def.Params)
+	if len(args) < required || len(args) > len(c.def.Params) {
+		return nil, fmt.Errorf("closure %s, got %d", paramArityText(required, len(c.def.Params)), len(args))
 	}
-	callEnv := make(Env, len(c.capturedEnv)+len(args))
+	callEnv := make(Env, len(c.capturedEnv)+len(c.def.Params))
 	for k, v := range c.capturedEnv {
 		callEnv[k] = v
-	}
-	for i, p := range c.def.Params {
-		callEnv[p.Name] = args[i]
 	}
 	callCtx := &evalCtx{
 		prog:        c.definingCtx.prog,
@@ -76,6 +74,25 @@ func invokeClosureWithValues(c *Closure, args []any, depth int) (any, error) {
 		cctx:        c.definingCtx.cctx,
 		file:        c.definingCtx.file,
 		selfTool:    c.definingCtx.selfTool,
+		aliasTypes:  c.definingCtx.aliasTypes,
+		constNames:  c.definingCtx.constNames,
+	}
+	// Supplied arguments bind first; each omitted trailing parameter is
+	// filled from its default, evaluated against the scope built so far
+	// (captured env + earlier parameters).
+	for i, p := range c.def.Params {
+		switch {
+		case i < len(args):
+			callEnv[p.Name] = args[i]
+		case p.Default == nil:
+			return nil, fmt.Errorf("closure: missing argument for parameter %q (it has no default but follows one that does)", p.Name)
+		default:
+			dv, err := evalExprAt(callCtx, p.Default, depth)
+			if err != nil {
+				return nil, fmt.Errorf("closure: default for parameter %q: %w", p.Name, err)
+			}
+			callEnv[p.Name] = dv
+		}
 	}
 	return invokeCallable(callCtx, c.def.Body, c.def.Block, depth)
 }

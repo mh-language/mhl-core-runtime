@@ -17,13 +17,13 @@ import (
 // executes if/while/try for real (a step-scoped variable environment backs
 // var/assign — see internal/engine/interpreter/eval.go), so lint recurses into those
 // blocks too instead of skipping them, mirroring that change.
-func checkAgentCalls(file string, prog *ast.Program) []Finding {
+func checkAgentCalls(file string, prog *ast.Program, aliases map[string]types.Type) []Finding {
 	var findings []Finding
 	for _, decl := range prog.Decls {
 		if decl.Pipeline == nil {
 			continue
 		}
-		pipelineInputs := pipelineInputTypes(decl.Pipeline)
+		pipelineInputs := pipelineInputTypes(decl.Pipeline, aliases)
 		pipelineVars := collectPipelineVarNames(prog, decl.Pipeline)
 		pipelineMemVars := collectPipelineMemNames(prog, decl.Pipeline)
 		for _, member := range decl.Pipeline.Body {
@@ -65,7 +65,7 @@ func checkAgentCalls(file string, prog *ast.Program) []Finding {
 					seed["context"] = types.Object
 				}
 				declared := collectVarNames(prog, step.Body, seed, nil)
-				findings = append(findings, checkStatements(file, prog, step.Body, declared, nil)...)
+				findings = append(findings, checkStatements(file, prog, step.Body, declared, nil, aliases)...)
 			}
 		}
 	}
@@ -196,7 +196,10 @@ func walkGotoBreak(stmts []*ast.Statement, fn func(target string, isBreak bool, 
 func collectPipelineVarNames(prog *ast.Program, p *ast.Pipeline) map[string]types.Type {
 	known := map[string]types.Type{}
 	for _, member := range p.Body {
-		if member.Var != nil {
+		switch {
+		case member.Const != nil:
+			mergeVarType(known, prog, member.Const.Name, member.Const.Value, nil)
+		case member.Var != nil:
 			mergeVarType(known, prog, member.Var.Name, member.Var.Value, nil) // no `self` at pipeline scope
 		}
 	}
@@ -262,18 +265,25 @@ func propertyPos(props []*ast.Property, name string) lexer.Position {
 // nothing to walk this way — checkExprCall only applies to statement
 // positions with a lexer.Position to report against, and ToolMethod has
 // none — so those remain unchecked beyond parsing, same as before this.
-func checkToolBlocks(file string, prog *ast.Program) []Finding {
+func checkToolBlocks(file string, prog *ast.Program, aliases map[string]types.Type) []Finding {
 	var findings []Finding
 	for _, decl := range prog.Decls {
 		if decl.Tool == nil {
 			continue
 		}
 		for _, m := range decl.Tool.Methods {
+			params := toolMethodParamTypes(m, aliases)
+			if m.Body != nil {
+				// A single-expression body is not walked by checkStatements;
+				// still validate any `match` inside it.
+				findings = append(findings, checkMatchInExpr(file, prog, m.Body, params, aliases)...)
+				continue
+			}
 			if m.Block == nil {
 				continue
 			}
-			declared := collectVarNames(prog, m.Block, nil, decl.Tool)
-			findings = append(findings, checkStatements(file, prog, m.Block, declared, decl.Tool)...)
+			declared := collectVarNames(prog, m.Block, params, decl.Tool)
+			findings = append(findings, checkStatements(file, prog, m.Block, declared, decl.Tool, aliases)...)
 		}
 	}
 	return findings
@@ -307,6 +317,11 @@ func collectVarNames(prog *ast.Program, statements []*ast.Statement, seed map[st
 			switch {
 			case s.Var != nil:
 				mergeVarType(known, prog, s.Var.Name, s.Var.Value, selfTool)
+			case s.Const != nil:
+				// A `const` name is a readable binding like `var` — infer its
+				// type so a read isn't a false "undefined variable".
+				// checkConstReassign separately forbids writing to it.
+				mergeVarType(known, prog, s.Const.Name, s.Const.Value, selfTool)
 			case s.Spawn != nil:
 				// A spawn binds a task handle — no static Type for it, but
 				// the name must count as declared so a later `wait s` /
@@ -343,50 +358,50 @@ func collectVarNames(prog *ast.Program, statements []*ast.Statement, seed map[st
 // (checkToolBlocks), in which case it's that tool — what a `self.method(...)`
 // call inside these statements (or any if/while/try nested within them)
 // resolves against, mirroring interpreter.evalToolCall's childCtx.selfTool.
-func checkStatements(file string, prog *ast.Program, statements []*ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
+func checkStatements(file string, prog *ast.Program, statements []*ast.Statement, declared map[string]types.Type, selfTool *ast.Tool, aliases map[string]types.Type) []Finding {
 	var findings []Finding
 	for _, statement := range statements {
-		findings = append(findings, checkStatement(file, prog, statement, declared, selfTool)...)
+		findings = append(findings, checkStatement(file, prog, statement, declared, selfTool, aliases)...)
 	}
 	return findings
 }
 
-func checkStatement(file string, prog *ast.Program, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
+func checkStatement(file string, prog *ast.Program, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool, aliases map[string]types.Type) []Finding {
 	switch {
 	case statement.Var != nil:
-		return checkExprCall(file, prog, statement.Pos, statement.Var.Value, declared, selfTool)
+		return checkExprCall(file, prog, statement.Pos, statement.Var.Value, declared, selfTool, aliases)
 	case statement.Return != nil:
 		if statement.Return.Value == nil {
 			return nil
 		}
-		return checkExprCall(file, prog, statement.Pos, statement.Return.Value, declared, selfTool)
+		return checkExprCall(file, prog, statement.Pos, statement.Return.Value, declared, selfTool, aliases)
 	case statement.Spawn != nil:
-		return checkSpawnStmt(file, prog, statement, declared, selfTool)
+		return checkSpawnStmt(file, prog, statement, declared, selfTool, aliases)
 	case statement.Wait != nil:
 		return checkWaitStmt(file, statement, declared, selfTool)
 	case statement.Expr != nil:
-		return checkExprCall(file, prog, statement.Pos, statement.Expr.Expr, declared, selfTool)
+		return checkExprCall(file, prog, statement.Pos, statement.Expr.Expr, declared, selfTool, aliases)
 	case statement.Assign != nil:
 		findings := checkAssignTarget(file, statement, declared)
-		return append(findings, checkExprCall(file, prog, statement.Pos, statement.Assign.Value, declared, selfTool)...)
+		return append(findings, checkExprCall(file, prog, statement.Pos, statement.Assign.Value, declared, selfTool, aliases)...)
 	case statement.If != nil:
-		findings := checkExprCall(file, prog, statement.Pos, statement.If.Cond, declared, selfTool)
-		findings = append(findings, checkStatements(file, prog, statement.If.Then, declared, selfTool)...)
-		findings = append(findings, checkStatements(file, prog, statement.If.Else, declared, selfTool)...)
+		findings := checkExprCall(file, prog, statement.Pos, statement.If.Cond, declared, selfTool, aliases)
+		findings = append(findings, checkStatements(file, prog, statement.If.Then, declared, selfTool, aliases)...)
+		findings = append(findings, checkStatements(file, prog, statement.If.Else, declared, selfTool, aliases)...)
 		return findings
 	case statement.While != nil:
-		findings := checkExprCall(file, prog, statement.Pos, statement.While.Cond, declared, selfTool)
-		findings = append(findings, checkStatements(file, prog, statement.While.Body, declared, selfTool)...)
+		findings := checkExprCall(file, prog, statement.Pos, statement.While.Cond, declared, selfTool, aliases)
+		findings = append(findings, checkStatements(file, prog, statement.While.Body, declared, selfTool, aliases)...)
 		return findings
 	case statement.ForIn != nil:
-		findings := checkExprCall(file, prog, statement.Pos, statement.ForIn.Iterable, declared, selfTool)
-		findings = append(findings, checkStatements(file, prog, statement.ForIn.Body, declared, selfTool)...)
+		findings := checkExprCall(file, prog, statement.Pos, statement.ForIn.Iterable, declared, selfTool, aliases)
+		findings = append(findings, checkStatements(file, prog, statement.ForIn.Body, declared, selfTool, aliases)...)
 		return findings
 	case statement.Try != nil:
 		var findings []Finding
-		findings = append(findings, checkStatements(file, prog, statement.Try.Body, declared, selfTool)...)
-		findings = append(findings, checkStatements(file, prog, statement.Try.Catch, declared, selfTool)...)
-		findings = append(findings, checkStatements(file, prog, statement.Try.Finally, declared, selfTool)...)
+		findings = append(findings, checkStatements(file, prog, statement.Try.Body, declared, selfTool, aliases)...)
+		findings = append(findings, checkStatements(file, prog, statement.Try.Catch, declared, selfTool, aliases)...)
+		findings = append(findings, checkStatements(file, prog, statement.Try.Finally, declared, selfTool, aliases)...)
 		return findings
 	}
 	return nil
@@ -396,7 +411,7 @@ func checkStatement(file string, prog *ast.Program, statement *ast.Statement, de
 // step-only statement, and its right-hand side must be an `<Agent>.run(...)`
 // call — which is then validated (known agent, non-empty prompt) exactly
 // like a plain `Agent.run(...)` statement.
-func checkSpawnStmt(file string, prog *ast.Program, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
+func checkSpawnStmt(file string, prog *ast.Program, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool, aliases map[string]types.Type) []Finding {
 	pos := statement.Pos
 	if selfTool != nil {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
@@ -406,7 +421,7 @@ func checkSpawnStmt(file string, prog *ast.Program, statement *ast.Statement, de
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("spawn %q: right-hand side must be an <Agent>.run(...) call", statement.Spawn.Name)}}
 	}
-	return checkExprCall(file, prog, pos, statement.Spawn.Call, declared, selfTool)
+	return checkExprCall(file, prog, pos, statement.Spawn.Call, declared, selfTool, aliases)
 }
 
 // checkWaitStmt mirrors interpreter.execWait's static rules: `wait` is a
@@ -478,7 +493,15 @@ func assignTargetBase(p *ast.Postfix) (string, bool) {
 // surrounding operator) — `if (session_mem.get("x") == "y")` is not
 // checked, matching the runtime's own narrow, literal-shape recognition for
 // which calls get special dispatch vs. generic evaluation.
-func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast.Expr, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
+func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast.Expr, declared map[string]types.Type, selfTool *ast.Tool, aliases map[string]types.Type) []Finding {
+	// Every expression position routes through here, so this is also where a
+	// `match` anywhere in the expression tree is validated (exhaustiveness,
+	// duplicate/unreachable arms).
+	out := checkMatchInExpr(file, prog, expr, declared, aliases)
+	return append(out, checkExprCallShape(file, prog, pos, expr, declared, selfTool, aliases)...)
+}
+
+func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr *ast.Expr, declared map[string]types.Type, selfTool *ast.Tool, aliases map[string]types.Type) []Finding {
 	call, agentName, ok := agentRunCall(expr)
 	if !ok {
 		if memCall, target, method, mOk := methodCall(expr); mOk {
@@ -493,7 +516,7 @@ func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast
 					return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 						Message: "self is only valid inside a tool method"}}
 				}
-				if err := checkToolCall(selfTool, method, memCall, declared); err != nil {
+				if err := checkToolCall(selfTool, method, memCall, declared, aliases); err != nil {
 					return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 						Message: fmt.Sprintf("self.%s: %s", method, err)}}
 				}
@@ -506,7 +529,7 @@ func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast
 					break
 				}
 				if tool, found := findTool(prog, target); found {
-					if err := checkToolCall(tool, method, memCall, declared); err != nil {
+					if err := checkToolCall(tool, method, memCall, declared, aliases); err != nil {
 						return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("%s.%s: %s", target, method, err)}}
 					}
@@ -639,7 +662,7 @@ var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "ht
 // gets checked too, not just a literal — anything else (arithmetic,
 // member/index access, an unresolved name) is still left unchecked, same
 // "can't prove it, don't fail" stance checkMemoryOp already takes.
-func checkToolCall(tool *ast.Tool, method string, call *ast.Call, known map[string]types.Type) error {
+func checkToolCall(tool *ast.Tool, method string, call *ast.Call, known map[string]types.Type, aliases map[string]types.Type) error {
 	var m *ast.ToolMethod
 	for _, cand := range tool.Methods {
 		if cand.Name == method {
@@ -650,14 +673,18 @@ func checkToolCall(tool *ast.Tool, method string, call *ast.Call, known map[stri
 	if m == nil {
 		return fmt.Errorf("tool %q has no method %q", tool.Name, method)
 	}
-	if len(call.Args) != len(m.Params) {
-		return fmt.Errorf("tool %q: %s requires %d argument(s), got %d", tool.Name, method, len(m.Params), len(call.Args))
+	required := ast.RequiredParamCount(m.Params)
+	if len(call.Args) < required || len(call.Args) > len(m.Params) {
+		return fmt.Errorf("tool %q: %s %s, got %d", tool.Name, method, paramArityText(required, len(m.Params)), len(call.Args))
 	}
 	for i, p := range m.Params {
+		if i >= len(call.Args) {
+			continue // omitted arg filled from the param's default at run time
+		}
 		if p.Type == nil {
 			continue // untyped param: dynamic, exactly as today
 		}
-		paramType, ok := types.FromExpr(p.Type)
+		paramType, ok := types.FromExprAlias(p.Type, aliases)
 		if !ok {
 			return fmt.Errorf("tool %q: %s: parameter %q has an unrecognized type %q", tool.Name, method, p.Name, p.Type)
 		}

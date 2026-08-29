@@ -126,7 +126,7 @@ func runTest(prog *ast.Program, test *ast.Test, file string, out io.Writer, stor
 	result := &TestResult{Name: test.Name}
 	for _, describe := range test.Describes {
 		var assertions []AssertionResult
-		ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, file: file, assertions: &assertions}
+		ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, file: file, assertions: &assertions, aliasTypes: aliasTypesFor(prog)}
 		if err := execBlock(ctx, describe.Body); err != nil {
 			return result, err
 		}

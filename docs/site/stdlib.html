@@ -93,7 +93,7 @@
           <p class="sig-note">A "raises" outcome unwinds like any evaluation error: it aborts the step/run unless a <code>try { … } catch (e) { … }</code> around the call catches it. A non-zero process <code>exit_code</code> is <em>not</em> a raise — it is a field on the returned value for you to inspect.</p>
         </section>
 
-        <section class="feature doc-section" id="globals" data-title="global functions log fail env builtin print environment variable error type_of is_string is_number is_bool is_array is_object is_null runtime type introspection kind">
+        <section class="feature doc-section" id="globals" data-title="global functions log fail env builtin print environment variable error type_of is_string is_number is_bool is_array is_object is_null is_enum runtime type introspection kind">
           <div class="feature-head"><h2><span class="feature-num">01</span>Global functions</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Available in any expression position — a step body, a <code>describe</code> block, a <code>tool</code> method, a condition.</p>
           <div class="reference-table sig-table">
@@ -120,10 +120,10 @@
               <code>type_of(value: any) -&gt; string</code>
               <span><span class="p"><code>value</code> — any value</span></span>
               <span><code>string</code></span>
-              <span>The value's kind: <code>"string"</code>, <code>"number"</code>, <code>"bool"</code>, <code>"array"</code>, <code>"object"</code>, <code>"null"</code>, <code>"function"</code>, or <code>"task"</code>.</span>
+              <span>The value's kind: <code>"string"</code>, <code>"number"</code>, <code>"bool"</code>, <code>"array"</code>, <code>"object"</code>, <code>"null"</code>, <code>"enum"</code>, <code>"function"</code>, or <code>"task"</code>.</span>
             </div>
             <div class="table-row">
-              <code>is_string / is_number / is_bool / is_array / is_object / is_null (value: any) -&gt; bool</code>
+              <code>is_string / is_number / is_bool / is_array / is_object / is_null / is_enum (value: any) -&gt; bool</code>
               <span><span class="p"><code>value</code> — any value</span></span>
               <span><code>bool</code></span>
               <span>Each is <code>type_of(value) == "&lt;kind&gt;"</code>. Handy with <code>?.</code> to iterate a dynamic field only when it really is an array/object.</span>

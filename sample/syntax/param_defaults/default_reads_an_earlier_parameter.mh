@@ -1,0 +1,12 @@
+tool Brackets {
+    // Positional parameters bind left to right, so a later default may
+    // reference an earlier parameter's bound value.
+    wrap(open: string, close: string = open) -> open + "text" + close
+}
+
+test default_reads_an_earlier_parameter {
+    describe default_reads_an_earlier_parameter {
+        are_equal(Brackets.wrap("["), "[text[")
+        are_equal(Brackets.wrap("<", ">"), "<text>")
+    }
+}

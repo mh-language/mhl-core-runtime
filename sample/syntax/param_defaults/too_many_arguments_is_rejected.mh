@@ -1,0 +1,18 @@
+tool Greeter {
+    greet(name: string, greeting: string = "Hi") -> greeting + ", " + name
+}
+
+test too_many_arguments_is_rejected {
+    describe too_many_arguments_is_rejected {
+        // A default widens the accepted count to a range: `greet` takes 1
+        // or 2 arguments. More than that is still an error.
+        var result = ""
+        try {
+            var ignored = Greeter.greet("a", "b", "c")
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: Greeter.greet: tool \"Greeter\": greet requires between 1 and 2 argument(s), got 3")
+    }
+}

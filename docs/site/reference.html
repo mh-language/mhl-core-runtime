@@ -113,7 +113,7 @@ pipeline Welcome {
           <div class="tip-row"><span>ALPHA</span><p>Prefer <code>use</code> for executable composition. The <code>import "file.mh" as alias</code> form is part of the syntax, but qualified namespace access is not yet the recommended operational form.</p></div>
         </section>
 
-        <section class="feature doc-section" id="syntax" data-title="syntax types string number bool null arrays objects duration comments input type">
+        <section class="feature doc-section" id="syntax" data-title="syntax types string number bool null arrays objects duration comments input type alias">
           <div class="feature-head"><h2><span class="feature-num">02</span>Syntax and types</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">MHL uses blocks, does not require semicolons, and allows object fields to be separated by commas or line breaks. Comments start with <code>//</code>.</p>
 
@@ -133,6 +133,7 @@ var job = {
     status: "pending"
     metadata: { priority: 1, owner: "platform" }
 }</code></pre>
+          <div class="tip-row"><span>NUMBERS &amp; DURATIONS</span><p>A number is digits with an optional single decimal point (<code>3</code>, <code>0.2</code>) — it carries no type suffix. A duration is an <em>integer</em> followed by a unit: <code>ms</code>, <code>s</code>, <code>m</code>, <code>h</code>, <code>d</code> (<code>45s</code>, <code>7d</code>). A digit run glued directly to letters that is not a valid duration (<code>10.0d</code>, <code>1e5</code>, <code>5days</code>) is a parse error, not a number followed by a name. A string literal is always a string — even when its content is exactly an operator, so <code>["a","b"].join("-")</code> is fine.</p></div>
 
           <p class="block-label">DECLARABLE TYPES</p>
           <div class="reference-table">
@@ -152,22 +153,54 @@ pipeline Import {
     step Count { log(records.size()) }
 }</code></pre>
 
+          <p class="block-label">TYPE ALIASES</p>
+          <p><code>type Name = &lt;type&gt;</code> names a type expression so a repeated or verbose shape is written once. An alias is only a spelling — it resolves to exactly the type its target denotes, adds no distinct type, and is usable anywhere a <code>: type</code> annotation is (inputs, parameters, returns, shape fields). Aliases may reference other aliases. A cycle, a duplicate name, an unknown target, or a name that shadows a builtin keyword is a static error (<code>mhl lint</code>).</p>
+          <pre class="code-block"><code class="language-mhl">type Slug      = string
+type Ids       = string[]
+type Violation = { code: string, severity: string }
+
+tool Report {
+    add(slug: Slug, issues: Violation[]): Ids -> issues.map((v) -> v.code)
+}</code></pre>
+
+          <p class="block-label">ENUMS</p>
+          <p><code>enum Name { A, B, C }</code> declares a closed set of named constants. A value is produced only by qualified access — <code>Name.A</code> — and at run time it is a distinct tagged value, not a string: <code>Status.Draft == "Draft"</code> is <code>false</code>, <code>type_of(Status.Draft)</code> is <code>"enum"</code>, and <code>"${Status.Draft}"</code> / <code>json.stringify</code> render the bare variant (<code>Draft</code>). <code>: Name</code> is a type annotation like any other. A <code>match</code> over an enum value is checked for exhaustiveness by <code>mhl lint</code>.</p>
+          <pre class="code-block"><code class="language-mhl">enum Status { Draft, Published, Archived }
+
+pipeline Publish {
+    input status: Status
+    step Decide {
+        var note = match status {
+            Status.Draft     -> "hold"
+            Status.Published  -> "ship"
+            Status.Archived   -> "skip"
+        }
+        log(note)
+    }
+}</code></pre>
+
           <p class="block-label">PRACTICAL GRAMMAR</p>
-          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | memory | tool | mcp_server | a2a_agent | pipeline | test)
+          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | memory | tool | mcp_server | a2a_agent | pipeline | type | enum | test)
+type-alias   := "type" identifier "=" type
+enum         := "enum" identifier "{" [identifier {"," identifier}] "}"
 variable     := "var" identifier "=" expression
+constant     := "const" identifier "=" expression   // single-assignment; reassigning is an error
 assignment   := lvalue ("=" | "+=") expression   // "+=" is sugar for `x = x + expr`
 property     := identifier ":" expression
 call         := expression "(" [argument {"," argument}] ")"
 array        := "[" [expression {"," expression}] "]"
 object       := "{" [key ":" expression {","? key ":" expression}] "}"
+parameters   := parameter {"," parameter}
+parameter    := identifier [":" type] ["=" expression]   // default: used when a caller omits the argument
 lambda       := "(" [parameters] ")" "->" (expression | block)
 if-expr      := "if" "(" expression ")" expression "else" expression
+match-expr   := "match" expression "{" {(pattern | "_") "->" expression} "}"   // pattern: Enum.Variant or a bool/number/string literal
 optional     := expression "?." identifier      // null / non-object / missing-field safe
 optional     := expression "?." "[" expression "]"  // same, with a dynamic key
 coalesce     := expression "??" expression      // left unless it is null</code></pre>
         </section>
 
-        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort map reduce any all append join unique equals deep_equal slice interpolation optional chaining optional index dynamic key null coalescing get default">
+        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort map reduce any all append join unique equals deep_equal slice interpolation optional chaining optional index dynamic key null coalescing get default match wildcard exhaustive enum">
           <div class="feature-head"><h2><span class="feature-num">03</span>Expressions and collections</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Expressions produce values. They compose inside variables, arguments, properties, conditions, returns, and string interpolation.</p>
 
@@ -186,6 +219,14 @@ var text = "${label}: ${total}"
 var target = metric?.target?.trim() ?? ""
 var retries = config?.retries ?? 3       // 0 stays 0 — only null is replaced
 var field  = record?.[name] ?? null      // no `is_object(record)` guard needed</code></pre>
+
+          <p class="block-label">MATCH</p>
+          <p><code>match</code> is a multi-way branch in expression position. Arms are tried top to bottom; the first whose pattern is deep-equal to the subject (the same comparison <code>==</code> uses) wins, or the <code>_</code> wildcard. A pattern is an <code>Enum.Variant</code> or a bool/number/string literal. A <code>match</code> over an <code>enum</code> or <code>bool</code> with no <code>_</code> arm must cover every case — <code>mhl lint</code> flags a missing one; any other subject relies on a runtime error if nothing matches.</p>
+          <pre class="code-block"><code class="language-mhl">var tier = match http_status {
+    200 -> "ok"
+    404 -> "missing"
+    _   -> "error"
+}</code></pre>
 
           <p class="block-label">VALUE METHODS</p>
           <div class="method-grid">
@@ -216,12 +257,13 @@ var next = ready.find((f) -> f.id == 20)</code></pre>
           <div class="tip-row"><span>IMMUTABLE RESULTS</span><p><code>filter()</code>, <code>map()</code>, <code>sort_by()</code>, <code>append()</code>, <code>unique()</code>, concatenation, and slices return new arrays. To accumulate into a list, reassign — <code>acc = acc.append(x)</code> or <code>acc += [x]</code>. Assigning to <code>items[index]</code> or <code>object[key]</code> mutates the original collection.</p></div>
         </section>
 
-        <section class="feature doc-section" id="statements" data-title="statements control flow var assignment if else while for try catch finally return break goto fail">
+        <section class="feature doc-section" id="statements" data-title="statements control flow var const constant assignment if else while for try catch finally return break goto fail">
           <div class="feature-head"><h2><span class="feature-num">04</span>Control flow</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Statements perform actions inside a <code>step</code>, a <code>tool</code> method, a block lambda, or a test case.</p>
           <div class="reference-table">
             <div class="table-row table-head"><span>Construct</span><span>Syntax</span><span>Effect</span></div>
             <div class="table-row"><span>Variable</span><code>var x = expression</code><span>Creates a local binding.</span></div>
+            <div class="table-row"><span>Constant</span><code>const x = expression</code><span>Single-assignment binding. Reassigning it (<code>x = …</code> / <code>x += …</code>) is an error at <code>mhl run</code> and <code>mhl lint</code>. Re-running the declaration itself — a <code>const</code> in a loop body — just rebinds. Also valid at pipeline top level.</span></div>
             <div class="table-row"><span>Assignment</span><code>x = expression</code><span>Updates a variable, field, or index.</span></div>
             <div class="table-row"><span>Add-assign</span><code>x += expression</code><span>Sugar for <code>x = x + expression</code> — same operand rules as <code>+</code> (numbers, strings, or arrays). Handy for accumulating into a list: <code>errors += ["..."]</code>.</span></div>
             <div class="table-row"><span>Condition</span><code>if (cond) { ... } else { ... }</code><span>Executes a block by condition.</span></div>
@@ -394,6 +436,7 @@ var rendered = Review(
           <ul class="plain-list">
             <li>Prompt arguments are named: <code>Review(file: "x", code: source)</code>.</li>
             <li>Missing, extra, or unknown placeholders fail instead of producing incomplete text.</li>
+            <li>A parameter may declare a default — <code>prompt Review(file: string, lang: string = "en")</code> — used when the caller omits that named argument. Because prompt binding is by name, defaulted parameters may appear in any position, and a default expression is evaluated in the caller's scope (it cannot reference a sibling parameter).</li>
             <li>Use <code>\${NAME}</code> in external Markdown when a placeholder must remain literal.</li>
           </ul>
         </section>
@@ -453,6 +496,7 @@ Audit.append("pipeline started")</code></pre>
         <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs http json log return types">
           <div class="feature-head"><h2><span class="feature-num">08</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">A tool creates a small, reusable API over native operations. Methods take positional arguments, may declare types, and use either an expression body or a statement block.</p>
+          <div class="tip-row"><span>DEFAULT ARGUMENTS</span><p>A method or lambda parameter may end with <code>= expression</code> — <code>write(path: string, mode: string = "0644")</code> — supplying a value when the caller omits that argument. Positional parameters bind left to right, so a default may read an earlier parameter (<code>close: string = open</code>) but a non-defaulted parameter may not follow a defaulted one (<code>mhl lint</code> flags it). Each default is evaluated in the callee's own scope, once per call that omits it.</p></div>
           <pre class="code-block"><code class="language-mhl">tool Project {
     read(path: string): string -> fs.read(path)
 
@@ -583,7 +627,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
           <div class="tip-row"><span>STATELESS</span><p>Every method is one or more independent requests with no session between them; a blocking <code>.send</code> that polls keeps no state beyond the task id. A credential that fails to resolve aborts the call before any request. Streaming (<code>message/stream</code>) and push notifications are not implemented yet.</p></div>
         </section>
 
-        <section class="feature doc-section" id="pipeline" data-title="pipeline input var step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in">
+        <section class="feature doc-section" id="pipeline" data-title="pipeline input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in">
           <div class="feature-head"><h2><span class="feature-num">11</span><code>pipeline</code> and <code>loop pipeline</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Pipelines are the executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in order unless an explicit transition redirects them.</p>
 

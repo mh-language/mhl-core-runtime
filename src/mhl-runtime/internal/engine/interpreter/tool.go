@@ -53,32 +53,53 @@ func evalToolCall(ctx *evalCtx, tool *ast.Tool, method string, call *ast.Call, d
 	if err != nil {
 		return nil, err
 	}
-	if len(args) != len(m.Params) {
-		return nil, fmt.Errorf("tool %q: %s requires %d argument(s), got %d", tool.Name, method, len(m.Params), len(args))
+	required := requiredParamCount(m.Params)
+	if len(args) < required || len(args) > len(m.Params) {
+		return nil, fmt.Errorf("tool %q: %s %s, got %d", tool.Name, method, paramArityText(required, len(m.Params)), len(args))
+	}
+	// Bind the supplied arguments, then fill each omitted trailing parameter
+	// from its default — evaluated in the callee's own scope, built up left
+	// to right so a later default may read an earlier parameter.
+	childEnv := Env{}
+	childCtx := &evalCtx{prog: ctx.prog, store: ctx.store, jsonStore: ctx.jsonStore, out: ctx.out, env: childEnv, file: ctx.file, selfTool: tool, aliasTypes: ctx.aliasTypes}
+	bound := make([]any, len(m.Params))
+	for i, p := range m.Params {
+		var v any
+		switch {
+		case i < len(args):
+			v = args[i]
+		case p.Default == nil:
+			// Reachable only when a non-defaulted param follows a defaulted
+			// one — lint flags that, but lint does not block `mhl run`.
+			return nil, fmt.Errorf("tool %q: %s: missing argument for parameter %q (it has no default but follows one that does)", tool.Name, method, p.Name)
+		default:
+			dv, err := evalExprAt(childCtx, p.Default, depth)
+			if err != nil {
+				return nil, fmt.Errorf("tool %q: %s: default for parameter %q: %w", tool.Name, method, p.Name, err)
+			}
+			v = dv
+		}
+		bound[i] = v
+		childEnv[p.Name] = v
 	}
 	for i, p := range m.Params {
 		if p.Type == nil {
 			continue
 		}
-		declared, ok := types.FromExpr(p.Type)
+		declared, ok := types.FromExprAlias(p.Type, ctx.aliasTypes)
 		if !ok {
 			return nil, fmt.Errorf("tool %q: %s: parameter %q has an unrecognized type %q", tool.Name, method, p.Name, p.Type)
 		}
-		if err := types.Check(fmt.Sprintf("tool %q: %s: parameter %q", tool.Name, method, p.Name), declared, args[i]); err != nil {
+		if err := types.Check(fmt.Sprintf("tool %q: %s: parameter %q", tool.Name, method, p.Name), declared, bound[i]); err != nil {
 			return nil, err
 		}
 	}
-	childEnv := Env{}
-	for i, p := range m.Params {
-		childEnv[p.Name] = args[i]
-	}
-	childCtx := &evalCtx{prog: ctx.prog, store: ctx.store, jsonStore: ctx.jsonStore, out: ctx.out, env: childEnv, file: ctx.file, selfTool: tool}
 	result, err := invokeCallable(childCtx, m.Body, m.Block, depth)
 	if err != nil {
 		return nil, err
 	}
 	if m.Returns != nil {
-		declared, ok := types.FromExpr(m.Returns)
+		declared, ok := types.FromExprAlias(m.Returns, ctx.aliasTypes)
 		if !ok {
 			return nil, fmt.Errorf("tool %q: %s: unrecognized return type %q", tool.Name, method, m.Returns)
 		}

@@ -8,6 +8,9 @@ them, de-duplicating, and comparing by value. (Lambda-taking transforms — `.ma
   array; the receiver is untouched
 - [join_formats_each_element.mh](join_formats_each_element.mh) — `.join(sep)` to a string,
   non-string elements formatted the way `log` prints them
+- [join_separator_can_be_an_operator_token.mh](join_separator_can_be_an_operator_token.mh) —
+  a string literal that is exactly an operator (`"-"`, `"!"`, `"=="`) stays a string, never
+  parsed as the operator
 - [unique_keeps_first_occurrence.mh](unique_keeps_first_occurrence.mh) — `.unique()` removes
   deep-equal duplicates, order preserved
 - [equals_is_a_deep_comparison.mh](equals_is_a_deep_comparison.mh) — `.equals()` /

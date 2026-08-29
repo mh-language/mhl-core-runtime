@@ -1,0 +1,18 @@
+test join_separator_can_be_an_operator_token {
+    describe join_separator_can_be_an_operator_token {
+        // A string literal whose entire content is exactly an operator
+        // token (`"-"`, `"!"`, `"=="`, ...) is still just a string — it is
+        // never parsed as the operator. (`["a","b"].join("-")` used to be a
+        // parse error before operator rules were pinned to the Punct token
+        // type.)
+        are_equal(["a", "b", "c"].join("-"), "a-b-c")
+        are_equal(["x", "y"].join("!"), "x!y")
+        are_equal(["1", "2"].join("=="), "1==2")
+        are_equal(["p", "q"].join("&&"), "p&&q")
+
+        // The same holds anywhere a string literal appears, including a
+        // unary-operator position.
+        var dash = "-"
+        are_equal("-" + dash, "--")
+    }
+}

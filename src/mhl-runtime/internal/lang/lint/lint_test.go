@@ -2301,3 +2301,40 @@ loop pipeline MainPipeline {
 		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
 	}
 }
+
+func TestCheckParamDefaultsRequiredAfterOptional(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+tool T {
+    bad(a: string = "x", b: string) -> a + b
+    ok(a: string, b: string = "y", c: string = "z") -> a + b + c
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `parameter "b" has no default but follows a defaulted parameter`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckToolCallOmittingDefaultedArgIsClean(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+tool T {
+    greet(name: string, greeting: string = "Hi") -> greeting + name
+}
+pipeline P {
+    step S {
+        T.greet("world")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}

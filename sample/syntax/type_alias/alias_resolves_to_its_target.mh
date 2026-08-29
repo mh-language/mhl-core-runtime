@@ -1,0 +1,24 @@
+type Slug = string
+
+tool Pages {
+    // A parameter typed with an alias behaves exactly as if its target
+    // (`string`) had been written inline — the alias is only a spelling.
+    make(title: Slug): Slug -> "page-" + title
+}
+
+test alias_resolves_to_its_target {
+    describe alias_resolves_to_its_target {
+        are_equal(Pages.make("intro"), "page-intro")
+
+        // Passing the wrong type is rejected with the alias's *resolved*
+        // target in the message, not the alias name.
+        var result = ""
+        try {
+            var ignored = Pages.make(42)
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: Pages.make: tool \"Pages\": make: parameter \"title\" must be string, got number")
+    }
+}

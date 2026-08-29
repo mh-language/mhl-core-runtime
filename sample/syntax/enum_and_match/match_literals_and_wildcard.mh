@@ -1,0 +1,16 @@
+test match_literals_and_wildcard {
+    describe match_literals_and_wildcard {
+        // A `match` can branch on plain literals, with `_` as the catch-all.
+        // Arms are tried top to bottom; the first equal one wins.
+        var label = match 404 {
+            200 -> "ok"
+            404 -> "missing"
+            500 -> "server error"
+            _   -> "other"
+        }
+        are_equal(label, "missing")
+
+        are_equal(match 999 { 200 -> "ok" _ -> "other" }, "other")
+        are_equal(match "b" { "a" -> 1 "b" -> 2 _ -> 0 }, 2)
+    }
+}

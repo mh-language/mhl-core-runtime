@@ -1,0 +1,18 @@
+enum Signal { Red, Yellow, Green }
+
+test match_over_an_enum {
+    describe match_over_an_enum {
+        // An exhaustive `match` — every variant covered, no `_` needed.
+        // `mhl lint` would flag a missing arm.
+        var action = match Signal.Yellow {
+            Signal.Red    -> "stop"
+            Signal.Yellow -> "slow"
+            Signal.Green  -> "go"
+        }
+        are_equal(action, "slow")
+
+        // Works the same on a value held in a variable.
+        var s = Signal.Green
+        are_equal(match s { Signal.Red -> 1 Signal.Yellow -> 2 Signal.Green -> 3 }, 3)
+    }
+}

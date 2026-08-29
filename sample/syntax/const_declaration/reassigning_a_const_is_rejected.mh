@@ -1,0 +1,13 @@
+test reassigning_a_const_is_rejected {
+    describe reassigning_a_const_is_rejected {
+        const K = 1
+        var result = ""
+        try {
+            K = 2
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: cannot assign to constant \"K\"")
+    }
+}

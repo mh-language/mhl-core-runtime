@@ -28,6 +28,8 @@ const (
 	symString
 	symArray
 	symObject
+	symType
+	symEnum
 )
 
 func (k symbolKind) label() string {
@@ -54,6 +56,10 @@ func (k symbolKind) label() string {
 		return "array"
 	case symObject:
 		return "object"
+	case symType:
+		return "type"
+	case symEnum:
+		return "enum"
 	default:
 		return ""
 	}
@@ -87,6 +93,10 @@ func symbolsFromProgram(prog *ast.Program) []symbol {
 			syms = append(syms, symbol{Name: decl.Prompt.Name, Kind: symPrompt})
 		case decl.Pipeline != nil:
 			syms = append(syms, symbol{Name: decl.Pipeline.Name, Kind: symPipeline})
+		case decl.Type != nil:
+			syms = append(syms, symbol{Name: decl.Type.Name, Kind: symType})
+		case decl.Enum != nil:
+			syms = append(syms, symbol{Name: decl.Enum.Name, Kind: symEnum, Methods: decl.Enum.Variants})
 		case decl.MCPServer != nil:
 			syms = append(syms, symbol{Name: decl.MCPServer.Name, Kind: symMCPServer, Methods: mcpServerMethods})
 		case decl.A2AAgent != nil:

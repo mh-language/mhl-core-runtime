@@ -1,0 +1,19 @@
+tool Greeter {
+    greet(name: string, greeting: string = "Hello") -> greeting + ", " + name
+}
+
+test omitted_argument_uses_the_default {
+    describe omitted_argument_uses_the_default {
+        // A parameter with `= expr` may be left out by the caller; the
+        // default expression is evaluated once, per omitting call.
+        are_equal(Greeter.greet("world"), "Hello, world")
+
+        // Passing the argument explicitly overrides the default.
+        are_equal(Greeter.greet("world", "Hi"), "Hi, world")
+
+        // Lambdas take defaults with the same `name = expr` / `name: type = expr` forms.
+        var add = (a, b = 10) -> a + b
+        are_equal(add(5), 15)
+        are_equal(add(5, 1), 6)
+    }
+}

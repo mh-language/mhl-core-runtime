@@ -1,0 +1,22 @@
+test const_holds_a_single_value {
+    describe const_holds_a_single_value {
+        const LIMIT = 3
+        const LABEL = "widget"
+
+        // A const reads like any other binding and composes in expressions.
+        are_equal(LIMIT, 3)
+        are_equal(LIMIT + 1, 4)
+        are_equal("${LABEL}:${LIMIT}", "widget:3")
+
+        // Re-running the *declaration* (here, each loop iteration) rebinds —
+        // only assignment to the name is forbidden.
+        var i = 0
+        var seen = []
+        while (i < 3) {
+            const msg = "iter ${i}"
+            seen = seen + [msg]
+            i = i + 1
+        }
+        are_equal(seen.join(","), "iter 0,iter 1,iter 2")
+    }
+}

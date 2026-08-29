@@ -75,6 +75,26 @@ func renderPromptCallDynamic(ctx *evalCtx, name string, call *ast.Call, depth in
 		}
 		args[arg.Name] = s
 	}
+	// Fill any declared parameter the caller omitted from its default. Prompt
+	// arguments are bound by name, not position, so a prompt default is
+	// evaluated in the caller's scope and cannot reference a sibling
+	// parameter (unlike tool-method / lambda defaults, which bind left to
+	// right). A still-missing parameter with no default is left for
+	// prompt.Render to report.
+	for _, p := range decl.Params {
+		if _, ok := args[p.Name]; ok || p.Default == nil {
+			continue
+		}
+		v, err := evalExprAt(ctx, p.Default, depth)
+		if err != nil {
+			return "", fmt.Errorf("prompt %q: default for parameter %q: %w", name, p.Name, err)
+		}
+		s, ok := v.(string)
+		if !ok {
+			return "", fmt.Errorf("prompt %q: default for parameter %q must be a string, got %s", name, p.Name, typeName(v))
+		}
+		args[p.Name] = s
+	}
 	return prompt.Render(decl, args)
 }
 

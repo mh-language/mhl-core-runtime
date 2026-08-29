@@ -36,6 +36,7 @@ type Pipeline struct {
 // steps can read).
 type PipelineMember struct {
 	Input    *PipelineInput `parser:"( 'input' @@"`
+	Const    *ConstDecl     `parser:"| @@"`
 	Var      *VarDecl       `parser:"| @@"`
 	Mem      *MemDecl       `parser:"| @@"`
 	Parallel *ParallelGroup `parser:"| @@"`
@@ -90,7 +91,8 @@ type Step struct {
 // identifier expression followed by a second, unrelated statement.
 type Statement struct {
 	Pos    lexer.Position
-	Var    *VarDecl    `parser:"( @@"`
+	Const  *ConstDecl  `parser:"( @@"`
+	Var    *VarDecl    `parser:"| @@"`
 	Return *ReturnStmt `parser:"| @@"`
 	Break  *BreakStmt  `parser:"| @@"`
 	Goto   *GotoStmt   `parser:"| @@"`
@@ -107,6 +109,17 @@ type Statement struct {
 // VarDecl declares and initializes a local variable: `var x = expr`.
 type VarDecl struct {
 	Name  string `parser:"'var' @Ident '='"`
+	Value *Expr  `parser:"@@"`
+}
+
+// ConstDecl declares a single-assignment binding: `const x = expr`. Grammar
+// mirrors VarDecl with the `const` keyword. Reassigning the name (`x = ...`
+// or `x += ...`) is an error at both `mhl run` and `mhl lint`. Re-executing
+// the *declaration* itself — e.g. a `const` inside a `while` body on a later
+// iteration — simply rebinds; only assignment to the name is forbidden.
+type ConstDecl struct {
+	Pos   lexer.Position
+	Name  string `parser:"'const' @Ident '='"`
 	Value *Expr  `parser:"@@"`
 }
 

@@ -1,0 +1,14 @@
+use {Echo} from "fixtures/agents.mh"
+
+prompt Greeting(name: string, lang: string = "en") {
+    "hello ${name} (${lang})"
+}
+
+test prompt_default_parameter {
+    describe prompt_default_parameter {
+        // `prompt` binds arguments by name; an omitted parameter that
+        // declares a default is filled from it before rendering.
+        are_equal(Echo.run(prompt: Greeting(name: "ana")), "hello ana (en)")
+        are_equal(Echo.run(prompt: Greeting(name: "ana", lang: "pt")), "hello ana (pt)")
+    }
+}
