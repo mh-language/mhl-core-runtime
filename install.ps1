@@ -17,8 +17,10 @@ $InstallDir = if ($env:MHL_INSTALL_DIR) { $env:MHL_INSTALL_DIR } else { "$env:LO
 function Info($msg) { Write-Host "mhl-install: $msg" }
 function Die($msg) { Write-Error "mhl-install: error: $msg"; exit 1 }
 
-if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64") {
-  Die "unsupported architecture: $env:PROCESSOR_ARCHITECTURE (only windows-amd64 is published)"
+$Arch = switch ($env:PROCESSOR_ARCHITECTURE) {
+  "AMD64" { "amd64" }
+  "ARM64" { "arm64" }
+  default  { Die "unsupported architecture: $env:PROCESSOR_ARCHITECTURE (only windows-amd64 and windows-arm64 are published)" }
 }
 
 $Version = $env:MHL_VERSION
@@ -29,7 +31,7 @@ if (-not $Version) {
   if (-not $Version) { Die "could not resolve latest release version" }
 }
 
-$Archive = "mhl-$Version-windows-amd64.zip"
+$Archive = "mhl-$Version-windows-$Arch.zip"
 $WorkDir = Join-Path $env:TEMP ([System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $WorkDir | Out-Null
 

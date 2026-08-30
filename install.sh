@@ -41,10 +41,7 @@ case "$arch" in
 esac
 
 if [ "$mhl_os" = "darwin" ] && [ "$mhl_arch" != "arm64" ]; then
-  die "darwin-amd64 (Intel Mac) has no published release yet; only darwin-arm64, linux-amd64 and windows-amd64 are built"
-fi
-if [ "$mhl_os" = "linux" ] && [ "$mhl_arch" != "amd64" ]; then
-  die "linux-${mhl_arch} has no published release yet; only darwin-arm64, linux-amd64 and windows-amd64 are built"
+  die "darwin-amd64 (Intel Mac) has no published release; only darwin-arm64 is supported on macOS"
 fi
 
 version="${MHL_VERSION:-}"
