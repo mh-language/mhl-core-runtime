@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="How to serve MHL workflows to other agents: mhl serve mcp over stdio and Streamable HTTP, async run/* methods, run/resume for human-in-the-loop, and mhl serve a2a." />
+    <meta name="theme-color" content="#10161f" />
+    <meta property="og:title" content="Serving workflows — Meta-Harness Language" />
+    <meta property="og:description" content="Expose a folder of MHL workflows as MCP tools or A2A skills — no server code." />
+    <meta property="og:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Serving workflows — Meta-Harness Language" />
+    <meta name="twitter:description" content="Expose a folder of MHL workflows as MCP tools or A2A skills — no server code." />
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <link rel="icon" href="assets/mhl-logo-rebrand.png" />
+    <title>Serving workflows — Meta-Harness Language</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="index.html" aria-label="MHL home">
+        <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
+        <span><strong>MHL</strong><small>Meta-Harness Language</small></span>
+      </a>
+      <div class="top-actions">
+        <label class="search" for="site-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="site-search" type="search" placeholder="Search this page" autocomplete="off" />
+          <kbd>/</kbd>
+        </label>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
+        <a class="github-link" href="reference.html">Reference</a>
+        <a class="github-link" href="how-it-works.html">How it works</a>
+        <a class="github-link" href="extensions.html">Extensions</a>
+        <a class="github-link" href="index.html">Overview</a>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </div>
+    </header>
+
+    <div class="layout" id="top">
+      <aside class="sidebar" aria-label="Serving workflows navigation">
+        <p class="eyebrow">SERVING WORKFLOWS</p>
+        <nav id="toc">
+          <a class="nav-link active" href="#overview">The serve model</a>
+          <a class="nav-link" href="#quickstart">Try it with the sample</a>
+          <a class="nav-link" href="#mcp-stdio">MCP over stdio</a>
+          <a class="nav-link" href="#mcp-http">MCP over Streamable HTTP</a>
+          <a class="nav-link" href="#async">Long runs: <code>run/*</code></a>
+          <a class="nav-link" href="#resume">Human-in-the-loop: <code>run/resume</code></a>
+          <a class="nav-link" href="#a2a">A2A skills</a>
+          <a class="nav-link" href="#clients">Wiring a client</a>
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <span>Server side<br /><small>calling external MCP/A2A servers is <a href="reference.html#mcp">the client reference</a></small></span>
+        </div>
+      </aside>
+
+      <main class="content reference-content">
+        <section class="ref-hero doc-section" id="intro" data-title="serve serving workflows mcp a2a server stdio http streamable expose tools skills mhl serve directory">
+          <p class="eyebrow accent">MHL · SERVING WORKFLOWS · v1.2.0-alpha</p>
+          <h1>Turn a folder of workflows into a server.</h1>
+          <p class="lead"><code>mhl serve</code> exposes every <code>pipeline</code>/<code>workflow</code> declared under a directory to another agent — as Model Context Protocol tools or Agent2Agent skills — without writing any server code. This page is the server side; calling <em>out</em> to someone else's MCP or A2A server is <a href="reference.html#mcp"><code>extension mcp</code></a> / <a href="reference.html#a2a"><code>extension a2a</code></a> in the reference.</p>
+          <div class="quick-index">
+            <a href="#mcp-stdio"><code>mcp</code> stdio<span>spawned subprocess</span></a>
+            <a href="#mcp-http"><code>mcp --http</code><span>networked client</span></a>
+            <a href="#async"><code>run/*</code><span>long runs, step by step</span></a>
+            <a href="#a2a"><code>a2a</code><span>Agent2Agent skills</span></a>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="overview" data-title="one tool per workflow input schema description body property final variable state execsvc throwaway state directory no carry-over what mhl serve does model transports">
+          <div class="feature-head"><h2><span class="feature-num">01</span>The serve model</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Every transport publishes <strong>one tool / skill per declaration</strong> found under the directory (default <code>.</code>). Each derives its input contract from the workflow's <code>input name: Type</code> declarations — every input required, unknown inputs rejected — and its description from an optional <code>description: "..."</code> body property. A call runs the workflow through the same engine as <code>mhl run</code> and returns its final variable state.</p>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Transport</span><span>Command</span><span>Shape</span></div>
+            <div class="table-row"><span>stdio</span><span><code>mhl serve mcp &lt;dir&gt;</code></span><span>newline-delimited JSON-RPC 2.0 on stdin/stdout — the form an MCP client uses when it <em>spawns</em> the server</span></div>
+            <div class="table-row"><span>Streamable HTTP</span><span><code>mhl serve mcp --http &lt;dir&gt;</code></span><span>one JSON-RPC message per <code>POST /mcp</code>, JSON responses only (no SSE) — the form a networked MCP client uses</span></div>
+            <div class="table-row"><span>A2A</span><span><code>mhl serve a2a &lt;dir&gt;</code></span><span>JSON-RPC 2.0 over HTTP with an Agent Card at <code>/.well-known/agent-card.json</code></span></div>
+          </div>
+          <div class="tip-row"><span>ISOLATION</span><p>A synchronous <code>tools/call</code> runs in its own throwaway state directory — no checkpoint or <code>context.vars</code> carry-over between calls. The async <code>run/*</code> path (below) keeps state so a run can be resumed.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="quickstart" data-title="quickstart sample serve directory summarize triage report approval clone try example workflows">
+          <div class="feature-head"><h2><span class="feature-num">02</span>Try it with the sample</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">The repository's <code>sample/serve/</code> directory holds four self-contained workflows (no real LLM needed) used by every example on this page.</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>git clone https://github.com/mh-language/mhl-core-runtime
+cd mhl-core-runtime
+
+mhl serve mcp sample/serve          # stdio
+mhl serve mcp --http sample/serve   # http://127.0.0.1:8711/mcp
+mhl serve a2a sample/serve          # http://127.0.0.1:8710/</code></pre>
+          </div>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Workflow</span><span>Signature</span><span>Shows</span></div>
+            <div class="table-row"><span><code>Summarize</code></span><span><code>Summarize(topic, max_words)</code></span><span>a <code>before</code>-free agent step (uses <code>echo</code>, so no real LLM)</span></div>
+            <div class="table-row"><span><code>Triage</code></span><span><code>Triage(title, body)</code></span><span>pure string logic, no agent</span></div>
+            <div class="table-row"><span><code>Report</code></span><span><code>Report(topic)</code></span><span>four ~1s steps — watch <code>run/status</code> advance step by step</span></div>
+            <div class="table-row"><span><code>Approval</code></span><span><code>Approval(request, approved)</code></span><span>a <code>per_step</code> checkpoint plus a <code>fail()</code> gate — the <code>run/resume</code> loop</span></div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="mcp-stdio" data-title="mcp stdio subprocess newline json-rpc initialize handshake stateless params meta server discover tools list tools call stderr stdout">
+          <div class="feature-head"><h2><span class="feature-num">03</span>MCP over stdio</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede"><code>mhl serve mcp &lt;dir&gt;</code> speaks newline-delimited JSON-RPC 2.0 on stdin/stdout — the form an MCP client uses when it spawns the server as a subprocess. One tool per declaration; <code>tools/call</code> returns the final variable state (<code>isError: true</code> on a run failure). Diagnostics go to <strong>stderr</strong>; stdout is the raw protocol stream.</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"Triage","arguments":{"title":"api outage","body":"everything is down"}}}' \
+| mhl serve mcp sample/serve</code></pre>
+          </div>
+          <div class="tip-row"><span>DUAL-ERA</span><p>Both protocol modes work on one connection: the <code>initialize</code> / <code>notifications/initialized</code> handshake (revisions <code>2025-11-25</code> / <code>2025-06-18</code> / <code>2025-03-26</code>), and the stateless <code>2026-07-28</code> form where every <code>tools/*</code> request carries <code>params._meta</code> with <code>io.modelcontextprotocol/protocolVersion</code> + <code>io.modelcontextprotocol/clientCapabilities</code> and <code>server/discover</code> replaces <code>initialize</code>. A stateless request missing that <code>_meta</code> is rejected with <code>-32602</code>.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="mcp-http" data-title="mcp http streamable transport post mcp addr token MHL_SERVE_TOKEN state-dir bearer authorization origin loopback session id delete get 405 stateless">
+          <div class="feature-head"><h2><span class="feature-num">04</span>MCP over Streamable HTTP</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede"><code>mhl serve mcp --http [--addr host:port] [--token t] [--state-dir path] &lt;dir&gt;</code> serves the same tools over the transport a <strong>networked</strong> client uses: one JSON-RPC message per <code>POST /mcp</code>, JSON responses only. Default bind <code>127.0.0.1:8711</code>.</p>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Flag / env</span><span>Default</span><span>Effect</span></div>
+            <div class="table-row"><span><code>--addr</code></span><span><code>127.0.0.1:8711</code></span><span>bind address; a warning is printed if it is non-loopback and no token is set</span></div>
+            <div class="table-row"><span><code>--token</code> · <code>MHL_SERVE_TOKEN</code></span><span>(unset)</span><span>when set, every request must carry <code>Authorization: Bearer &lt;token&gt;</code></span></div>
+            <div class="table-row"><span><code>--state-dir</code> · <code>MHL_SERVE_STATE_DIR</code></span><span>per-process temp dir</span><span>where async <code>run/*</code> state is kept — a real path makes runs survive a restart</span></div>
+          </div>
+          <p class="muted">Guards: the <code>Origin</code> header, when present, must be loopback (DNS-rebinding). <code>GET /mcp</code> is <code>405</code> (no server-to-client stream). <code>DELETE /mcp</code> with an <code>Mcp-Session-Id</code> ends that session (<code>204</code>, or <code>404</code> if unknown).</p>
+          <p class="block-label">Standard lifecycle — <code>initialize</code> returns an <code>Mcp-Session-Id</code> header the client echoes on every later request</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>mhl serve mcp --http --addr 127.0.0.1:8711 sample/serve &amp;
+
+sid=$(curl -sD - -o /dev/null -X POST localhost:8711/mcp -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{}}}' \
+  | awk 'tolower($1)=="mcp-session-id:"{print $2}' | tr -d '\r')
+
+curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+
+curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"Triage","arguments":{"title":"api outage","body":"everything is down"}}}'
+
+curl -s -X DELETE localhost:8711/mcp -H "Mcp-Session-Id: $sid"   # 204 — end the session</code></pre>
+          </div>
+          <p class="block-label">Stateless — no session, every request carries <code>params._meta</code></p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,
+  "method":"tools/call","params":{"name":"Triage","arguments":{"title":"x","body":"y"},
+    "_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",
+             "io.modelcontextprotocol/clientCapabilities":{}}}}'
+# an unknown Mcp-Session-Id is 404; missing _meta with no session is -32602</code></pre>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="async" data-title="async run start run status run cancel run list long running poll step progress reached vars stepIndex stepTotal ownership session owner unknown runId">
+          <div class="feature-head"><h2><span class="feature-num">05</span>Long runs: <code>run/start</code>, <code>run/status</code>, <code>run/cancel</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede"><code>tools/call</code> blocks until the workflow finishes. For a long one, <code>run/start</code> takes the same <code>{name, arguments}</code> and returns a <code>runId</code> immediately; you poll <code>run/status</code> for the current step, the steps reached so far, and the final <code>vars</code>. <code>run/cancel</code> stops one and <code>run/list</code> enumerates your runs. All are gated by the same protocol context as <code>tools/*</code> (a session, or <code>params._meta</code>).</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>rid=$(curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
+  -d '{"jsonrpc":"2.0","id":4,"method":"run/start","params":{"name":"Report","arguments":{"topic":"caching"}}}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["runId"])')
+
+curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"run/status\",\"params\":{\"runId\":\"$rid\"}}"
+# -&gt; {"state":"working","step":"Gather","stepIndex":1,"stepTotal":4,"reached":["Gather"], ...}
+# -&gt; {"state":"working","step":"Summarize","stepIndex":3,"stepTotal":4,"reached":["Gather","Analyze","Summarize"], ...}
+# -&gt; {"state":"completed","reached":["Gather","Analyze","Summarize","Publish"],"vars":{ ... }}
+
+curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"run/cancel\",\"params\":{\"runId\":\"$rid\"}}"
+# -&gt; {"state":"canceled", ...}</code></pre>
+          </div>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Field</span><span>When</span><span>Meaning</span></div>
+            <div class="table-row"><span><code>state</code></span><span>always</span><span><code>working</code> · <code>completed</code> · <code>failed</code> · <code>canceled</code></span></div>
+            <div class="table-row"><span><code>step</code> · <code>stepIndex</code> · <code>stepTotal</code></span><span>once a step has started</span><span>the step the run is on, its 1-based position, and the declared step count</span></div>
+            <div class="table-row"><span><code>reached</code></span><span>always</span><span>ordered steps that started; on completion it becomes the authoritative executed list</span></div>
+            <div class="table-row"><span><code>vars</code></span><span><code>completed</code></span><span>the run's final variable state</span></div>
+            <div class="table-row"><span><code>error</code> · <code>resumable</code></span><span><code>failed</code> / <code>canceled</code></span><span>the failure message, and whether <code>run/resume</code> can continue it</span></div>
+          </div>
+          <div class="tip-row"><span>OWNERSHIP</span><p>Each run is owned by the session (<code>Mcp-Session-Id</code>) that started it. <code>run/status</code>, <code>run/resume</code>, <code>run/cancel</code> and <code>run/list</code> only act for that caller — any other sees <code>unknown runId</code> (the same answer as a genuinely unknown id, so it is not an existence oracle). Stateless callers have no session and share one anonymous owner, so stateless mode has no per-caller isolation. Terminal runs stay pollable for an hour; a server shutdown cancels any still running.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="resume" data-title="run resume human in the loop hitl approval gate fail checkpoint per_step strategy state-dir restart survive merge arguments decision">
+          <div class="feature-head"><h2><span class="feature-num">06</span>Human-in-the-loop: <code>run/resume</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A workflow that declares <code>checkpoint { strategy: "per_step" }</code> and stops at a <strong>failing step</strong> keeps its checkpoint. <code>run/resume {runId, arguments?}</code> continues it from that step, merging <code>arguments</code> over the originals — that is where an approval decision goes. The gate is an ordinary step that calls <code>fail("...")</code> until it is approved.</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-mhl">pipeline Approval {
+    description: "Prepare, wait for human approval, then finish."
+
+    input request: string
+    input approved: string   // "no" on run/start, "yes" on run/resume
+
+    checkpoint: {
+        enabled: true
+        strategy: "per_step"
+        ttl: 7d
+    }
+
+    var summary = ""
+
+    step Prepare { summary = "ready to act on: " + request }
+
+    step Gate {
+        if (approved != "yes") {
+            fail("awaiting approval for: " + request)
+        }
+    }
+
+    step Act { summary = "acted on: " + request }
+}</code></pre>
+          </div>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>rid=$(curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
+  -d '{"jsonrpc":"2.0","id":7,"method":"run/start","params":{"name":"Approval","arguments":{"request":"ship it","approved":"no"}}}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["runId"])')
+
+curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"run/status\",\"params\":{\"runId\":\"$rid\"}}"
+# -&gt; {"state":"failed","step":"Gate","reached":["Prepare","Gate"],"resumable":true,"error":"...awaiting approval..."}
+
+# a human approves
+curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"run/resume\",\"params\":{\"runId\":\"$rid\",\"arguments\":{\"approved\":\"yes\"}}}"
+# -&gt; {"state":"working", ...}   then run/status -&gt; {"state":"completed","vars":{ ... }}</code></pre>
+          </div>
+          <div class="tip-row"><span>ACROSS A RESTART</span><p>Start the server with <code>--state-dir &lt;dir&gt;</code> (or <code>MHL_SERVE_STATE_DIR</code>) and a later process pointed at the same directory can <code>run/status</code> / <code>run/resume</code> a <code>runId</code> it never started — the first caller to name the (unguessable) id reclaims it. Without it, run state is per-process and lost on restart. Checkpoints are one small JSON file per completed step, sized by the pipeline's variable state; <code>run/status</code> on a live run stays a pure in-memory read.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="a2a" data-title="a2a agent2agent skills http json-rpc agent card message send tasks get tasks cancel task state submitted working completed metadata skill input">
+          <div class="feature-head"><h2><span class="feature-num">07</span>A2A skills over HTTP</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede"><code>mhl serve a2a [--addr host:port] &lt;dir&gt;</code> publishes one A2A skill per declaration: JSON-RPC 2.0 over HTTP, with an Agent Card at <code>/.well-known/agent-card.json</code>. <code>message/send</code> starts a run as a task; <code>tasks/get</code> polls it and <code>tasks/cancel</code> stops it. The skill and inputs are named explicitly in the message metadata.</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>mhl serve a2a --addr 127.0.0.1:8710 sample/serve &amp;
+
+curl -s localhost:8710/.well-known/agent-card.json
+
+curl -s -X POST localhost:8710/ -d '{"jsonrpc":"2.0","id":1,"method":"message/send",
+  "params":{"message":{"role":"user","parts":[],
+    "metadata":{"skill":"Triage","input":{"title":"db outage","body":"prod is down"}}}}}'
+# -&gt; { "result": { "id": "&lt;task-id&gt;", "status": { "state": "submitted" }, ... } }
+
+curl -s -X POST localhost:8710/ -d '{"jsonrpc":"2.0","id":2,"method":"tasks/get","params":{"id":"&lt;task-id&gt;"}}'
+# -&gt; status.state "completed", artifacts[0].parts[0].text = the run's result JSON</code></pre>
+          </div>
+          <div class="tip-row"><span>NOTE</span><p>A2A reports the task's <em>lifecycle</em> state (<code>submitted</code> / <code>working</code> / <code>completed</code> / <code>failed</code> / <code>canceled</code>), not the current step. For step-by-step progress or a resumable gate, use the MCP HTTP <code>run/*</code> methods above.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="clients" data-title="wiring client claude mcp add transport http claude desktop config mcpServers command args method reference flags security token shared">
+          <div class="feature-head"><h2><span class="feature-num">08</span>Wiring a client</h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Point any MCP client at the command (stdio) or the URL (HTTP).</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code># networked
+claude mcp add --transport http mhl-local http://127.0.0.1:8711/mcp</code></pre>
+          </div>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-json">{
+  "mcpServers": {
+    "mhl-workflows": {
+      "command": "mhl",
+      "args": ["serve", "mcp", "/absolute/path/to/sample/serve"]
+    }
+  }
+}</code></pre>
+          </div>
+          <p class="block-label">HTTP method surface</p>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Method</span><span>Params</span><span>Returns</span></div>
+            <div class="table-row"><span><code>tools/list</code></span><span>—</span><span>one entry per workflow, with its <code>inputSchema</code></span></div>
+            <div class="table-row"><span><code>tools/call</code></span><span><code>{name, arguments}</code></span><span>blocks; the final variable state (<code>isError</code> on failure)</span></div>
+            <div class="table-row"><span><code>run/start</code></span><span><code>{name, arguments}</code></span><span><code>{runId, state:"working"}</code> immediately</span></div>
+            <div class="table-row"><span><code>run/status</code></span><span><code>{runId}</code></span><span><code>{state, step, reached, vars?, error?, resumable?}</code></span></div>
+            <div class="table-row"><span><code>run/resume</code></span><span><code>{runId, arguments?}</code></span><span>relaunch from the checkpointed step; <code>arguments</code> merged over the originals</span></div>
+            <div class="table-row"><span><code>run/cancel</code></span><span><code>{runId}</code></span><span>stop the run; its status</span></div>
+            <div class="table-row"><span><code>run/list</code></span><span>—</span><span>the calling session's own runs</span></div>
+          </div>
+          <div class="security-banner"><span>!</span><div><strong>One trust domain per server</strong><p><code>--token</code> is a single shared secret — every holder is equally privileged, exactly like <code>tools/call</code>. Per-session ownership scopes <code>run/*</code> within a running process, but is best-effort across a restart (possession of the <code>runId</code> re-establishes it). Keep a <code>--state-dir</code> readable only by the server user, and bind to loopback unless a token is set.</p></div></div>
+        </section>
+
+        <footer class="site-footer">
+          <span>© 2026 MHL · Created by Yan Justino</span>
+          <span><a href="index.html">Overview</a> · <a href="reference.html">Language reference</a> · <a href="stdlib.html">Standard library</a> · <a href="extensions.html">Extensions</a></span>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -2,18 +2,23 @@
 // Model Context Protocol server: one MCP tool per declaration, `tools/call`
 // runs it through internal/execsvc and returns its final variable state.
 //
-// Transport is newline-delimited JSON-RPC 2.0 over a byte stream (the form
-// an MCP client uses when it spawns `mhl serve mcp <dir>` as a subprocess).
-// Requests are handled one at a time in stream order.
+// Two transports sit on the same message dispatch (server.dispatch):
+//
+//   - stdio (Serve) — newline-delimited JSON-RPC 2.0 over a byte stream, the
+//     form an MCP client uses when it spawns `mhl serve mcp <dir>` as a
+//     subprocess. Messages are handled one at a time in stream order.
+//   - Streamable HTTP (ServeHTTP, http.go) — one JSON-RPC message per
+//     `POST /mcp`, the form a networked MCP client uses.
 //
 // It is a dual-era server (2026-07-28 "Backward Compatibility with
-// Initialization-Based Versions"): it selects its behaviour from how the
-// client opens the connection.
+// Initialization-Based Versions"): each connection's behaviour is selected
+// from how the client opens it.
 //
 //   - An `initialize` request selects legacy handshake semantics (revisions
 //     2025-11-25 / 2025-06-18 / 2025-03-26): the negotiated result carries no
 //     `resultType` and puts serverInfo at the top level, and later `tools/*`
-//     calls need no `params._meta`.
+//     calls need no `params._meta`. Over HTTP the client then carries the
+//     server-issued `Mcp-Session-Id` header on every following request.
 //   - Otherwise the connection is modern/stateless (2026-07-28): every
 //     `tools/*` / `ping` request MUST restate the protocol context in
 //     `params._meta` (`io.modelcontextprotocol/protocolVersion` +
@@ -77,6 +82,21 @@ const maxLine = 8 << 20 // 8 MiB, matching the external-extension transport cap
 // honest; a restart is the only way it changes.
 const listCacheTTLms = 300000
 
+// session is the per-connection protocol state. On stdio one session lives
+// for the whole process; over HTTP a session is created by `initialize` and
+// keyed by the `Mcp-Session-Id` header, or is ephemeral (one request) for a
+// stateless `params._meta` call.
+type session struct {
+	// initialized is set once the client completes the legacy `initialize`
+	// handshake; before then every tools/* call is served statelessly and
+	// must carry the 2026-07-28 params._meta protocol fields.
+	initialized bool
+	// protocol is the revision negotiated by `initialize` (legacy mode only).
+	protocol string
+	// id is the Mcp-Session-Id value (HTTP session mode only; "" otherwise).
+	id string
+}
+
 // Serve loads every .mh file under dir, then reads JSON-RPC messages from in
 // and writes responses to out until in reaches EOF or ctx is done. logw
 // receives human-readable diagnostics (load warnings) — never out, which is
@@ -89,7 +109,8 @@ func Serve(ctx context.Context, dir string, in io.Reader, out io.Writer, logw io
 	}
 	fmt.Fprintf(logw, "mhl serve mcp: %d tool(s) from %s\n", len(tools), dir)
 
-	s := &server{tools: tools, ctx: ctx, out: out, logw: logw}
+	s := &server{tools: tools, logw: logw}
+	sess := &session{}
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
 	for sc.Scan() {
@@ -102,109 +123,93 @@ func Serve(ctx context.Context, dir string, in io.Reader, out io.Writer, logw io
 		}
 		var msg rpcMsg
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
-			s.write(rpcMsg{JSONRPC: "2.0", Error: &rpcErr{Code: -32700, Message: "parse error: " + err.Error()}})
+			writeLine(out, errMsg(nil, -32700, "parse error: "+err.Error()))
 			continue
 		}
-		s.handle(msg)
+		if reply := s.dispatch(ctx, sess, msg); reply != nil {
+			writeLine(out, reply)
+		}
 	}
-	if err := sc.Err(); err != nil {
-		return err
-	}
-	return nil
+	return sc.Err()
 }
 
 type server struct {
 	tools map[string]execsvc.Workflow
-	ctx   context.Context
-	out   io.Writer
 	// logw is the diagnostics sink (stderr on stdio) — a running tool's
-	// log()/step output goes here, never to out, which is the raw stream.
+	// log()/step output goes here, never to the protocol stream.
 	logw io.Writer
-	// initialized is set once the client completes the legacy `initialize`
-	// handshake; before then every tools/* call is served statelessly and
-	// must carry the 2026-07-28 params._meta protocol fields.
-	initialized bool
 }
 
-func (s *server) write(m rpcMsg) {
+// writeLine marshals m as one newline-terminated JSON object.
+func writeLine(out io.Writer, m *rpcMsg) {
 	m.JSONRPC = "2.0"
 	b, err := json.Marshal(m)
 	if err != nil {
 		return
 	}
-	_, _ = s.out.Write(append(b, '\n'))
+	_, _ = out.Write(append(b, '\n'))
 }
 
-func (s *server) reply(id json.RawMessage, result any) {
-	raw, err := json.Marshal(result)
-	if err != nil {
-		s.fail(id, -32603, "marshal result: "+err.Error())
-		return
-	}
-	s.write(rpcMsg{ID: id, Result: raw})
-}
-
-func (s *server) fail(id json.RawMessage, code int, msg string) {
-	s.write(rpcMsg{ID: id, Error: &rpcErr{Code: code, Message: msg}})
-}
-
-func (s *server) failData(id json.RawMessage, code int, msg string, data any) {
-	s.write(rpcMsg{ID: id, Error: &rpcErr{Code: code, Message: msg, Data: data}})
-}
-
-func (s *server) handle(msg rpcMsg) {
-	// A message with no id is a notification: never answered.
+// dispatch routes one request and returns its response, or nil for a
+// notification (no id) that needs no reply. It performs no I/O — the
+// transport (Serve / handleMCP) serialises the result.
+func (s *server) dispatch(ctx context.Context, sess *session, msg rpcMsg) *rpcMsg {
 	notification := len(msg.ID) == 0 || string(msg.ID) == "null"
 
 	switch msg.Method {
 	case "initialize":
 		// Legacy semantics: the handshake result carries no `resultType` and
 		// puts serverInfo at the top level, matching revisions 2025-*.
-		s.initialized = true
-		s.reply(msg.ID, s.initializeResult(msg.Params))
+		res := s.initializeResult(msg.Params)
+		sess.initialized = true
+		sess.protocol, _ = res["protocolVersion"].(string)
+		return resultMsg(msg.ID, res)
 	case "notifications/initialized":
-		// no-op (legacy lifecycle)
+		return nil // no-op (legacy lifecycle)
 	case "server/discover":
 		// Modern-only method, always the DiscoverResult shape. A cacheable
 		// result (CacheableResult) — ttlMs/cacheScope are required.
 		r := s.discoverResult()
 		r["ttlMs"] = listCacheTTLms
 		r["cacheScope"] = "public"
-		s.replyModern(msg.ID, r)
+		decorateModern(r)
+		return resultMsg(msg.ID, r)
 	case "notifications/cancelled":
-		// no-op: this server processes one request at a time, so it can never
-		// observe a cancellation while a request is in flight anyway
-		// (2026-07-28 Cancellation: a server MAY ignore when "the request
-		// cannot be cancelled").
+		// no-op: a request is handled to completion before the next is read,
+		// so a cancellation can never be observed mid-flight (2026-07-28
+		// Cancellation: a server MAY ignore when "the request cannot be
+		// cancelled").
+		return nil
 	case "ping":
 		// `ping` was removed in 2026-07-28 — honour it only for a legacy
 		// (2025-11-25 and earlier) connection.
-		if s.initialized {
-			s.reply(msg.ID, map[string]any{})
-		} else {
-			s.fail(msg.ID, -32601, "method not found: ping")
+		if sess.initialized {
+			return resultMsg(msg.ID, map[string]any{})
 		}
+		return errMsg(msg.ID, -32601, "method not found: ping")
 	case "tools/list":
-		if s.requireProtocolContext(msg) {
-			if cur := listCursor(msg.Params); cur != "" {
-				s.fail(msg.ID, -32602, "unknown cursor: this server returns the full tool list unpaginated")
-				return
-			}
-			payload := map[string]any{"tools": s.toolList()}
-			if !s.initialized {
-				payload["ttlMs"] = listCacheTTLms
-				payload["cacheScope"] = "public"
-			}
-			s.replyResult(msg.ID, payload)
+		if e := s.requireProtocolContext(sess, msg); e != nil {
+			return e
 		}
+		if cur := listCursor(msg.Params); cur != "" {
+			return errMsg(msg.ID, -32602, "unknown cursor: this server returns the full tool list unpaginated")
+		}
+		payload := map[string]any{"tools": s.toolList()}
+		if !sess.initialized {
+			payload["ttlMs"] = listCacheTTLms
+			payload["cacheScope"] = "public"
+		}
+		return s.replyResult(sess, msg.ID, payload)
 	case "tools/call":
-		if s.requireProtocolContext(msg) {
-			s.callTool(msg.ID, msg.Params)
+		if e := s.requireProtocolContext(sess, msg); e != nil {
+			return e
 		}
+		return s.callTool(ctx, sess, msg.ID, msg.Params)
 	default:
-		if !notification {
-			s.fail(msg.ID, -32601, "method not found: "+msg.Method)
+		if notification {
+			return nil
 		}
+		return errMsg(msg.ID, -32601, "method not found: "+msg.Method)
 	}
 }
 
@@ -220,21 +225,14 @@ func listCursor(params json.RawMessage) string {
 	return p.Cursor
 }
 
-// replyResult sends a successful result payload, adding the modern-mode
+// replyResult builds a successful result response, adding the modern-mode
 // decorations (`resultType: "complete"` and `_meta` serverInfo) unless a
-// legacy `initialize` handshake is in effect for this connection.
-func (s *server) replyResult(id json.RawMessage, payload map[string]any) {
-	if !s.initialized {
+// legacy `initialize` handshake is in effect for this session.
+func (s *server) replyResult(sess *session, id json.RawMessage, payload map[string]any) *rpcMsg {
+	if !sess.initialized {
 		decorateModern(payload)
 	}
-	s.reply(id, payload)
-}
-
-// replyModern always decorates — used for methods that only exist in the
-// modern (stateless) protocol, like server/discover.
-func (s *server) replyModern(id json.RawMessage, payload map[string]any) {
-	decorateModern(payload)
-	s.reply(id, payload)
+	return resultMsg(id, payload)
 }
 
 func decorateModern(payload map[string]any) {
@@ -250,30 +248,28 @@ func decorateModern(payload map[string]any) {
 }
 
 // requireProtocolContext gates a tools/* or ping request. On a legacy
-// handshake session (initialize seen) it always passes. On a modern
-// connection it enforces 2026-07-28's per-request protocol fields: a missing
+// handshake session (initialize seen) it returns nil. On a modern connection
+// it enforces 2026-07-28's per-request protocol fields: a missing
 // io.modelcontextprotocol/protocolVersion or /clientCapabilities is a
 // malformed request (-32602); a protocolVersion this server does not
 // implement is UnsupportedProtocolVersionError (-32022, listing what it
-// supports).
-func (s *server) requireProtocolContext(msg rpcMsg) bool {
-	if s.initialized {
-		return true
+// supports). A non-nil return is the error response to send.
+func (s *server) requireProtocolContext(sess *session, msg rpcMsg) *rpcMsg {
+	if sess.initialized {
+		return nil
 	}
 	pv, hasPV, hasCaps := statelessMeta(msg.Params)
 	if !hasPV || !hasCaps {
-		s.fail(msg.ID, -32602,
+		return errMsg(msg.ID, -32602,
 			"missing required params._meta fields "+metaProtocolVersion+" and "+metaClientCaps+" (or send `initialize` for the legacy handshake)")
-		return false
 	}
 	if pv != statelessVersion {
-		s.failData(msg.ID, -32022, "Unsupported protocol version", map[string]any{
+		return errData(msg.ID, -32022, "Unsupported protocol version", map[string]any{
 			"supported": []string{statelessVersion},
 			"requested": pv,
 		})
-		return false
 	}
-	return true
+	return nil
 }
 
 // statelessMeta reads the 2026-07-28 per-request protocol fields out of
@@ -342,32 +338,29 @@ func (s *server) toolList() []map[string]any {
 	return list
 }
 
-func (s *server) callTool(id json.RawMessage, params json.RawMessage) {
+func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage, params json.RawMessage) *rpcMsg {
 	var p struct {
 		Name      string         `json:"name"`
 		Arguments map[string]any `json:"arguments"`
 	}
 	if len(params) > 0 {
 		if err := json.Unmarshal(params, &p); err != nil {
-			s.fail(id, -32602, "invalid params: "+err.Error())
-			return
+			return errMsg(id, -32602, "invalid params: "+err.Error())
 		}
 	}
 	w, ok := s.tools[p.Name]
 	if !ok {
-		s.fail(id, -32602, fmt.Sprintf("unknown tool %q", p.Name))
-		return
+		return errMsg(id, -32602, fmt.Sprintf("unknown tool %q", p.Name))
 	}
 
 	base, err := os.MkdirTemp("", "mhl-mcp-run-")
 	if err != nil {
-		s.fail(id, -32603, "run dir: "+err.Error())
-		return
+		return errMsg(id, -32603, "run dir: "+err.Error())
 	}
 	defer os.RemoveAll(base)
 
 	res, runErr := execsvc.Run(execsvc.Request{
-		Context:  s.ctx,
+		Context:  ctx,
 		Program:  w.Program,
 		File:     w.File,
 		Workflow: w.Name,
@@ -379,15 +372,14 @@ func (s *server) callTool(id json.RawMessage, params json.RawMessage) {
 		Out: s.logw,
 	})
 	if runErr != nil {
-		s.replyResult(id, toolResult(runErr.Error(), nil, true))
-		return
+		return s.replyResult(sess, id, toolResult(runErr.Error(), nil, true))
 	}
 	vars := res.Vars
 	if vars == nil {
 		vars = map[string]any{}
 	}
 	text, _ := json.MarshalIndent(vars, "", "  ")
-	s.replyResult(id, toolResult(string(text), vars, false))
+	return s.replyResult(sess, id, toolResult(string(text), vars, false))
 }
 
 // toolResult builds a CallToolResult body. structured, when non-nil, is

@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
@@ -77,6 +78,13 @@ type Request struct {
 	// Out receives progress output (`session:`/`step:` lines and anything a
 	// step's log()/trace writes). nil discards it.
 	Out io.Writer
+
+	// OnStep, when non-nil, is called once just before each step runs, with
+	// the step name, its 1-based position, and the pipeline's declared step
+	// count (a `goto` or `loop` can push actual execution past that count).
+	// It must not block. It may be called concurrently for the steps of a
+	// `parallel` group, so an implementation must be safe for concurrent use.
+	OnStep func(step string, index, total int)
 }
 
 // Result is the structured outcome of a run.
@@ -197,6 +205,9 @@ func Run(req Request) (*Result, error) {
 
 	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
 
+	stepTotal := len(pipeline.Steps)
+	var stepSeq int64
+
 	exec := func(stepCtx context.Context, step string, ctx *runtime.RunContext) error {
 		for k, v := range coercedInputs {
 			ctx.Vars[k] = v
@@ -207,6 +218,9 @@ func Run(req Request) (*Result, error) {
 			stepOut = ctx.Out
 		}
 		fmt.Fprintf(stepOut, "step: %s\n", step)
+		if req.OnStep != nil {
+			req.OnStep(step, int(atomic.AddInt64(&stepSeq, 1)), stepTotal)
+		}
 		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
 		err := interpreter.RunStep(stepCtx, prog, step, file, stepOut, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
 		if reason, ok := interpreter.IsBreak(err); ok {

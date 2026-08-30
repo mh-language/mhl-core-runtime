@@ -8,7 +8,49 @@ during the alpha series.
 Per-tag release notes are also generated automatically on the
 [GitHub Releases](https://github.com/mh-language/mhl-core-runtime/releases) page.
 
-## [1.1.0-alpha] — Unreleased
+## [1.2.0-alpha] — Unreleased
+
+### Added
+
+- **`mhl serve mcp --http [--addr host:port] [--token t] [dir]`.** The MCP
+  server over the Streamable HTTP transport, for clients that connect over
+  the network rather than spawning the process: one JSON-RPC message per
+  `POST /mcp`, `application/json` responses only (no SSE). Both protocol
+  modes are accepted — the standard lifecycle (`initialize` issues an
+  `Mcp-Session-Id` header the client echoes on every later request;
+  `DELETE /mcp` ends the session; an unknown session is `404`) and the
+  stateless `2026-07-28` form (`params._meta` on every request, no session).
+  Defaults to `127.0.0.1:8711`; `--token` / `MHL_SERVE_TOKEN` enables
+  `Authorization: Bearer` enforcement and the `Origin` header, when sent,
+  must be loopback. `GET /mcp` is `405` (no server-to-client stream). The
+  stdio transport (`mhl serve mcp`) is unchanged. The request context is the
+  client connection, so a disconnect cancels an in-flight run.
+- **Async workflow execution over HTTP: `run/start`, `run/status`,
+  `run/resume`, `run/cancel`, `run/list`.** An extension to the HTTP MCP
+  server for workflows too long to hold a `tools/call` connection open for.
+  `run/start` takes the same `{name, arguments}` as `tools/call` and returns
+  a `runId` immediately; `run/status` reports `state`
+  (`working`/`completed`/`failed`/`canceled`), the current `step` with
+  `stepIndex`/`stepTotal`, the ordered `reached` steps, `resumable`, and —
+  once complete — `vars`; `run/cancel` stops one. Runs are gated by the same
+  protocol context as `tools/*`, descend from the server lifetime (so
+  shutdown cancels them), and terminal runs are kept for an hour for a late
+  poll. Each run is **owned by the session that started it**: `run/status`,
+  `run/resume`, `run/cancel` and `run/list` only act for that caller (any
+  other sees "unknown runId"); stateless callers, having no session, share
+  one anonymous owner. stdio and the synchronous `tools/call` path are
+  unchanged.
+- **`run/resume` and `mhl serve mcp --http --state-dir <path>`.** A run
+  whose workflow declares `checkpoint { strategy: "per_step" }` and stops at
+  a failing step keeps its checkpoint; `run/resume {runId, arguments?}`
+  continues it from that step, merging `arguments` over the originals (where
+  an approval decision goes — the human-in-the-loop pattern is a gate step
+  that calls `fail("awaiting approval")`). With `--state-dir` /
+  `MHL_SERVE_STATE_DIR` the run state is persistent, so `run/status` and
+  `run/resume` work for a `runId` a **later process** never started;
+  without it, run state is per-process and lost on restart.
+
+## [1.1.0-alpha] — 2026-08-30
 
 Serving workflows to other agents, and the run-core work that enables it. The
 language surface is unchanged from `1.0.0-alpha`.

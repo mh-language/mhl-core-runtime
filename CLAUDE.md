@@ -56,6 +56,7 @@ mhl test <file.mh|dir>
 mhl lint [dir]
 mhl lsp        # LSP server over stdio, used by vscode-mhl
 mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
+mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [dir]  # ... over Streamable HTTP (POST /mcp)
 mhl serve a2a [--addr h:p] [dir]    # workflows as A2A skills (HTTP JSON-RPC)
 mhl version    # or --version / -v
 ```
@@ -64,7 +65,23 @@ The "serve" adapters share `internal/execsvc` (the reusable run core: `execsvc.R
 Result`, `execsvc.Load(dir)` for a directory of workflows). `internal/mcpserver` puts one MCP
 tool per pipeline/workflow on top (`tools/call` → `execsvc.Run`, `inputSchema` ←
 `runtime.Pipeline.InputSchema()`, `description` ← the optional `description: "..."` body
-property, else generic); `internal/a2aserver` puts one A2A skill per workflow on top
+property, else generic); its `server.dispatch(ctx, *session, rpcMsg) *rpcMsg` is
+transport-independent — `Serve` (stdio, `server.go`) and `ServeHTTP` (Streamable HTTP,
+`http.go`: `POST /mcp`, JSON responses only, `Mcp-Session-Id` sessions + the stateless
+`_meta` form, bearer-token + loopback-`Origin` guards) both drive it. HTTP-only, in
+`runs.go`: `run/start`/`run/status`/`run/resume`/`run/cancel`/`run/list` — async execution
+(returns a `runId`, poll for current step / `reached` steps / final vars) for workflows too
+long to hold a `tools/call` open; backed by `execsvc.Request.OnStep`. `run/resume` continues
+a stopped run from its `checkpoint { strategy: "per_step" }` (the HITL pattern: a gate step
+`fail()`s until approved, then `run/resume {runId, arguments}` merges the decision in) via
+`execsvc.Request.{Session,Resume}`; `--state-dir` / `MHL_SERVE_STATE_DIR` makes that run
+state outlive the process (else a per-process temp dir). Each run is owned by the session
+that started it (`ownerKey` = sha256 of the Mcp-Session-Id); `run/{status,resume,cancel,list}`
+only act for that caller — a non-owner gets "unknown runId". After a restart the owner
+session is gone, so the first caller to name the (unguessable) runId reclaims it. End-to-end request flow for all
+modes (stdio, HTTP sync, HTTP async, resume) with sequence diagrams:
+`internal/mcpserver/FLOW.md`. `internal/a2aserver`
+puts one A2A skill per workflow on top
 (`message/send` starts a task, `tasks/get`/`tasks/cancel` drive it; skill + inputs are named
 explicitly in `message.metadata.skill` / `.input`). Both dispatched from `internal/cli/serve.go`.
 A pipeline/workflow body property (`checkpoint`, `spawn`, `repeat`, `context`, `description`) is
