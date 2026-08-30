@@ -38,3 +38,11 @@ not `mhl test` — pipelines aren't assertions, they're programs.
   mhl run sample/features/pipelines/context_pipeline_example.mh
   mhl run sample/features/pipelines/context_pipeline_example.mh
   ```
+- [session_scoped_memory_pipeline_example.mh](session_scoped_memory_pipeline_example.mh) — a
+  `memory` block's `path:` is interpolated for `${...}` spans (like an agent's `log:` path), so
+  `path: ".mhl/session/state.${context.session_id}.json"` gives every run its own store. Run it
+  twice to see a file pair per session id:
+  ```
+  mhl run sample/features/pipelines/session_scoped_memory_pipeline_example.mh
+  mhl run sample/features/pipelines/session_scoped_memory_pipeline_example.mh
+  ```

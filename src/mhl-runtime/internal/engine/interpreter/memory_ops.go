@@ -32,6 +32,32 @@ func memoryProp(mem *ast.Memory, name string) (string, bool) {
 	return "", false
 }
 
+// memoryPath reads a memory declaration's `path:` and interpolates its
+// "${...}" spans against ctx, exactly like an agent's `log:` path
+// (agent.go's agentLogPath) — so `path: "data/runs.${context.session_id}.json"`
+// gives each run (or each --session) its own file. A missing/empty path, or
+// one that interpolates to empty, is an error: every path-backed memory kind
+// (json, append_log, jsonl) needs a real file to write to. ctx is nil only
+// in direct unit-test calls, which pass plain paths; interpolation is
+// skipped there.
+func memoryPath(ctx *evalCtx, mem *ast.Memory) (string, error) {
+	raw, ok := memoryProp(mem, "path")
+	if !ok || raw == "" {
+		return "", fmt.Errorf("memory %q has no path", mem.Name)
+	}
+	if ctx == nil {
+		return raw, nil
+	}
+	path, err := interpolate(ctx, raw)
+	if err != nil {
+		return "", fmt.Errorf("memory %q path %q: %w", mem.Name, raw, err)
+	}
+	if path == "" {
+		return "", fmt.Errorf("memory %q path %q interpolated to empty", mem.Name, raw)
+	}
+	return path, nil
+}
+
 // executeMemoryOp dispatches a `memory.method(...)` call (language-design.md
 // §6 "Gerenciamento de Memória"). `type: "kv"` (with `store: "memory"`),
 // `type: "json"`, `type: "append_log"` and `type: "jsonl"` are implemented;
@@ -91,9 +117,9 @@ func executeMemoryOp(ctx *evalCtx, mem *ast.Memory, method string, call *ast.Cal
 			return nil, fmt.Errorf("memory %q: kv memory has no method %q", mem.Name, method)
 		}
 	case "json":
-		path, hasPath := memoryProp(mem, "path")
-		if !hasPath || path == "" {
-			return nil, fmt.Errorf("memory %q has no path", mem.Name)
+		path, err := memoryPath(ctx, mem)
+		if err != nil {
+			return nil, err
 		}
 		switch method {
 		case "set":
@@ -144,9 +170,9 @@ func executeMemoryOp(ctx *evalCtx, mem *ast.Memory, method string, call *ast.Cal
 			return nil, fmt.Errorf("memory %q: json memory has no method %q", mem.Name, method)
 		}
 	case "append_log":
-		path, hasPath := memoryProp(mem, "path")
-		if !hasPath || path == "" {
-			return nil, fmt.Errorf("memory %q has no path", mem.Name)
+		path, err := memoryPath(ctx, mem)
+		if err != nil {
+			return nil, err
 		}
 		if method != "append" {
 			return nil, fmt.Errorf("memory %q: append_log memory has no method %q", mem.Name, method)
@@ -163,9 +189,9 @@ func executeMemoryOp(ctx *evalCtx, mem *ast.Memory, method string, call *ast.Cal
 		}
 		return text, nil
 	case "jsonl":
-		path, hasPath := memoryProp(mem, "path")
-		if !hasPath || path == "" {
-			return nil, fmt.Errorf("memory %q has no path", mem.Name)
+		path, err := memoryPath(ctx, mem)
+		if err != nil {
+			return nil, err
 		}
 		if method != "append" {
 			return nil, fmt.Errorf("memory %q: jsonl memory has no method %q", mem.Name, method)

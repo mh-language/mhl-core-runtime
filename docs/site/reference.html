@@ -468,7 +468,7 @@ Audit.append("pipeline started")</code></pre>
             <div class="table-row"><span>Text log</span><code>{type: "append_log", path: "audit.log"}</code><span><code>append</code>; one line per call.</span></div>
             <div class="table-row"><span>JSONL</span><code>{type: "append_jsonl", path: "events.jsonl"}</code><span><code>append</code>; one JSON object per line.</span></div>
           </div>
-          <div class="tip-row"><span>PATHS</span><p>In JSON memory, <code>Session.get("config::retry")</code> navigates nested objects. <code>remove("config::retry")</code> removes only the targeted field.</p></div>
+          <div class="tip-row"><span>PATHS</span><p>A store's <code>path:</code> is interpolated for <code>${...}</code> spans the same way an agent's <code>log:</code> path is — <code>path: ".mhl/state.${context.session_id}.json"</code> gives every run (and every <code>--session</code>) its own file, so concurrent runs never share a store. <code>${...}</code> needs a pipeline that declares a <code>context:</code> block for <code>context.*</code>, exactly like <code>log:</code>. Within JSON memory, <code>Session.get("config::retry")</code> navigates nested objects and <code>remove("config::retry")</code> removes only that field.</p></div>
 
           <p class="block-label">PERSISTENT PIPELINE VARIABLE</p>
           <pre class="code-block"><code class="language-mhl">loop pipeline Poll {

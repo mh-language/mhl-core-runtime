@@ -284,6 +284,50 @@ pipeline P {
 	}
 }
 
+// A memory `path:` interpolates ${...} spans the same way an agent `log:`
+// path does, so `${context.session_id}` gives each run its own file.
+func TestRunJSONMemoryPathInterpolatesContextSessionId(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	src := `
+memory session_mem {
+    type: "json"
+    path: "` + dir + `/state.${context.session_id}.json"
+}
+
+pipeline P {
+    context: { source: "latest" }
+    step S {
+        session_mem.set("attempt", "1")
+    }
+}
+`
+	if err := os.WriteFile(main, []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", main}, &buf); err != nil {
+		t.Fatalf("run: %v\n%s", err, buf.String())
+	}
+
+	matches, _ := filepath.Glob(filepath.Join(dir, "state.*.json"))
+	if len(matches) != 1 {
+		t.Fatalf("expected exactly one interpolated state file, got %v", matches)
+	}
+	if filepath.Base(matches[0]) == "state.${context.session_id}.json" {
+		t.Fatalf("path was written literally, not interpolated: %s", matches[0])
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("reading interpolated state file: %v", err)
+	}
+	var decoded map[string]string
+	if err := json.Unmarshal(raw, &decoded); err != nil || decoded["attempt"] != "1" {
+		t.Fatalf("state file contents wrong: err=%v decoded=%v", err, decoded)
+	}
+}
+
 // TestRunJSONMemoryPersistsAcrossSeparateRuns proves the key differentiator
 // from the ephemeral kv memory: two separate cli.Run invocations against
 // the same path accumulate state, because the second run loads what the

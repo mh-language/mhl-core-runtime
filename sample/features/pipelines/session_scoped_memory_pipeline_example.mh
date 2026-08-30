@@ -1,0 +1,38 @@
+// A `memory` block's `path:` is interpolated for `${...}` spans the same way
+// an agent's `log:` path is — so `${context.session_id}` (available once the
+// pipeline declares a `context:` block) gives every run its own file, and two
+// concurrent runs never write to the same store.
+//
+//   mhl run sample/features/pipelines/session_scoped_memory_pipeline_example.mh
+//   mhl run sample/features/pipelines/session_scoped_memory_pipeline_example.mh
+//
+// Each run creates .mhl/session/state.<session-id>.json and appends to
+// .mhl/session/progress.<session-id>.log — one pair per session id. A bare
+// re-run gets a fresh id and fresh files; `--resume` pins the same id, so it
+// reopens the same files.
+
+memory RunState {
+    type: "json"
+    path: ".mhl/session/state.${context.session_id}.json"
+}
+
+memory RunLog {
+    type: "append_log"
+    path: ".mhl/session/progress.${context.session_id}.log"
+}
+
+workflow SessionScopedMemory {
+    context: {
+        source: "latest"
+        require: false
+    }
+
+    step Record {
+        RunState.set("started_at", context.started_at)
+        RunState.set("resumed", context.resumed)
+        RunLog.append("run ${context.session_id} recorded at ${context.started_at}")
+
+        log.info("[mem] wrote .mhl/session/state.${context.session_id}.json")
+        log.info("[mem] started_at reads back as ${RunState.get(\"started_at\")}")
+    }
+}
