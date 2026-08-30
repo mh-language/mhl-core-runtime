@@ -1,6 +1,7 @@
 package runtime_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
@@ -22,7 +23,7 @@ func TestLoopStopsOnStopWhen(t *testing.T) {
 	lr := runtime.NewLoopRunner(root)
 
 	calls := 0
-	res, err := lr.Run(oneStepPipeline(), nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := lr.Run(context.Background(), oneStepPipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		calls++
 		return nil
 	}, func(string) (bool, error) {
@@ -47,7 +48,7 @@ func TestLoopStopsOnMaxIterations(t *testing.T) {
 	p.MaxIterations = 5
 	lr := runtime.NewLoopRunner(root)
 
-	res, err := lr.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := lr.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		return nil
 	}, func(string) (bool, error) {
 		return false, nil // never satisfied on its own
@@ -70,7 +71,7 @@ func TestLoopStopsOnBreakBeforeEvaluatingStopWhen(t *testing.T) {
 	lr := runtime.NewLoopRunner(root)
 
 	stopWhenCalls := 0
-	res, err := lr.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := lr.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		return &runtime.BreakSignal{Reason: "gave up"}
 	}, func(string) (bool, error) {
 		stopWhenCalls++
@@ -95,7 +96,7 @@ func TestLoopPropagatesGenuineErrors(t *testing.T) {
 	lr := runtime.NewLoopRunner(root)
 
 	boom := errSimulatedCrash
-	_, err := lr.Run(oneStepPipeline(), nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := lr.Run(context.Background(), oneStepPipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		return boom
 	}, func(string) (bool, error) {
 		return false, nil
@@ -113,7 +114,7 @@ func TestLoopResumeContinuesAtNextIteration(t *testing.T) {
 
 	lr := runtime.NewLoopRunner(root)
 	calls := 0
-	_, err := lr.Run(oneStepPipeline(), nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := lr.Run(context.Background(), oneStepPipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		calls++
 		if calls == 3 {
 			return errSimulatedCrash // "crash" during the 3rd iteration
@@ -131,7 +132,7 @@ func TestLoopResumeContinuesAtNextIteration(t *testing.T) {
 	lr2 := runtime.NewLoopRunner(root)
 	var resumedIterationStarts []int
 	iteration := 0
-	res, err := lr2.Run(oneStepPipeline(), nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := lr2.Run(context.Background(), oneStepPipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		iteration++
 		resumedIterationStarts = append(resumedIterationStarts, iteration)
 		return nil

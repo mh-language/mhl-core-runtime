@@ -55,8 +55,21 @@ mhl run <pipeline.mh> [--input key=value ...] [--resume]
 mhl test <file.mh|dir>
 mhl lint [dir]
 mhl lsp        # LSP server over stdio, used by vscode-mhl
+mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
+mhl serve a2a [--addr h:p] [dir]    # workflows as A2A skills (HTTP JSON-RPC)
 mhl version    # or --version / -v
 ```
+
+The "serve" adapters share `internal/execsvc` (the reusable run core: `execsvc.Run(Request) →
+Result`, `execsvc.Load(dir)` for a directory of workflows). `internal/mcpserver` puts one MCP
+tool per pipeline/workflow on top (`tools/call` → `execsvc.Run`, `inputSchema` ←
+`runtime.Pipeline.InputSchema()`, `description` ← the optional `description: "..."` body
+property, else generic); `internal/a2aserver` puts one A2A skill per workflow on top
+(`message/send` starts a task, `tasks/get`/`tasks/cancel` drive it; skill + inputs are named
+explicitly in `message.metadata.skill` / `.input`). Both dispatched from `internal/cli/serve.go`.
+A pipeline/workflow body property (`checkpoint`, `spawn`, `repeat`, `context`, `description`) is
+allowlisted by `lint.checkPipelineProperties` — mirror `internal/lsp/properties.go`'s
+`pipelinePropertyItems` when adding one.
 
 VS Code extension, from `vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
 `mhl` on `PATH`):
@@ -107,7 +120,17 @@ Key packages:
   and checkpoint persistence for `--resume`. Knows step *names* only, not step behavior.
   `pipeline` and `workflow` are one node (`ast.Pipeline.Kind`) and run identically here —
   `goto` works in both; `internal/lang/lint` (`checkPipelineGoto`) is what rejects `goto`
-  outside a `workflow` and validates the target step exists.
+  outside a `workflow` and validates the target step exists. `Runner.Run` / `LoopRunner.Run`
+  take a `context.Context` first arg, checked at each step / iteration boundary; `StepFunc` is
+  `func(ctx, step, *RunContext) error`. `interpreter.RunStep` takes that ctx too and sets it as
+  `evalCtx.goctx`, so a run-level cancel also aborts a blocking call already in flight — an
+  agent subprocess/HTTP call, a `cmd`/`git`/`http` native op, an extension call (`goctxOf(ctx)`
+  everywhere those are issued). `RunTests` and direct interpreter-test calls pass no ctx;
+  `goctxOf` normalizes nil to `context.Background()`.
+- **`internal/execsvc`** — `Run(Request) (*Result, error)`: the reusable "run a pipeline,
+  get a structured result" entry point extracted from `cli.runPipeline`. `internal/cli`'s
+  `run` and (later) the MCP/A2A server adapters call it. `Request.Context` carries the
+  cancel/deadline; the caller owns `interpreter.SetSessionExtensions`.
 - **`internal/features/*`** — `prompt`, `memory` (kv/json/log/jsonl backends),
   `mcp`, `nativeops` (the actual `cmd.exec`/`fs.read`/... implementations behind `tool.go`),
   `tools` (low-level subprocess exec), `adapters` (runs an agent's `cli/*` or `ollama/*`

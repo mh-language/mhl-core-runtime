@@ -59,6 +59,7 @@ func Source(path, src string) []Finding {
 	findings = append(findings, checkAgentCalls(path, merged, aliases)...)
 	findings = append(findings, checkParallelGroups(path, merged)...)
 	findings = append(findings, checkPipelineGoto(path, merged)...)
+	findings = append(findings, checkPipelineProperties(path, merged)...)
 	findings = append(findings, checkAgentProperties(path, merged)...)
 	findings = append(findings, checkToolBlocks(path, merged, aliases)...)
 	findings = append(findings, checkLoopStopWhen(path, merged)...)

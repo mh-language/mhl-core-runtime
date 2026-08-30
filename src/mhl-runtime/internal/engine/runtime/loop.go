@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -191,7 +192,10 @@ func (lr *LoopRunner) Session(id string) *LoopRunner {
 // non-resumed run (even a plain re-run with no --resume flag at all) is
 // deliberate: two independent runs of the same loop pipeline must never
 // share `mem` state just because they share a pipeline name.
-func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen func(instanceID string) (bool, error), resume bool) (*LoopResult, error) {
+func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec StepFunc, evalStopWhen func(instanceID string) (bool, error), resume bool) (*LoopResult, error) {
+	if runCtx == nil {
+		runCtx = context.Background()
+	}
 	iteration := 0
 	resumed := false
 	var finalVars map[string]any
@@ -213,6 +217,9 @@ func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen
 	p.InstanceID = instanceID
 
 	for {
+		if err := runCtx.Err(); err != nil {
+			return nil, fmt.Errorf("runtime: loop %q cancelled before iteration %d: %w", p.Name, iteration, err)
+		}
 		if p.MaxIterations > 0 && iteration >= p.MaxIterations {
 			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "max_iterations", InstanceID: instanceID}); err != nil {
 				return nil, err
@@ -220,7 +227,7 @@ func (lr *LoopRunner) Run(p Pipeline, init InitFunc, exec StepFunc, evalStopWhen
 			return &LoopResult{Iterations: iteration, TerminalReason: "max_iterations", Resumed: resumed, FinalVars: finalVars}, nil
 		}
 
-		result, err := lr.Runner.Run(p, init, exec, false)
+		result, err := lr.Runner.Run(runCtx, p, init, exec, false)
 		if err != nil {
 			return nil, err
 		}

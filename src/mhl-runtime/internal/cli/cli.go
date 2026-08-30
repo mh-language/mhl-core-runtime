@@ -15,18 +15,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mh-language/mhl-core-runtime/internal/a2aserver"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
-	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
+	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	_ "github.com/mh-language/mhl-core-runtime/internal/extbuiltin" // registers the built-in MCP/A2A extensions
 	"github.com/mh-language/mhl-core-runtime/internal/extension/external"
 	"github.com/mh-language/mhl-core-runtime/internal/features/a2a"
 	"github.com/mh-language/mhl-core-runtime/internal/features/mcp"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
-	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
-	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 	"github.com/mh-language/mhl-core-runtime/internal/lsp"
+	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
 )
 
 // Version is the mhl CLI's version string, reported by `mhl version` (and
@@ -49,13 +49,15 @@ func init() {
 	mcp.ExtensionVersion = Version
 	a2a.ExtensionVersion = Version
 	external.SetHostVersion(Version)
+	mcpserver.ServerVersion = Version
+	a2aserver.ServerVersion = Version
 }
 
 // Run dispatches a mhl subcommand. It writes user-facing output to out and
 // returns a non-nil error on failure.
 func Run(args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl <command> [args]\n  commands: init, run, test, lint, lsp, extension, version")
+		return fmt.Errorf("usage: mhl <command> [args]\n  commands: init, run, test, lint, lsp, serve, extension, version")
 	}
 	switch args[0] {
 	case "init":
@@ -68,6 +70,8 @@ func Run(args []string, out io.Writer) error {
 		return runLint(args[1:], out)
 	case "lsp":
 		return runLSP(out)
+	case "serve":
+		return runServe(args[1:], out)
 	case "extension":
 		return runExtension(args[1:], out)
 	case "version", "--version", "-v":
@@ -105,7 +109,7 @@ func runPipeline(args []string, out io.Writer) error {
 	file := args[0]
 	resume := false
 	sessionFlag := ""
-	inputs := map[string]string{}
+	inputs := map[string]any{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--resume":
@@ -131,236 +135,37 @@ func runPipeline(args []string, out io.Writer) error {
 		}
 	}
 
-	src, err := os.ReadFile(file)
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", file, err)
-	}
-	prog, err := parser.Parse(string(src))
-	if err != nil {
-		return fmt.Errorf("parsing %s: %w", file, err)
-	}
-	if err := interpreter.ResolveImports(file, prog); err != nil {
-		return err
-	}
-
-	store := memory.NewKVStore()
-	jsonStore := memory.NewJSONStore()
-
-	pipeline, err := runtime.FindPipeline(prog, "")
+	res, err := execsvc.Run(execsvc.Request{
+		Source:  file,
+		Inputs:  inputs,
+		BaseDir: ".",
+		Session: sessionFlag,
+		Resume:  resume,
+		Out:     out,
+	})
 	if err != nil {
 		return err
 	}
 
-	// Every execution gets its own session directory under .mhl/state, so two
-	// concurrent `mhl run`s of one pipeline never clobber each other's
-	// checkpoint. A bare --resume follows the .latest pointer; --session pins
-	// an explicit one. An empty id means "resume a pre-session checkpoint" —
-	// the runner stays unscoped for back-compat.
-	baseStore := runtime.NewStore(".")
-	sessionID := runtime.ResolveSession(baseStore, pipeline.Name, sessionFlag, resume)
-	if sessionID != "" {
-		fmt.Fprintf(out, "session: %s\n", sessionID)
-	}
-
-	// contextView backs a pipeline's `context:` element — nil when it
-	// declares none. It carries this run's session metadata plus the variable
-	// state left by a prior run (per context.source), read-only, into every
-	// step, the stop_when condition, and pipeline-level `var` initializers.
-	var contextView *interpreter.ContextView
-	if pipeline.Context != nil {
-		priorVars, err := runtime.PriorVars(baseStore, pipeline.Name, pipeline.Context.Source)
-		if err != nil {
-			return err
-		}
-		if pipeline.Context.Require && len(priorVars) == 0 {
-			return fmt.Errorf("context: source %q resolved to no stored state for pipeline %q", pipeline.Context.Source, pipeline.Name)
-		}
-		contextView = &interpreter.ContextView{
-			SessionID: sessionID,
-			StartedAt: time.Now().UTC().Format(time.RFC3339),
-			Resumed:   resume,
-			Vars:      priorVars,
-		}
-	}
-
-	// Coerce each --input value toward its declared `input name: Type`
-	// (types.Any, i.e. a raw string, for anything not declared) once, before
-	// any step runs — a malformed value (e.g. --input count=abc against
-	// `input count: number`) fails immediately here instead of surfacing deep
-	// inside evalAdd/evalMul on whatever step first uses it.
-	declaredInputs := map[string]types.Type{}
-	for _, in := range pipeline.Inputs {
-		declaredInputs[in.Name] = in.Type
-	}
-	coercedInputs := map[string]any{}
-	for k, raw := range inputs {
-		v, err := types.Coerce(fmt.Sprintf("input %q", k), declaredInputs[k], raw)
-		if err != nil {
-			return err
-		}
-		coercedInputs[k] = v
-	}
-	// memInit is computed once, outside exec/evalStopWhen: a pipeline's
-	// `mem` declarations (which names exist, and their get-or-init
-	// initializer expressions) never change across steps or iterations —
-	// only the instance id each closure combines it with (ctx.InstanceID,
-	// evalStopWhen's own instanceID parameter) does. nil for a pipeline with
-	// no `mem` at all, so memContextFor below returns a nil *MemContext too.
-	memInit, err := interpreter.PipelineMemInit(prog, pipeline.Name)
-	if err != nil {
-		return err
-	}
-
-	// One semaphore for the whole run: `spawn: { max_concurrency: N }` caps
-	// concurrent spawned agent calls across every step, not per step.
-	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
-
-	exec := func(step string, ctx *runtime.RunContext) error {
-		for k, v := range coercedInputs {
-			ctx.Vars[k] = v
-		}
-		ctx.Vars["__last_step"] = step
-		// A `parallel` branch step runs with ctx.Out set to a per-branch
-		// buffer so concurrent branches never interleave on stdout; every
-		// other step leaves it nil and writes straight to `out`.
-		stepOut := out
-		if ctx.Out != nil {
-			stepOut = ctx.Out
-		}
-		fmt.Fprintf(stepOut, "step: %s\n", step)
-		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
-		err := interpreter.RunStep(prog, step, file, stepOut, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
-		// interpreter and runtime each define their own break/goto signal
-		// type and stay independent of one another (see runtime/signal.go);
-		// this closure is the one place both are in scope to translate
-		// between them, the same seam it already is for everything else
-		// crossing that boundary.
-		if reason, ok := interpreter.IsBreak(err); ok {
-			return &runtime.BreakSignal{Reason: reason}
-		}
-		if target, ok := interpreter.IsGoto(err); ok {
-			return &runtime.GotoSignal{Target: target}
-		}
-		return err
-	}
-
-	init := pipelineVarsInit(prog, pipeline.Name, file, out, store, jsonStore, contextView)
-
-	// A `loop pipeline` repeats itself until its stop_when is satisfied, its
-	// max_iterations ceiling is hit, or a step explicitly `break`s — see
-	// runtime.LoopRunner. A plain pipeline (the common case today) falls
-	// straight through to running once, unchanged.
-	if !pipeline.Loop {
-		runner := runtime.NewRunner(".").Session(sessionID)
-		runner.Out = out
-		res, err := runner.Run(pipeline, init, exec, resume)
-		if err != nil {
-			return err
-		}
-		if err := persistContextResult(runner.Store, pipeline, res.FinalVars); err != nil {
-			return err
-		}
+	if !res.Loop {
 		if res.Resumed {
-			fmt.Fprintf(out, "resumed pipeline %q; skipped %d completed step(s)\n", pipeline.Name, len(res.Skipped))
+			fmt.Fprintf(out, "resumed pipeline %q; skipped %d completed step(s)\n", res.PipelineName, len(res.Skipped))
 		}
 		fmt.Fprintf(out, "executed %d step(s)\n", len(res.Executed))
 		if res.Broke {
-			printBreakReason(out, pipeline.Name, res.BreakReason)
+			printBreakReason(out, res.PipelineName, res.BreakReason)
 		}
 		return nil
 	}
 
-	evalStopWhen := func(instanceID string) (bool, error) {
-		if pipeline.StopWhen == nil {
-			return false, nil
-		}
-		mem := memContextFor(memInit, pipeline.Name, instanceID)
-		return interpreter.EvalCondition(prog, pipeline.StopWhen, file, out, store, jsonStore, mem, contextView)
-	}
-	loopRunner := runtime.NewLoopRunner(".").Session(sessionID)
-	loopRunner.Runner.Out = out
-	res, err := loopRunner.Run(pipeline, init, exec, evalStopWhen, resume)
-	if err != nil {
-		return err
-	}
-	if err := persistContextResult(loopRunner.Runner.Store, pipeline, res.FinalVars); err != nil {
-		return err
-	}
 	if res.Resumed {
-		fmt.Fprintf(out, "resumed loop %q at iteration %d\n", pipeline.Name, res.Iterations)
+		fmt.Fprintf(out, "resumed loop %q at iteration %d\n", res.PipelineName, res.Iterations)
 	}
-	fmt.Fprintf(out, "loop %q ran %d iteration(s), stopped: %s\n", pipeline.Name, res.Iterations, res.TerminalReason)
+	fmt.Fprintf(out, "loop %q ran %d iteration(s), stopped: %s\n", res.PipelineName, res.Iterations, res.TerminalReason)
 	if res.TerminalReason == "break" {
-		printBreakReason(out, pipeline.Name, res.BreakReason)
+		printBreakReason(out, res.PipelineName, res.BreakReason)
 	}
 	return nil
-}
-
-// pipelineVarsInit returns a runtime.InitFunc that (re-)seeds ctx.Vars with
-// pipelineName's top-level `var` declarations (interpreter.EvalPipelineVars)
-// — evaluated fresh on *every* call, not once here at setup time, since a
-// pipeline var's expression may read `memory` (e.g. a pending-features
-// list), and each call corresponds to one fresh Runner.Run() — one loop
-// iteration — so it must see that iteration's current memory state, not a
-// stale snapshot from the first one. ctx.Vars already exists (Run
-// allocates it before calling init) and is also where --input/__last_step
-// live (see exec above); merging pipeline vars into that same map, rather
-// than keeping a separate one, is what lets a single ctx.Vars argument
-// carry all of a step's non-step-local state through to
-// interpreter.RunStep — a pipeline var and an --input flag sharing a name
-// would collide there, the same class of foot-gun as any other
-// reserved-name collision in the language.
-func pipelineVarsInit(prog *ast.Program, pipelineName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, contextView *interpreter.ContextView) runtime.InitFunc {
-	return func(ctx *runtime.RunContext) error {
-		env, err := interpreter.EvalPipelineVars(prog, pipelineName, file, out, store, jsonStore, contextView)
-		if err != nil {
-			return err
-		}
-		for k, v := range env {
-			ctx.Vars[k] = v
-		}
-		return nil
-	}
-}
-
-// persistContextResult writes a completed run's final variable state as this
-// session's result.json (and refreshes the .latest pointer), but only when
-// the pipeline declared a `context:` block — the one consumer of it. A nil
-// finalVars (the run broke or failed) writes nothing.
-func persistContextResult(store *runtime.Store, pipeline runtime.Pipeline, finalVars map[string]any) error {
-	if pipeline.Context == nil || finalVars == nil {
-		return nil
-	}
-	// Drop the runtime's own bookkeeping entries (e.g. __last_step) so
-	// context.vars only ever exposes the pipeline's declared inputs and vars.
-	clean := make(map[string]any, len(finalVars))
-	for k, v := range finalVars {
-		if strings.HasPrefix(k, "__") {
-			continue
-		}
-		clean[k] = v
-	}
-	return store.WriteResult(pipeline.Name, clean)
-}
-
-// memContextFor builds the interpreter.MemContext backing pipelineName's
-// `mem` declarations for one specific run instance, or nil when init is nil
-// (the pipeline declares no `mem` at all — the common case, and the only
-// one RunStep/EvalCondition need to treat specially, since a nil
-// *MemContext just means their own mem fallback tier never fires). The
-// backing file is isolated per instance (.mhl/state/mem/<pipeline>/
-// <instanceID>.json) — see runtime.RunContext.InstanceID and
-// LoopRunner.Run's id resolution for what instanceID actually is: "default"
-// for a plain pipeline, a fresh or resumed loop-run id for a `loop
-// pipeline`.
-func memContextFor(init map[string]*ast.Expr, pipelineName, instanceID string) *interpreter.MemContext {
-	if len(init) == 0 {
-		return nil
-	}
-	return &interpreter.MemContext{
-		Path: filepath.Join(runtime.StateDirName, "mem", pipelineName, instanceID+".json"),
-		Init: init,
-	}
 }
 
 func printBreakReason(out io.Writer, name string, reason any) {
