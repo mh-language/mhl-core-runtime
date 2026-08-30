@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -92,20 +91,12 @@ type httpServer struct {
 	// it, so a server shutdown cancels every in-flight background run.
 	baseCtx context.Context
 
-	// runsDir is the parent of each async run's .mhl/ state tree. ownsRunsDir
-	// is set when we created a temp one (removed on shutdown); a caller-given
-	// stateDir is left in place so runs survive a restart.
-	runsDir     string
-	ownsRunsDir bool
-
-	mu       sync.Mutex
-	sessions map[string]*httpSession
-	runs     map[string]*asyncRun
-}
-
-type httpSession struct {
-	sess     *session
-	lastUsed time.Time
+	// State seams — see store.go. Each has one implementation today (a
+	// process-local map, or the on-disk .mhl/state tree); Phase 3 swaps in
+	// extension-backed ones for a fleet of replicas.
+	sessions SessionStore
+	runs     RunRegistry
+	cps      CheckpointStore
 }
 
 func buildHTTP(ctx context.Context, dir, token, stateDir string, logw io.Writer) (http.Handler, *httpServer, error) {
@@ -113,26 +104,19 @@ func buildHTTP(ctx context.Context, dir, token, stateDir string, logw io.Writer)
 	if err != nil {
 		return nil, nil, err
 	}
-	runsDir, owns := stateDir, false
-	if runsDir == "" {
-		runsDir, err = os.MkdirTemp("", "mhl-serve-mcp-")
-		if err != nil {
-			return nil, nil, err
-		}
-		owns = true
-	} else if err := os.MkdirAll(runsDir, 0o755); err != nil {
+	cps, err := newDiskCheckpointStore(stateDir)
+	if err != nil {
 		return nil, nil, err
 	}
 	h := &httpServer{
 		// Concurrent tools/call runs write their log()/step output here; a
 		// mutex keeps lines from interleaving mid-write.
-		srv:         &server{tools: tools, logw: &syncWriter{w: logw}},
-		token:       token,
-		baseCtx:     ctx,
-		runsDir:     runsDir,
-		ownsRunsDir: owns,
-		sessions:    map[string]*httpSession{},
-		runs:        map[string]*asyncRun{},
+		srv:      &server{tools: tools, logw: &syncWriter{w: logw}},
+		token:    token,
+		baseCtx:  ctx,
+		sessions: newMemSessionStore(),
+		runs:     newMemRunRegistry(),
+		cps:      cps,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(mcpPath, h.handleMCP)
@@ -188,21 +172,22 @@ func (h *httpServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 	var sess *session
 	switch sid := r.Header.Get("Mcp-Session-Id"); {
 	case sid != "":
-		sess = h.lookup(sid)
-		if sess == nil {
+		var ok bool
+		sess, ok = h.sessions.Get(sid)
+		if !ok {
 			// Unknown/expired session — the client re-runs `initialize`.
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 	case msg.Method == "initialize":
-		h.sweepSessions()
+		h.sessions.SweepIdle(sessionTTL)
 		h.sweepRuns()
 		sess = &session{}
 		reply := h.srv.dispatch(r.Context(), sess, msg)
 		if reply != nil && reply.Error == nil {
 			sess.id = runtime.NewSessionID()
-			h.store(sess)
+			h.sessions.Put(sess)
 			w.Header().Set("Mcp-Session-Id", sess.id)
 		}
 		h.finish(w, reply)
@@ -241,44 +226,11 @@ func (h *httpServer) finish(w http.ResponseWriter, reply *rpcMsg) {
 }
 
 func (h *httpServer) deleteSession(w http.ResponseWriter, r *http.Request) {
-	sid := r.Header.Get("Mcp-Session-Id")
-	h.mu.Lock()
-	_, ok := h.sessions[sid]
-	delete(h.sessions, sid)
-	h.mu.Unlock()
-	if !ok {
+	if !h.sessions.Delete(r.Header.Get("Mcp-Session-Id")) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *httpServer) lookup(sid string) *session {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	hs := h.sessions[sid]
-	if hs == nil {
-		return nil
-	}
-	hs.lastUsed = time.Now()
-	return hs.sess
-}
-
-func (h *httpServer) store(s *session) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.sessions[s.id] = &httpSession{sess: s, lastUsed: time.Now()}
-}
-
-func (h *httpServer) sweepSessions() {
-	cut := time.Now().Add(-sessionTTL)
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for id, hs := range h.sessions {
-		if hs.lastUsed.Before(cut) {
-			delete(h.sessions, id)
-		}
-	}
 }
 
 // writeRPC serialises one JSON-RPC envelope as the HTTP response body.

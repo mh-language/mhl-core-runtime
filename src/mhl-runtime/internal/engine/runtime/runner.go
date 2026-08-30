@@ -93,6 +93,11 @@ const maxStepVisits = 10_000
 // the pipeline's checkpoint config is enabled with the per_step strategy.
 type Runner struct {
 	Store *Store
+	// cp is where checkpoints and result.json actually go. It defaults to
+	// Store (so the public field stays the source of truth for the built-in
+	// path and for tests that read it), and WithStateStore swaps it for an
+	// alternative implementation without disturbing Store or Session.
+	cp StateStore
 	// SessionID is the per-execution id whose directory Store is scoped to
 	// (see Store.Session), surfaced on RunContext.SessionID and used by
 	// cli.go's `context:` support. Empty for an unscoped runner — the legacy
@@ -110,14 +115,34 @@ type Runner struct {
 // NewRunner returns a Runner backed by a Store rooted at root. It is
 // unscoped — call Session to isolate one execution's checkpoints.
 func NewRunner(root string) *Runner {
-	return &Runner{Store: NewStore(root)}
+	s := NewStore(root)
+	return &Runner{Store: s, cp: s}
 }
 
 // Session returns a copy of r whose Store writes under a per-execution
 // directory named id, so two concurrent runs of the same pipeline never
 // clobber each other's checkpoint. An empty id returns an unscoped runner.
 func (r *Runner) Session(id string) *Runner {
-	return &Runner{Store: r.Store.Session(id), SessionID: id, Out: r.Out}
+	s := r.Store.Session(id)
+	return &Runner{Store: s, cp: s, SessionID: id, Out: r.Out}
+}
+
+// WithStateStore routes this runner's checkpoint and result persistence
+// through cp instead of the built-in file Store. The serve layer uses it
+// (Phase 3) to back a fleet of concurrent runs with an external store; cp is
+// expected to already be scoped to this run. Returns r for chaining.
+func (r *Runner) WithStateStore(cp StateStore) *Runner {
+	r.cp = cp
+	return r
+}
+
+// checkpoints returns the StateStore this runner persists through — cp when
+// set (always, once constructed via NewRunner/Session), else the file Store.
+func (r *Runner) checkpoints() StateStore {
+	if r.cp != nil {
+		return r.cp
+	}
+	return r.Store
 }
 
 // Run executes the pipeline, starting at its first declared step and then
@@ -170,7 +195,7 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 	current := first.Name
 	resumedFromCheckpoint := false
 	if resume && p.Checkpoint.Enabled {
-		cp, found, err := r.Store.Load(p.Name)
+		cp, found, err := r.checkpoints().Load(p.Name)
 		if err != nil {
 			return result, err
 		}
@@ -230,7 +255,7 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 					Variables:      copyVars(ctx.Vars),
 					TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
 				}
-				if saveErr := r.Store.Save(cp); saveErr != nil {
+				if saveErr := r.checkpoints().Save(cp); saveErr != nil {
 					return result, saveErr
 				}
 			}
@@ -270,7 +295,7 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 
 	// Successful completion clears checkpoint state (checkpoint.clear()).
 	if p.Checkpoint.Enabled {
-		if err := r.Store.Clear(p.Name); err != nil {
+		if err := r.checkpoints().Clear(p.Name); err != nil {
 			return result, err
 		}
 	}
@@ -293,7 +318,7 @@ func (r *Runner) checkpointStep(p Pipeline, perStep bool, current, next string, 
 		Variables:      copyVars(ctx.Vars),
 		TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
 	}
-	return r.Store.Save(cp)
+	return r.checkpoints().Save(cp)
 }
 
 func copyVars(in map[string]any) map[string]any {

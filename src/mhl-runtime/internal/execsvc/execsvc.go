@@ -323,7 +323,7 @@ func publicVars(vars map[string]any) map[string]any {
 // session's result.json (and refreshes the .latest pointer), but only when
 // the pipeline declared a `context:` block. A nil finalVars (broke/failed)
 // writes nothing.
-func persistContextResult(store *runtime.Store, pipeline runtime.Pipeline, finalVars map[string]any) error {
+func persistContextResult(store runtime.StateStore, pipeline runtime.Pipeline, finalVars map[string]any) error {
 	if pipeline.Context == nil || finalVars == nil {
 		return nil
 	}

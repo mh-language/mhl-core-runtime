@@ -55,6 +55,22 @@ func (c *Checkpoint) Expired(now time.Time) bool {
 	return now.After(deadline)
 }
 
+// StateStore is the checkpoint persistence a Runner performs: load/save/clear
+// the in-progress checkpoint for a pipeline, and write a completed run's
+// result.json. The built-in implementation is *Store (JSON files under
+// .mhl/state); the serve layer supplies an alternative — an extension-backed
+// store for a fleet of concurrent runs — via Runner.WithStateStore (Phase 3).
+// Session scoping stays a concern of the concrete store: a Runner is always
+// handed an already-scoped StateStore.
+type StateStore interface {
+	Load(pipeline string) (*Checkpoint, bool, error)
+	Save(cp *Checkpoint) error
+	Clear(pipeline string) error
+	WriteResult(pipeline string, vars map[string]any) error
+}
+
+var _ StateStore = (*Store)(nil)
+
 // Store persists checkpoints as JSON files under <root>/.mhl/state. When
 // Session has scoped it to a per-execution id, dir is <base>/<sessionID> and
 // checkpoints for two concurrent runs of the same pipeline never collide;
