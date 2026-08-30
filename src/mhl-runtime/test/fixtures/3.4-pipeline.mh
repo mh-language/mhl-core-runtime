@@ -1,4 +1,4 @@
-pipeline Release {
+workflow Release {
     input environment: string
     var approved = false
 

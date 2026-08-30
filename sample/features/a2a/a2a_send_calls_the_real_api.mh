@@ -8,7 +8,7 @@
 // (message/send -> tasks/get polling, agent_card, cancel, input-required
 // rejection) lives in src/mhl-runtime/internal/cli/a2a_test.go and
 // src/mhl-runtime/internal/features/a2a/client_test.go, using httptest.
-a2a_agent Remote {
+extension a2a Remote {
     url: env("A2A_TEST_URL")
     headers: {
         "Authorization": "Bearer " + env("A2A_TOKEN")

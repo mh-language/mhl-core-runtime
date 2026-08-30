@@ -33,7 +33,7 @@ func TestParallelGotoInsideBranchFlagged(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
-pipeline P {
+workflow P {
     parallel G {
         step One { goto Two }
         step Two { log("two") }
@@ -68,7 +68,7 @@ func TestParallelGotoTargetingGroupedStepFlagged(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
-pipeline P {
+workflow P {
     step Start { goto Two }
     parallel G {
         step One { log("one") }
@@ -105,7 +105,7 @@ func TestParallelGotoBetweenPlainStepsStillOK(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
-pipeline P {
+workflow P {
     parallel G {
         step A { log("a") }
         step B { log("b") }

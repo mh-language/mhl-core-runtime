@@ -72,10 +72,6 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 	if err != nil {
 		return "", fmt.Errorf("%s.run: %w", agentName, err)
 	}
-	promptText, err = applyAgentDeclaredToolScope(ctx, agent, promptText)
-	if err != nil {
-		return "", fmt.Errorf("%s.run: %w", agentName, err)
-	}
 
 	response, err := runAgentAttempt(ctx, agentName, agent, promptText, schemaText)
 	if err == nil {

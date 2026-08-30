@@ -1,4 +1,4 @@
-a2a_agent Translator {
+extension a2a Translator {
     url: "https://translator.example.test/a2a"
     headers: {
         "Authorization": "Bearer " + env("A2A_TOKEN")

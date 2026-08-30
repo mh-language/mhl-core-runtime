@@ -2,15 +2,16 @@ export agent Reviewer {
     engine: "cli/claude-code"
     command: "claude"
     args: ["-p", "${prompt}"]
-    tools: [execution]
-    mcp_servers: [GitHub]
     retry: { max_attempts: 3, delay: 2s, retry_on: [500, "timeout"] }
     cache: { ttl: 1h, storage: "disk" }
     rate_limit: { requests_per_minute: 30, concurrency: 2 }
-    before: (mcp, tools) -> {
-        return { diff: tools.execution.git_diff() }
+    before: () -> {
+        return {
+            diff: execution.git_diff(),
+            issue: GitHub.call("get_issue", { number: 42 })
+        }
     }
-    after: (mcp, tools, result) -> {
+    after: () -> {
         log("review is ${result.size()} characters")
     }
     fallback: [Backup]
@@ -24,7 +25,7 @@ tool execution {
     git_diff() -> git.diff()
 }
 
-mcp_server GitHub {
+extension mcp GitHub {
     transport: "http"
     url: "https://mcp.example.test"
     headers: { "Authorization": "Bearer " + env("MCP_TOKEN") }

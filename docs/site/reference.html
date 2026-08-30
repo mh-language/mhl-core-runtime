@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Self-contained MHL language reference: syntax, agents, prompts, memory, tools, MCP, A2A, pipelines, and tests." />
+    <meta name="description" content="Self-contained MHL language reference: syntax, agents, prompts, memory, tools, extensions, pipelines, tests, and CLI behavior." />
     <meta name="theme-color" content="#10161f" />
     <meta property="og:title" content="MHL Reference — Meta-Harness Language" />
     <meta property="og:description" content="Syntax and complete examples for every MHL construct." />
@@ -29,7 +29,7 @@
           <kbd>/</kbd>
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
-        <a class="github-link" href="sample.html">Sample</a>
+        <a class="github-link" href="extensions.html">Extensions</a>
         <a class="github-link" href="index.html">Overview</a>
         <a class="github-link" href="stdlib.html">Standard library</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
@@ -49,9 +49,10 @@
           <a class="nav-link" href="#prompt">prompt</a>
           <a class="nav-link" href="#memory">memory and mem</a>
           <a class="nav-link" href="#tool">tool and native ops</a>
-          <a class="nav-link" href="#mcp">mcp_server</a>
-          <a class="nav-link" href="#a2a">a2a_agent</a>
-          <a class="nav-link" href="#pipeline">pipeline</a>
+          <a class="nav-link" href="#extension">extension</a>
+          <a class="nav-link" href="#mcp">extension mcp</a>
+          <a class="nav-link" href="#a2a">extension a2a</a>
+          <a class="nav-link" href="#pipeline">pipeline and workflow</a>
           <a class="nav-link" href="#tests">test and describe</a>
           <a class="nav-link" href="#cli">CLI and security</a>
         </nav>
@@ -63,7 +64,7 @@
 
       <main class="content reference-content">
         <section class="ref-hero doc-section" id="overview" data-title="reference how to use legend status alpha">
-          <p class="eyebrow accent">MHL · SELF-CONTAINED REFERENCE · v0.1 ALPHA</p>
+          <p class="eyebrow accent">MHL · SELF-CONTAINED REFERENCE · v1.0.0-alpha</p>
           <h1>The language, from literals to loops.</h1>
           <p class="lead">Everything you need to read and write an MHL program is on this page: practical grammar, behavior, commands, and complete examples. No explanation depends on internal project documents.</p>
           <div class="legend">
@@ -74,13 +75,14 @@
             <a href="#agent"><code>agent</code><span>call AI</span></a>
             <a href="#prompt"><code>prompt</code><span>build context</span></a>
             <a href="#tool"><code>tool</code><span>perform actions</span></a>
-            <a href="#pipeline"><code>pipeline</code><span>control the flow</span></a>
+            <a href="#pipeline"><code>pipeline</code> · <code>workflow</code><span>control the flow</span></a>
           </div>
+          <div class="tip-row"><span>RELATED GUIDE</span><p>Need to add a capability that is not built in? Read <a href="extensions.html">Extending the runtime</a> for manifests, the process protocol, permissions, and installation.</p></div>
         </section>
 
-        <section class="feature doc-section" id="program" data-title="program modules use export import alias files">
+        <section class="feature doc-section" id="program" data-title="program modules use export alias files">
           <div class="feature-head"><h2><span class="feature-num">01</span>Programs and modules</h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">A program is a sequence of top-level declarations. Use <code>export</code> to publish a declaration and <code>use</code> to import it from another file, optionally under a local alias.</p>
+          <p class="feature-lede">A program is a sequence of top-level declarations. Mark a declaration <code>export</code> to publish it, and <code>use { ... } from "file.mh"</code> to bring named declarations in from another file, optionally under a local alias. <code>use</code> is the only cross-file mechanism.</p>
 
           <p class="block-label">TWO-FILE EXAMPLE</p>
           <div class="file-example">
@@ -110,7 +112,7 @@ pipeline Welcome {
             <div class="table-row"><span>Import names</span><code>use {A, B} from "file.mh"</code><span>Bring in explicit contracts only.</span></div>
             <div class="table-row"><span>Local alias</span><code>use {LongName as Short} from "file.mh"</code><span>Avoid collisions and improve readability.</span></div>
           </div>
-          <div class="tip-row"><span>ALPHA</span><p>Prefer <code>use</code> for executable composition. The <code>import "file.mh" as alias</code> form is part of the syntax, but qualified namespace access is not yet the recommended operational form.</p></div>
+          <div class="tip-row"><span>NOTE</span><p><code>use</code> merges the target file's declarations into the program's flat namespace (transitively — a used file's own <code>use</code>s come along), so a name resolves the same however it arrived. There is no namespace-qualified import.</p></div>
         </section>
 
         <section class="feature doc-section" id="syntax" data-title="syntax types string number bool null arrays objects duration comments input type alias">
@@ -180,7 +182,8 @@ pipeline Publish {
 }</code></pre>
 
           <p class="block-label">PRACTICAL GRAMMAR</p>
-          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | memory | tool | mcp_server | a2a_agent | pipeline | type | enum | test)
+          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | memory | tool | extension | pipeline | type | enum | test)
+extension    := "extension" kind identifier "{" {property} "}"   // kind is "mcp", "a2a" (built in), or an installed adapter's kind
 type-alias   := "type" identifier "=" type
 enum         := "enum" identifier "{" [identifier {"," identifier}] "}"
 variable     := "var" identifier "=" expression
@@ -271,7 +274,7 @@ var next = ready.find((f) -> f.id == 20)</code></pre>
             <div class="table-row"><span>Iteration</span><code>for (var item in items) { ... }</code><span>Iterates over an array.</span></div>
             <div class="table-row"><span>Error handling</span><code>try { ... } catch (err) { ... } finally { ... }</code><span>Handles recoverable failures.</span></div>
             <div class="table-row"><span>Return</span><code>return value</code><span>Exits a method or step.</span></div>
-            <div class="table-row"><span>Transition</span><code>goto StepName</code><span>Redirects to another pipeline step.</span></div>
+            <div class="table-row"><span>Transition</span><code>goto StepName</code><span>Jumps to another step, forward or backward. Only inside a <code>workflow</code> (not a plain <code>pipeline</code>); the target must be a step of that <code>workflow</code>.</span></div>
             <div class="table-row"><span>Stop</span><code>break "reason"</code><span>Stops the current pipeline or loop.</span></div>
           </div>
           <pre class="code-block"><code class="language-mhl">tool Summary {
@@ -299,7 +302,7 @@ pipeline SafeRead {
           <div class="tip-row"><span>ERRORS</span><p><code>fail("message")</code> creates a failure that <code>catch</code> can handle. Without a handler, the failure stops execution and the CLI returns a nonzero status.</p></div>
         </section>
 
-        <section class="feature doc-section" id="agent" data-title="agent cli ollama run prompt schema retry cache rate limit fallback tools mcp_servers before after hooks">
+        <section class="feature doc-section" id="agent" data-title="agent cli ollama run prompt schema retry cache rate limit fallback before after hooks">
           <div class="feature-head"><h2><span class="feature-num">05</span><code>agent</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Declares an AI backend callable through <code>.run(prompt: ...)</code>. The runtime supports local CLI processes and models served by Ollama.</p>
 
@@ -351,10 +354,10 @@ var result = json.parse(raw)</code></pre>
             <div class="table-row"><span><code>cache</code></span><code>{ttl: 1h, storage: "disk"}</code><span>Reuses a response by exact key.</span></div>
             <div class="table-row"><span><code>rate_limit</code></span><code>{requests_per_minute: 20, concurrency: 2}</code><span>Controls frequency and concurrency.</span></div>
             <div class="table-row"><span><code>fallback</code></span><code>[Backup, agent {...}]</code><span>Tries agents in declaration order.</span></div>
-            <div class="table-row"><span><code>tools</code> / <code>mcp_servers</code></span><code>[execution] · [GitHub]</code><span>Folded into every <code>.run()</code> prompt as an allowed-scope instruction, and what <code>before</code>/<code>after</code> below bind their <code>tools</code>/<code>mcp</code> parameters to.</span></div>
-            <div class="table-row"><span><code>before</code></span><code>(mcp, tools) -> {...}</code><span>Runs once, before the prompt is built.</span></div>
-            <div class="table-row"><span><code>after</code></span><code>(mcp, tools, result) -> {...}</code><span>Runs once, on the final response.</span></div>
+            <div class="table-row"><span><code>before</code></span><code>() -> {...}</code><span>Runs once, before the prompt is built.</span></div>
+            <div class="table-row"><span><code>after</code></span><code>() -> {...}</code><span>Runs once, on the final response (bound as <code>result</code>).</span></div>
           </div>
+          <div class="tip-row"><span>ALPHA</span><p><code>retry.backoff</code>, <code>cache.strategy</code> and <code>rate_limit.on_exceeded</code> each accept exactly one value today — <code>"exponential"</code>, <code>"exact"</code> and <code>"queue"</code> respectively. Any other value is a build-time error at both <code>mhl lint</code> and <code>mhl run</code>. Fields the older docs may still show (<code>api_key</code>, <code>timeout</code>, <code>system_instructions</code>) are not read and are now a lint error.</p></div>
           <div class="security-banner"><span>!</span><div><strong>Do not place secrets in <code>args</code>.</strong><p>Prefer environment variables resolved by the invoked process. To preserve spaces and special characters in prompts, keep <code>"${prompt}"</code> as one complete array element.</p></div></div>
 
           <p class="block-label">BEFORE / AFTER HOOKS</p>
@@ -362,16 +365,14 @@ var result = json.parse(raw)</code></pre>
           <pre class="code-block"><code class="language-mhl">agent Reviewer {
     command: "claude"
     args: ["-p", "${prompt}"]
-    tools: [execution]
-    mcp_servers: [GitHub]
 
-    before: (mcp, tools) -> {
+    before: () -> {
         return {
-            issue: mcp.GitHub.call("get_issue", { number: 42 }),
-            diff: tools.execution.git_diff()
+            issue: GitHub.call("get_issue", { number: 42 }),
+            diff: execution.git_diff()
         }
     }
-    after: (mcp, tools, result) -> {
+    after: () -> {
         log("review is ${result.size()} characters")
     }
 }
@@ -380,12 +381,11 @@ var review = Reviewer.run(
     prompt: "Issue: ${issue}\nDiff: ${diff}\nWrite a review."
 )</code></pre>
           <ul class="plain-list">
-            <li><code>mcp</code>/<code>tools</code> are maps keyed by declared name — <code>mcp.GitHub</code>, <code>tools.execution</code> — covering every entry in that agent's own <code>mcp_servers:</code>/<code>tools:</code>, not any other declaration in the program.</li>
-            <li>A dotted entry in <code>tools:</code> (<code>tools: [execution.read_file]</code>) narrows that tool's binding to just that method; calling any other method on it is rejected. Naming the same tool bare anywhere in the list removes the restriction.</li>
+            <li>A hook body is an ordinary expression scope: it calls declared <code>tool</code>/<code>extension</code>/<code>agent</code> names, native ops (<code>http</code>, <code>cmd</code>, …) and <code>mem</code> the same way a step does, and sees the calling step's variables. Both hooks take <strong>no parameters</strong> — a leftover <code>(mcp, tools) -&gt;</code> is an error.</li>
             <li><code>before</code>'s returned object's fields become real <code>"${...}"</code> bindings available to that call's <code>prompt:</code>/<code>schema:</code> arguments.</li>
-            <li><code>after</code> runs once, against whichever leg — the primary agent or a successful <code>fallback</code> — produced the final response. A non-<code>null</code> string return replaces that response; anything else (including no <code>return</code>) passes it through unchanged.</li>
+            <li><code>after</code> runs once, against whichever leg — the primary agent or a successful <code>fallback</code> — produced the final response, with it bound in the body as <code>result</code>. A non-<code>null</code> string return replaces that response; anything else (including no <code>return</code>) passes it through unchanged.</li>
           </ul>
-          <div class="tip-row"><span>REAL VS. BEST-EFFORT</span><p><code>before</code>/<code>after</code> execute real calls through mhl itself — the model never has to cooperate. <code>tools:</code>/<code>mcp_servers:</code>'s prompt text (above) is the opposite: a hint the model may or may not act on, since mhl has no channel to enforce it against a CLI-backed agent. Prefer <code>before</code>/<code>after</code> when the agent actually needs the data to do its job.</p></div>
+          <div class="tip-row"><span>REAL CALLS</span><p><code>before</code>/<code>after</code> execute real calls through mhl itself — the model never has to cooperate, and there is no separate declarative tool-scope list on the agent. When an agent needs a tool or an extension, call it from <code>before</code> and pass the result in through the prompt.</p></div>
         </section>
 
         <section class="feature doc-section" id="prompt" data-title="prompt template interpolation markdown from nested composition parameters">
@@ -556,11 +556,23 @@ var recent = git.log(5, dir: target)             // --oneline text, newest first
           <div class="security-banner"><span>!</span><div><strong>Prefer argv.</strong><p><code>cmd.exec(["program", "arg with spaces"])</code> preserves every argument and avoids accidental shell interpolation. Use a command string only when shell features are actually required.</p></div></div>
         </section>
 
+        <section class="feature doc-section" id="extension" data-title="extension kind mcp a2a external adapter declare call built-in installed manifest">
+          <div class="feature-head"><h2><span class="feature-num">09</span><code>extension</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede"><code>extension &lt;kind&gt; &lt;Name&gt; { ...props }</code> declares a use of a runtime capability provider. The core sees only a kind, a name, and a property bag; the adapter registered for that kind validates the properties and defines the methods you call on <code>&lt;Name&gt;</code>. Two kinds ship built in — <code>mcp</code> and <code>a2a</code>, detailed below. Any other kind resolves through an installed external adapter.</p>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Kind</span><span>Backs</span><span>Where</span></div>
+            <div class="table-row"><span><code>extension mcp</code></span><span>a Model Context Protocol server</span><span>built in — §10</span></div>
+            <div class="table-row"><span><code>extension a2a</code></span><span>a remote Agent2Agent endpoint</span><span>built in — §11</span></div>
+            <div class="table-row"><span><code>extension &lt;other&gt;</code></span><span>a custom capability</span><span><a href="extensions.html">external adapter</a></span></div>
+          </div>
+          <div class="tip-row"><span>BUILDING ONE</span><p>Writing an adapter for a new kind — its manifest, the JSON-RPC process protocol, permissions, secrets, and <code>mhl extension install</code> — is covered by the <a href="extensions.html">extension guide</a>, not this page.</p></div>
+        </section>
+
         <section class="feature doc-section" id="mcp" data-title="mcp server stdio http sse headers credential tools call list_tools discover x-mcp-header input_required mrtr protocol auto handshake initialize 2025-11-25 2025-06-18 2026-07-28 negotiation fallback">
-          <div class="feature-head"><h2><span class="feature-num">09</span><code>mcp_server</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">10</span><code>extension mcp</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Declares a Model Context Protocol server connection. Configuration supports stdio or HTTP transports and secure environment references. Call it with <code>Server.call("toolName", { ... })</code>, discover its catalog with <code>Server.list_tools()</code>, or inspect it with <code>Server.discover()</code>.</p>
           <div class="syntax-columns">
-            <div><h3>stdio</h3><pre class="code-block"><code class="language-mhl">mcp_server LocalFiles {
+            <div><h3>stdio</h3><pre class="code-block"><code class="language-mhl">extension mcp LocalFiles {
     transport: "stdio"
     command: "npx"
     args: [
@@ -569,7 +581,7 @@ var recent = git.log(5, dir: target)             // --oneline text, newest first
         "."
     ]
 }</code></pre></div>
-            <div><h3>HTTP</h3><pre class="code-block"><code class="language-mhl">mcp_server IssueTracker {
+            <div><h3>HTTP</h3><pre class="code-block"><code class="language-mhl">extension mcp IssueTracker {
     transport: "http"
     url: "https://mcp.example.com"
     headers: {
@@ -596,10 +608,10 @@ var info = IssueTracker.discover()</code></pre></div>
         </section>
 
         <section class="feature doc-section" id="a2a" data-title="a2a agent2agent protocol remote agent send agent_card get_task cancel task message json-rpc message/send tasks/get tasks/cancel well-known agent-card poll blocking context">
-          <div class="feature-head"><h2><span class="feature-num">10</span><code>a2a_agent</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">11</span><code>extension a2a</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Declares a stateless connection to a remote agent that speaks the <a href="https://a2a-protocol.org/latest/specification/">Agent2Agent (A2A)</a> protocol, revision 0.2.x: JSON-RPC 2.0 over HTTP(S) with header-based auth. Send it a message with <code>Agent.send("...")</code>, read its published capabilities with <code>Agent.agent_card()</code>, and poll or abort a running task with <code>Agent.get_task(id)</code> / <code>Agent.cancel(id)</code>.</p>
           <div class="syntax-columns">
-            <div><h3>Declaration</h3><pre class="code-block"><code class="language-mhl">a2a_agent Translator {
+            <div><h3>Declaration</h3><pre class="code-block"><code class="language-mhl">extension a2a Translator {
     url: "https://translator.example.com/a2a"
     headers: {
         "Authorization":
@@ -627,12 +639,20 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
           <div class="tip-row"><span>STATELESS</span><p>Every method is one or more independent requests with no session between them; a blocking <code>.send</code> that polls keeps no state beyond the task id. A credential that fails to resolve aborts the call before any request. Streaming (<code>message/stream</code>) and push notifications are not implemented yet.</p></div>
         </section>
 
-        <section class="feature doc-section" id="pipeline" data-title="pipeline input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in">
-          <div class="feature-head"><h2><span class="feature-num">11</span><code>pipeline</code> and <code>loop pipeline</code></h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">Pipelines are the executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in order unless an explicit transition redirects them.</p>
+        <section class="feature doc-section" id="pipeline" data-title="pipeline workflow input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in">
+          <div class="feature-head"><h2><span class="feature-num">12</span><code>pipeline</code> and <code>workflow</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">The executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in declared order. <code>pipeline</code> keeps that order — <code>goto</code> is a lint error. <code>workflow</code> is the same in every other way but allows <code>goto &lt;step&gt;</code>, forward or backward, so its steps form an explicitly branching state machine. Either takes the <code>loop</code> prefix.</p>
 
-          <p class="block-label">RECOVERABLE PIPELINE</p>
-          <pre class="code-block"><code class="language-mhl">pipeline Release {
+          <div class="reference-table">
+            <div class="table-row table-head"><span></span><span><code>pipeline</code></span><span><code>workflow</code></span></div>
+            <div class="table-row"><span>Steps in declared order, each once</span><code>yes</code><code>yes</code></div>
+            <div class="table-row"><span><code>parallel</code>, <code>spawn</code>/<code>wait</code>, <code>loop</code> + <code>repeat:</code></span><code>yes</code><code>yes</code></div>
+            <div class="table-row"><span><code>goto &lt;step&gt;</code></span><code>lint error</code><code>yes — forward or backward</code></div>
+            <div class="table-row"><span>Reading guarantee</span><code>runs top to bottom</code><code>may branch — read the goto's</code></div>
+          </div>
+
+          <p class="block-label">RECOVERABLE WORKFLOW</p>
+          <pre class="code-block"><code class="language-mhl">workflow Release {
     input environment: string
     var approved = false
 
@@ -650,7 +670,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
     }
 
     step Publish {
-        if (!approved) goto Validate
+        if (!approved) goto Validate       // backward jump — needs `workflow`
         log.info("publishing to", environment)
     }
 }</code></pre>
@@ -746,7 +766,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
             <div><b><code>context</code></b><span>read-only view of this session and the previous run's <code>vars</code></span></div>
             <div><b><code>step</code></b><span>ordered, named, resumable unit</span></div>
             <div><b><code>parallel</code></b><span>named group whose steps run concurrently; a barrier before the next step</span></div>
-            <div><b><code>goto</code></b><span>explicit transition to another step</span></div>
+            <div><b><code>goto</code></b><span>jump to another step (<code>workflow</code> only), forward or backward</span></div>
             <div><b><code>break</code></b><span>immediate stop with an optional reason</span></div>
             <div><b><code>spawn</code></b><span>start an <code>Agent.run(...)</code> in the background; binds a <code>task</code> handle (<code>.result</code>, <code>.ok</code>, <code>.error</code>, <code>.status</code>, <code>.duration_ms</code>)</span></div>
             <div><b><code>wait</code></b><span>join handles — all (fail-fast), <code>any</code> (first success), or <code>N of</code> (quorum); options <code>timeout:</code> and <code>on_error: "collect"</code></span></div>
@@ -757,7 +777,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
         </section>
 
         <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing">
-          <div class="feature-head"><h2><span class="feature-num">12</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">13</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">MHL files can be self-verifying examples. Each <code>describe</code> receives a fresh environment and uses the same statement syntax as a step.</p>
           <pre class="code-block"><code class="language-mhl">tool Normalize {
     slug(text: string): string ->
@@ -791,7 +811,7 @@ test normalize_examples {
         </section>
 
         <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp version security credentials env diagnostics install">
-          <div class="feature-head"><h2><span class="feature-num">13</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">14</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The <code>mhl</code> binary handles execution, tests, static analysis, and editor integration.</p>
           <div class="cli-grid">
             <div class="cli-command"><code>mhl init</code><span>scaffold an immediately-runnable main.mh (never overwrites)</span></div>
@@ -803,7 +823,14 @@ test normalize_examples {
             <div class="cli-command"><code>mhl lint .</code><span>validate syntax, types, and references</span></div>
             <div class="cli-command"><code>mhl lsp</code><span>start the language server</span></div>
             <div class="cli-command"><code>mhl version</code><span>print the installed version</span></div>
+            <div class="cli-command"><code>mhl extension init dir/</code><span>scaffold an extension</span></div>
+            <div class="cli-command"><code>mhl extension test dir/</code><span>check the protocol</span></div>
+            <div class="cli-command"><code>mhl extension package dir/</code><span>capture declarations</span></div>
+            <div class="cli-command"><code>mhl extension install dir/</code><span>copy and pin an extension</span></div>
+            <div class="cli-command"><code>mhl extension list</code><span>show locked extensions</span></div>
+            <div class="cli-command"><code>mhl extension doctor</code><span>validate manifests and hashes</span></div>
           </div>
+          <div class="tip-row"><span>EXTENSIONS</span><p>The language reference covers how to declare and call <code>extension mcp</code> and <code>extension a2a</code>. The <a href="extensions.html">extension guide</a> covers external adapters and their JSON-RPC contract.</p></div>
 
           <p class="block-label">OPERATIONAL CHECKLIST</p>
           <div class="checklist">
@@ -818,7 +845,7 @@ test normalize_examples {
 
         <footer class="site-footer">
           <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="sample.html">Development sample</a> · <a href="index.html">Overview</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+          <span><a href="extensions.html">Extend the runtime</a> · <a href="index.html">Overview</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
         </footer>
       </main>
     </div>

@@ -1604,30 +1604,6 @@ pipeline P {
 	}
 }
 
-func TestImportMissingFile(t *testing.T) {
-	dir := t.TempDir()
-	main := filepath.Join(dir, "main.mh")
-	write(t, main, `
-import "./missing.mh" as missing
-
-pipeline P {
-    step S {
-        var value = 1
-    }
-}
-`)
-	findings := lint.File(main)
-	if len(findings) != 1 {
-		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
-	}
-	if !strings.Contains(findings[0].Message, "missing.mh") {
-		t.Errorf("unexpected message: %q", findings[0].Message)
-	}
-	if findings[0].Line != 2 {
-		t.Errorf("expected line 2, got %d", findings[0].Line)
-	}
-}
-
 func TestUseMissingFile(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")
@@ -2181,15 +2157,15 @@ pipeline P {
 	}
 }
 
-// TestCheckMCPServerProtocolRejectsUnknownValue proves an mcp_server's
-// `protocol:` is validated the same way retry.backoff is: only "auto",
-// "2026-07-28", "2025-11-25", and "2025-06-18" are accepted, and anything
-// else is a lint finding rather than a silent fall-through to auto.
-func TestCheckMCPServerProtocolRejectsUnknownValue(t *testing.T) {
+// TestCheckExtensionMCPProtocolRejectsUnknownValue proves an `extension mcp`
+// declaration's `protocol:` is validated the same way retry.backoff is: only
+// "auto", "2026-07-28", "2025-11-25", and "2025-06-18" are accepted, and
+// anything else is a lint finding rather than a silent fall-through to auto.
+func TestCheckExtensionMCPProtocolRejectsUnknownValue(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
-mcp_server Wiki {
+extension mcp Wiki {
     transport: "stdio"
     command: "docker"
     protocol: "1999-01-01"
@@ -2199,19 +2175,19 @@ mcp_server Wiki {
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
 	}
-	if !strings.Contains(findings[0].Message, `mcp_server "Wiki" protocol "1999-01-01" is not supported`) {
+	if !strings.Contains(findings[0].Message, `mcp "Wiki" protocol "1999-01-01" is not supported`) {
 		t.Errorf("unexpected message: %q", findings[0].Message)
 	}
 }
 
-// TestCheckMCPServerProtocolAcceptsEveryValidValue proves each of the four
+// TestCheckExtensionMCPProtocolAcceptsEveryValidValue proves each of the four
 // recognized `protocol:` values lints clean.
-func TestCheckMCPServerProtocolAcceptsEveryValidValue(t *testing.T) {
+func TestCheckExtensionMCPProtocolAcceptsEveryValidValue(t *testing.T) {
 	for _, v := range []string{"auto", "2026-07-28", "2025-11-25", "2025-06-18"} {
 		dir := t.TempDir()
 		main := filepath.Join(dir, "main.mh")
 		write(t, main, `
-mcp_server Wiki {
+extension mcp Wiki {
     transport: "stdio"
     command: "docker"
     protocol: "`+v+`"

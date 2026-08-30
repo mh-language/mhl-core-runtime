@@ -29,7 +29,7 @@
           <kbd>/</kbd>
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
-        <a class="github-link" href="sample.html">Sample</a>
+        <a class="github-link" href="extensions.html">Extensions</a>
         <a class="github-link" href="reference.html">Reference</a>
         <a class="github-link" href="stdlib.html">Standard library</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
@@ -46,6 +46,7 @@
           <a class="nav-link" href="#first-program">First program</a>
           <a class="nav-link" href="#mental-model">Mental model</a>
           <a class="nav-link" href="#features">Features</a>
+          <a class="nav-link" href="#docs">Documentation paths</a>
           <a class="nav-link" href="#complete-example">Complete example</a>
           <a class="nav-link" href="#research">Research</a>
           <a class="nav-link" href="#contributions">Contributions</a>
@@ -59,7 +60,7 @@
       <main class="content">
         <section class="hero doc-section" id="overview" data-title="overview mhl language ai agents pipelines meta harness">
           <div class="hero-copy">
-            <p class="eyebrow accent">META-HARNESS LANGUAGE · v0.1 ALPHA</p>
+            <p class="eyebrow accent">META-HARNESS LANGUAGE · v1.0.0-alpha</p>
             <h1>Control the loop.<br /><em>Not the agent.</em></h1>
             <p class="lead">MHL is a declarative, executable orchestration DSL with imperative control flow for stateful and effectful AI agent workflows.</p>
             <div class="hero-actions">
@@ -211,17 +212,31 @@ pipeline Hello {
             <a class="feature-card" href="reference.html#prompt"><span>02</span><h3><code>prompt</code></h3><p>Typed templates, interpolation, composition, and Markdown files.</p><b>view example →</b></a>
             <a class="feature-card" href="reference.html#memory"><span>03</span><h3><code>memory</code> / <code>mem</code></h3><p>Ephemeral KV, persistent JSON, append-only logs, and loop state.</p><b>view example →</b></a>
             <a class="feature-card" href="reference.html#tool"><span>04</span><h3><code>tool</code></h3><p>Reusable methods over processes, files, Git, HTTP, and JSON.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#mcp"><span>05</span><h3><code>mcp_server</code></h3><p>MCP server configuration over stdio or HTTP with credentials, plus <code>.call(...)</code>/<code>.list_tools()</code>/<code>.discover()</code>.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#a2a"><span>06</span><h3><code>a2a_agent</code></h3><p>Call a remote Agent2Agent (A2A) agent over JSON-RPC: <code>.send(...)</code>, <code>.agent_card()</code>, <code>.get_task(...)</code>, <code>.cancel(...)</code>.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#mcp"><span>05</span><h3><code>extension mcp</code></h3><p>MCP server configuration over stdio or HTTP with credentials, plus <code>.call(...)</code>/<code>.list_tools()</code>/<code>.discover()</code>.</p><b>view example →</b></a>
+            <a class="feature-card" href="reference.html#a2a"><span>06</span><h3><code>extension a2a</code></h3><p>Call a remote Agent2Agent (A2A) agent over JSON-RPC: <code>.send(...)</code>, <code>.agent_card()</code>, <code>.get_task(...)</code>, <code>.cancel(...)</code>.</p><b>view example →</b></a>
             <a class="feature-card" href="reference.html#pipeline"><span>07</span><h3><code>pipeline</code></h3><p>Inputs, shared variables, steps, checkpoints, and recovery.</p><b>view example →</b></a>
             <a class="feature-card" href="reference.html#tests"><span>08</span><h3><code>test</code></h3><p>Self-verifying examples with assertions and case isolation.</p><b>view example →</b></a>
             <a class="feature-card" href="reference.html#syntax"><span>09</span><h3>Syntax</h3><p>Types, collections, lambdas, operators, and control flow.</p><b>view reference →</b></a>
+            <a class="feature-card" href="extensions.html"><span>10</span><h3>Extensions</h3><p>Add capabilities as isolated executables without recompiling the runtime.</p><b>build an extension →</b></a>
+          </div>
+        </section>
+
+        <section class="doc-section" id="docs" data-title="documentation paths guide reference standard library extensions runtime developers">
+          <div class="section-heading">
+            <p class="eyebrow">06 · DOCUMENTATION MAP</p>
+            <h2>Choose the page for the job.</h2>
+            <p>The site is organized around three questions: what is MHL, how do I write it, and how do I make the runtime do more?</p>
+          </div>
+          <div class="card-grid three">
+            <a class="info-card accent-card" href="reference.html"><span class="card-icon">01</span><h3>Language Reference</h3><p>Declarations, syntax, control flow, pipelines, diagnostics, and complete MHL examples.</p></a>
+            <a class="info-card" href="stdlib.html"><span class="card-icon">02</span><h3>Standard Library</h3><p>Callable functions and methods, signatures, parameters, return values, and native operations.</p></a>
+            <a class="info-card" href="extensions.html"><span class="card-icon">03</span><h3>Extend the runtime</h3><p>Manifest, lock file, process lifecycle, JSON-RPC messages, permissions, and CLI workflow.</p></a>
           </div>
         </section>
 
         <section class="doc-section" id="complete-example" data-title="complete example agent prompt tool memory loop pipeline retry fix test">
           <div class="section-heading">
-            <p class="eyebrow">06 · APPLIED EXAMPLE</p>
+            <p class="eyebrow">07 · APPLIED EXAMPLE</p>
             <h2>An engineering loop with explicit stop criteria.</h2>
             <p>This example connects an agent, prompt, tool, and persistent state. The runtime executes a test, asks for a fix only when necessary, and stops on success or at the attempt ceiling.</p>
           </div>
@@ -286,7 +301,7 @@ loop pipeline AutoRepair {
 
         <section class="doc-section research-section" id="research" data-title="research paper study zenodo doi inverted orchestration looping engineering">
           <div class="section-heading">
-            <p class="eyebrow">07 · FOUNDATIONS</p>
+            <p class="eyebrow">08 · FOUNDATIONS</p>
             <h2>The idea behind the language.</h2>
             <p>MHL materializes the <em>Inverted Orchestration</em> pattern: a deterministic harness keeps control of transitions, state, verification, and limits while specialized agents operate within that boundary.</p>
           </div>
@@ -319,14 +334,27 @@ loop pipeline AutoRepair {
 
         <section class="doc-section" id="contributions" data-title="contributions creator yan justino community github credit authorship">
           <div class="section-heading">
-            <p class="eyebrow">08 · CONTRIBUTIONS</p>
+            <p class="eyebrow">09 · CONTRIBUTIONS</p>
             <h2>An open language for AI-assisted engineering.</h2>
             <p>MHL was created by <strong>Yan Justino</strong>, author of the Inverted Orchestration proposal and the original designer of the language and its runtime.</p>
           </div>
           <div class="contribution-panel">
-            <div class="creator-card">
-              <div class="creator-monogram" aria-hidden="true">YJ</div>
-              <div><small>CREATOR</small><h3>Yan Justino</h3><p>Language, runtime, and original research.</p></div>
+            <div class="contributor-list" aria-label="MHL contributors">
+              <!-- Duplicate a .creator-card and replace its avatar, name, role, and description for future contributors. -->
+              <article class="creator-card">
+                <img class="contributor-avatar" src="assets/contributions/yan-justino.jpeg" alt="Portrait of Yan Justino" />
+                <div>
+                  <small>CREATOR</small><h3>Yan Justino</h3><p>Language, runtime, and original research.</p>
+                  <div class="contributor-links" aria-label="Yan Justino social profiles">
+                    <a href="https://www.linkedin.com/in/yanjustino/" target="_blank" rel="noreferrer">LinkedIn ↗</a>
+                    <a href="https://github.com/yanjustino" target="_blank" rel="noreferrer">GitHub ↗</a>
+                  </div>
+                </div>
+              </article>
+              <article class="creator-card contributor-placeholder">
+                <div class="creator-monogram" aria-hidden="true">+</div>
+                <div><small>OPEN CONTRIBUTION</small><h3>Your name here</h3><p>Add your photo, role, and contribution when you join the project.</p></div>
+              </article>
             </div>
             <div class="contribution-copy">
               <h3>How to contribute</h3>
@@ -338,7 +366,7 @@ loop pipeline AutoRepair {
 
         <footer class="site-footer">
           <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="sample.html">Development sample</a> · <a href="reference.html">Language reference</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+          <span><a href="extensions.html">Extend the runtime</a> · <a href="reference.html">Language reference</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
         </footer>
       </main>
     </div>

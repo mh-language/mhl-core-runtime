@@ -1,8 +1,8 @@
 # a2a
 
-Declaring an `a2a_agent` and calling it from `.mh` code with `<Agent>.send("...")`,
+Declaring an `extension a2a <Name> { ... }` and calling it from `.mh` code with `<Agent>.send("...")`,
 `<Agent>.agent_card()`, `<Agent>.get_task(id)`, and `<Agent>.cancel(id)` — the operations an
-`a2a_agent` exposes today. All dispatch to `internal/features/a2a`'s stateless client: a fresh
+an a2a extension exposes. All dispatch to `internal/features/a2a`'s stateless client: a fresh
 JSON-RPC 2.0 POST per call (`message/send`, `tasks/get`, `tasks/cancel`), or a plain GET of
 `<origin>/.well-known/agent-card.json` for `agent_card`. Credential resolution is fail-closed —
 a header referencing an unset env var aborts the call — and no session is kept between calls. A
@@ -17,7 +17,7 @@ part for convenience. A task that stops in `input-required` / `auth-required` is
 clear error, since this client can't gather and resubmit that input. `message/stream` (SSE) and
 push notifications are not implemented.
 
-- [a2a_agent_send_calls_the_real_api.mh](a2a_agent_send_calls_the_real_api.mh) — `.send(...)` and
+- [a2a_send_calls_the_real_api.mh](a2a_send_calls_the_real_api.mh) — `.send(...)` and
   `.agent_card()` against a real A2A agent, gated behind `A2A_TEST_URL` (and `A2A_TOKEN` for
   auth) being set
 

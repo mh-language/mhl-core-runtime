@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mh-language/mhl-core-runtime/internal/extension"
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
@@ -129,6 +130,27 @@ type evalCtx struct {
 	// surfaces as an "unrecognized type" error at the annotation's use site;
 	// `mhl lint` reports the root cause.
 	aliasTypes map[string]types.Type
+	// registry resolves `extension <kind> <Name> { ... }` declarations (and,
+	// the `extension <kind> <Name>` declaration) to
+	// a live extension.Instance. Lazily built by extRegistryOf from the
+	// built-in extension set, mirroring how goctxOf / aliasTypesFor derive
+	// per-context data on demand. A derived context (tool method childCtx,
+	// closure) inherits the parent's so an already-bound Instance stays
+	// cached within one evaluation tree.
+	registry *extension.Registry
+}
+
+// extRegistryOf returns the extension registry for this evaluation, building
+// it on first use. ctx is single-goroutine (spawns and closures get derived
+// contexts), so the lazy write needs no lock.
+func extRegistryOf(ctx *evalCtx) *extension.Registry {
+	if ctx == nil {
+		return newExtensionRegistry(nil)
+	}
+	if ctx.registry == nil {
+		ctx.registry = newExtensionRegistry(ctx.out)
+	}
+	return ctx.registry
 }
 
 // goctxOf returns the Go context governing blocking work for this evaluation,
@@ -528,15 +550,8 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 				}
 				return applyTrailers(ctx, v, p.Ops[2:], depth)
 			}
-			if server, ok := findMCPServer(ctx.prog, name); ok {
-				v, err := evalMCPServerCall(ctx, server, member, call, depth)
-				if err != nil {
-					return nil, err
-				}
-				return applyTrailers(ctx, v, p.Ops[2:], depth)
-			}
-			if agent, ok := findA2AAgent(ctx.prog, name); ok {
-				v, err := evalA2AAgentCall(ctx, agent, member, call, depth)
+			if ext, ok := findExtensionDecl(ctx.prog, name); ok {
+				v, err := evalExtensionCall(ctx, ext, member, call, depth)
 				if err != nil {
 					return nil, err
 				}
@@ -759,35 +774,6 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 			// whole rest of the chain to null instead of raising.
 			if op.Optional && v == nil {
 				return nil, nil
-			}
-			// A *toolRef/*mcpServerRef is what an agent's `before`/`after`
-			// hook navigates to off its `tool`/`mcp` map parameter (e.g.
-			// `tool.execution.read_file(...)`, `mcp.GitHub.call(...)` —
-			// agent_hooks.go): dispatch it into the exact same
-			// evalToolCall/evalMCPServerCall a declared name's own two-level
-			// `name.member(...)` fast path (evalPostfix) calls into, rather
-			// than callValueMethod below, which has no ctx/raw *ast.Call to
-			// give them (named arguments, ctx.prog lookups).
-			switch ref := v.(type) {
-			case *toolRef:
-				if ref.allowedMethods != nil && !ref.allowedMethods[op.Member] {
-					return nil, fmt.Errorf("tool %q: method %q is not in this agent's declared tools: scope", ref.tool.Name, op.Member)
-				}
-				result, err := evalToolCall(ctx, ref.tool, op.Member, ops[i+1].Call, depth)
-				if err != nil {
-					return nil, err
-				}
-				v = result
-				i++
-				continue
-			case *mcpServerRef:
-				result, err := evalMCPServerCall(ctx, ref.server, op.Member, ops[i+1].Call, depth)
-				if err != nil {
-					return nil, err
-				}
-				v = result
-				i++
-				continue
 			}
 			args, err := evalPositionalValues(ctx, ops[i+1].Call, depth)
 			if err != nil {

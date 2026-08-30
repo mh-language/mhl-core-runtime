@@ -54,7 +54,7 @@ func handshakeMCPServer(t *testing.T, answerVersion string) *httptest.Server {
 func TestMCPServerCallHandshakeHTTP(t *testing.T) {
 	srv := handshakeMCPServer(t, "2025-06-18")
 	src := `
-mcp_server Wiki {
+extension mcp Wiki {
     transport: "http"
     url: "` + srv.URL + `"
     protocol: "2025-06-18"
@@ -84,7 +84,7 @@ mcp_server Wiki {
 func TestMCPServerListToolsAndDiscoverHandshakeHTTP(t *testing.T) {
 	srv := handshakeMCPServer(t, "2025-11-25")
 	src := `
-mcp_server Wiki {
+extension mcp Wiki {
     transport: "http"
     url: "` + srv.URL + `"
     protocol: "2025-11-25"
@@ -118,7 +118,7 @@ mcp_server Wiki {
 func TestMCPServerCallAutoNegotiatesHandshakeHTTP(t *testing.T) {
 	srv := handshakeMCPServer(t, "2025-11-25")
 	src := `
-mcp_server Wiki {
+extension mcp Wiki {
     transport: "http"
     url: "` + srv.URL + `"
 }
@@ -144,7 +144,7 @@ func TestMCPServerCallHandshakeStdio(t *testing.T) {
 	callResp := `{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"article\":\"Model Context Protocol\"}}`
 	script := `read a; printf '` + initResp + `\n'; read b; read c; printf '` + callResp + `\n'`
 	src := `
-mcp_server Wiki {
+extension mcp Wiki {
     transport: "stdio"
     command: "sh"
     args: ["-c", "` + script + `"]
@@ -169,7 +169,7 @@ mcp_server Wiki {
 // bad value.
 func TestMCPServerProtocolUnknownValueRejected(t *testing.T) {
 	src := `
-mcp_server Wiki {
+extension mcp Wiki {
     transport: "stdio"
     command: "sh"
     protocol: "1999-01-01"
@@ -231,7 +231,7 @@ func TestMCPServerCallDispatchesToolsCallOverHTTP(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "test-token-123")
 
 	src := `
-mcp_server GitHub {
+extension mcp GitHub {
     transport: "http"
     url: "` + server.URL + `"
     headers: {
@@ -275,7 +275,7 @@ mcp_server GitHub {
 // silently sending a request with an empty Authorization header.
 func TestMCPServerCallFailsClosedOnMissingCredential(t *testing.T) {
 	src := `
-mcp_server GitHub {
+extension mcp GitHub {
     transport: "http"
     url: "http://127.0.0.1:1"
     headers: {
@@ -298,7 +298,7 @@ mcp_server GitHub {
 // decoded back into the call's result.
 func TestMCPServerCallOverStdio(t *testing.T) {
 	src := `
-mcp_server MockTools {
+extension mcp MockTools {
     transport: "stdio"
     command: "sh"
     args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"pong\":true}}'"]
@@ -335,7 +335,7 @@ func TestMCPServerListTools(t *testing.T) {
 	defer server.Close()
 
 	src := `
-mcp_server GitHub {
+extension mcp GitHub {
     transport: "http"
     url: "` + server.URL + `"
 }
@@ -378,7 +378,7 @@ func TestMCPServerDiscover(t *testing.T) {
 	defer server.Close()
 
 	src := `
-mcp_server GitHub {
+extension mcp GitHub {
     transport: "http"
     url: "` + server.URL + `"
 }
@@ -412,7 +412,7 @@ func TestMCPServerCallRejectsInputRequiredResult(t *testing.T) {
 	defer server.Close()
 
 	src := `
-mcp_server GitHub {
+extension mcp GitHub {
     transport: "http"
     url: "` + server.URL + `"
 }
@@ -461,7 +461,7 @@ func TestMCPServerCallMirrorsXMCPHeaderAnnotatedArguments(t *testing.T) {
 	defer server.Close()
 
 	src := `
-mcp_server SpannerDB {
+extension mcp SpannerDB {
     transport: "http"
     url: "` + server.URL + `"
 }

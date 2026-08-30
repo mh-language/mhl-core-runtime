@@ -19,6 +19,8 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
 - [conditional_symbols/](conditional_symbols/README.md) — comparison operators
 - [enum_and_match/](enum_and_match/README.md) — `enum` named constants and the `match`
   expression
+- [extension_declaration/](extension_declaration/README.md) — `extension <kind> <Name> { ... }`
+  declaring a use of a built-in (`mcp`/`a2a`) or installed extension
 - [higher_order_array/](higher_order_array/README.md) — `.filter()`, `.find()`, `.sort_by()`,
   `.map()`, `.reduce()`, `.any()`, `.all()`
 - [logical_operations/](logical_operations/README.md) — `&&` and `||`
@@ -30,6 +32,8 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
   `??` null-coalescing operator
 - [param_defaults/](param_defaults/README.md) — default values for `tool` method, lambda and
   `prompt` parameters (`greeting: string = "Hello"`)
+- [pipeline_vs_workflow/](pipeline_vs_workflow/README.md) — `pipeline` (linear) vs `workflow`
+  (`goto`-capable); same grammar, one static rule apart
 - [string_methods/](string_methods/README.md) — built-in string methods
 - [type_alias/](type_alias/README.md) — `type X = <TypeExpr>` named aliases for the type
   vocabulary

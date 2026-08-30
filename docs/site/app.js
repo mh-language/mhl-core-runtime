@@ -27,7 +27,7 @@
     'import from use as export loop var mem if else while try catch finally return break goto for in self fail'.split(' ')
   );
   const declarations = new Set(
-    'agent memory tool pipeline prompt mcp_server a2a_agent parallel step input output test describe'.split(' ')
+    'agent memory tool pipeline prompt extension parallel step input output test describe'.split(' ')
   );
   const constants = new Set(['true', 'false', 'null']);
 
@@ -119,8 +119,48 @@
     return html;
   }
 
+  function highlightJson(source) {
+    let html = '';
+    let i = 0;
+    while (i < source.length) {
+      if (source[i] === '"') {
+        let end = i + 1;
+        while (end < source.length) {
+          if (source[end] === '\\') end += 2;
+          else if (source[end++] === '"') break;
+        }
+        const value = source.slice(i, end);
+        const className = /^\s*:/.test(source.slice(end)) ? 'tok-json-key' : 'tok-json-string';
+        html += span(className, escapeHtml(value));
+        i = end;
+        continue;
+      }
+      const number = source.slice(i).match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
+      if (number) {
+        html += span('tok-json-number', number[0]);
+        i += number[0].length;
+        continue;
+      }
+      const literal = source.slice(i).match(/^(?:true|false|null)\b/);
+      if (literal) {
+        html += span('tok-json-literal', literal[0]);
+        i += literal[0].length;
+        continue;
+      }
+      const value = source[i];
+      html += '{}[],:'.includes(value)
+        ? span('tok-json-punctuation', escapeHtml(value))
+        : escapeHtml(value);
+      i += 1;
+    }
+    return html;
+  }
+
   document.querySelectorAll('code.language-mhl').forEach((block) => {
     block.innerHTML = highlight(block.textContent);
+  });
+  document.querySelectorAll('code.language-json').forEach((block) => {
+    block.innerHTML = highlightJson(block.textContent);
   });
 
   document.querySelectorAll('[data-copy="copy"]').forEach((button) => {

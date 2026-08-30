@@ -105,6 +105,9 @@ Key packages:
   `features` meet.
 - **`internal/engine/runtime`** — pipeline execution order, `loop pipeline`'s repeat policy,
   and checkpoint persistence for `--resume`. Knows step *names* only, not step behavior.
+  `pipeline` and `workflow` are one node (`ast.Pipeline.Kind`) and run identically here —
+  `goto` works in both; `internal/lang/lint` (`checkPipelineGoto`) is what rejects `goto`
+  outside a `workflow` and validates the target step exists.
 - **`internal/features/*`** — `prompt`, `memory` (kv/json/log/jsonl backends),
   `mcp`, `nativeops` (the actual `cmd.exec`/`fs.read`/... implementations behind `tool.go`),
   `tools` (low-level subprocess exec), `adapters` (runs an agent's `cli/*` or `ollama/*`
@@ -124,16 +127,17 @@ Key packages:
 ### Docs vs. implementation
 
 `docs/site/reference.html` is the single source of truth for the language surface — there is no
-separate wiki; keep it in sync with `agent.go`/`agent_scope.go`/`agent_hooks.go` rather than
+separate wiki; keep it in sync with `agent.go`/`agent_hooks.go` rather than
 letting a second copy of this explanation drift. For agents specifically,
 `internal/engine/interpreter/agent.go` reads `engine`, `command`, `args`, `endpoint`,
-`temperature`, `log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `tools`,
-`mcp_servers`, `before`, `after` — `tools`/`mcp_servers` fold into every `.run()` call as an
-explicit allowed-scope instruction in the prompt (best-effort only; mhl has no structural channel
-to enforce it against a CLI-backed agent), while `before`/`after` (agent_hooks.go) are real:
-`before: (mcp, tools) -> {...}` runs before the prompt is built, with `mcp`/`tools` bound to maps of
-exactly that agent's declared `mcp_servers:`/`tools:`, and its returned object's fields become
-`${...}` bindings the prompt can interpolate. Fields the docs may still show (`api_key`,
+`temperature`, `log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `before`, `after`.
+There is no declarative tool/extension scope list on an agent: when an agent needs a `tool` or
+`extension`, it is called from a `before`/`after` hook (agent_hooks.go), which are real:
+`before: () -> {...}` runs before the prompt is built — an ordinary zero-param lambda whose body
+resolves declared `tool`/`extension`/`agent` names, native ops and `mem` like any expression, and
+whose returned object's fields become `${...}` bindings the prompt can interpolate. `after: () ->
+{...}` runs once on the final response, with it bound in the body as `result`; a string return
+replaces `.run()`'s value, anything else is passthrough. Both reject a parameter list. Fields the docs may still show (`api_key`,
 `timeout`, `system_instructions`) are not read anywhere in `agent.go` and are silently ignored if
 written.
 `retry.backoff`, `cache.strategy`, and `rate_limit.on_exceeded` each implement exactly one value

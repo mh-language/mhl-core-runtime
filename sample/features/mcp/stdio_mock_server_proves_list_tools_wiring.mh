@@ -1,7 +1,7 @@
 // A mocked "tools/list" response — a real server would advertise its
 // actual catalog with `inputSchema` per tool; this mock just proves the
 // method dispatch and result decoding.
-mcp_server MockTools {
+extension mcp MockTools {
     transport: "stdio"
     command: "sh"
     args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"search_repositories\"},{\"name\":\"get_me\"}]}}'"]

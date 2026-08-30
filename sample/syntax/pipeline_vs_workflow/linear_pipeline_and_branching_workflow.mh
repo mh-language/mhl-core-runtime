@@ -1,0 +1,53 @@
+// `pipeline` and `workflow` share one grammar and one execution model —
+// typed `input`, pipeline-scoped `var`/`mem`, `checkpoint`/`repeat` config,
+// ordered `step`s, `parallel` groups. The only difference is static:
+//
+//   pipeline  — steps run in declared order, each once. `goto` is a lint error.
+//   workflow  — `goto <step>` is allowed (forward or backward), so the step
+//               sequence is an explicitly branching state machine.
+//
+// Both take the optional `loop` prefix (`loop pipeline` / `loop workflow`)
+// and the same `repeat: { stop_when, max_iterations }` policy.
+
+pipeline LinearRelease {
+    input environment: string
+
+    step Build {
+        log.info("building for ${environment}")
+    }
+
+    step Publish {
+        log.info("publishing to ${environment}")
+    }
+}
+
+// A `goto` here would be rejected by `mhl lint`:
+//     pipeline LinearRelease { step Publish { goto Build } }
+//     -> `goto` is only valid inside a `workflow` ...
+
+workflow ReviewLoop {
+    input change_id: string
+    var approved = false
+
+    step Review {
+        // (a real review agent would set `approved`)
+        approved = true
+    }
+
+    step Gate {
+        if (!approved) {
+            goto Review          // backward jump — only legal in a `workflow`
+        }
+        log.info("change ${change_id} approved")
+    }
+}
+
+test pipeline_vs_workflow {
+    describe both_keywords_parse_and_lint {
+        // Control flow is declaration-level, not expression-level, so there
+        // is nothing to call here — this file exists to pin the grammar and
+        // the `goto`-placement lint rule.
+        are_equal("pipeline", "pipeline")
+        are_equal("workflow", "workflow")
+    }
+}

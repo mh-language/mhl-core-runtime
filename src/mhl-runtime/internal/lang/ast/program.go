@@ -12,9 +12,10 @@ import "github.com/alecthomas/participle/v2/lexer"
 // top-level declarations.
 type Program struct {
 	Decls []*Declaration `parser:"@@*"`
-	// Aliases is populated while imports are resolved. It is intentionally
-	// outside the source grammar: aliases are bindings for the flattened
-	// program namespace, not declarations in the source AST.
+	// aliases is populated while `use { Name as Alias } from "..."` items are
+	// resolved. It is intentionally outside the source grammar: aliases are
+	// bindings for the flattened program namespace, not declarations in the
+	// source AST.
 	aliases map[string]string
 }
 
@@ -32,11 +33,9 @@ func (p *Program) AliasMap() map[string]string {
 // keyword may precede a declaration to mark it as exported from the module.
 type Declaration struct {
 	Export    bool       `parser:"@'export'?"`
-	Import    *Import    `parser:"( @@"`
-	Use       *Use       `parser:"| @@"`
+	Use       *Use       `parser:"( @@"`
 	Prompt    *Prompt    `parser:"| @@"`
-	MCPServer *MCPServer `parser:"| @@"`
-	A2AAgent  *A2AAgent  `parser:"| @@"`
+	Extension *Extension `parser:"| @@"`
 	Agent     *Agent     `parser:"| @@"`
 	Memory    *Memory    `parser:"| @@"`
 	Tool      *Tool      `parser:"| @@"`
@@ -82,15 +81,6 @@ type TypeAlias struct {
 	Type *TypeExpr `parser:"@@"`
 }
 
-// Import binds another module under a local alias:
-//
-//	import "./agentes/qualidade.mh" as qa
-type Import struct {
-	Pos   lexer.Position
-	Path  string `parser:"'import' @String"`
-	Alias string `parser:"'as' @Ident"`
-}
-
 // Use selectively imports named symbols from another module. Each imported
 // symbol may optionally receive a local alias:
 //
@@ -115,21 +105,6 @@ func (u *Use) Names() []string {
 		names = append(names, item.Name)
 	}
 	return names
-}
-
-// MCPServer declares a stateless MCP server endpoint.
-type MCPServer struct {
-	Name  string      `parser:"'mcp_server' @Ident"`
-	Props []*Property `parser:"'{' @@* '}'"`
-}
-
-// A2AAgent declares a stateless connection to a remote agent that speaks the
-// Agent2Agent (A2A) protocol. Like MCPServer it is a bag of properties
-// (url, headers, poll_interval, poll_timeout) interpreted at the feature
-// layer, not in the grammar.
-type A2AAgent struct {
-	Name  string      `parser:"'a2a_agent' @Ident"`
-	Props []*Property `parser:"'{' @@* '}'"`
 }
 
 // Memory declares a memory backend (kv, vector, ...).

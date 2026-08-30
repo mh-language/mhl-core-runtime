@@ -8,6 +8,8 @@ directory with `mhl test <dir>`.
   arrays, objects, strings, conditionals, loops), independent of any specific feature
 - [features/](features/README.md) — the higher-level declarations a pipeline is built from
   (`agent`, `memory`, `prompt`) and how a `pipeline` wires them together
+- [extensions/](extensions/README.md) — the manifest + lock file that wire an external
+  extension (a separate executable) into a project (reference only — no `.mh` to run)
 
 These examples were migrated from `src/mhl-runtime/test/e2e/{lang/syntax,features}`, one file
 per original `describe` block, when that test suite was folded into this documentation-facing
@@ -63,15 +65,13 @@ literals — see [features/prompts/prompt_loaded_from_markdown_file.mh](features
 Program        ::= { Declaration } ;
 
 Declaration    ::= [ "export" ]
-                    ( Import | Use | Prompt | MCPServer | A2AAgent
-                    | Agent | Memory | Tool | Pipeline | Test ) ;
+                    ( Use | Prompt | Extension
+                    | Agent | Memory | Tool | Pipeline | Type | Enum | Test ) ;
 
-Import         ::= "import" String "as" Ident ;
 Use            ::= "use" "{" UseItem { "," UseItem } "}" "from" String ;
 UseItem        ::= Ident [ "as" Ident ] ;
 
-MCPServer      ::= "mcp_server" Ident "{" { Property } "}" ;
-A2AAgent       ::= "a2a_agent" Ident "{" { Property } "}" ;
+Extension      ::= "extension" Ident Ident "{" { Property } "}" ;
 Memory         ::= "memory" Ident "{" { Property } "}" ;
 Agent          ::= "agent" [ Ident ] "{" { Property } "}" ;
                    (* Name is omitted for an inline agent literal, e.g. inside
@@ -94,7 +94,9 @@ TypeExpr       ::= ( Ident | ObjectShape ) { "[" "]" } ;
 ObjectShape    ::= "{" [ ShapeField { [ "," ] ShapeField } [ "," ] ] "}" ;
 ShapeField     ::= Ident ":" TypeExpr ;
 
-Pipeline       ::= [ "loop" ] "pipeline" Ident "{" { PipelineMember } "}" ;
+Pipeline       ::= [ "loop" ] ( "pipeline" | "workflow" ) Ident "{" { PipelineMember } "}" ;
+                   (* `workflow` is `pipeline` plus permission to use GotoStmt;
+                      `goto` in a `pipeline` is a lint error *)
 PipelineMember ::= "input" PipelineInput | VarDecl | MemDecl | Step | Property ;
                    (* a `spawn` Property holds `{ max_concurrency: Number }`,
                       the run-wide ceiling on concurrent spawned agent calls *)
@@ -118,7 +120,7 @@ Statement      ::= VarDecl | ReturnStmt | BreakStmt | GotoStmt
 VarDecl        ::= "var" Ident "=" Expr ;
 ReturnStmt     ::= "return" [ Expr ] ;
 BreakStmt      ::= "break" [ Expr ] ;
-GotoStmt       ::= "goto" Ident ;
+GotoStmt       ::= "goto" Ident ;   (* only inside a `workflow`; target must be a step of it *)
 SpawnStmt      ::= "spawn" Ident "=" Expr ;
                    (* Expr must be an `Agent.run(...)` call; the handle is a
                       "task" value with .result/.ok/.error/.status/.duration_ms,

@@ -7,7 +7,7 @@
 // pins the handshake so the run is deterministic and fully offline; with the
 // default `protocol: "auto"` the runtime would try the stateless form first and
 // fall back to this same handshake on a protocol-incompatibility error.
-mcp_server MockHandshake {
+extension mcp MockHandshake {
     transport: "stdio"
     command: "sh"
     args: [

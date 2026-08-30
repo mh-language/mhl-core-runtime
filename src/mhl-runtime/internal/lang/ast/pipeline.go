@@ -11,11 +11,23 @@ import "github.com/alecthomas/participle/v2/lexer"
 // either. Named `repeat`, not `loop`, so it doesn't repeat the `loop`
 // keyword that already precedes `pipeline`. A pipeline with no `loop` prefix
 // still runs exactly once, unchanged.
+//
+// Kind is the declaration keyword: "pipeline" (steps run in order, each once
+// — `goto` is a lint error) or "workflow" (identical execution model, but
+// `goto <step>` is allowed, so the step sequence is an explicitly branching
+// state machine). The distinction is purely static — the interpreter and
+// runtime treat both the same; internal/lang/lint is what rejects `goto`
+// outside a `workflow` (checkPipelineGoto).
 type Pipeline struct {
 	Loop bool              `parser:"@'loop'?"`
-	Name string            `parser:"'pipeline' @Ident"`
+	Kind string            `parser:"@( 'pipeline' | 'workflow' )"`
+	Name string            `parser:"@Ident"`
 	Body []*PipelineMember `parser:"'{' @@* '}'"`
 }
+
+// IsWorkflow reports whether this declaration used the `workflow` keyword
+// (rather than `pipeline`), which is what permits `goto` in its steps.
+func (p *Pipeline) IsWorkflow() bool { return p.Kind == "workflow" }
 
 // PipelineMember is one entry of a pipeline body. Var (reusing the same
 // VarDecl a step body's `var x = expr` already is) declares a
@@ -181,12 +193,15 @@ type WaitOpt struct {
 	Value *Expr  `parser:"@@"`
 }
 
-// GotoStmt transfers control to another named step in the same pipeline,
+// GotoStmt transfers control to another named step in the same declaration,
 // abandoning the rest of the current step's body. Target may be any step,
 // forward or backward, which is what a "recascade" (jump back to an earlier
-// phase after a failed review) or a replan transition needs — the
-// pipeline's step sequence is a small state machine (linear by default,
-// explicitly overridable per statement), not a fixed array walk.
+// phase after a failed review) or a replan transition needs — the step
+// sequence becomes an explicitly branching state machine, not a fixed array
+// walk. Only legal inside a `workflow` (not a plain `pipeline`); a step name
+// that isn't declared in the same declaration is an error — both enforced
+// by internal/lang/lint (checkPipelineGoto), the parser accepts the shape
+// in either.
 type GotoStmt struct {
 	Target string `parser:"'goto' @Ident"`
 }

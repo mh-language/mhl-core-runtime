@@ -47,7 +47,7 @@ func TestA2AAgentSendPollsTaskToCompletion(t *testing.T) {
 	t.Setenv("A2A_TOKEN", "sk-test-1")
 
 	src := `
-a2a_agent Translator {
+extension a2a Translator {
     url: "` + server.URL + `/a2a"
     headers: {
         "Authorization": "Bearer " + env("A2A_TOKEN")
@@ -91,7 +91,7 @@ func TestA2AAgentSendRejectsInputRequired(t *testing.T) {
 	defer server.Close()
 
 	src := `
-a2a_agent Helper {
+extension a2a Helper {
     url: "` + server.URL + `"
 }
 ` + wrapStep(`
@@ -118,7 +118,7 @@ func TestA2AAgentCardFetchesWellKnown(t *testing.T) {
 	defer server.Close()
 
 	src := `
-a2a_agent Translator {
+extension a2a Translator {
     url: "` + server.URL + `/a2a"
 }
 ` + wrapStep(`

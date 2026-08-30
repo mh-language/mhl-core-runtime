@@ -34,10 +34,10 @@ func TestSignatureCatalogueMatchesSymbolTables(t *testing.T) {
 	checkValueKind(t, "array", arrayMethods, arrayMethodSigs)
 	checkValueKind(t, "object", objectMethods, objectMethodSigs)
 
-	// mcp_server
+	// extension mcp
 	checkExact(t, "mcpServerMethodSigs", mcpServerMethods, mcpServerMethodSigs)
 
-	// a2a_agent
+	// extension a2a
 	checkExact(t, "a2aAgentMethodSigs", a2aAgentMethods, a2aAgentMethodSigs)
 
 	// memory: every method any backend type exposes must resolve, plus the

@@ -1,0 +1,32 @@
+// `extension <kind> <Name> { ...props }` declares a use of a runtime
+// extension. The core parses it as a kind, a name, and a property bag; the
+// extension registered for that kind (built-in `mcp`/`a2a`, or an installed
+// external one) interprets the properties and the methods called on the name.
+//
+// Runnable behaviour of a resolved extension lives in sample/features/mcp and
+// sample/features/a2a. This file only pins the grammar: the declaration parses
+// and lints with any kind, one or more per file.
+
+extension mcp GitHub {
+    transport: "http"
+    url: "https://api.githubcopilot.com/mcp/"
+}
+
+extension a2a Translator {
+    url: "https://translator.example.com/a2a"
+    poll_interval: 1s
+    poll_timeout: 60s
+}
+
+extension crm Customer {
+    endpoint: env("CRM_URL")
+}
+
+test extension_declaration_parses {
+    describe extension_declares_a_kind_and_name {
+        // Nothing to call — a kind only resolves once its adapter is
+        // registered. This test just exercises a file that declares the
+        // grammar.
+        are_equal("mcp", "mcp")
+    }
+}

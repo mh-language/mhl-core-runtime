@@ -1,10 +1,10 @@
-mcp_server LocalTools {
+extension mcp LocalTools {
     transport: "stdio"
     command: "npx"
     args: ["-y", "example-mcp-server"]
 }
 
-mcp_server RemoteTools {
+extension mcp RemoteTools {
     transport: "http"
     url: "https://example.test/mcp"
     headers: {

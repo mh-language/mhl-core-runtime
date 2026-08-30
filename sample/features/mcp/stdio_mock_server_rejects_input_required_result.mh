@@ -3,7 +3,7 @@
 // before it can finish. mhl's MCP client cannot gather and resubmit that
 // input, so `.call()` rejects this outright instead of returning the
 // InputRequiredResult's shape as if it were the tool's real data.
-mcp_server MockTools {
+extension mcp MockTools {
     transport: "stdio"
     command: "sh"
     args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"input_required\",\"inputRequests\":[{\"method\":\"elicitation/create\"}]}}'"]

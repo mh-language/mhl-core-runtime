@@ -63,20 +63,7 @@ func invokeClosureWithValues(c *Closure, args []any, depth int) (any, error) {
 	for k, v := range c.capturedEnv {
 		callEnv[k] = v
 	}
-	callCtx := &evalCtx{
-		prog:        c.definingCtx.prog,
-		store:       c.definingCtx.store,
-		jsonStore:   c.definingCtx.jsonStore,
-		out:         c.definingCtx.out,
-		env:         callEnv,
-		pipelineEnv: c.definingCtx.pipelineEnv,
-		mem:         c.definingCtx.mem,
-		cctx:        c.definingCtx.cctx,
-		file:        c.definingCtx.file,
-		selfTool:    c.definingCtx.selfTool,
-		aliasTypes:  c.definingCtx.aliasTypes,
-		constNames:  c.definingCtx.constNames,
-	}
+	callCtx := c.callCtx(callEnv)
 	// Supplied arguments bind first; each omitted trailing parameter is
 	// filled from its default, evaluated against the scope built so far
 	// (captured env + earlier parameters).
@@ -95,4 +82,43 @@ func invokeClosureWithValues(c *Closure, args []any, depth int) (any, error) {
 		}
 	}
 	return invokeCallable(callCtx, c.def.Body, c.def.Block, depth)
+}
+
+// callCtx builds the evalCtx a closure body runs in: the defining context's
+// program/stores/scopes, but with env swapped for the per-call one.
+func (c *Closure) callCtx(callEnv Env) *evalCtx {
+	return &evalCtx{
+		prog:        c.definingCtx.prog,
+		store:       c.definingCtx.store,
+		jsonStore:   c.definingCtx.jsonStore,
+		out:         c.definingCtx.out,
+		env:         callEnv,
+		pipelineEnv: c.definingCtx.pipelineEnv,
+		mem:         c.definingCtx.mem,
+		cctx:        c.definingCtx.cctx,
+		file:        c.definingCtx.file,
+		selfTool:    c.definingCtx.selfTool,
+		aliasTypes:  c.definingCtx.aliasTypes,
+		constNames:  c.definingCtx.constNames,
+		registry:    c.definingCtx.registry,
+	}
+}
+
+// invokeClosureWithEnv runs a zero-parameter closure with extra name
+// bindings seeded into its call scope on top of the captured env. The agent
+// `after` hook uses it to make `result` available in the body without a
+// parameter list — mirroring how `before`'s returned object becomes `${...}`
+// bindings for the prompt.
+func invokeClosureWithEnv(c *Closure, extra Env, depth int) (any, error) {
+	if len(c.def.Params) != 0 {
+		return nil, fmt.Errorf("closure takes no parameters, got %d", len(c.def.Params))
+	}
+	callEnv := make(Env, len(c.capturedEnv)+len(extra))
+	for k, v := range c.capturedEnv {
+		callEnv[k] = v
+	}
+	for k, v := range extra {
+		callEnv[k] = v
+	}
+	return invokeCallable(c.callCtx(callEnv), c.def.Body, c.def.Block, depth)
 }

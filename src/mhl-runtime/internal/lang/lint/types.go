@@ -155,4 +155,3 @@ func toolMethodReturnExprs(m *ast.ToolMethod) []*ast.Expr {
 	walk(m.Block)
 	return exprs
 }
-

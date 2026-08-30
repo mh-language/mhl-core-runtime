@@ -53,11 +53,11 @@ var contextFieldItems = []completionItem{
 
 // agentPropertyItems lists only what internal/engine/interpreter/agent.go
 // actually reads (agentEngine/agentCommand/agentOllamaConfig/agentLogPath/
-// agentTrace/agentRetry/agentCache/agentLimiter/agentFallback/
-// agentToolScope/agentHookExpr) — not every field docs/site/reference.html
-// may still show aspirationally (api_key, timeout, system_instructions
-// aren't implemented yet), so this list doesn't suggest config an agent
-// declaration can write but the runtime will silently ignore.
+// agentTrace/agentRetry/agentCache/agentLimiter/agentFallback/agentHookExpr)
+// — not every field docs/site/reference.html may still show aspirationally
+// (api_key, timeout, system_instructions aren't implemented yet), so this
+// list doesn't suggest config an agent declaration can write but the runtime
+// will silently ignore.
 var agentPropertyItems = []completionItem{
 	propertyItem("engine", `e.g. "cli/claude-code", "ollama/qwen2.5-coder"`),
 	propertyItem("command", "cli/* engine: the executable to run"),
@@ -70,30 +70,8 @@ var agentPropertyItems = []completionItem{
 	propertyItem("cache", "{ ttl, storage, strategy }"),
 	propertyItem("rate_limit", "{ requests_per_minute, concurrency, on_exceeded }"),
 	propertyItem("fallback", "array of inline agent {...} literals or declared agent names"),
-	propertyItem("tools", "array of declared tool names or tool.method references; folded into every .run() prompt as an allowed-scope instruction"),
-	propertyItem("mcp_servers", "array of declared mcp_server names; folded into every .run() prompt as an allowed-scope instruction"),
-	propertyItem("before", "(mcp, tools) -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),
-	propertyItem("after", "(mcp, tools, result) -> {...}: runs once on the final response; a returned string replaces it"),
-}
-
-// mcpServerPropertyItems mirrors registry.serverFromAST's field switch
-// (features/mcp/registry.go).
-var mcpServerPropertyItems = []completionItem{
-	propertyItem("transport", `"stdio" or "http"`),
-	propertyItem("command", `"stdio" transport: the executable to spawn per call`),
-	propertyItem("args", `"stdio" transport: argv for the spawned process`),
-	propertyItem("url", `"http" transport: the endpoint URL`),
-	propertyItem("headers", `"http" transport: e.g. { "Authorization": "Bearer " + env("TOKEN") }`),
-	propertyItem("protocol", `"auto" (default), "2026-07-28" (stateless), "2025-11-25", or "2025-06-18" (handshake)`),
-}
-
-// a2aAgentPropertyItems mirrors a2a.configFromAST's field switch
-// (features/a2a/registry.go).
-var a2aAgentPropertyItems = []completionItem{
-	propertyItem("url", "the remote agent's A2A JSON-RPC endpoint"),
-	propertyItem("headers", `e.g. { "Authorization": "Bearer " + env("A2A_TOKEN") }`),
-	propertyItem("poll_interval", "duration between tasks/get polls in a blocking send; default 1s"),
-	propertyItem("poll_timeout", "duration a blocking send waits for a terminal task state; default 120s"),
+	propertyItem("before", "() -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),
+	propertyItem("after", "() -> {...}: runs once on the final response (bound as result); a returned string replaces it"),
 }
 
 // retryFieldItems mirrors agentRetry's field switch. backoff is listed even
@@ -126,11 +104,15 @@ var rateLimitFieldItems = []completionItem{
 // isn't one property-position completion has an opinion about (a step body,
 // an if/while/try block, a plain object literal, ...), in which case
 // completionAt's general keyword+symbol list is left untouched.
-func propertyItemsFor(stack []blockKind) []completionItem {
+func propertyItemsFor(stack []blockRef) []completionItem {
 	if len(stack) == 0 {
 		return nil
 	}
-	switch stack[len(stack)-1] {
+	top := stack[len(stack)-1]
+	if top.Kind == blockExtension {
+		return extensionPropertyItems(top.ExtKind)
+	}
+	switch top.Kind {
 	case blockPipeline:
 		return pipelinePropertyItems
 	case blockLoopPipeline:
@@ -154,10 +136,6 @@ func propertyItemsFor(stack []blockKind) []completionItem {
 		return cacheFieldItems
 	case blockRateLimit:
 		return rateLimitFieldItems
-	case blockMCPServer:
-		return mcpServerPropertyItems
-	case blockA2AAgent:
-		return a2aAgentPropertyItems
 	default:
 		return nil
 	}

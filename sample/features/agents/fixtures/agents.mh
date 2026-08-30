@@ -57,7 +57,7 @@ export agent MockLoggingCLI {
 // substitute a whole args element (not text embedded inside a larger
 // string), so it is passed as a positional arg and picked up as `$1` inside
 // the script; GEMINI_API_KEY is expanded by the shell from the real process
-// environment, since mhl's own env() is only evaluated for mcp_server
+// environment, since mhl's own env() is only evaluated for extension
 // blocks, not agent args.
 export agent GeminiAPI {
     command: "sh"

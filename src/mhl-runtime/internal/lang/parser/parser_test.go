@@ -674,11 +674,50 @@ loop pipeline P {
 	}
 }
 
+// TestPipelineKindParses covers the `pipeline` / `workflow` declaration
+// keyword (ast.Pipeline.Kind), including the `loop` prefix on either.
+func TestPipelineKindParses(t *testing.T) {
+	cases := []struct {
+		src      string
+		wantKind string
+		wantLoop bool
+		wantIsWF bool
+	}{
+		{"pipeline P { step S { log(\"s\") } }", "pipeline", false, false},
+		{"workflow W { step S { goto S } }", "workflow", false, true},
+		{"loop pipeline LP { step S { log(\"s\") } }", "pipeline", true, false},
+		{"loop workflow LW { step S { goto S } }", "workflow", true, true},
+	}
+	for _, c := range cases {
+		prog, err := Parse(c.src)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", c.src, err)
+		}
+		p := prog.Decls[0].Pipeline
+		if p == nil {
+			t.Fatalf("Parse(%q): no pipeline decl", c.src)
+		}
+		if p.Kind != c.wantKind || p.Loop != c.wantLoop || p.IsWorkflow() != c.wantIsWF {
+			t.Errorf("Parse(%q): Kind=%q Loop=%v IsWorkflow=%v, want Kind=%q Loop=%v IsWorkflow=%v",
+				c.src, p.Kind, p.Loop, p.IsWorkflow(), c.wantKind, c.wantLoop, c.wantIsWF)
+		}
+	}
+}
+
+// TestImportKeywordRemoved confirms `import "..." as x` no longer parses —
+// cross-file composition is `use { ... } from "..."` only.
+func TestImportKeywordRemoved(t *testing.T) {
+	_, err := Parse(`import "./other.mh" as other`)
+	if err == nil {
+		t.Fatal("expected a parse error for the removed `import` keyword, got nil")
+	}
+}
+
 // TestMalformedYieldsError is the failure path: a syntactically invalid .mh
 // source must yield a descriptive error rather than a partial/incorrect AST.
 func TestMalformedYieldsError(t *testing.T) {
-	// `mcp_server` requires a name identifier and a body; this is truncated.
-	prog, err := Parse(`mcp_server {`)
+	// `extension` requires a kind, a name, and a body; this is truncated.
+	prog, err := Parse(`extension mcp {`)
 	if err == nil {
 		t.Fatalf("expected a parse error for malformed source, got nil")
 	}
@@ -717,11 +756,17 @@ tool T {
 	}
 }
 
-// TestA2AAgentDeclParses confirms the `a2a_agent` declaration keyword binds a
-// name and a property-bag body, the same shape as `mcp_server`.
-func TestA2AAgentDeclParses(t *testing.T) {
+// TestExtensionDeclParses confirms `extension <kind> <Name> { ... }` binds a
+// kind, a name and a property-bag body, and that ast.AsExtension yields that
+// view. `extension a2a` gets duration-literal properties like any other kind.
+func TestExtensionDeclParses(t *testing.T) {
 	prog, err := Parse(`
-a2a_agent Translator {
+extension mcp GitHub {
+    transport: "http"
+    url: "https://api.githubcopilot.com/mcp/"
+}
+
+extension a2a Translator {
     url: "https://translator.example.com/a2a"
     headers: {
         "Authorization": "Bearer " + env("A2A_TOKEN")
@@ -733,17 +778,24 @@ a2a_agent Translator {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if len(prog.Decls) != 1 || prog.Decls[0].A2AAgent == nil {
-		t.Fatalf("expected a single a2a_agent declaration, got %#v", prog.Decls)
+	if len(prog.Decls) != 2 || prog.Decls[0].Extension == nil || prog.Decls[1].Extension == nil {
+		t.Fatalf("expected two extension declarations, got %#v", prog.Decls)
 	}
-	a := prog.Decls[0].A2AAgent
-	if a.Name != "Translator" {
-		t.Fatalf("expected name Translator, got %q", a.Name)
+	e := prog.Decls[0].Extension
+	if e.Kind != "mcp" || e.Name != "GitHub" {
+		t.Fatalf("expected kind=mcp name=GitHub, got kind=%q name=%q", e.Kind, e.Name)
 	}
-	if len(a.Props) != 4 {
-		t.Fatalf("expected 4 properties, got %d", len(a.Props))
+	if len(e.Props) != 2 || e.Props[0].Name != "transport" {
+		t.Fatalf("expected 2 props starting with transport, got %#v", e.Props)
 	}
-	if a.Props[0].Name != "url" {
-		t.Fatalf("expected first property url, got %q", a.Props[0].Name)
+
+	kind, name, props, ok := ast.AsExtension(prog.Decls[0])
+	if !ok || kind != "mcp" || name != "GitHub" || len(props) != 2 {
+		t.Fatalf("AsExtension = %q %q %d %v", kind, name, len(props), ok)
+	}
+
+	a := prog.Decls[1].Extension
+	if a.Kind != "a2a" || a.Name != "Translator" || len(a.Props) != 4 {
+		t.Fatalf("unexpected a2a extension: %#v", a)
 	}
 }

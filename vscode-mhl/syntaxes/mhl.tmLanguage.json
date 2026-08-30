@@ -52,7 +52,7 @@
       "patterns": [
         {
           "name": "storage.type.declaration.mhl",
-          "match": "\\b(import|from|use|as|export|mcp_server|a2a_agent|agent|memory|tool|loop|pipeline|prompt|parallel|step|input|test|describe|type|enum)\\b"
+          "match": "\\b(from|use|as|export|extension|agent|memory|tool|loop|pipeline|workflow|prompt|parallel|step|input|test|describe|type|enum)\\b"
         }
       ]
     },
