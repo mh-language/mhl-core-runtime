@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+builds:
+  - id: mhl
+    dir: src/mhl-runtime
+    main: ./cmd/mhl
+    binary: mhl
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/mh-language/mhl-core-runtime/internal/cli.Version={{.Version}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: darwin
+        goarch: amd64   # only darwin-arm64 is supported; Intel Mac is not published
+
+archives:
+  - id: default
+    name_template: "mhl-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+release:
+  draft: false
+  generate_release_notes: true
