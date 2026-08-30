@@ -1,20 +1,18 @@
 // Echo prints whatever prompt mhl built for it — no real LLM call involved.
-// GitHub/Jira are mocked stdio MCP servers standing in for real ones.
+// GitHub/Jira are mocked stdio MCP extensions standing in for real ones.
 agent Echo {
     command: "echo"
     args: ["${prompt}"]
-    tools: [execution, storage]
-    mcp_servers: [GitHub, Jira]
 
-    // `mcp`/`tools` are maps keyed by declared name, one entry per item in
-    // `mcp_servers:`/`tools:` — every declared tool/server is reachable,
-    // not just the first one.
-    before: (mcp, tools) -> {
+    // A `before` hook body is an ordinary expression scope: it calls any
+    // declared tool or extension by name, as many as it needs. The returned
+    // object's fields become "${...}" bindings for the prompt.
+    before: () -> {
         return {
-            file_result: tools.execution.read_file("main.go"),
-            json_result: tools.storage.write_json("main.go"),
-            github_result: mcp.GitHub.call("search", {}),
-            jira_result: mcp.Jira.call("search", {})
+            file_result: execution.read_file("main.go"),
+            json_result: storage.write_json("main.go"),
+            github_result: GitHub.call("search", {}),
+            jira_result: Jira.call("search", {})
         }
     }
 }
@@ -27,20 +25,20 @@ tool storage {
     write_json(path: string) -> "storage wrote " + path
 }
 
-mcp_server GitHub {
+extension mcp GitHub {
     transport: "stdio"
     command: "sh"
     args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"github-result\"}'"]
 }
 
-mcp_server Jira {
+extension mcp Jira {
     transport: "stdio"
     command: "sh"
     args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"jira-result\"}'"]
 }
 
-test agent_before_hook_navigates_multiple_tools_and_mcp_servers {
-    describe agent_before_hook_navigates_multiple_tools_and_mcp_servers {
+test agent_before_hook_fetches_from_multiple_tools_and_extensions {
+    describe agent_before_hook_fetches_from_multiple_tools_and_extensions {
         var response = Echo.run(prompt: "${file_result} | ${json_result} | ${github_result} | ${jira_result}")
         log(response)
         is_true(response.contains("execution read main.go"))

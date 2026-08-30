@@ -66,7 +66,7 @@ func ParseProtocol(raw string) (Protocol, error) {
 	case string(ProtocolHandshake2506):
 		return ProtocolHandshake2506, nil
 	default:
-		return "", fmt.Errorf("mcp_server protocol %q is not supported — use %q, %q, %q, or %q",
+		return "", fmt.Errorf("mcp extension protocol %q is not supported — use %q, %q, %q, or %q",
 			raw, ProtocolAuto, ProtocolStateless, ProtocolHandshake2511, ProtocolHandshake2506)
 	}
 }

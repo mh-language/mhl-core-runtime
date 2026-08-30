@@ -46,7 +46,7 @@ func shouldFallBack(err error) bool {
 // form and the handshake and both failed.
 func combinedProtocolError(server ServerConfig, statelessErr, handshakeErr error) error {
 	return fmt.Errorf(
-		"no compatible MCP protocol for mcp_server %q: stateless (%s) attempt: %v; handshake (advertised %s) attempt: %v",
+		"no compatible MCP protocol for extension mcp %q: stateless (%s) attempt: %v; handshake (advertised %s) attempt: %v",
 		server.Name, SpecVersion, statelessErr, HandshakeVersionLatest, handshakeErr)
 }
 

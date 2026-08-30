@@ -3,7 +3,7 @@
 // its stdin, discards it, and prints back a canned "tools/call" response.
 // This proves the stdio transport's request/response wiring deterministically,
 // with no network and no external binary required.
-mcp_server MockTools {
+extension mcp MockTools {
     transport: "stdio"
     command: "sh"
     args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"pong\":true,\"echoed_tool\":\"ping\"}}'"]

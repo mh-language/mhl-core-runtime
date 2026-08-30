@@ -10,14 +10,16 @@ import "strings"
 //   - native ops   -> internal/engine/interpreter/tool.go   (nativeOpCall)
 //   - collection   -> internal/engine/interpreter/eval.go   (callValueMethod)
 //   - memory       -> internal/engine/interpreter/memory_ops.go
-//   - mcp_server   -> internal/engine/interpreter/mcp_ops.go
-//   - a2a_agent    -> internal/engine/interpreter/a2a_ops.go
 //   - agent.run    -> internal/engine/interpreter/agent.go
 //   - globals      -> internal/engine/interpreter/eval.go   (log/fail/env)
 //   - assertions   -> internal/engine/interpreter/test.go   (runAssertion)
 // and the same surface documented in docs/site/stdlib.html. signatures_test.go
 // fails if the method *sets* here drift from the LSP's own symbol tables
 // (nativeSymbols, stringMethods, ...), which in turn mirror the interpreter.
+//
+// The `extension` declarations (`extension <kind> <Name>`)
+// are the exception: their signatures come from the registered adapters'
+// MethodSpec metadata via extensions.go, not from a hand copy here.
 
 // sig is one callable's human-facing signature. Label is the full
 // "name(params) -> ret" line shown in the UI; Params is the ordered
@@ -72,13 +74,13 @@ var nativeSigs = map[string]sig{
 		Params: []string{"n", "dir"},
 		Doc:    "`git [-C dir] log -n <n> --oneline`. `n` must be positive.",
 	},
-	"fs.read":   {Label: "fs.read(path: string) -> string", Params: []string{"path"}, Doc: "Full file contents. Raises if unreadable."},
-	"fs.exists": {Label: "fs.exists(path: string) -> bool", Params: []string{"path"}, Doc: "A stat error other than \"not found\" raises."},
-	"fs.write":  {Label: "fs.write(path: string, content: string) -> bool", Params: []string{"path", "content"}, Doc: "Truncates and writes, creating parent directories. Returns `true`."},
-	"fs.append": {Label: "fs.append(path: string, content: string) -> bool", Params: []string{"path", "content"}, Doc: "Appends, creating parent directories. Returns `true`."},
-	"fs.delete": {Label: "fs.delete(path: string) -> bool", Params: []string{"path"}, Doc: "Removes a file or empty directory. Raises if it can't."},
-	"fs.join":   {Label: "fs.join(...segments: string) -> string", Params: []string{"segments"}, Doc: "OS-appropriate path join of one or more segments."},
-	"fs.list":   {Label: "fs.list(dir: string) -> string[]", Params: []string{"dir"}, Doc: "Entries in `dir`."},
+	"fs.read":      {Label: "fs.read(path: string) -> string", Params: []string{"path"}, Doc: "Full file contents. Raises if unreadable."},
+	"fs.exists":    {Label: "fs.exists(path: string) -> bool", Params: []string{"path"}, Doc: "A stat error other than \"not found\" raises."},
+	"fs.write":     {Label: "fs.write(path: string, content: string) -> bool", Params: []string{"path", "content"}, Doc: "Truncates and writes, creating parent directories. Returns `true`."},
+	"fs.append":    {Label: "fs.append(path: string, content: string) -> bool", Params: []string{"path", "content"}, Doc: "Appends, creating parent directories. Returns `true`."},
+	"fs.delete":    {Label: "fs.delete(path: string) -> bool", Params: []string{"path"}, Doc: "Removes a file or empty directory. Raises if it can't."},
+	"fs.join":      {Label: "fs.join(...segments: string) -> string", Params: []string{"segments"}, Doc: "OS-appropriate path join of one or more segments."},
+	"fs.list":      {Label: "fs.list(dir: string) -> string[]", Params: []string{"dir"}, Doc: "Entries in `dir`."},
 	"http.get":     httpSig("get"),
 	"http.post":    httpSig("post"),
 	"http.put":     httpSig("put"),
@@ -175,18 +177,12 @@ var memoryMethodSigs = map[string]sig{
 	"reset":  {Label: "reset() -> null", Params: nil, Doc: "Ephemeral `mem` only: clears the store."},
 }
 
-var mcpServerMethodSigs = map[string]sig{
-	"call":       {Label: "call(tool: string, arguments?: object) -> any", Params: []string{"tool", "arguments"}, Doc: "Issues a stateless JSON-RPC `tools/call`; returns the decoded result."},
-	"list_tools": {Label: "list_tools() -> any", Params: nil, Doc: "Issues `tools/list`. One page only."},
-	"discover":   {Label: "discover() -> any", Params: nil, Doc: "Issues `server/discover` — supported versions, capabilities, identity."},
-}
-
-var a2aAgentMethodSigs = map[string]sig{
-	"send":       {Label: "send(message: string, context?: string) -> object", Params: []string{"message", "context"}, Doc: "Sends `message/send` (one text part) and, if the reply is a non-terminal Task, polls `tasks/get` to a terminal state. Returns `{kind, text, ...}` — a normalized message or task. `context:` sets `contextId` for a follow-up turn."},
-	"agent_card": {Label: "agent_card() -> object", Params: nil, Doc: "GETs the public Agent Card from `<origin>/.well-known/agent-card.json`."},
-	"get_task":   {Label: "get_task(id: string, history_length?: number) -> object", Params: []string{"id", "history_length"}, Doc: "Issues `tasks/get` for a task id; returns the normalized task."},
-	"cancel":     {Label: "cancel(id: string) -> object", Params: []string{"id"}, Doc: "Issues `tasks/cancel` for a task id; returns the normalized task."},
-}
+// mcpServerMethodSigs / a2aAgentMethodSigs are built from the registered
+// extension adapters' MethodSpec entries (see extensions.go), not hand-copied.
+var (
+	mcpServerMethodSigs = extensionMethodSigs("mcp")
+	a2aAgentMethodSigs  = extensionMethodSigs("a2a")
+)
 
 var agentMethodSigs = map[string]sig{
 	"run": {
@@ -229,14 +225,14 @@ var assertionSigs = map[string]sig{
 }
 
 // signatureForMethod resolves a `receiver.method` call's signature from the
-// receiver's symbol kind. receiver is the symbol name (a native namespace, a
-// declared agent/memory/mcp_server, or a typed variable); ok is false when
-// nothing static is known (a user-declared `tool` method, say).
-func signatureForMethod(kind symbolKind, receiver, method string) (sig, bool) {
-	switch kind {
+// receiver symbol (a native namespace, a declared agent/memory/extension, or a
+// typed variable). ok is false when nothing static is known (a user-declared
+// `tool` method, say).
+func signatureForMethod(s symbol, method string) (sig, bool) {
+	switch s.Kind {
 	case symNative:
-		s, ok := nativeSigs[receiver+"."+method]
-		return s, ok
+		x, ok := nativeSigs[s.Name+"."+method]
+		return x, ok
 	case symString:
 		return lookupValueMethod(stringMethodSigs, method)
 	case symArray:
@@ -244,17 +240,14 @@ func signatureForMethod(kind symbolKind, receiver, method string) (sig, bool) {
 	case symObject:
 		return lookupValueMethod(objectMethodSigs, method)
 	case symMemory:
-		s, ok := memoryMethodSigs[method]
-		return s, ok
-	case symMCPServer:
-		s, ok := mcpServerMethodSigs[method]
-		return s, ok
-	case symA2AAgent:
-		s, ok := a2aAgentMethodSigs[method]
-		return s, ok
+		x, ok := memoryMethodSigs[method]
+		return x, ok
+	case symExtension:
+		x, ok := extensionMethodSigs(s.ExtKind)[method]
+		return x, ok
 	case symAgent:
-		s, ok := agentMethodSigs[method]
-		return s, ok
+		x, ok := agentMethodSigs[method]
+		return x, ok
 	default:
 		return sig{}, false
 	}

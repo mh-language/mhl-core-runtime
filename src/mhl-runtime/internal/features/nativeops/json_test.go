@@ -97,10 +97,10 @@ func TestParseEmptyStringErrors(t *testing.T) {
 
 func TestStringifyRoundTripsThroughParse(t *testing.T) {
 	original := map[string]any{
-		"id":       1.0,
-		"title":    "auth",
+		"id":        1.0,
+		"title":     "auth",
 		"dependsOn": []any{2.0, 3.0},
-		"passed":   false,
+		"passed":    false,
 	}
 	text, err := nativeops.Stringify(original)
 	if err != nil {

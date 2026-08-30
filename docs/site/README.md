@@ -1,6 +1,6 @@
 # MHL documentation site
 
-This directory contains the public, self-contained en-US documentation for the Meta-Harness Language, ready for static publishing. The home page covers motivation, positioning, a quickstart, an applied example, the reference research, and contributions. `sample.html` walks through `sample/workflows/mhl.workflow.development` in execution order, including recovery paths and the MHL features used at each stage. `reference.html` documents the syntax and every language construct with complete examples. `stdlib.html` is the method reference: every callable — collection methods, `agent`/`prompt`/`memory`/`mcp_server`/`a2a_agent` methods, native operations, and test assertions — with its parameters, types, and return values.
+This directory contains the public, self-contained en-US documentation for the Meta-Harness Language, ready for static publishing. `index.html` is the orientation page: motivation, positioning, quickstart, mental model, feature map, and an applied example. `reference.html` documents syntax, language constructs, built-in extension kinds, pipelines, tests, and CLI behavior. `stdlib.html` is the callable reference: collection methods, `agent`/`prompt`/`memory`/extension methods, native operations, and test assertions with parameters, types, and return values. `extensions.html` guides runtime developers through external extension manifests, permissions, the JSON-RPC process protocol, and installation.
 
 ## Publishing
 

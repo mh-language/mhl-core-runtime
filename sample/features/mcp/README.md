@@ -1,7 +1,8 @@
 # mcp
 
-Declaring an `mcp_server` and calling it from `.mh` code with `<Server>.call("toolName", { ... })`,
-`<Server>.list_tools()`, or `<Server>.discover()` — the operations an mcp_server exposes today.
+Declaring an `extension mcp <Name> { ... }` and calling it from `.mh`
+code with `<Server>.call("toolName", { ... })`, `<Server>.list_tools()`, or `<Server>.discover()`
+— the operations it exposes.
 All three dispatch to `internal/features/mcp`'s stateless JSON-RPC client: `stdio` spawns a fresh
 process per call and speaks newline-delimited JSON-RPC over its stdin/stdout, `http` issues a
 fresh POST per call with the declared headers (commonly a bearer token resolved via `env(...)`).
@@ -26,6 +27,9 @@ input) is rejected with a clear error, since this client can't gather and resubm
   `tools/call` request/response round trip deterministically, with no network involved
 - [stdio_mock_server_proves_list_tools_wiring.mh](stdio_mock_server_proves_list_tools_wiring.mh)
   — the same, for `.list_tools()` (`tools/list`)
+- [extension_keyword_resolves_through_the_adapter.mh](extension_keyword_resolves_through_the_adapter.mh)
+  — the generic `extension mcp <Name> { ... }` spelling dispatches `.list_tools()` through the
+  very same in-process MCP adapter
 - [stdio_mock_server_proves_discover_wiring.mh](stdio_mock_server_proves_discover_wiring.mh) —
   the same, for `.discover()` (`server/discover`)
 - [stdio_mock_server_rejects_input_required_result.mh](stdio_mock_server_rejects_input_required_result.mh)

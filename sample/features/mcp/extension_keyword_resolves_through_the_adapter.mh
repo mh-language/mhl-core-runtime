@@ -1,0 +1,17 @@
+// This mock proves an `extension mcp` declaration dispatches `.list_tools()`
+// through the built-in in-process MCP adapter and decodes the result, with no
+// network and no external binary.
+extension mcp MockTools {
+    transport: "stdio"
+    command: "sh"
+    args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"search_repositories\"},{\"name\":\"get_me\"}]}}'"]
+}
+
+test extension_keyword_resolves_through_the_adapter {
+    describe extension_mcp_list_tools_wiring {
+        var result = MockTools.list_tools()
+        log("extension mcp MockTools.list_tools result: ${json.stringify(result)}")
+        are_equal(result.tools.size(), 2)
+        are_equal(result.tools.get_index(0).name, "search_repositories")
+    }
+}

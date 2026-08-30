@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="How to extend the MHL runtime with isolated executables, manifests, permissions, JSON-RPC, and lock files." />
+    <meta name="theme-color" content="#10161f" />
+    <meta property="og:title" content="Extending MHL — Runtime extension guide" />
+    <meta property="og:description" content="Build an external MHL extension in any language and connect it through the runtime host." />
+    <meta property="og:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Extending MHL — Runtime extension guide" />
+    <meta name="twitter:description" content="Build an external MHL extension in any language and connect it through the runtime host." />
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <link rel="icon" href="assets/mhl-logo-rebrand.png" />
+    <title>Extending MHL — Runtime extension guide</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="index.html" aria-label="MHL home">
+        <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
+        <span><strong>MHL</strong><small>Meta-Harness Language</small></span>
+      </a>
+      <div class="top-actions">
+        <label class="search" for="site-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="site-search" type="search" placeholder="Search the extension guide" autocomplete="off" />
+          <kbd>/</kbd>
+        </label>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
+        <a class="github-link" href="index.html">Overview</a>
+        <a class="github-link" href="reference.html">Reference</a>
+        <a class="github-link" href="stdlib.html">Standard library</a>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </div>
+    </header>
+
+    <div class="layout" id="top">
+      <aside class="sidebar" aria-label="Extension guide navigation">
+        <p class="eyebrow">RUNTIME EXTENSIONS</p>
+        <nav id="toc">
+          <a class="nav-link active" href="#overview">Overview</a>
+          <a class="nav-link" href="#model">Extension model</a>
+          <a class="nav-link" href="#layout">Project layout</a>
+          <a class="nav-link" href="#manifest">Manifest</a>
+          <a class="nav-link" href="#protocol">Wire protocol</a>
+          <a class="nav-link" href="#permissions">Host services</a>
+          <a class="nav-link" href="#workflow">Build and install</a>
+          <a class="nav-link" href="#checklist">Release checklist</a>
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <span>External adapter API<br /><small>v1 · unstable until frozen</small></span>
+        </div>
+      </aside>
+
+      <main class="content reference-content extension-content">
+        <section class="ref-hero doc-section" id="overview" data-title="extensions external runtime adapter executable developer guide overview">
+          <p class="eyebrow accent">MHL · RUNTIME EXTENSIONS · API V1</p>
+          <h1>Add capabilities without recompiling the runtime.</h1>
+          <p class="lead">An external extension is a separate executable that MHL starts on demand and talks to over newline-delimited JSON-RPC. Build a CRM connector, database client, deployment tool, or any other capability in the language you prefer.</p>
+          <div class="legend">
+            <span class="legend-item"><span class="status status-full">External process</span> isolated from the runtime binary</span>
+            <span class="legend-item"><span class="status status-partial">API v1</span> unstable while the contract evolves</span>
+          </div>
+          <div class="quick-index">
+            <a href="#manifest"><code>manifest</code><span>describe the adapter</span></a>
+            <a href="#protocol"><code>JSON-RPC</code><span>exchange messages</span></a>
+            <a href="#permissions"><code>permissions</code><span>control access</span></a>
+            <a href="#workflow"><code>lock</code><span>pin what runs</span></a>
+          </div>
+          <div class="tip-row"><span>BUILT IN VS. EXTERNAL</span><p>MCP and A2A are built-in extension kinds documented in the <a href="reference.html#mcp">Language Reference</a>. This page is for developers who want to add a new kind without changing MHL itself.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="model" data-title="extension model host process lifecycle start first use kept alive request id shutdown">
+          <div class="feature-head"><h2><span class="feature-num">01</span>The extension model</h2><span class="status status-full">Stable shape</span></div>
+          <p class="feature-lede">MHL owns orchestration and policy. Your executable owns the capability. The host starts one process on first use, reuses it for the run, multiplexes requests by id, and shuts it down at the end.</p>
+          <div class="architecture-flow" aria-label="Extension request flow">
+            <div class="active"><small>1 · PROGRAM</small><strong><code>extension crm Customer</code></strong><span>Properties and method arguments are evaluated by MHL.</span></div>
+            <i>→</i>
+            <div><small>2 · HOST</small><strong>validate · route · redact</strong><span>The runtime checks the manifest, lock, hash, and permissions.</span></div>
+            <i>→</i>
+            <div><small>3 · PROCESS</small><strong>stdin / stdout</strong><span>Your executable answers newline-delimited JSON-RPC messages.</span></div>
+          </div>
+          <div class="card-grid three">
+            <article class="info-card accent-card"><span class="card-icon">01</span><h3>One long-lived process</h3><p>The executable is not restarted for every method call. It remains alive for the current MHL run.</p></article>
+            <article class="info-card"><span class="card-icon">02</span><h3>Request ids can interleave</h3><p>Replies may arrive out of order. Correlate every response with the unsigned request id assigned by the sender.</p></article>
+            <article class="info-card"><span class="card-icon">03</span><h3>Policy stays in the host</h3><p>Locking, permissions, secret resolution, redaction, and lifecycle enforcement are runtime responsibilities.</p></article>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="layout" data-title="layout project mhl extensions lock extension json executable bin directory">
+          <div class="feature-head"><h2><span class="feature-num">02</span>Project layout</h2><span class="status status-full">Required</span></div>
+          <p class="feature-lede">Install an extension under the project’s <code>.mhl/extensions/&lt;id&gt;</code> directory. A user-wide copy may live under <code>~/.mhl/extensions/&lt;id&gt;</code>, but the project-local copy wins.</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>my-project/
+├── main.mh
+└── .mhl/
+    ├── extensions.lock                 # explicit allow-list and hashes
+    └── extensions/
+        └── com.acme.crm/
+            ├── extension.json          # manifest
+            └── bin/crm                 # executable</code></pre>
+          </div>
+          <div class="tip-row"><span>TRUST BOUNDARY</span><p>An extension found on disk but absent from <code>extensions.lock</code> does not load. There is no automatic download; vendor the executable and pin it deliberately.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="manifest" data-title="manifest extension json id api version executable declarations kind properties methods permissions network secrets sidecar">
+          <div class="feature-head"><h2><span class="feature-num">03</span>Describe the capability</h2><span class="status status-full">Manifest</span></div>
+          <p class="feature-lede">The manifest is read by <code>mhl lint</code>, the LSP, and extension diagnostics without spawning the process. Only <code>id</code>, <code>api_version</code>, <code>executable</code>, and one declaration <code>kind</code> are required.</p>
+          <p class="block-label">MINIMAL <code>extension.json</code></p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-json">{
+  "id": "com.acme.crm",
+  "api_version": "1",
+  "executable": "bin/crm",
+  "declarations": [{ "kind": "crm" }]
+}</code></pre>
+          </div>
+          <p class="block-label">WITH TOOLING METADATA AND PERMISSIONS</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-json">{
+  "id": "com.acme.crm",
+  "version": "1.2.0",
+  "api_version": "1",
+  "executable": "bin/crm",
+  "declarations": [{
+    "kind": "crm",
+    "properties": [{ "name": "endpoint", "type": "string" }],
+    "methods": [{
+      "name": "lookup",
+      "params": [{ "name": "id", "type": "string" }],
+      "signature": "lookup(id: string) -> object",
+      "documentation": "Fetch a customer by id."
+    }]
+  }],
+  "permissions": {
+    "network": ["api.acme.com"],
+    "secrets": ["env(\"CRM_TOKEN\")"]
+  }
+}</code></pre>
+          </div>
+          <div class="syntax-columns">
+            <div><h3>Declarations are routing</h3><p class="muted">The <code>kind</code> connects an MHL declaration to your adapter. <code>properties</code> and <code>methods</code> are optional editor and lint metadata.</p><pre class="code-block"><code class="language-mhl">extension crm Customer {
+    endpoint: env("CRM_URL")
+}</code></pre></div>
+            <div><h3>Use a sidecar when preferred</h3><p class="muted">Set <code>declarations_file</code> to keep tooling metadata in a portable file. Use either inline <code>declarations</code> or a sidecar, never both.</p><pre class="code-block"><code class="language-json">{
+  "id": "com.acme.crm",
+  "api_version": "1",
+  "executable": "bin/crm",
+  "declarations_file": "crm.d.json"
+}</code></pre></div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="protocol" data-title="protocol transport newline json rpc initialize call shutdown log stdin stdout stderr message request response notification">
+          <div class="feature-head"><h2><span class="feature-num">04</span>Implement the wire protocol</h2><span class="status status-partial">API v1</span></div>
+          <p class="feature-lede">Use one JSON object per line on stdout and stdin. There are no framing headers or batches. Lines larger than 8 MiB are rejected. Diagnostics belong on stderr, never in the JSON-RPC stream.</p>
+          <p class="block-label">MESSAGE SHAPES</p>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Direction</span><span>Message</span><span>Purpose</span></div>
+            <div class="table-row"><span>Host → extension</span><code>initialize</code><span>Negotiate API version and identify the extension. Sent once, first.</span></div>
+            <div class="table-row"><span>Host → extension</span><code>call</code><span>Invoke one operation with the evaluated declaration, positional args, and named args.</span></div>
+            <div class="table-row"><span>Host → extension</span><code>shutdown</code><span>Notification at the end of the run. Flush and exit 0.</span></div>
+            <div class="table-row"><span>Extension → host</span><code>log</code><span>Send a diagnostic notification; the host redacts and forwards it.</span></div>
+            <div class="table-row"><span>Extension → host</span><code>secret.resolve</code><span>Request one allow-listed secret reference from the host.</span></div>
+          </div>
+          <div class="syntax-columns">
+            <div><h3>Initialize once</h3><pre class="code-block"><code class="language-json">{ "id": 1, "method": "initialize",
+  "params": { "api_version": "1", "host": "mhl", "host_version": "0.5.3" } }
+
+{ "id": 1, "result": {
+  "api_version": "1",
+  "extension": { "id": "com.acme.crm", "version": "1.2.0" },
+  "declarations": []
+} }</code></pre></div>
+            <div><h3>Handle calls and errors</h3><pre class="code-block"><code class="language-json">{ "id": 2, "method": "call", "params": {
+  "declaration": { "kind": "crm", "name": "Customer", "props": [] },
+  "operation": "lookup",
+  "args": ["123"], "named_args": {}
+} }
+
+{ "id": 2, "result": { "id": "123" } }
+{ "id": 2, "error": { "code": "not_found", "message": "..." } }</code></pre></div>
+          </div>
+          <div class="tip-row"><span>SHUTDOWN</span><p>After sending <code>{ "method": "shutdown" }</code>, the host closes stdin and waits about three seconds before forcing termination. Flush output and exit cleanly.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="permissions" data-title="permissions host services secret resolve log environment redaction network security sandbox">
+          <div class="feature-head"><h2><span class="feature-num">05</span>Use host services safely</h2><span class="status status-full">Least privilege</span></div>
+          <p class="feature-lede">The extension process inherits no ambient environment beyond the host-provided extension variables and the manifest’s explicit <code>env</code> entries. Credentials are obtained only through <code>secret.resolve</code> and only when the manifest’s allow-list permits the exact reference.</p>
+          <div class="syntax-columns">
+            <div><h3>Resolve an approved secret</h3><pre class="code-block"><code class="language-json">{ "id": 7, "method": "secret.resolve",
+  "params": { "reference": "env(\"CRM_TOKEN\")" } }
+
+{ "id": 7, "result": "secret-value" }
+{ "id": 7, "error": {
+  "code": "denied", "message": "..."
+} }</code></pre></div>
+            <div><h3>Emit a diagnostic</h3><pre class="code-block"><code class="language-json">{ "method": "log",
+  "params": { "message": "fetched 12 customers" } }</code></pre><p class="muted">The host captures stderr tails and errors after redaction. Never write protocol messages to stderr.</p></div>
+          </div>
+          <div class="security-banner"><span>!</span><div><strong>Assume extension code is privileged.</strong><p>Declare network hosts and secret references explicitly. Avoid logging tokens, validate all arguments, keep stdout protocol-only, and ship the executable with a reproducible hash.</p></div></div>
+        </section>
+
+        <section class="feature doc-section" id="workflow" data-title="workflow cli init test package install list doctor lock sha256 build install extension">
+          <div class="feature-head"><h2><span class="feature-num">06</span>Build, test, and install</h2><span class="status status-full">CLI workflow</span></div>
+          <p class="feature-lede">The CLI scaffolds the shape, exercises the protocol, captures declarations, and installs a pinned copy into a project.</p>
+          <div class="cli-grid">
+            <div class="cli-command"><code>mhl extension init ext/</code><span>scaffold manifest, sidecar, and README</span></div>
+            <div class="cli-command"><code>mhl extension test ext/</code><span>handshake and probe declared methods</span></div>
+            <div class="cli-command"><code>mhl extension package ext/</code><span>capture handshake declarations</span></div>
+            <div class="cli-command"><code>mhl extension install ext/</code><span>copy, hash, and pin the adapter</span></div>
+            <div class="cli-command"><code>mhl extension list</code><span>show locked entries and resolution</span></div>
+            <div class="cli-command"><code>mhl extension doctor</code><span>validate manifest, executable, API, and hash</span></div>
+          </div>
+          <p class="block-label">LOCK ENTRY</p>
+          <pre class="grammar-block"><code class="language-json">{
+  "extensions": {
+    "com.acme.crm": {
+      "version": "1.2.0",
+      "sha256": "&lt;hex sha256 of bin/crm&gt;"
+    }
+  }
+}</code></pre>
+          <div class="tip-row"><span>EVERY RUN</span><p>The host re-hashes the executable and refuses to run it if the digest differs from the lock. Treat the lock as the project’s explicit trust decision.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="checklist" data-title="release checklist implementation extension developer quality protocol tests security documentation">
+          <div class="feature-head"><h2><span class="feature-num">07</span>Release checklist</h2><span class="status status-partial">Before sharing</span></div>
+          <p class="feature-lede">An extension is ready to distribute when another developer can install it, inspect its permissions, and diagnose a failure without reading its implementation.</p>
+          <div class="checklist">
+            <div><span>✓</span><p>Return the same <code>api_version</code> from <code>initialize</code> that the host requested.</p></div>
+            <div><span>✓</span><p>Keep stdout to newline-delimited JSON-RPC and send human diagnostics to stderr.</p></div>
+            <div><span>✓</span><p>Declare every supported <code>kind</code>, property, method, and permission in the manifest or sidecar.</p></div>
+            <div><span>✓</span><p>Handle out-of-order responses and preserve request ids in every reply.</p></div>
+            <div><span>✓</span><p>Test initialization, successful calls, structured errors, secret denial, and graceful shutdown.</p></div>
+            <div><span>✓</span><p>Build a reproducible executable, run <code>mhl extension doctor</code>, and commit the lock entry.</p></div>
+          </div>
+          <div class="tip-row"><span>FULL CONTRACT</span><p>For the exact message contract, see the <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/sample/extensions/extension-protocol.md" target="_blank" rel="noreferrer">external extension protocol ↗</a>. The source walkthrough and manifest examples are in <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/sample/extensions/README.md" target="_blank" rel="noreferrer"><code>sample/extensions/README.md</code> ↗</a>.</p></div>
+        </section>
+
+        <footer class="site-footer">
+          <span>© 2026 MHL · Created by Yan Justino</span>
+          <span><a href="index.html">Overview</a> · <a href="reference.html">Language reference</a> · <a href="stdlib.html">Standard library</a> · <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub</a></span>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

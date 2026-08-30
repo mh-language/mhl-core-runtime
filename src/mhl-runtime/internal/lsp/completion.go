@@ -9,8 +9,8 @@ import (
 // offered as a plain keyword completion whenever the cursor isn't in a
 // member-access position.
 var keywords = []string{
-	"agent", "memory", "tool", "prompt", "pipeline", "mcp_server", "a2a_agent", "loop",
-	"import", "use", "from", "as", "export", "input", "step", "test", "describe",
+	"agent", "memory", "tool", "prompt", "pipeline", "workflow", "extension", "loop",
+	"use", "from", "as", "export", "input", "step", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
 	"return", "break", "goto", "spawn", "wait", "parallel", "true", "false", "null",
 }
@@ -43,7 +43,7 @@ func isTypeAnnotationPosition(linePrefix, text string, pos position) bool {
 		return true
 	}
 	stack := blockStack(textUpToPosition(text, pos))
-	if len(stack) == 0 || stack[len(stack)-1] != blockOther {
+	if len(stack) == 0 || stack[len(stack)-1].Kind != blockOther {
 		return false
 	}
 	return strings.Count(linePrefix, "(") > strings.Count(linePrefix, ")")
@@ -115,7 +115,7 @@ func methodItems(s symbol) []completionItem {
 		// signature, and attach its parameter doc, whenever one is known
 		// (every native op, collection method, and declared-construct
 		// method — see signatures.go).
-		if sg, ok := signatureForMethod(s.Kind, s.Name, m); ok {
+		if sg, ok := signatureForMethod(s, m); ok {
 			item.Detail = sg.Label
 			if sg.Doc != "" {
 				item.Documentation = &markupContent{Kind: "markdown", Value: sg.Doc}
@@ -130,7 +130,7 @@ func symbolItemKind(k symbolKind) int {
 	switch k {
 	case symAgent, symTool, symMemory:
 		return kindClass
-	case symPrompt, symPipeline, symMCPServer, symA2AAgent:
+	case symPrompt, symPipeline, symExtension:
 		return kindProperty
 	case symNative:
 		return kindModule

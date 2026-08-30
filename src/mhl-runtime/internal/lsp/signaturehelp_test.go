@@ -82,8 +82,8 @@ func TestSignatureHelpDeclaredMemory(t *testing.T) {
 	}
 }
 
-func TestSignatureHelpDeclaredA2AAgent(t *testing.T) {
-	src, pos := posAtMarker(t, "a2a_agent Remote {\n url: \"http://x/a2a\"\n}\npipeline P {\n step S {\n  Remote.send(§)\n }\n}\n")
+func TestSignatureHelpDeclaredA2AExtension(t *testing.T) {
+	src, pos := posAtMarker(t, "extension a2a Remote {\n url: \"http://x/a2a\"\n}\npipeline P {\n step S {\n  Remote.send(§)\n }\n}\n")
 	sh := signatureHelpAt("main.mh", src, pos)
 	if sh == nil {
 		t.Fatal("expected signature help inside Remote.send(...)")

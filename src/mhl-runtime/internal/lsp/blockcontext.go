@@ -27,9 +27,16 @@ const (
 	blockRetry
 	blockCache
 	blockRateLimit
-	blockMCPServer
-	blockA2AAgent
+	blockExtension // an `extension <kind> <Name>` body; ExtKind carries the kind
 )
+
+// blockRef is one classified open "{": its kind plus, for blockExtension, the
+// extension kind ("mcp", "a2a", ...) so property completion can read that
+// kind's DeclarationSpec.
+type blockRef struct {
+	Kind    blockKind
+	ExtKind string
+}
 
 // headerRe pairs a blockKind with the regex that recognizes the token(s)
 // immediately preceding a "{" that opens it — each anchored at $ so it only
@@ -41,11 +48,9 @@ var headerRe = []struct {
 	kind blockKind
 	re   *regexp.Regexp
 }{
-	{blockLoopPipeline, regexp.MustCompile(`\bloop\s+pipeline\s+\w+\s*$`)},
-	{blockPipeline, regexp.MustCompile(`\bpipeline\s+\w+\s*$`)},
+	{blockLoopPipeline, regexp.MustCompile(`\bloop\s+(?:pipeline|workflow)\s+\w+\s*$`)},
+	{blockPipeline, regexp.MustCompile(`\b(?:pipeline|workflow)\s+\w+\s*$`)},
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
-	{blockMCPServer, regexp.MustCompile(`\bmcp_server\s+\w+\s*$`)},
-	{blockA2AAgent, regexp.MustCompile(`\ba2a_agent\s+\w+\s*$`)},
 	{blockParallel, regexp.MustCompile(`\bparallel\s+\w+\s*$`)},
 	{blockCheckpoint, regexp.MustCompile(`\bcheckpoint\s*:\s*$`)},
 	{blockSpawn, regexp.MustCompile(`\bspawn\s*:\s*$`)},
@@ -56,15 +61,35 @@ var headerRe = []struct {
 	{blockRateLimit, regexp.MustCompile(`\brate_limit\s*:\s*$`)},
 }
 
+// extHeaderRe recognises an `extension <kind> <Name>` header and captures the
+// kind from the source.
+var extHeaderRe = []struct {
+	kind string
+	re   *regexp.Regexp
+}{
+	{"", regexp.MustCompile(`\bextension\s+(\w+)\s+\w+\s*$`)},
+}
+
 // classifyHeader matches s — the raw text since the previous brace, up to
-// (not including) the "{" now being opened — against headerRe, in order.
-func classifyHeader(s string) blockKind {
+// (not including) the "{" now being opened — against the header patterns.
+func classifyHeader(s string) blockRef {
+	for _, h := range extHeaderRe {
+		m := h.re.FindStringSubmatch(s)
+		if m == nil {
+			continue
+		}
+		kind := h.kind
+		if kind == "" && len(m) > 1 {
+			kind = m[1]
+		}
+		return blockRef{Kind: blockExtension, ExtKind: kind}
+	}
 	for _, h := range headerRe {
 		if h.re.MatchString(s) {
-			return h.kind
+			return blockRef{Kind: h.kind}
 		}
 	}
-	return blockOther
+	return blockRef{Kind: blockOther}
 }
 
 // blockStack scans src (already truncated to the cursor by
@@ -74,8 +99,8 @@ func classifyHeader(s string) blockKind {
 // aware (a stray "{"/"}" inside a quoted value never perturbs the count),
 // mirroring symbols.go's extractBlock, just walking the whole buffer
 // forward instead of one already-located block.
-func blockStack(src string) []blockKind {
-	var stack []blockKind
+func blockStack(src string) []blockRef {
+	var stack []blockRef
 	inString := false
 	tokenStart := 0
 	for i := 0; i < len(src); i++ {

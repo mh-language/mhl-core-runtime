@@ -4,7 +4,7 @@
 // sent — if the variable isn't set, the call fails closed instead of going
 // out with an empty Authorization header (see stdio_mock_server_proves_tools_call_wiring.mh
 // for a network-free proof of the same request/response wiring).
-mcp_server GitHub {
+extension mcp GitHub {
     transport: "http"
     url: "https://api.githubcopilot.com/mcp/"
     headers: {

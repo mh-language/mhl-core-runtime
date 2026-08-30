@@ -4,9 +4,9 @@ import "testing"
 
 func TestParse(t *testing.T) {
 	cases := []struct {
-		name    string
-		want    Type
-		wantOk  bool
+		name   string
+		want   Type
+		wantOk bool
 	}{
 		{"", Any, true},
 		{"any", Any, true},

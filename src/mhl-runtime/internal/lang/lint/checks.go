@@ -138,6 +138,107 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 	return findings
 }
 
+// knownAgentProperties is the set of `agent { ... }` property names the
+// runtime actually reads (internal/engine/interpreter/agent.go,
+// internal/lang/ast/agentconfig.go, agent_hooks.go). Anything else in an
+// agent body parses but is silently ignored at run time — the same footgun
+// class as a misspelled `retry.backoff` value, which is already a hard
+// error, so an unknown property is one too. Keep in sync with
+// internal/lsp/properties.go's agentPropertyItems.
+var knownAgentProperties = map[string]bool{
+	"engine": true, "command": true, "args": true,
+	"endpoint": true, "temperature": true,
+	"log": true, "trace": true,
+	"retry": true, "cache": true, "rate_limit": true, "fallback": true,
+	"before": true, "after": true,
+}
+
+// checkAgentProperties flags any property in an `agent { ... }` body — a
+// top-level agent or an inline `fallback: [agent { ... }]` literal — whose
+// name the runtime does not read, so a typo or a docs-only field
+// (`api_key`, `timeout`, `system_instructions`) fails `mhl lint` instead of
+// being silently dropped.
+func checkAgentProperties(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	seen := map[*ast.Agent]bool{}
+	var check func(a *ast.Agent)
+	check = func(a *ast.Agent) {
+		if a == nil || seen[a] {
+			return
+		}
+		seen[a] = true
+		name := a.Name
+		if name == "" {
+			name = "<inline>"
+		}
+		for _, p := range a.Props {
+			if !knownAgentProperties[p.Name] {
+				findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only engine, command, args, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, before, after", name, p.Name)})
+			}
+		}
+		if refs, err := ast.AgentFallbackRefs(a); err == nil {
+			for _, r := range refs {
+				check(r.Inline)
+			}
+		}
+	}
+	for _, decl := range prog.Decls {
+		if decl.Agent != nil {
+			check(decl.Agent)
+		}
+	}
+	return findings
+}
+
+// checkPipelineGoto enforces the two static rules on `goto`:
+//   - it is only legal inside a `workflow` (a plain `pipeline` runs its steps
+//     in declared order, each once — that guarantee is the whole reason the
+//     two keywords are separate);
+//   - its target must name a step declared in the same declaration — every
+//     other cross-reference in the language is caught before `mhl run`, and a
+//     typo'd `goto` target should be too, rather than only failing mid-run
+//     (runtime.Runner.Run's own "goto target %q is not a step" error).
+//
+// The parallel-group restrictions on `goto` are checkParallelGroups' job and
+// stay there; this check does not re-report them.
+func checkPipelineGoto(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Pipeline == nil {
+			continue
+		}
+		p := decl.Pipeline
+
+		steps := map[string]bool{}
+		for _, m := range p.Body {
+			for _, s := range pipelineMemberSteps(m) {
+				steps[s.Name] = true
+			}
+		}
+
+		for _, m := range p.Body {
+			for _, step := range pipelineMemberSteps(m) {
+				walkGotoBreak(step.Body, func(target string, isBreak bool, pos lexer.Position) {
+					if isBreak {
+						return
+					}
+					if !p.IsWorkflow() {
+						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+							Message: fmt.Sprintf("`goto` is only valid inside a `workflow`; pipeline %q runs its steps in order — change `pipeline` to `workflow`, or restructure the jump", p.Name)})
+						return
+					}
+					if !steps[target] {
+						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+							Message: fmt.Sprintf("`goto %s` in workflow %q targets a step that isn't declared in it", target, p.Name)})
+					}
+				})
+			}
+		}
+	}
+	return findings
+}
+
 // pipelineMemberSteps returns the step(s) a pipeline body member contributes
 // — one for a plain `step`, all branches for a `parallel` group, none
 // otherwise.
@@ -228,19 +329,23 @@ func collectPipelineMemNames(prog *ast.Program, p *ast.Pipeline) map[string]type
 // checkToolBlocks statically mirrors internal/engine/interpreter.evalToolCall's Block-body
 // execution: it walks every declared `tool` method's Block (the same
 // checkStatements/collectVarNames machinery checkAgentCalls uses for
-// checkMCPServers validates an mcp_server's static config the same way
-// checkExprCall validates an agent's retry/cache/rate_limit — currently just
-// the `protocol:` value, which mcp.ParseProtocol only accepts as one of four
-// revision strings. A bad value is also rejected at run time (fail-closed in
-// mcp.BuildRegistryWithError); this surfaces it before the program runs.
-func checkMCPServers(file string, prog *ast.Program) []Finding {
+// checkExtensions validates the static config of every extension-shaped
+// declaration — `mcp_server`, `a2a_agent`, and the generic
+// `extension <kind> <Name>` form, all seen through ast.AsExtension. Adding a
+// new extension kind needs no edit here: only the one kind-specific rule that
+// predates the extension refactor and has its own lint tests — an `mcp`
+// server's `protocol:` value — is checked; everything else an extension needs
+// validated it validates itself at run time (extension.Extension.Validate),
+// keeping lint network-free.
+func checkExtensions(file string, prog *ast.Program) []Finding {
 	var findings []Finding
 	for _, decl := range prog.Decls {
-		if decl.MCPServer == nil {
+		kind, name, props, ok := ast.AsExtension(decl)
+		if !ok || kind != "mcp" {
 			continue
 		}
-		if _, err := ast.MCPServerProtocol(decl.MCPServer); err != nil {
-			pos := propertyPos(decl.MCPServer.Props, "protocol")
+		if _, err := ast.MCPProtocolFromProps(name, props); err != nil {
+			pos := propertyPos(props, "protocol")
 			findings = append(findings, Finding{
 				File: file, Line: pos.Line, Column: pos.Column, Message: err.Error(),
 			})

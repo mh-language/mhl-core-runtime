@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="MHL standard-library reference: every callable method and function — collection methods, agent/prompt/memory/mcp_server/a2a_agent methods, native operations, and test assertions — with parameters, types, and return values." />
+    <meta name="description" content="MHL standard-library reference: every callable method and function — collection methods, agent/prompt/memory/extension methods, native operations, and test assertions — with parameters, types, and return values." />
     <meta name="theme-color" content="#10161f" />
     <meta property="og:title" content="MHL Standard Library — method reference" />
     <meta property="og:description" content="Every callable in MHL, with parameter names, types, and return values." />
@@ -42,7 +42,7 @@
           <kbd>/</kbd>
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
-        <a class="github-link" href="sample.html">Sample</a>
+        <a class="github-link" href="extensions.html">Extensions</a>
         <a class="github-link" href="reference.html">Reference</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
       </div>
@@ -58,8 +58,8 @@
           <a class="nav-link" href="#agent">agent</a>
           <a class="nav-link" href="#prompt">prompt</a>
           <a class="nav-link" href="#memory">memory and mem</a>
-          <a class="nav-link" href="#mcp">mcp_server</a>
-          <a class="nav-link" href="#a2a">a2a_agent</a>
+          <a class="nav-link" href="#mcp">extension mcp</a>
+          <a class="nav-link" href="#a2a">extension a2a</a>
           <a class="nav-link" href="#native">Native operations</a>
           <a class="nav-link" href="#assertions">Test assertions</a>
         </nav>
@@ -73,7 +73,7 @@
         <section class="ref-hero doc-section" id="overview" data-title="standard library how to read signature notation types optional variadic named argument return">
           <p class="eyebrow accent">MHL · STANDARD LIBRARY · METHOD REFERENCE</p>
           <h1>Every callable, with its types.</h1>
-          <p class="lead">This page lists each method and built-in function you can call from an MHL program — the parameters it takes, the types it expects, and what it returns. For the language itself (declarations, syntax, control flow), see the <a href="reference.html">Language Reference</a>.</p>
+          <p class="lead">This page lists each built-in method and function you can call from an MHL program — the parameters it takes, the types it expects, and what it returns. For declarations, syntax, and control flow, see the <a href="reference.html">Language Reference</a>. For capabilities outside the built-in surface, see <a href="extensions.html">Extending the runtime</a>.</p>
 
           <p class="block-label">SIGNATURE NOTATION</p>
           <div class="reference-table">
@@ -266,9 +266,9 @@
           </div>
         </section>
 
-        <section class="feature doc-section" id="mcp" data-title="mcp_server call list_tools discover tool arguments json-rpc stateless protocol auto handshake initialize 2025-11-25 2025-06-18 negotiation fallback">
-          <div class="feature-head"><h2><span class="feature-num">06</span><code>mcp_server</code></h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">A declared <code>mcp_server</code> exposes three methods. Each auto-negotiates the protocol — the stateless <code>2026-07-28</code> form first, then the standard <code>initialize</code> handshake (revisions <code>2025-11-25</code> / <code>2025-06-18</code>) if the server rejects it — unless <code>protocol:</code> pins one. An unresolved <code>env(...)</code> credential aborts the call. Configuration (transport, <code>url</code>, <code>headers</code>, <code>protocol</code>) is in the <a href="reference.html#mcp">Language Reference</a>.</p>
+        <section class="feature doc-section" id="mcp" data-title="extension mcp call list_tools discover tool arguments json-rpc stateless protocol auto handshake initialize 2025-11-25 2025-06-18 negotiation fallback">
+          <div class="feature-head"><h2><span class="feature-num">06</span><code>extension mcp</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A declared <code>extension mcp &lt;Name&gt; { ... }</code> (MCP is a built-in runtime extension) exposes three methods. Each auto-negotiates the protocol — the stateless <code>2026-07-28</code> form first, then the standard <code>initialize</code> handshake (revisions <code>2025-11-25</code> / <code>2025-06-18</code>) if the server rejects it — unless <code>protocol:</code> pins one. An unresolved <code>env(...)</code> credential aborts the call. Configuration (transport, <code>url</code>, <code>headers</code>, <code>protocol</code>) is in the <a href="reference.html#mcp">Language Reference</a>; custom extension kinds are covered in <a href="extensions.html">Extending the runtime</a>.</p>
           <div class="reference-table sig-table">
             <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
             <div class="table-row">
@@ -285,9 +285,9 @@
           </div>
         </section>
 
-        <section class="feature doc-section" id="a2a" data-title="a2a_agent agent2agent send agent_card get_task cancel task message json-rpc message/send tasks/get tasks/cancel well-known poll blocking stateless">
-          <div class="feature-head"><h2><span class="feature-num">07</span><code>a2a_agent</code></h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">A declared <code>a2a_agent</code> exposes four methods for talking to a remote agent over the A2A protocol (revision 0.2.x, JSON-RPC 2.0 over HTTP). Each is stateless; an unresolved <code>env(...)</code> credential aborts the call. Configuration (<code>url</code>, <code>headers</code>, <code>poll_interval</code>, <code>poll_timeout</code>) is in the <a href="reference.html#a2a">Language Reference</a>.</p>
+        <section class="feature doc-section" id="a2a" data-title="extension a2a agent2agent send agent_card get_task cancel task message json-rpc message/send tasks/get tasks/cancel well-known poll blocking stateless">
+          <div class="feature-head"><h2><span class="feature-num">07</span><code>extension a2a</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A declared <code>extension a2a &lt;Name&gt; { ... }</code> (A2A is a built-in runtime extension) exposes four methods for talking to a remote agent over the A2A protocol (revision 0.2.x, JSON-RPC 2.0 over HTTP). Each is stateless; an unresolved <code>env(...)</code> credential aborts the call. Configuration (<code>url</code>, <code>headers</code>, <code>poll_interval</code>, <code>poll_timeout</code>) is in the <a href="reference.html#a2a">Language Reference</a>; custom extension kinds are covered in <a href="extensions.html">Extending the runtime</a>.</p>
           <div class="reference-table sig-table">
             <div class="table-row table-head"><span>Signature</span><span>Parameters</span><span>Returns</span><span>Notes</span></div>
             <div class="table-row">
@@ -457,7 +457,7 @@
 
         <footer class="site-footer">
           <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="sample.html">Development sample</a> · <a href="index.html">Overview</a> · <a href="reference.html">Language reference</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+          <span><a href="extensions.html">Extend the runtime</a> · <a href="index.html">Overview</a> · <a href="reference.html">Language reference</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
         </footer>
       </main>
     </div>

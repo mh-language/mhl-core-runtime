@@ -10,12 +10,11 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
-// ResolveImports processes the `import ... as alias` and `use { Names [as Alias] }
-// from "path"` declarations at the top level of prog. Each referenced path
-// is resolved relative to the directory of file and must exist and parse as
-// a valid .mh module; a `use` also requires every named symbol to be
-// declared with `export` in that module — including transitively, see
-// below.
+// ResolveImports processes the `use { Names [as Alias] } from "path"`
+// declarations at the top level of prog. Each referenced path is resolved
+// relative to the directory of file and must exist and parse as a valid .mh
+// module; a `use` also requires every named symbol to be declared with
+// `export` in that module — including transitively, see below.
 //
 // Imports are transitive: the module a `use` loads has its own `use`/
 // `import` declarations resolved *first* (recursively, relative to *its
@@ -71,10 +70,6 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 	dir := filepath.Dir(file)
 	for _, decl := range prog.Decls {
 		switch {
-		case decl.Import != nil:
-			if _, err := loadModule(dir, decl.Import.Path); err != nil {
-				return fmt.Errorf("import %q as %s: %w", decl.Import.Path, decl.Import.Alias, err)
-			}
 		case decl.Prompt != nil && decl.Prompt.Source != "":
 			text, err := loadPromptSource(dir, decl.Prompt.Source)
 			if err != nil {
@@ -182,10 +177,8 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 	switch {
 	case decl.Prompt != nil:
 		return "prompt", decl.Prompt.Name, true
-	case decl.MCPServer != nil:
-		return "mcp_server", decl.MCPServer.Name, true
-	case decl.A2AAgent != nil:
-		return "a2a_agent", decl.A2AAgent.Name, true
+	case decl.Extension != nil:
+		return "extension:" + decl.Extension.Kind, decl.Extension.Name, true
 	case decl.Agent != nil:
 		return "agent", decl.Agent.Name, true
 	case decl.Memory != nil:
@@ -255,9 +248,7 @@ func findExport(module *ast.Program, name string) (*ast.Declaration, bool) {
 		switch {
 		case decl.Agent != nil && decl.Agent.Name == name:
 			return decl, true
-		case decl.MCPServer != nil && decl.MCPServer.Name == name:
-			return decl, true
-		case decl.A2AAgent != nil && decl.A2AAgent.Name == name:
+		case decl.Extension != nil && decl.Extension.Name == name:
 			return decl, true
 		case decl.Memory != nil && decl.Memory.Name == name:
 			return decl, true

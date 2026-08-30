@@ -22,8 +22,7 @@ const (
 	symTool
 	symPrompt
 	symPipeline
-	symMCPServer
-	symA2AAgent
+	symExtension
 	symNative
 	symString
 	symArray
@@ -44,10 +43,8 @@ func (k symbolKind) label() string {
 		return "prompt"
 	case symPipeline:
 		return "pipeline"
-	case symMCPServer:
-		return "mcp_server"
-	case symA2AAgent:
-		return "a2a_agent"
+	case symExtension:
+		return "extension"
 	case symNative:
 		return "native"
 	case symString:
@@ -71,6 +68,10 @@ type symbol struct {
 	Name    string
 	Kind    symbolKind
 	Methods []string // dot-callable members, e.g. an agent's "run" or a tool's declared method names
+	// ExtKind is the extension declaration kind ("mcp", "a2a", ...) when Kind
+	// is symExtension — what signatureForMethod/completion use to look the
+	// method set and signatures up from the registered adapter's metadata.
+	ExtKind string
 }
 
 // symbolsFromProgram walks a successfully parsed AST and returns every
@@ -97,10 +98,12 @@ func symbolsFromProgram(prog *ast.Program) []symbol {
 			syms = append(syms, symbol{Name: decl.Type.Name, Kind: symType})
 		case decl.Enum != nil:
 			syms = append(syms, symbol{Name: decl.Enum.Name, Kind: symEnum, Methods: decl.Enum.Variants})
-		case decl.MCPServer != nil:
-			syms = append(syms, symbol{Name: decl.MCPServer.Name, Kind: symMCPServer, Methods: mcpServerMethods})
-		case decl.A2AAgent != nil:
-			syms = append(syms, symbol{Name: decl.A2AAgent.Name, Kind: symA2AAgent, Methods: a2aAgentMethods})
+		default:
+			// An `extension <kind> <Name>` declaration; its method set comes
+			// from the registered adapter's DeclarationSpec.
+			if k, name, _, ok := ast.AsExtension(decl); ok && name != "" {
+				syms = append(syms, symbol{Name: name, Kind: symExtension, ExtKind: k, Methods: extensionMethodNames(k)})
+			}
 		}
 	}
 	return syms
@@ -118,15 +121,14 @@ func memoryMethods(mem *ast.Memory) []string {
 	return memoryMethodsForType(memType)
 }
 
-// mcpServerMethods mirrors internal/engine/interpreter/mcp_ops.go's
-// evalMCPServerCall dispatch — the only operations a declared mcp_server
-// exposes to `.mh` code today.
-var mcpServerMethods = []string{"call", "list_tools", "discover"}
-
-// a2aAgentMethods mirrors internal/engine/interpreter/a2a_ops.go's
-// evalA2AAgentCall dispatch — the only operations a declared a2a_agent
-// exposes to `.mh` code today.
-var a2aAgentMethods = []string{"send", "agent_card", "get_task", "cancel"}
+// mcpServerMethods / a2aAgentMethods come from the registered extension
+// adapters' DeclarationSpec.Methods (see extensions.go) — no longer a hand
+// copy of the interpreter's dispatch. signatures_test.go still cross-checks
+// them against the signature tables.
+var (
+	mcpServerMethods = extensionMethodNames("mcp")
+	a2aAgentMethods  = extensionMethodNames("a2a")
+)
 
 func memoryMethodsForType(memType string) []string {
 	switch memType {
@@ -149,7 +151,12 @@ func memoryMethodsForType(memType string) []string {
 // when the buffer won't parse. An optional leading `loop` (as in `loop
 // pipeline X`) is skipped, not captured — it's a modifier on `pipeline`, not
 // a declaration kind of its own.
-var declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|memory|tool|prompt|pipeline|mcp_server|a2a_agent)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+var (
+	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|memory|tool|prompt|pipeline|workflow)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	// extDeclRe recognises `extension <kind> <Name>`, which unlike every
+	// other declaration keyword is followed by two identifiers.
+	extDeclRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?extension\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+)
 
 func symbolsFromText(src string) []symbol {
 	var syms []symbol
@@ -166,12 +173,11 @@ func symbolsFromText(src string) []symbol {
 			s.Methods = memoryMethodsFromText(src, m[2])
 		case symTool:
 			s.Methods = toolMethodsFromText(src, m[2])
-		case symMCPServer:
-			s.Methods = mcpServerMethods
-		case symA2AAgent:
-			s.Methods = a2aAgentMethods
 		}
 		syms = append(syms, s)
+	}
+	for _, m := range extDeclRe.FindAllStringSubmatch(src, -1) {
+		syms = append(syms, symbol{Name: m[2], Kind: symExtension, ExtKind: m[1], Methods: extensionMethodNames(m[1])})
 	}
 	return syms
 }
@@ -260,12 +266,8 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 		return symTool, true
 	case "prompt":
 		return symPrompt, true
-	case "pipeline":
+	case "pipeline", "workflow":
 		return symPipeline, true
-	case "mcp_server":
-		return symMCPServer, true
-	case "a2a_agent":
-		return symA2AAgent, true
 	}
 	return 0, false
 }

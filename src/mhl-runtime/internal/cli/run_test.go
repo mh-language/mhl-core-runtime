@@ -112,7 +112,7 @@ func TestRunMissingFile(t *testing.T) {
 }
 
 const gotoBreakPipelineFile = `
-pipeline Recascade {
+workflow Recascade {
     step Start {
         goto Target
     }

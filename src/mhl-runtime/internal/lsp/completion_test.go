@@ -155,6 +155,38 @@ pipeline P {
 	}
 }
 
+// TestCompletionExtensionMembers proves an extension declaration's
+// dot-callable methods come from the registered adapter's metadata.
+func TestCompletionExtensionMembers(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want []string
+	}{
+		{
+			name: "extension mcp",
+			src:  "extension mcp GitHub {\n url: \"x\"\n}\npipeline P {\n step S {\n  GitHub.§\n }\n}\n",
+			want: []string{"call", "list_tools", "discover"},
+		},
+		{
+			name: "extension a2a",
+			src:  "extension a2a Remote {\n url: \"x\"\n}\npipeline P {\n step S {\n  Remote.§\n }\n}\n",
+			want: []string{"send", "agent_card", "get_task", "cancel"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text, pos := posAtMarker(t, c.src)
+			items := completionAt("main.mh", text, pos)
+			for _, want := range c.want {
+				if !hasLabel(items, want) {
+					t.Errorf("missing %q, got %+v", want, items)
+				}
+			}
+		})
+	}
+}
+
 func TestCompletionPropertyPosition(t *testing.T) {
 	cases := []struct {
 		name string
@@ -222,27 +254,27 @@ agent X {
     §
 }
 `,
-			want: []string{"engine", "command", "args", "endpoint", "temperature", "log", "trace", "retry", "cache", "rate_limit", "fallback", "tools", "mcp_servers", "before", "after"},
+			want: []string{"engine", "command", "args", "endpoint", "temperature", "log", "trace", "retry", "cache", "rate_limit", "fallback", "before", "after"},
 		},
 		{
-			name: "mcp_server body",
+			name: "extension a2a body",
 			src: `
-mcp_server GitHub {
-    §
-}
-`,
-			want: []string{"transport", "command", "args", "url", "headers"},
-			skip: []string{"engine", "retry"},
-		},
-		{
-			name: "a2a_agent body",
-			src: `
-a2a_agent Translator {
+extension a2a Translator {
     §
 }
 `,
 			want: []string{"url", "headers", "poll_interval", "poll_timeout"},
 			skip: []string{"engine", "transport"},
+		},
+		{
+			name: "extension mcp body",
+			src: `
+extension mcp GitHub {
+    §
+}
+`,
+			want: []string{"transport", "command", "args", "url", "headers", "protocol"},
+			skip: []string{"engine", "poll_interval"},
 		},
 		{
 			name: "inside agent retry object",

@@ -1,30 +1,27 @@
 // Echo prints whatever prompt mhl built for it — no real LLM call involved.
-// GitHub is a mocked stdio MCP server standing in for a real one; see
+// GitHub is a mocked stdio MCP extension standing in for a real one; see
 // sample/features/mcp/ for the same wiring against the real GitHub MCP
 // server.
 agent Echo {
     command: "echo"
     args: ["${prompt}"]
-    tools: [execution]
-    mcp_servers: [GitHub]
 
-    // `before` runs once, right before the prompt is built: `mcp`/`tool`
-    // are maps navigable by declared name, holding exactly this agent's
-    // own `tools:`/`mcp_servers:` entries (not any other declaration in
-    // the program). It calls them for real, and its returned object's
-    // fields become "${...}" bindings the prompt argument can interpolate
-    // — real fetched data, not a hope that the model reads and acts on an
-    // instruction.
-    before: (mcp, tools) -> {
-        var mcp_result = mcp.GitHub.call("search_repositories", { query: "mhl" })
-        var tool_result = tools.execution.read_file("README.md")
+    // `before` runs once, right before the prompt is built. Its body is an
+    // ordinary expression scope — it resolves declared `tool`/`extension`
+    // names by name, calls native ops, reads `mem`, sees the calling step's
+    // vars — and its returned object's fields become "${...}" bindings the
+    // prompt argument can interpolate. Real fetched data, not a hope that
+    // the model reads and acts on an instruction.
+    before: () -> {
+        var mcp_result = GitHub.call("search_repositories", { query: "mhl" })
+        var tool_result = execution.read_file("README.md")
         return { mcp_result: mcp_result, tool_result: tool_result }
     }
 
-    // `after` runs once, on whichever leg (primary or fallback) produced
-    // the final response — a plain side effect here, but a non-nil string
-    // return would replace what `.run()` gives back to the caller.
-    after: (mcp, tools, result) -> {
+    // `after` runs once, on whichever leg (primary or fallback) produced the
+    // final response. The response is bound as `result`. A plain side effect
+    // here; a non-nil string return would replace what `.run()` gives back.
+    after: () -> {
         log("agent responded with ${result.size()} character(s)")
     }
 }
@@ -33,7 +30,7 @@ tool execution {
     read_file(path: string) -> "contents of " + path
 }
 
-mcp_server GitHub {
+extension mcp GitHub {
     transport: "stdio"
     command: "sh"
     args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"total_count\":3}}'"]
