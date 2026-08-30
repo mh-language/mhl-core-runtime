@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MHL on EKS — Delivery Plan</title>
+<meta name="description" content="Phased plan to make the mhl MCP server run under multi-team load on EKS, keeping infrastructure backends (DynamoDB, Redis) as external extensions rather than language features.">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html { color-scheme: light dark; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground: #f6f7f8;
+    --surface: #ffffff;
+    --surface-2: #eef1f3;
+    --ink: #191f26;
+    --muted: #5a656f;
+    --border: #d8dde2;
+    --accent: #0c7d73;
+    --accent-soft: rgba(12, 125, 115, 0.10);
+    --crit: #b3261e;
+    --warn: #97540b;
+    --info: #3f5a73;
+    --new: #0c7d73;
+    --shadow: 0 1px 2px rgba(20, 30, 40, 0.06), 0 8px 24px -12px rgba(20, 30, 40, 0.14);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #11151a; --surface: #191e24; --surface-2: #212831;
+      --ink: #e7eaed; --muted: #99a3ad; --border: #2c343d;
+      --accent: #45cabb; --accent-soft: rgba(69, 202, 187, 0.14);
+      --crit: #ef6f66; --warn: #e0a458; --info: #9db6cc; --new: #45cabb;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px -14px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #11151a; --surface: #191e24; --surface-2: #212831;
+    --ink: #e7eaed; --muted: #99a3ad; --border: #2c343d;
+    --accent: #45cabb; --accent-soft: rgba(69, 202, 187, 0.14);
+    --crit: #ef6f66; --warn: #e0a458; --info: #9db6cc; --new: #45cabb;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px -14px rgba(0,0,0,0.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 1.0625rem; line-height: 1.7; -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1060px; margin: 0 auto; padding: clamp(1.5rem,1rem + 3vw,4rem) clamp(1.1rem,0.6rem + 2.4vw,3rem) 5rem; }
+  .prose { max-width: 66ch; }
+
+  h1,h2,h3 { font-family: "Archivo","Helvetica Neue",Arial,sans-serif; line-height: 1.15; text-wrap: balance; margin: 0; }
+  h1 { font-weight: 800; font-size: clamp(2rem,1.4rem + 2.8vw,3.1rem); letter-spacing: -0.022em; }
+  h2 { font-weight: 700; font-size: clamp(1.4rem,1.15rem + 1vw,1.75rem); letter-spacing: -0.014em; padding-top: 2.6rem; border-top: 1px solid var(--border); margin-top: 3.4rem; }
+  h3 { font-weight: 700; font-size: 1.075rem; letter-spacing: -0.01em; }
+  p { margin: 1rem 0; }
+  a { color: var(--accent); }
+
+  .eyebrow { font-family: "IBM Plex Mono",ui-monospace,monospace; font-size: 0.72rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); margin: 0 0 1rem; }
+  .lede { font-size: 1.2rem; line-height: 1.6; margin: 1.4rem 0 0; max-width: 62ch; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; margin-top: 1.8rem; font-family: "IBM Plex Mono",ui-monospace,monospace; font-size: 0.76rem; color: var(--muted); }
+  .meta-row span::before { content: "· "; color: var(--accent); }
+  .meta-row span:first-child::before { content: ""; }
+
+  code,kbd,.mono { font-family: "IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace; font-size: 0.86em; }
+  code { background: var(--surface-2); padding: 0.12em 0.38em; border-radius: 4px; border: 1px solid var(--border); }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.6; box-shadow: var(--shadow); }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+  ul.clean { padding-left: 1.15rem; margin: 1rem 0; }
+  ul.clean li { margin: 0.4rem 0; padding-left: 0.2rem; }
+  ul.clean li::marker { color: var(--accent); }
+
+  figure { margin: 2.4rem 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.4rem clamp(0.8rem,0.4rem + 1.5vw,1.8rem) 1.1rem; box-shadow: var(--shadow); }
+  .fig-scroll { overflow-x: auto; }
+  .diagram { display: block; width: 100%; height: auto; min-width: 640px; color: var(--ink); font-family: "IBM Plex Mono",ui-monospace,monospace; }
+  .diagram text { fill: currentColor; }
+  .d-box { fill: var(--surface); stroke: currentColor; stroke-width: 1.4; }
+  .d-box-2 { fill: var(--surface-2); stroke: currentColor; stroke-width: 1.3; }
+  .d-new { fill: var(--accent-soft); stroke: var(--new); stroke-width: 1.7; }
+  .d-title { font-size: 13px; font-weight: 600; }
+  .d-sub { font-size: 11px; fill: var(--muted); }
+  .d-lab { font-size: 10.5px; fill: var(--muted); }
+  .d-edge { stroke: currentColor; stroke-width: 1.5; fill: none; }
+  .d-edge-new { stroke: var(--new); stroke-width: 1.8; fill: none; }
+  .d-div { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 7 5; }
+  .d-newtag { font-size: 10.5px; font-weight: 600; fill: var(--new); }
+
+  figcaption { font-family: "IBM Plex Mono",ui-monospace,monospace; font-size: 0.78rem; line-height: 1.55; color: var(--muted); margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--border); }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  .split-wrap { overflow-x: auto; margin: 1.8rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.93rem; min-width: 640px; }
+  thead th { text-align: left; font-family: "Archivo",sans-serif; font-size: 0.9rem; padding: 0.65rem 0.9rem; border-bottom: 2px solid var(--accent); vertical-align: bottom; }
+  tbody td { padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
+  tbody tr td:first-child { border-right: 1px solid var(--border); }
+  table code { font-size: 0.82em; }
+  .yes { color: var(--accent); font-weight: 600; }
+  .part { color: var(--warn); font-weight: 600; }
+
+  .phase { display: flex; flex-direction: column; gap: 1.1rem; margin: 2rem 0; }
+  .phase article { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; padding: 1.1rem 1.2rem 1.2rem; box-shadow: var(--shadow); }
+  .phase h3 { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+  .phase h3 .tag { font-family: "IBM Plex Mono",monospace; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.14em 0.6em; }
+  .phase dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; margin: 0.9rem 0 0; font-size: 0.96rem; line-height: 1.55; }
+  .phase dt { font-family: "IBM Plex Mono",monospace; font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); padding-top: 0.3em; }
+  .phase dd { margin: 0; }
+  @media (max-width: 560px) { .phase dl { grid-template-columns: 1fr; gap: 0.15rem; } .phase dt { padding-top: 0.5em; } }
+
+  .callout { background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 10px; padding: 1rem 1.2rem; margin: 1.8rem 0; font-size: 0.98rem; }
+  .callout strong { font-family: "Archivo",sans-serif; }
+
+  .foot { margin-top: 3.4rem; padding-top: 1.4rem; border-top: 1px solid var(--border); font-size: 0.9rem; color: var(--muted); }
+  :where(a,button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header>
+    <p class="eyebrow">Delivery plan &middot; companion to the architecture note</p>
+    <h1>MHL on EKS — Delivery Plan</h1>
+    <p class="lede">Six phases to carry the <code>mhl</code> MCP server from
+    &ldquo;one process on one host&rdquo; to an autoscaled EKS Deployment serving many
+    teams &mdash; with every infrastructure backend (DynamoDB, Redis, SQS) living
+    <em>outside</em> the language, as a pinned external extension.</p>
+    <div class="meta-row">
+      <span>constraint: no infra deps in the runtime core</span>
+      <span>invariant: single-replica deploy works at every phase, zero config</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>The organising principle: one seam</h2>
+    <div class="prose">
+      <p>The runtime core already has the right instinct &mdash;
+      <code>internal/extension</code> is a dependency-free, JSON-only contract
+      (<code>Extension</code> &rarr; <code>Instance.Call</code>) that MCP and A2A are
+      themselves being migrated onto. The plan extends that same seam to
+      <b>state</b>.</p>
+      <p>Core keeps the <em>interfaces</em> and a built-in disk / in-memory
+      implementation of each &mdash; so <code>mhl run</code> and a one-pod
+      <code>mhl serve</code> need no database and no configuration. A cluster
+      deployment points those same interfaces at an external extension of kind
+      <code>store</code>, and the DynamoDB or Redis code ships as a separate,
+      sha256-pinned binary that the runtime never links.</p>
+    </div>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg class="diagram" viewBox="0 0 1040 500" role="img"
+             aria-label="On the left, the mhl runtime core holds StateStore, SessionStore, RunRegistry and TokenVerifier interfaces with built-in disk and in-memory implementations, consumed by the runtime, mcpserver and execsvc packages. A dashed extension boundary separates it from the right side, where external store extensions (mhl-store-dynamodb, mhl-store-redis) are pinned binaries speaking JSON-RPC over stdio and reaching AWS DynamoDB and ElastiCache using resolved secrets. A new host-side consumer path in the serve command binds an extension instance at server start.">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+            </marker>
+            <marker id="ahn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="var(--new)"/>
+            </marker>
+          </defs>
+
+          <!-- core -->
+          <rect class="d-box" x="20" y="40" width="470" height="420" rx="12"/>
+          <text class="d-title" x="40" y="66">mhl runtime core &mdash; no infra dependencies</text>
+
+          <rect class="d-box-2" x="40" y="86" width="200" height="46" rx="6"/>
+          <text class="d-sub" x="140" y="106" text-anchor="middle">engine/runtime</text>
+          <text class="d-sub" x="140" y="121" text-anchor="middle">checkpoints</text>
+          <rect class="d-box-2" x="252" y="86" width="218" height="46" rx="6"/>
+          <text class="d-sub" x="361" y="106" text-anchor="middle">mcpserver</text>
+          <text class="d-sub" x="361" y="121" text-anchor="middle">sessions · run registry</text>
+          <rect class="d-box-2" x="40" y="142" width="430" height="40" rx="6"/>
+          <text class="d-sub" x="255" y="166" text-anchor="middle">execsvc — reusable run core</text>
+
+          <rect class="d-new" x="40" y="210" width="430" height="70" rx="8"/>
+          <text class="d-newtag" x="255" y="234" text-anchor="middle">interfaces (NEW)</text>
+          <text class="d-sub" x="255" y="252" text-anchor="middle">StateStore · SessionStore · RunRegistry</text>
+          <text class="d-sub" x="255" y="267" text-anchor="middle">Lease · TokenVerifier</text>
+
+          <rect class="d-box-2" x="40" y="300" width="430" height="60" rx="8"/>
+          <text class="d-title" x="255" y="323" text-anchor="middle">built-in implementation</text>
+          <text class="d-sub" x="255" y="342" text-anchor="middle">disk + in-memory — single pod, zero config, default</text>
+
+          <rect class="d-new" x="40" y="386" width="430" height="56" rx="8"/>
+          <text class="d-newtag" x="255" y="408" text-anchor="middle">host-side extension consumer (NEW)</text>
+          <text class="d-sub" x="255" y="426" text-anchor="middle">cli/serve binds an extension.Instance at server start</text>
+
+          <!-- boundary -->
+          <line class="d-div" x1="520" y1="30" x2="520" y2="470"/>
+          <text class="d-lab" x="520" y="20" text-anchor="middle">extension boundary — pinned, out-of-process, JSON-RPC/stdio (existing contract)</text>
+
+          <!-- extensions -->
+          <rect class="d-box" x="560" y="90" width="300" height="150" rx="10"/>
+          <text class="d-title" x="578" y="114">external extensions</text>
+          <text class="d-sub" x="578" y="130">separate repos · .mhl/extensions.lock</text>
+          <rect class="d-new" x="578" y="144" width="264" height="38" rx="6"/>
+          <text class="d-sub" x="710" y="167" text-anchor="middle">mhl-store-dynamodb  (kind: store)</text>
+          <rect class="d-new" x="578" y="190" width="264" height="38" rx="6"/>
+          <text class="d-sub" x="710" y="213" text-anchor="middle">mhl-store-redis  (kind: store)</text>
+
+          <!-- aws -->
+          <rect class="d-box-2" x="560" y="290" width="300" height="120" rx="10"/>
+          <text class="d-title" x="710" y="322" text-anchor="middle">AWS managed</text>
+          <text class="d-sub" x="710" y="346" text-anchor="middle">DynamoDB · ElastiCache (Redis)</text>
+          <text class="d-sub" x="710" y="366" text-anchor="middle">creds via secret.resolve</text>
+          <text class="d-sub" x="710" y="382" text-anchor="middle">hosts via permissions.network</text>
+
+          <!-- edges -->
+          <path class="d-edge-new" d="M470 414 L520 414 L520 200 L556 200" marker-end="url(#ahn)"/>
+          <text class="d-newtag" x="500" y="452" text-anchor="middle">bind at start</text>
+          <path class="d-edge" d="M710 240 L710 286" marker-end="url(#ah)"/>
+
+          <!-- legend -->
+          <rect class="d-new" x="600" y="440" width="28" height="15" rx="4"/>
+          <text class="d-lab" x="636" y="452">new work</text>
+          <rect class="d-box-2" x="720" y="440" width="28" height="15" rx="4"/>
+          <text class="d-lab" x="756" y="452">exists today</text>
+        </svg>
+      </div>
+      <figcaption>
+        The only structural addition inside core is a <b>host-side consumer path</b>:
+        today an <code>extension.Instance</code> is only reachable from <code>.mh</code>
+        code through the interpreter. <code>mhl serve</code> needs to bind one directly
+        (it is already plain Go with JSON DTOs), wrap it behind the four interfaces, and
+        keep it alive for the whole server process rather than one run.
+      </figcaption>
+    </figure>
+
+    <div class="callout">
+      <strong>Why the store backend is an extension but JWT verification is not.</strong>
+      A store backend is a swappable I/O detail with no trust implications &mdash;
+      perfect for an out-of-process, pinned binary. Token verification decides
+      <em>who a caller is</em>; delegating that to an unpinned child process widens the
+      trust boundary. It stays in core, behind a <code>TokenVerifier</code> interface
+      with a JWKS default.
+    </div>
+  </section>
+
+  <section>
+    <h2>The phases</h2>
+    <div class="prose">
+      <p>Each phase ships on its own and preserves the invariant: a single replica
+      behind API Gateway keeps working with no database and no new flags. The gap
+      numbers refer to the architecture note.</p>
+    </div>
+
+    <div class="phase">
+
+      <article>
+        <h3><span class="tag">Phase 0</span> Seams &amp; safety net</h3>
+        <dl>
+          <dt>Goal</dt><dd>Introduce the interfaces with <em>zero</em> behaviour change.</dd>
+          <dt>Changes</dt><dd>Extract <code>StateStore</code> (checkpoint read / write /
+          list / delete + per-run log buffer), <code>SessionStore</code>,
+          <code>RunRegistry</code>, <code>Lease</code> from the current code in
+          <code>runs.go</code> / <code>http.go</code> / <code>engine/runtime</code>; move
+          today's <code>os.*</code> and in-memory maps behind them as the default impl.
+          Replace <code>ownerKey = sha256(sessionID)</code> with an <code>Owner</code>
+          value that a later phase fills from a principal. Characterization tests around
+          <code>run/*</code> first.</dd>
+          <dt>Single pod</dt><dd><span class="yes">unchanged</span> — same binary, same
+          behaviour, <code>make test</code> + <code>make functional-test</code> green.</dd>
+          <dt>Gaps</dt><dd>prerequisite for 1, 3, 12</dd>
+        </dl>
+      </article>
+
+      <article>
+        <h3><span class="tag">Phase 1</span> Kubernetes-native (single pod)</h3>
+        <dl>
+          <dt>Goal</dt><dd>Make one replica a well-behaved citizen: probes, drain,
+          backpressure, telemetry.</dd>
+          <dt>Changes</dt><dd><code>GET /healthz</code> + <code>/readyz</code> on the mux;
+          <code>/readyz</code> flips false on <code>SIGTERM</code>. Drain: stop accepting
+          <code>run/start</code> / <code>tools/call</code>, let in-flight finish, bounded
+          by <code>--drain-timeout</code>. Checkpoint on shutdown regardless of declared
+          <code>strategy</code>. <code>--max-concurrent-runs</code> semaphore + a
+          first-class <code>queued</code> state. Structured JSON logs keyed by
+          <code>runId</code> + principal; <code>run/logs { runId, since }</code> from the
+          Phase-0 log buffer. OpenTelemetry spans + metrics (in-flight gauge, duration,
+          outcome, token / cost), OTLP export via standard env — no extension.</dd>
+          <dt>Single pod</dt><dd><span class="yes">improved</span> — new endpoints and
+          flags all default to today's behaviour.</dd>
+          <dt>Gaps</dt><dd>5, 6, 7, 8, 9 (P1) &middot; 4 partial (per-pod cap)</dd>
+        </dl>
+      </article>
+
+      <article>
+        <h3><span class="tag">Phase 2</span> Identity &amp; authorization</h3>
+        <dl>
+          <dt>Goal</dt><dd>A verified principal reaches the runtime; teams are isolated;
+          approvals are authorized.</dd>
+          <dt>Changes</dt><dd><code>TokenVerifier</code> interface with three modes:
+          static token (today), JWKS / JWT, and trusted-header
+          (<code>--principal-header</code>, set by the API Gateway authorizer). Thread the
+          principal into <code>Owner</code>: <code>run/list</code> filters by it,
+          <code>reconstructRun</code> requires a principal match rather than mere
+          possession of the <code>runId</code>. Add an <code>approvers:</code> allowlist to
+          the <code>checkpoint</code> / gate step — a small language-surface change
+          (allowlist in <code>lint.checkPipelineProperties</code> +
+          <code>lsp/properties.go</code> + <code>signatures.go</code>), evaluated against
+          the verified principal at <code>run/resume</code>.</dd>
+          <dt>Single pod</dt><dd><span class="yes">unchanged</span> — default verifier is
+          the current static token; <code>approvers:</code> is optional.</dd>
+          <dt>Gaps</dt><dd>3 (P0) &middot; 10 (P1) &middot; 12 (P2)</dd>
+        </dl>
+      </article>
+
+      <article>
+        <h3><span class="tag">Phase 3</span> The <code>store</code> extension contract</h3>
+        <dl>
+          <dt>Goal</dt><dd>Let the four interfaces be backed by an external extension;
+          ship two reference backends.</dd>
+          <dt>Changes</dt><dd>Freeze the consumer-side interface shape. Add the host-side
+          bind path to <code>cli/serve.go</code>: an <code>extension store Backend { ... }</code>
+          declaration discovered in the serve dir (or <code>--store-extension &lt;id&gt;</code>)
+          &rarr; bind an <code>extension.Instance</code> of kind <code>store</code> &rarr;
+          adapter implementing <code>StateStore</code> / <code>SessionStore</code> /
+          <code>RunRegistry</code>. Protocol additions the store needs: a
+          <b>server-lifetime</b> binding with restart-and-backoff (today's
+          <code>maxRestarts = 3</code> is a per-run policy); batched / pipelined calls for
+          the checkpoint hot path; a <code>subscribe</code> / <code>event</code> message
+          shape for watch (or ship poll-only for v1 and decide later). Reference
+          extensions <code>mhl-store-dynamodb</code> and <code>mhl-store-redis</code> in
+          their own repos: kind <code>store</code>, methods <code>get / put / delete /
+          list / cas / lease / renew</code> (+ <code>subscribe</code>),
+          <code>permissions.network</code> for the endpoint, credentials via
+          <code>secret.resolve</code>.</dd>
+          <dt>Single pod</dt><dd><span class="yes">unchanged</span> — with no
+          <code>store</code> declaration, the built-in disk impl is used exactly as now.</dd>
+          <dt>Gaps</dt><dd>unblocks 1 &amp; 2 (P0)</dd>
+        </dl>
+      </article>
+
+      <article>
+        <h3><span class="tag">Phase 4</span> Distributed run execution</h3>
+        <dl>
+          <dt>Goal</dt><dd>N replicas behind a round-robin load balancer, correctly.</dd>
+          <dt>Changes</dt><dd>Cross-pod cancel: <code>run/cancel</code> writes
+          <code>cancelRequested</code> to the store; the owning pod already checks
+          <code>ctx.Err()</code> at each step boundary — also poll that flag there. Live
+          progress across pods: the owner writes <code>step</code> / <code>stepIndex</code>
+          to the store on each <code>OnStep</code>, so a non-owner <code>run/status</code>
+          returns near-real-time state, not just committed checkpoints. Lease-based
+          ownership: an owner renews a lease; on expiry (pod died mid-run) another pod
+          resumes from the last checkpoint. Decide per load test whether the
+          <code>queued</code> pool is cluster-wide (any pod drains it) or per-pod with the
+          HPA sizing the fleet.</dd>
+          <dt>Single pod</dt><dd><span class="yes">unchanged</span> — the lease and flags
+          are no-ops with one owner and the in-memory registry.</dd>
+          <dt>Gaps</dt><dd>completes 1 (P0) &middot; 4 at cluster scale</dd>
+        </dl>
+      </article>
+
+      <article>
+        <h3><span class="tag">Phase 5</span> Client longevity &amp; MCP-standard progress</h3>
+        <dl>
+          <dt>Goal</dt><dd>A stock MCP client survives the API Gateway timeout without
+          bespoke <code>run/*</code> code.</dd>
+          <dt>Changes</dt><dd>A <code>tools/call</code> that runs past a threshold is
+          auto-promoted to an async run, returning a <code>runId</code> reference in the
+          tool result. Advertise the <code>run/*</code> capability in
+          <code>initialize</code> / <code>server/discover</code> with an explicit version.
+          Track the upstream MCP progress-notification mechanism and adopt it when it
+          stabilizes.</dd>
+          <dt>Single pod</dt><dd><span class="yes">improved</span></dd>
+          <dt>Gaps</dt><dd>4 client story (P0) &middot; 11 (P2)</dd>
+        </dl>
+      </article>
+
+    </div>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg class="diagram" viewBox="0 0 1000 210" role="img"
+             aria-label="A horizontal timeline of phases 0 through 5. A continuous baseline runs beneath all of them labelled: single-replica deploy works with zero config at every phase. A marker at Phase 3 reads: from here, N replicas are safe. Phases 0 to 2 are grouped as single-pod hardening; phases 3 to 5 as horizontal scale.">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+            </marker>
+          </defs>
+          <text class="d-lab" x="150" y="26" text-anchor="middle">single-pod hardening</text>
+          <text class="d-lab" x="700" y="26" text-anchor="middle">horizontal scale</text>
+          <line class="d-div" x1="470" y1="34" x2="470" y2="150"/>
+
+          <g>
+            <rect class="d-box-2" x="20" y="40" width="140" height="44" rx="6"/>
+            <text class="d-sub" x="90" y="60" text-anchor="middle">Phase 0</text>
+            <text class="d-sub" x="90" y="75" text-anchor="middle">seams</text>
+            <rect class="d-box-2" x="172" y="40" width="140" height="44" rx="6"/>
+            <text class="d-sub" x="242" y="60" text-anchor="middle">Phase 1</text>
+            <text class="d-sub" x="242" y="75" text-anchor="middle">k8s-native</text>
+            <rect class="d-box-2" x="324" y="40" width="140" height="44" rx="6"/>
+            <text class="d-sub" x="394" y="60" text-anchor="middle">Phase 2</text>
+            <text class="d-sub" x="394" y="75" text-anchor="middle">identity</text>
+            <rect class="d-new" x="484" y="40" width="140" height="44" rx="6"/>
+            <text class="d-sub" x="554" y="60" text-anchor="middle">Phase 3</text>
+            <text class="d-sub" x="554" y="75" text-anchor="middle">store contract</text>
+            <rect class="d-new" x="636" y="40" width="140" height="44" rx="6"/>
+            <text class="d-sub" x="706" y="60" text-anchor="middle">Phase 4</text>
+            <text class="d-sub" x="706" y="75" text-anchor="middle">distributed runs</text>
+            <rect class="d-box-2" x="788" y="40" width="140" height="44" rx="6"/>
+            <text class="d-sub" x="858" y="60" text-anchor="middle">Phase 5</text>
+            <text class="d-sub" x="858" y="75" text-anchor="middle">client longevity</text>
+          </g>
+          <path class="d-edge" d="M160 62 L172 62" marker-end="url(#ah2)"/>
+          <path class="d-edge" d="M312 62 L324 62" marker-end="url(#ah2)"/>
+          <path class="d-edge" d="M464 62 L484 62" marker-end="url(#ah2)"/>
+          <path class="d-edge" d="M624 62 L636 62" marker-end="url(#ah2)"/>
+          <path class="d-edge" d="M776 62 L788 62" marker-end="url(#ah2)"/>
+
+          <line class="d-edge" x1="20" y1="120" x2="928" y2="120"/>
+          <text class="d-lab" x="20" y="140">single-replica deploy works with zero config at every phase</text>
+          <circle cx="554" cy="120" r="5" fill="var(--new)"/>
+          <text class="d-newtag" x="554" y="168" text-anchor="middle">from Phase 3: N replicas are safe</text>
+        </svg>
+      </div>
+      <figcaption>
+        Phases 0&ndash;2 are worth doing even if the deployment never scales past one pod
+        &mdash; they are the difference between &ldquo;runs behind API Gateway&rdquo; and
+        &ldquo;is operable.&rdquo; Phase 3 is the point of no return for the
+        extension-boundary decision.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Language core vs. external extension</h2>
+    <div class="prose">
+      <p>The dividing test: <b>does it decide trust, or does it just move bytes?</b>
+      Trust decisions and process lifecycle stay in core; swappable I/O and
+      vendor-specific glue become extensions.</p>
+    </div>
+    <div class="split-wrap">
+      <table>
+        <thead>
+          <tr><th>Stays in the runtime core</th><th>Ships as an external extension</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>The <code>StateStore</code> / <code>SessionStore</code> /
+            <code>RunRegistry</code> / <code>Lease</code> <b>interfaces</b>, plus the
+            built-in disk + in-memory implementation</td>
+            <td>DynamoDB, Redis, S3, Postgres <b>backends</b> for those interfaces
+            (kind <code>store</code>)</td>
+          </tr>
+          <tr>
+            <td>Health / readiness, drain, graceful shutdown, checkpoint-on-exit
+            &mdash; process lifecycle</td>
+            <td>Any cloud-specific credential or endpoint-discovery dance beyond
+            <code>secret.resolve</code> + <code>permissions.network</code></td>
+          </tr>
+          <tr>
+            <td>Concurrency limiting, the <code>queued</code> state, run scheduling
+            policy</td>
+            <td>A cluster-wide queue backend (SQS) <em>if</em> Phase 4 needs one &mdash;
+            same <code>store</code> family or a sibling <code>queue</code> kind</td>
+          </tr>
+          <tr>
+            <td><code>TokenVerifier</code> and its JWKS / JWT / trusted-header modes
+            &mdash; a trust boundary</td>
+            <td>&mdash; never; token verification is not delegated to a pinned binary</td>
+          </tr>
+          <tr>
+            <td>OpenTelemetry instrumentation (the spans and metrics themselves);
+            OTLP export configured by standard env</td>
+            <td>Optional: a bespoke metrics / trace <b>exporter</b> only if you refuse an
+            OTel SDK dependency in core (not recommended)</td>
+          </tr>
+          <tr>
+            <td>The <code>approvers:</code> language surface and its evaluation against
+            the principal</td>
+            <td>The identity provider itself (Cognito, the team IdP) &mdash; already
+            external, upstream of API Gateway</td>
+          </tr>
+          <tr>
+            <td>The host-side extension-consumer path in <code>cli/serve</code> and the
+            adapter that wraps an <code>Instance</code></td>
+            <td>&mdash;</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>The <code>store</code> extension, concretely</h2>
+    <div class="prose">
+      <p>Kind <code>store</code>, one declaration per backend, discovered in the serve
+      directory the same way workflows are. Sketch of the manifest and the call the
+      adapter makes on every checkpoint:</p>
+    </div>
+<pre><code>// extension.json  (mhl-store-dynamodb)
+{
+  "id": "com.acme.mhl-store-dynamodb",
+  "version": "0.1.0",
+  "api_version": "1",
+  "executable": "bin/store-dynamodb",
+  "declarations_file": "declarations.json",
+  "permissions": {
+    "network": ["dynamodb.us-east-1.amazonaws.com"],
+    "secrets": ["env(\"AWS_ROLE_ARN\")", "env(\"AWS_WEB_IDENTITY_TOKEN_FILE\")"]
+  }
+}
+
+// .mh in the serve dir
+extension store Backend {
+  table:  "mhl-serve-state"
+  region: "us-east-1"
+}
+
+// adapter -> Instance.Call on each OnStep / checkpoint write
+call { declaration: Backend, operation: "cas",
+       named_args: { key: "run/<id>/checkpoint", expect: <rev>, value: <json> } }</code></pre>
+    <div class="prose">
+      <p>Open protocol questions to settle in Phase 3, all small and additive:</p>
+      <ul class="clean">
+        <li><b>Server-lifetime processes.</b> The child must outlive a run and restart
+        with backoff instead of failing after three crashes. A manifest flag
+        (<code>"lifetime": "server"</code>) or a serve-side policy.</li>
+        <li><b>Hot-path cost.</b> A pipe round-trip per checkpoint step is the concern.
+        Benchmark first; mitigate with a write-through cache in the adapter (extension is
+        the source of truth, reads are served locally) and batched flushes.</li>
+        <li><b>Watch.</b> Cross-pod cancel and live status want push. Ship poll-only in
+        v1; add a <code>subscribe</code> / <code>event</code> shape if polling latency
+        hurts.</li>
+        <li><b>IRSA vs. &ldquo;no ambient environment.&rdquo;</b> The AWS SDK in the
+        extension wants <code>AWS_WEB_IDENTITY_TOKEN_FILE</code> / <code>AWS_ROLE_ARN</code>.
+        Pass them through the manifest <code>env</code> allowlist, or add a host
+        capability that mints them. Decide before writing the DynamoDB backend.</li>
+        <li><b>Distribution in EKS.</b> Extensions are sha256-pinned and vendored under
+        <code>.mhl/extensions/</code>. In a container that means baking them into the
+        image or an init container &mdash; document it; there is no runtime download.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Risks &amp; decisions to take early</h2>
+    <div class="split-wrap">
+      <table>
+        <thead><tr><th>Decision</th><th>When</th><th>Default if undecided</th></tr></thead>
+        <tbody>
+          <tr><td>Pipe-RPC latency acceptable on the checkpoint hot path?</td><td>Phase 0 benchmark, before Phase 3</td><td>Adapter write-through cache + async flush</td></tr>
+          <tr><td>Protocol gains <code>subscribe</code>, or poll-only?</td><td>Phase 3</td><td>Poll-only v1; revisit in Phase 4</td></tr>
+          <tr><td>Cluster-wide queue, or per-pod + HPA?</td><td>Phase 4, from a load test</td><td>Per-pod; HPA on the in-flight gauge</td></tr>
+          <tr><td>Promote <code>internal/extension</code> to <code>pkg/</code> (freezes the wire protocol)?</td><td>Gates Phase 3's out-of-process story</td><td>Keep <code>internal/</code>; freeze the consumer interface only</td></tr>
+          <tr><td>IRSA credential passthrough mechanism</td><td>Before the DynamoDB backend</td><td>Manifest <code>env</code> allowlist</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose">
+      <h3>Cross-cutting, every phase</h3>
+      <ul class="clean">
+        <li>Docs: <code>reference.html</code> for <code>approvers:</code>,
+        <code>mcpserver/FLOW.md</code> for the store hop, <code>extensions.html</code> for
+        the <code>store</code> kind, a new <code>docs/site/serve-eks.html</code>.</li>
+        <li>Samples under <code>sample/serve/</code>: a workflow with
+        <code>approvers:</code>, and a serve dir with a stub <code>store</code> extension.</li>
+        <li>CI: the store adapter needs a contract test suite the reference extensions
+        both run against; add a <code>make</code> target.</li>
+      </ul>
+    </div>
+  </section>
+
+  <p class="foot">Companion to the architecture note. Grounded in
+  <code>internal/extension</code>, <code>internal/extension/external</code>,
+  <code>internal/mcpserver</code>, <code>internal/execsvc</code>, and
+  <code>sample/extensions/extension-protocol.md</code> on branch
+  <code>feature/mcp-http-transport</code>.</p>
+
+</div>
+</body>
+</html>
