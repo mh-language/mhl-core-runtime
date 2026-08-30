@@ -29,7 +29,9 @@
           <kbd>/</kbd>
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
+        <a class="github-link" href="serve.html">Serving</a>
         <a class="github-link" href="extensions.html">Extensions</a>
+        <a class="github-link" href="how-it-works.html">How it works</a>
         <a class="github-link" href="index.html">Overview</a>
         <a class="github-link" href="stdlib.html">Standard library</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
@@ -811,7 +813,7 @@ test normalize_examples {
           </div>
         </section>
 
-        <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp serve mcp a2a version security credentials env diagnostics install">
+        <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp serve mcp a2a version security credentials env diagnostics install streamable http post mcp session id run start status resume cancel list async long-running poll step progress checkpoint per_step state-dir human-in-the-loop hitl approval gate fail resumable token origin">
           <div class="feature-head"><h2><span class="feature-num">14</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The <code>mhl</code> binary handles execution, tests, static analysis, and editor integration.</p>
           <div class="cli-grid">
@@ -823,8 +825,9 @@ test normalize_examples {
             <div class="cli-command"><code>mhl test directory/</code><span>discover tests recursively</span></div>
             <div class="cli-command"><code>mhl lint .</code><span>validate syntax, types, and references</span></div>
             <div class="cli-command"><code>mhl lsp</code><span>start the language server</span></div>
-            <div class="cli-command"><code>mhl serve mcp dir/</code><span>expose every workflow under <code>dir/</code> as an MCP tool (stdio JSON-RPC)</span></div>
-            <div class="cli-command"><code>mhl serve a2a dir/</code><span>expose them as Agent2Agent skills over HTTP (<code>--addr host:port</code>)</span></div>
+            <div class="cli-command"><code>mhl serve mcp dir/</code><span>serve every workflow under <code>dir/</code> as an MCP tool (stdio) — <a href="serve.html">serving workflows</a></span></div>
+            <div class="cli-command"><code>mhl serve mcp --http dir/</code><span>the same over Streamable HTTP, plus async <code>run/*</code> — <a href="serve.html#mcp-http">serving workflows</a></span></div>
+            <div class="cli-command"><code>mhl serve a2a dir/</code><span>serve them as Agent2Agent skills over HTTP — <a href="serve.html#a2a">serving workflows</a></span></div>
             <div class="cli-command"><code>mhl version</code><span>print the installed version</span></div>
             <div class="cli-command"><code>mhl extension init dir/</code><span>scaffold an extension</span></div>
             <div class="cli-command"><code>mhl extension test dir/</code><span>check the protocol</span></div>
@@ -833,7 +836,8 @@ test normalize_examples {
             <div class="cli-command"><code>mhl extension list</code><span>show locked extensions</span></div>
             <div class="cli-command"><code>mhl extension doctor</code><span>validate manifests and hashes</span></div>
           </div>
-          <div class="tip-row"><span>EXTENSIONS</span><p>The language reference covers how to declare and call <code>extension mcp</code> and <code>extension a2a</code>. The <a href="extensions.html">extension guide</a> covers external adapters and their JSON-RPC contract.</p></div>
+          <div class="tip-row"><span>EXTENSIONS</span><p>This reference covers how to declare and <em>call</em> <code>extension mcp</code> / <code>extension a2a</code> (§10, §11). The <a href="extensions.html">extension guide</a> covers external adapters and their JSON-RPC contract.</p></div>
+          <div class="tip-row"><span>SERVE</span><p>The other direction — exposing your own workflows as MCP tools or A2A skills with <code>mhl serve</code>, including the async <code>run/*</code> methods, <code>run/resume</code> for human-in-the-loop, per-session ownership, and <code>--state-dir</code> — has its own page: <a href="serve.html">serving workflows</a>.</p></div>
 
           <p class="block-label">OPERATIONAL CHECKLIST</p>
           <div class="checklist">
@@ -848,7 +852,7 @@ test normalize_examples {
 
         <footer class="site-footer">
           <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="extensions.html">Extend the runtime</a> · <a href="index.html">Overview</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+          <span><a href="index.html">Overview</a> · <a href="serve.html">Serving workflows</a> · <a href="extensions.html">Extend the runtime</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
         </footer>
       </main>
     </div>

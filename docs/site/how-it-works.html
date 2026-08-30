@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="A visual introduction to how MHL turns declarative workflow definitions into controlled, auditable agent pipelines." />
+    <meta name="theme-color" content="#10161f" />
+    <meta property="og:title" content="How MHL works — Meta-Harness Language" />
+    <meta property="og:description" content="See how MHL connects declarations, orchestration, agents, tools, state, and verification." />
+    <meta property="og:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="How MHL works — Meta-Harness Language" />
+    <meta name="twitter:description" content="A visual introduction to MHL pipelines and the deterministic harness around AI agents." />
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
+    <link rel="icon" href="assets/mhl-logo-rebrand.png" />
+    <title>How MHL works — Meta-Harness Language</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="index.html" aria-label="MHL home">
+        <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
+        <span><strong>MHL</strong><small>Meta-Harness Language</small></span>
+      </a>
+      <div class="top-actions">
+        <label class="search" for="site-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="site-search" type="search" placeholder="Search this page" autocomplete="off" />
+          <kbd>/</kbd>
+        </label>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
+        <a class="github-link" href="index.html">Overview</a>
+        <a class="github-link" href="reference.html">Reference</a>
+        <a class="github-link" href="serve.html">Serving</a>
+        <a class="github-link" href="stdlib.html">Standard library</a>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </div>
+    </header>
+
+    <div class="layout" id="top">
+      <aside class="sidebar" aria-label="How it works navigation">
+        <p class="eyebrow">HOW MHL WORKS</p>
+        <nav id="toc">
+          <a class="nav-link active" href="#overview">The big picture</a>
+          <a class="nav-link" href="#anatomy">Pipeline anatomy</a>
+          <a class="nav-link" href="#run">What happens at runtime</a>
+          <a class="nav-link" href="#loop">The controlled loop</a>
+          <a class="nav-link" href="#example">A concrete example</a>
+          <a class="nav-link" href="#guarantees">What MHL gives you</a>
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <span>Start here<br /><small>a visual tour for your first contact with MHL</small></span>
+        </div>
+      </aside>
+
+      <main class="content how-content">
+        <section class="how-hero doc-section" id="overview" data-title="how it works overview introduction visual pipeline agent harness runtime">
+          <div>
+            <p class="eyebrow accent">MHL · A VISUAL INTRODUCTION · v1.0.0-alpha</p>
+            <h1>One file.<br /><em>One controlled loop.</em></h1>
+            <p class="lead">MHL describes what an AI workflow can do, how it should move, and where it must stop. The runtime owns the execution loop; agents contribute judgment inside it.</p>
+            <div class="hero-actions">
+              <a class="button primary" href="#anatomy">See the architecture <span>↓</span></a>
+              <a class="button secondary" href="index.html#first-program">Run your first pipeline</a>
+            </div>
+          </div>
+          <div class="orientation-card" aria-label="MHL in one sentence">
+            <div class="orientation-top"><span class="pulse"></span> THE SHORT VERSION</div>
+            <p>Conventional software controls the process.</p>
+            <div class="orientation-arrow">↓</div>
+            <p>AI handles interpretation where it adds value.</p>
+            <div class="orientation-rule"></div>
+            <span class="orientation-caption">deterministic harness · probabilistic agent</span>
+          </div>
+        </section>
+
+        <section class="doc-section" id="anatomy" data-title="pipeline anatomy declarations inputs prompts agents tools memory extensions output">
+          <div class="section-heading">
+            <p class="eyebrow">01 · PIPELINE ANATOMY</p>
+            <h2>Six pieces, each with one job.</h2>
+            <p>An MHL program makes the workflow legible. Declarations define capabilities, the pipeline sets the order, and the runtime connects effects to observable results.</p>
+          </div>
+          <div class="anatomy-diagram" role="img" aria-label="Flow from an MHL file through declarations, pipeline, capabilities, state, and output">
+            <div class="diagram-node file-node"><small>01 · DEFINE</small><strong>.mh file</strong><span>the versioned workflow</span></div>
+            <div class="diagram-connector" aria-hidden="true">→</div>
+            <div class="diagram-node"><small>02 · DECLARE</small><strong>agent · prompt</strong><span>reasoning and context</span></div>
+            <div class="diagram-connector" aria-hidden="true">→</div>
+            <div class="diagram-node active-node"><small>03 · ORCHESTRATE</small><strong>pipeline · step</strong><span>order and decisions</span></div>
+            <div class="diagram-connector" aria-hidden="true">→</div>
+            <div class="diagram-node"><small>04 · ACT</small><strong>tool · MCP · A2A</strong><span>external capabilities</span></div>
+            <div class="diagram-connector" aria-hidden="true">→</div>
+            <div class="diagram-node"><small>05 · REMEMBER</small><strong>memory · checkpoint</strong><span>state and recovery</span></div>
+            <div class="diagram-connector" aria-hidden="true">→</div>
+            <div class="diagram-node result-node"><small>06 · VERIFY</small><strong>output · logs</strong><span>inspectable result</span></div>
+          </div>
+          <div class="diagram-caption"><span>READ LEFT TO RIGHT</span><p>The model is one participant in the pipeline. It does not silently own the tools, state, retries, or exit conditions.</p></div>
+        </section>
+
+        <section class="doc-section" id="run" data-title="runtime execution mhl run parse lint load input steps output checkpoint">
+          <div class="section-heading">
+            <p class="eyebrow">02 · FROM FILE TO RESULT</p>
+            <h2>What happens when you run <code>mhl run</code>?</h2>
+            <p>The runtime turns a readable workflow into a bounded execution. Every step has a place in the sequence, and every external effect can be inspected as part of the run.</p>
+          </div>
+          <div class="runtime-timeline">
+            <article><span>1</span><div><h3>Load the program</h3><p>Parse the `.mh` file, resolve imports, and validate declarations and types.</p><code>mhl lint workflow.mh</code></div></article>
+            <article><span>2</span><div><h3>Prepare the run</h3><p>Read pipeline inputs, initialize memory, and restore a checkpoint when resuming.</p><code>mhl run workflow.mh --input id=42</code></div></article>
+            <article><span>3</span><div><h3>Execute each step</h3><p>Evaluate expressions, call tools or agents, apply retries and timeouts, and record results.</p><code>step Analyze { ... }</code></div></article>
+            <article><span>4</span><div><h3>Persist and finish</h3><p>Write logs and state, stop when the pipeline succeeds or reaches an explicit limit, and return an outcome.</p><code>mhl test workflow.mh</code></div></article>
+          </div>
+        </section>
+
+        <section class="doc-section" id="loop" data-title="controlled loop deterministic harness ai agent retry verify stop success failure">
+          <div class="section-heading">
+            <p class="eyebrow">03 · THE CONTROLLED LOOP</p>
+            <h2>The harness stays in charge.</h2>
+            <p>AI can interpret a failure or propose a change, but the surrounding program decides when to call it, what it can see, what happens next, and when the run ends.</p>
+          </div>
+          <div class="loop-diagram" role="img" aria-label="A controlled loop where the runtime verifies, optionally asks an agent for a proposal, applies a change, and verifies again">
+            <div class="harness-label"><span>DETERMINISTIC HARNESS</span></div>
+            <div class="loop-main-flow">
+              <div class="loop-node input-node"><small>A</small><strong>Input</strong><span>task or repo state</span></div>
+              <i class="flow-arrow" aria-hidden="true">→</i>
+              <div class="loop-node verify"><small>B</small><strong>Verify</strong><span>objective check</span></div>
+              <i class="flow-arrow" aria-hidden="true">→</i>
+              <div class="loop-node decision"><small>C</small><strong>Decision</strong><span>success or failure?</span></div>
+            </div>
+            <div class="loop-outcomes">
+              <div class="outcome-card success-outcome">
+                <div class="outcome-heading"><b>YES · SUCCESS</b><span>return result</span></div>
+                <div class="outcome-arrow" aria-hidden="true">↳</div>
+              </div>
+              <div class="outcome-card retry-outcome">
+                <div class="outcome-heading"><b>NO · FAILURE</b><span>bounded recovery</span></div>
+                <div class="recovery-flow">
+                  <div class="loop-node agent-node"><small>D</small><strong>Agent</strong><span>interpret and propose</span></div>
+                  <i class="flow-arrow" aria-hidden="true">→</i>
+                  <div class="loop-node apply-node"><small>E</small><strong>Apply / inspect</strong><span>change stays reviewable</span></div>
+                  <i class="flow-arrow" aria-hidden="true">→</i>
+                  <div class="loop-return"><strong>↺ Verify again</strong><span>next iteration</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="harness-policies"><span>STATE</span><span>RETRIES</span><span>TIMEOUTS</span><span>STOP CRITERIA</span></div>
+          </div>
+          <div class="tip-row"><span>WHY IT MATTERS</span><p>“The agent said so” is not an exit condition. MHL lets the workflow require a test result, a state value, or another explicit condition before it stops.</p></div>
+        </section>
+
+        <section class="doc-section" id="example" data-title="example code repair pipeline test agent prompt tool memory loop">
+          <div class="section-heading">
+            <p class="eyebrow">04 · A CONCRETE EXAMPLE</p>
+            <h2>AI where it helps. Code where it counts.</h2>
+            <p>This small repair loop runs a test first. Only a failed test calls the agent; the harness keeps the diff, retry count, and stop condition explicit.</p>
+          </div>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-mhl">agent Fixer {
+    engine: "ollama/qwen2.5-coder"
+    endpoint: "http://localhost:11434"
+    temperature: 0.1
+}
+
+tool Project {
+    test() -> cmd.exec(["go", "test", "./..."])
+    diff() -> git.diff()
+}
+
+prompt Repair(failure: string, diff: string) {
+    "Fix this test failure with the smallest safe change.\n${failure}\n${diff}"
+}
+
+loop pipeline AutoRepair {
+    mem attempts = 0
+    mem done = false
+    repeat: { stop_when: done, max_iterations: 5 }
+
+    step Verify {
+        var result = Project.test()
+        if (result.exit_code == 0) {
+            done = true
+        } else {
+            attempts = attempts + 1
+            var patch = Fixer.run(prompt: Repair(
+                failure: result.stderr,
+                diff: Project.diff()
+            ))
+            fs.write("candidate.patch", patch)
+        }
+    }
+}</code></pre>
+          </div>
+          <div class="example-steps">
+            <div><span>1</span><p><strong>Verify</strong> with a deterministic command.</p></div>
+            <div><span>2</span><p><strong>Ask</strong> the agent only after failure.</p></div>
+            <div><span>3</span><p><strong>Persist</strong> the proposed patch for review.</p></div>
+            <div><span>4</span><p><strong>Stop</strong> on success or the iteration ceiling.</p></div>
+          </div>
+        </section>
+
+        <section class="doc-section" id="guarantees" data-title="benefits guarantees deterministic auditable local first replaceable policies state security">
+          <div class="section-heading">
+            <p class="eyebrow">05 · THE PAYOFF</p>
+            <h2>Make the workflow easier to trust.</h2>
+            <p>MHL is useful when an AI-assisted process needs the same qualities as other engineering systems: visible boundaries, repeatable control, and a record of what happened.</p>
+          </div>
+          <div class="guarantee-grid">
+            <article><span>01</span><h3>Predictable control</h3><p>Steps, branches, retries, timeouts, and iteration limits are written beside the flow.</p></article>
+            <article><span>02</span><h3>Replaceable intelligence</h3><p>Change the agent declaration or engine without rewriting the pipeline's intent.</p></article>
+            <article><span>03</span><h3>Recoverable state</h3><p>Memory and checkpoints make long-running or interrupted work visible and resumable.</p></article>
+            <article><span>04</span><h3>Auditable effects</h3><p>Tools, extensions, logs, and tests show what the workflow touched and why it stopped.</p></article>
+          </div>
+          <div class="next-steps">
+            <strong>READY TO GO DEEPER?</strong>
+            <a href="index.html#first-program">Run the first program →</a>
+            <a href="reference.html#pipeline">Read pipeline syntax →</a>
+            <a href="extensions.html">Explore extensions →</a>
+          </div>
+        </section>
+
+        <footer class="site-footer">
+          <span>© 2026 MHL · Created by Yan Justino</span>
+          <span><a href="index.html">Overview</a> · <a href="reference.html">Language reference</a> · <a href="serve.html">Serving workflows</a> · <a href="stdlib.html">Standard library</a> · <a href="extensions.html">Extensions</a></span>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

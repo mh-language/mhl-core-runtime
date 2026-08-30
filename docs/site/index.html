@@ -29,7 +29,9 @@
           <kbd>/</kbd>
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
+        <a class="github-link" href="serve.html">Serving</a>
         <a class="github-link" href="extensions.html">Extensions</a>
+        <a class="github-link" href="how-it-works.html">How it works</a>
         <a class="github-link" href="reference.html">Reference</a>
         <a class="github-link" href="stdlib.html">Standard library</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
@@ -225,12 +227,14 @@ pipeline Hello {
           <div class="section-heading">
             <p class="eyebrow">06 · DOCUMENTATION MAP</p>
             <h2>Choose the page for the job.</h2>
-            <p>The site is organized around three questions: what is MHL, how do I write it, and how do I make the runtime do more?</p>
+            <p>The site is organized around a few questions: what is MHL, how does it work, how do I write it, how do I serve it, and how do I make the runtime do more?</p>
           </div>
-          <div class="card-grid three">
+          <div class="card-grid four">
+            <a class="info-card accent-card" href="how-it-works.html"><span class="card-icon">00</span><h3>How MHL works</h3><p>A visual tour of the runtime, controlled loops, agents, tools, state, and verification.</p></a>
             <a class="info-card accent-card" href="reference.html"><span class="card-icon">01</span><h3>Language Reference</h3><p>Declarations, syntax, control flow, pipelines, diagnostics, and complete MHL examples.</p></a>
             <a class="info-card" href="stdlib.html"><span class="card-icon">02</span><h3>Standard Library</h3><p>Callable functions and methods, signatures, parameters, return values, and native operations.</p></a>
-            <a class="info-card" href="extensions.html"><span class="card-icon">03</span><h3>Extend the runtime</h3><p>Manifest, lock file, process lifecycle, JSON-RPC messages, permissions, and CLI workflow.</p></a>
+            <a class="info-card" href="serve.html"><span class="card-icon">03</span><h3>Serving workflows</h3><p><code>mhl serve</code> as MCP tools or A2A skills: stdio and HTTP transports, async <code>run/*</code>, <code>run/resume</code> for human-in-the-loop.</p></a>
+            <a class="info-card" href="extensions.html"><span class="card-icon">04</span><h3>Extend the runtime</h3><p>Manifest, lock file, process lifecycle, JSON-RPC messages, permissions, and CLI workflow.</p></a>
           </div>
         </section>
 
@@ -366,7 +370,7 @@ loop pipeline AutoRepair {
 
         <footer class="site-footer">
           <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="extensions.html">Extend the runtime</a> · <a href="reference.html">Language reference</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+          <span><a href="reference.html">Language reference</a> · <a href="serve.html">Serving workflows</a> · <a href="extensions.html">Extend the runtime</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
         </footer>
       </main>
     </div>

@@ -1,0 +1,46 @@
+// Human-in-the-loop over the async HTTP surface of `mhl serve mcp --http`.
+//
+// The gate step calls `fail(...)` until it is approved, which stops the run
+// with a checkpoint on disk (this needs `checkpoint { strategy: "per_step" }`).
+// The caller then:
+//
+//   run/start  {"name":"Approval","arguments":{"approved":"no"}}
+//     -> state "failed", step "Gate", resumable: true
+//   ... a human reviews `vars` and decides ...
+//   run/resume {"runId": "...", "arguments":{"approved":"yes"}}
+//     -> re-runs from Gate, which now passes -> state "completed"
+//
+// `arguments` on run/resume are merged over the originals, so that is where
+// the approval decision goes. With `mhl serve mcp --http --state-dir <dir>`
+// the run survives a server restart and can be resumed by a later process.
+
+pipeline Approval {
+    description: "Prepare, wait for human approval, then finish."
+
+    input request: string
+
+    // Pass "no" on run/start (stops at the gate), then "yes" on run/resume.
+    input approved: string
+
+    checkpoint: {
+        enabled: true
+        strategy: "per_step"
+        ttl: 7d
+    }
+
+    var summary = ""
+
+    step Prepare {
+        summary = "ready to act on: " + request
+    }
+
+    step Gate {
+        if (approved != "yes") {
+            fail("awaiting approval for: " + request)
+        }
+    }
+
+    step Act {
+        summary = "acted on: " + request
+    }
+}
