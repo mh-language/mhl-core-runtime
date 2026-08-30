@@ -59,7 +59,11 @@ type Stage struct {
 // either or both may be zero-valued, same as the old standalone `loop`
 // declaration allowed).
 type Pipeline struct {
-	Name          string
+	Name string
+	// Description is the optional `description: "..."` body property — a
+	// human-readable summary surfaced as the MCP tool / A2A skill description
+	// by the serve adapters. Empty when the pipeline declares none.
+	Description   string
 	Steps         []string
 	Stages        []Stage
 	Checkpoint    CheckpointConfig
@@ -124,6 +128,8 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 			out.StopWhen, out.MaxIterations = repeatConfigFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "context":
 			out.Context = contextConfigFromExpr(m.Prop.Value)
+		case m.Prop != nil && m.Prop.Name == "description":
+			out.Description, _ = ast.StringValue(m.Prop.Value)
 		case m.Input != nil:
 			t, ok := types.FromExprAlias(m.Input.Type, aliases)
 			if !ok {

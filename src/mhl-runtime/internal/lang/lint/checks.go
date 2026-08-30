@@ -191,6 +191,48 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 	return findings
 }
 
+// knownPipelineProperties is the set of bare `name: ...` properties a
+// `pipeline` / `workflow` body may carry (runtime.PipelineFromAST's Prop.Name
+// switch), plus `description` (read by the serve adapters, not the runner).
+// `input` / `var` / `mem` / `const` / `step` / `parallel` are distinct body
+// members, not Property nodes, so they never reach here. Keep in sync with
+// internal/lsp/properties.go's pipelinePropertyItems.
+var knownPipelineProperties = map[string]bool{
+	"description": true,
+	"checkpoint":  true,
+	"spawn":       true,
+	"repeat":      true,
+	"context":     true,
+}
+
+// checkPipelineProperties flags a bare property in a pipeline/workflow body
+// whose name nothing reads — a typo (`checkpont:`) or a docs-only field —
+// rather than silently ignoring it, matching checkAgentProperties.
+func checkPipelineProperties(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Pipeline == nil {
+			continue
+		}
+		for _, m := range decl.Pipeline.Body {
+			if m.Prop == nil || knownPipelineProperties[m.Prop.Name] {
+				continue
+			}
+			findings = append(findings, Finding{File: file, Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column,
+				Message: fmt.Sprintf("%s %q: unknown property %q — the body reads only description, checkpoint, spawn, repeat, context", pipelineKind(decl.Pipeline), decl.Pipeline.Name, m.Prop.Name)})
+		}
+	}
+	return findings
+}
+
+// pipelineKind is "workflow" or "pipeline" for a diagnostic prefix.
+func pipelineKind(p *ast.Pipeline) string {
+	if p.IsWorkflow() {
+		return "workflow"
+	}
+	return "pipeline"
+}
+
 // checkPipelineGoto enforces the two static rules on `goto`:
 //   - it is only legal inside a `workflow` (a plain `pipeline` runs its steps
 //     in declared order, each once — that guarantee is the whole reason the

@@ -1,6 +1,7 @@
 package runtime_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -100,6 +101,25 @@ pipeline WithContext {
 	}
 }
 
+// The optional `description: "..."` body property is projected onto
+// Pipeline.Description; absent leaves it empty.
+func TestPipelineDescriptionFromAST(t *testing.T) {
+	prog, _ := parser.Parse(`workflow W {
+    description: "Does a useful thing."
+    step S { var x = 1 }
+}`)
+	p, _ := runtime.FindPipeline(prog, "")
+	if p.Description != "Does a useful thing." {
+		t.Errorf("Description = %q, want %q", p.Description, "Does a useful thing.")
+	}
+
+	bare, _ := parser.Parse("pipeline P { step S { var x = 1 } }")
+	pb, _ := runtime.FindPipeline(bare, "")
+	if pb.Description != "" {
+		t.Errorf("Description = %q, want empty for a pipeline with no description:", pb.Description)
+	}
+}
+
 // AC-6: a checkpoint file is written under .mhl/state per step, and clearing on
 // success removes it.
 func TestCheckpointSaveWritesFileAndClearRemoves(t *testing.T) {
@@ -175,7 +195,7 @@ func TestResumeSkipsCompletedStep(t *testing.T) {
 	// First run: step 1 succeeds (and checkpoints); step 2 "crashes".
 	var firstRunSteps []string
 	runner := runtime.NewRunner(root)
-	_, err := runner.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := runner.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		firstRunSteps = append(firstRunSteps, step)
 		if step == "RefinementLoop" {
 			return errSimulatedCrash
@@ -198,7 +218,7 @@ func TestResumeSkipsCompletedStep(t *testing.T) {
 	// Resume: step 1 must NOT be re-executed; step 2 must run.
 	var resumeSteps []string
 	runner2 := runtime.NewRunner(root)
-	res, err := runner2.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := runner2.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		resumeSteps = append(resumeSteps, step)
 		return nil
 	}, true)
@@ -241,7 +261,7 @@ func TestResumeSkipsInitAndRestoresCheckpointedVars(t *testing.T) {
 	}
 
 	runner := runtime.NewRunner(root)
-	_, err := runner.Run(p, init, func(step string, ctx *runtime.RunContext) error {
+	_, err := runner.Run(context.Background(), p, init, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		if step == "A" {
 			ctx.Vars["counter"] = 41.0
 		}
@@ -259,7 +279,7 @@ func TestResumeSkipsInitAndRestoresCheckpointedVars(t *testing.T) {
 
 	runner2 := runtime.NewRunner(root)
 	var sawCounter any
-	_, err = runner2.Run(p, init, func(step string, ctx *runtime.RunContext) error {
+	_, err = runner2.Run(context.Background(), p, init, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		if step == "B" {
 			sawCounter = ctx.Vars["counter"]
 		}
@@ -301,7 +321,7 @@ func TestGotoJumpsToNamedStep(t *testing.T) {
 	runner := runtime.NewRunner(root)
 
 	var executed []string
-	res, err := runner.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := runner.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		executed = append(executed, step)
 		if step == "A" {
 			return &runtime.GotoSignal{Target: "C"}
@@ -326,7 +346,7 @@ func TestGotoUnknownTargetFails(t *testing.T) {
 	p := threeStepPipeline()
 	runner := runtime.NewRunner(root)
 
-	_, err := runner.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := runner.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		if step == "A" {
 			return &runtime.GotoSignal{Target: "DoesNotExist"}
 		}
@@ -346,7 +366,7 @@ func TestBreakStopsRunAndPreservesReason(t *testing.T) {
 	runner := runtime.NewRunner(root)
 
 	var executed []string
-	res, err := runner.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := runner.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		executed = append(executed, step)
 		if step == "B" {
 			return &runtime.BreakSignal{Reason: "too many attempts"}
@@ -382,7 +402,7 @@ func TestResumeAfterGotoFollowsPersistedNextStep(t *testing.T) {
 	p := threeStepPipeline()
 
 	runner := runtime.NewRunner(root)
-	_, err := runner.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := runner.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		if step == "A" {
 			return &runtime.GotoSignal{Target: "C"}
 		}
@@ -397,7 +417,7 @@ func TestResumeAfterGotoFollowsPersistedNextStep(t *testing.T) {
 
 	var resumeExecuted []string
 	runner2 := runtime.NewRunner(root)
-	res, err := runner2.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := runner2.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		resumeExecuted = append(resumeExecuted, step)
 		return nil
 	}, true)
@@ -419,7 +439,7 @@ func TestGotoCycleHitsMaxStepVisits(t *testing.T) {
 	p := runtime.Pipeline{Name: "Cycle", Steps: []string{"A", "B"}}
 	runner := runtime.NewRunner(root)
 
-	_, err := runner.Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := runner.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		if step == "A" {
 			return &runtime.GotoSignal{Target: "B"}
 		}

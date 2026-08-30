@@ -760,6 +760,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
 }</code></pre>
 
           <div class="pipeline-anatomy">
+            <div><b><code>description</code></b><span>optional <code>"..."</code> summary; the tool / skill description under <code>mhl serve</code></span></div>
             <div><b><code>input</code></b><span>a user-supplied value validated by type</span></div>
             <div><b><code>var</code></b><span>state shared across steps in the current execution</span></div>
             <div><b><code>mem</code></b><span>persistent state shared across iterations and <code>stop_when</code></span></div>
@@ -810,7 +811,7 @@ test normalize_examples {
           </div>
         </section>
 
-        <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp version security credentials env diagnostics install">
+        <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp serve mcp a2a version security credentials env diagnostics install">
           <div class="feature-head"><h2><span class="feature-num">14</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The <code>mhl</code> binary handles execution, tests, static analysis, and editor integration.</p>
           <div class="cli-grid">
@@ -822,6 +823,8 @@ test normalize_examples {
             <div class="cli-command"><code>mhl test directory/</code><span>discover tests recursively</span></div>
             <div class="cli-command"><code>mhl lint .</code><span>validate syntax, types, and references</span></div>
             <div class="cli-command"><code>mhl lsp</code><span>start the language server</span></div>
+            <div class="cli-command"><code>mhl serve mcp dir/</code><span>expose every workflow under <code>dir/</code> as an MCP tool (stdio JSON-RPC)</span></div>
+            <div class="cli-command"><code>mhl serve a2a dir/</code><span>expose them as Agent2Agent skills over HTTP (<code>--addr host:port</code>)</span></div>
             <div class="cli-command"><code>mhl version</code><span>print the installed version</span></div>
             <div class="cli-command"><code>mhl extension init dir/</code><span>scaffold an extension</span></div>
             <div class="cli-command"><code>mhl extension test dir/</code><span>check the protocol</span></div>

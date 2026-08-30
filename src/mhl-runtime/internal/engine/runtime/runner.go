@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -43,10 +44,16 @@ type RunContext struct {
 // StepFunc executes a single step. Returning a plain error aborts the
 // pipeline; the last successfully completed step remains checkpointed for a
 // later --resume. Returning a *BreakSignal or *GotoSignal instead (see
-// signal.go) is not a failure — cli.go's exec closure produces these from
+// signal.go) is not a failure — execsvc's exec closure produces these from
 // interpreter.IsBreak/IsGoto — and Run reacts to each differently, per their
 // doc comments.
-type StepFunc func(step string, ctx *RunContext) error
+//
+// ctx is the run's context.Context: Run checks it at every step boundary and
+// aborts the run (without checkpointing further) once it is done, and passes
+// it here so a step implementation can thread it into whatever it blocks on.
+// A step already in flight is not interrupted — cancellation takes effect
+// when it returns.
+type StepFunc func(ctx context.Context, step string, rc *RunContext) error
 
 // InitFunc runs once at the very start of a fresh (non-resumed) Run() —
 // before its first step — to seed ctx.Vars. cli.go's implementation
@@ -130,7 +137,10 @@ func (r *Runner) Session(id string) *Runner {
 // state resets every time Run() is called anew — once per loop iteration
 // when LoopRunner drives it (loop.go), or once for a plain, non-looped
 // pipeline.
-func (r *Runner) Run(p Pipeline, init InitFunc, exec StepFunc, resume bool) (*RunResult, error) {
+func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec StepFunc, resume bool) (*RunResult, error) {
+	if runCtx == nil {
+		runCtx = context.Background()
+	}
 	result := &RunResult{}
 	// Opportunistic housekeeping: drop long-abandoned session directories
 	// left by runs that were hard-killed and never resumed. Best-effort and
@@ -186,6 +196,9 @@ func (r *Runner) Run(p Pipeline, init InitFunc, exec StepFunc, resume bool) (*Ru
 
 	visits := map[string]int{}
 	for ok {
+		if err := runCtx.Err(); err != nil {
+			return result, fmt.Errorf("runtime: run cancelled before step %q: %w", current, err)
+		}
 		visits[current]++
 		if visits[current] > maxStepVisits {
 			return result, fmt.Errorf("runtime: step %q revisited more than %d times (a goto cycle with no break?)", current, maxStepVisits)
@@ -198,9 +211,9 @@ func (r *Runner) Run(p Pipeline, init InitFunc, exec StepFunc, resume bool) (*Ru
 
 		var err error
 		if stage.Parallel {
-			err = r.runParallelStage(p, stage, ctx, exec)
+			err = r.runParallelStage(runCtx, p, stage, ctx, exec)
 		} else {
-			err = exec(stage.Steps[0], ctx)
+			err = exec(runCtx, stage.Steps[0], ctx)
 		}
 		result.Executed = append(result.Executed, stage.Steps...)
 
@@ -299,10 +312,12 @@ func copyVars(in map[string]any) map[string]any {
 // concurrent branches never interleave on stdout). The join is fail-slow:
 // even when one branch errors, the rest are allowed to finish before the
 // first error (in declared order) is returned; there is no mid-step
-// cancellation. On success, each branch's writes are merged back into
-// ctx.Vars — a key two branches set to different values is a hard error, so
-// a parallel group's variable outcome is always deterministic.
-func (r *Runner) runParallelStage(p Pipeline, stage Stage, ctx *RunContext, exec StepFunc) error {
+// cancellation — runCtx is passed to each branch's StepFunc but the barrier
+// still waits for every branch to return. On success, each branch's writes
+// are merged back into ctx.Vars — a key two branches set to different values
+// is a hard error, so a parallel group's variable outcome is always
+// deterministic.
+func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stage, ctx *RunContext, exec StepFunc) error {
 	base := deepCopyVars(ctx.Vars)
 	n := len(stage.Steps)
 	bctxs := make([]*RunContext, n)
@@ -328,7 +343,7 @@ func (r *Runner) runParallelStage(p Pipeline, stage Stage, ctx *RunContext, exec
 					errs[i] = fmt.Errorf("parallel step %q panicked: %v", name, rec)
 				}
 			}()
-			errs[i] = exec(name, bctx)
+			errs[i] = exec(runCtx, name, bctx)
 		}(i, name, bctx)
 	}
 	wg.Wait()

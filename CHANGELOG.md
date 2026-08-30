@@ -8,7 +8,51 @@ during the alpha series.
 Per-tag release notes are also generated automatically on the
 [GitHub Releases](https://github.com/mh-language/mhl-core-runtime/releases) page.
 
-## [1.0.0-alpha] — Unreleased
+## [1.1.0-alpha] — Unreleased
+
+Serving workflows to other agents, and the run-core work that enables it. The
+language surface is unchanged from `1.0.0-alpha`.
+
+### Added
+
+- **`mhl serve mcp <dir>` / `mhl serve a2a <dir>`.** Expose every
+  pipeline/workflow declared under a directory to another agent — as Model
+  Context Protocol tools over stdio JSON-RPC, or as Agent2Agent (A2A 0.2)
+  skills over HTTP (Agent Card at `/.well-known/agent-card.json` and
+  `/.well-known/agent.json`, `message/send` / `tasks/get` / `tasks/cancel`,
+  `A2A-Version` header, `configuration.blocking`, `-32002` on a non-cancelable
+  task). The tool/skill input contract is a JSON Schema derived from each
+  workflow's `input name: Type` declarations; a call runs it in a throwaway
+  state directory and returns the final variable state.
+  The MCP server is dual-era: an `initialize` request selects the legacy
+  handshake (revisions 2025-11-25 / 2025-06-18 / 2025-03-26, negotiated);
+  otherwise the connection follows the stateless 2026-07-28 revision —
+  `params._meta` protocol context required on every `tools/*` request
+  (missing → -32602, unsupported `protocolVersion` → -32022), `server/discover`
+  in place of `initialize`, every result with `resultType: "complete"` and
+  `_meta.io.modelcontextprotocol/serverInfo`, `structuredContent` on
+  `tools/call`, and `ttlMs` / `cacheScope` on `tools/list` and
+  `server/discover`. `ping` is served only to legacy clients; a running
+  tool's `log()` output goes to stderr, never the protocol stream.
+- **`description: "..."` on a `pipeline` / `workflow`.** An optional body
+  property, surfaced as the MCP tool / A2A skill description by `mhl serve`
+  (a generic string when absent). `mhl lint` now also rejects an unknown
+  property in a pipeline/workflow body (`checkpont:`, a docs-only field),
+  matching the agent-body check.
+- **Cancellable runs.** Pipeline execution now threads a `context.Context`:
+  cancel / deadline takes effect at step and loop-iteration boundaries and
+  inside a blocking `cmd`/`git`/`http` native op or agent call — what
+  `tasks/cancel` and a server request timeout use.
+
+## [1.0.1-alpha] — 2026-08-30
+
+### Added
+
+- **`${...}` interpolation in a `memory` block's `path:`.** The same mechanism
+  an agent's `log:` path already used — `path: ".mhl/s.${context.session_id}.json"`
+  gives each run its own store.
+
+## [1.0.0-alpha] — 2026-08-29
 
 First tag of the **language-surface freeze**: the grammar, standard library, and
 execution semantics are the contract from here on. External integrations
@@ -78,4 +122,6 @@ The alpha bring-up series. Capabilities that landed across these tags:
 - **Tooling** — `mhl lsp` (completion, diagnostics, signature help), the
   `vscode-mhl` extension, `mhl init` / `run` / `test` / `lint`.
 
-[1.0.0-alpha]: https://github.com/mh-language/mhl-core-runtime/compare/v0.5.3-alpha...HEAD
+[1.1.0-alpha]: https://github.com/mh-language/mhl-core-runtime/compare/v1.0.1-alpha...HEAD
+[1.0.1-alpha]: https://github.com/mh-language/mhl-core-runtime/compare/v1.0.0-alpha...v1.0.1-alpha
+[1.0.0-alpha]: https://github.com/mh-language/mhl-core-runtime/compare/v0.5.3-alpha...v1.0.0-alpha

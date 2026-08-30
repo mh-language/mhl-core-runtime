@@ -148,7 +148,7 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 	case "cmd.exec":
 		timeout, _ := args.duration("timeout")
 		if argv, ok := args.stringSliceAt(0); ok {
-			result, err := nativeops.ExecArgs(context.Background(), argv, timeout)
+			result, err := nativeops.ExecArgs(goctxOf(ctx), argv, timeout)
 			if err != nil {
 				return nil, err
 			}
@@ -158,7 +158,7 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("cmd.exec requires a string command, or an array of argv strings, as its first argument")
 		}
-		result, err := nativeops.Exec(context.Background(), command, timeout)
+		result, err := nativeops.Exec(goctxOf(ctx), command, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -169,7 +169,7 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("cmd.exec_all requires an array of commands (each a string or an array of argv strings) as its first argument")
 		}
-		results, err := nativeops.ExecAll(context.Background(), commands, timeout)
+		results, err := nativeops.ExecAll(goctxOf(ctx), commands, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -180,7 +180,7 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		return out, nil
 	case "git.diff":
 		target, _ := args.stringNamedOrFirst("target")
-		result, err := nativeops.Diff(context.Background(), target, args.stringNamed("dir"))
+		result, err := nativeops.Diff(goctxOf(ctx), target, args.stringNamed("dir"))
 		if err != nil {
 			return nil, err
 		}
@@ -190,7 +190,7 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("git.add requires an array of path strings as its first argument")
 		}
-		result, err := nativeops.Add(context.Background(), paths, args.stringNamed("dir"))
+		result, err := nativeops.Add(goctxOf(ctx), paths, args.stringNamed("dir"))
 		if err != nil {
 			return nil, err
 		}
@@ -201,14 +201,14 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, fmt.Errorf("git.commit requires a string message as its first argument")
 		}
 		paths, _ := args.stringSliceNamedOrAt("paths", 1)
-		result, err := nativeops.Commit(context.Background(), message, paths, args.stringNamed("dir"))
+		result, err := nativeops.Commit(goctxOf(ctx), message, paths, args.stringNamed("dir"))
 		if err != nil {
 			return nil, err
 		}
 		return result, nil
 	case "git.status":
 		paths, _ := args.stringSliceNamedOrAt("paths", 0)
-		result, err := nativeops.Status(context.Background(), paths, args.stringNamed("dir"))
+		result, err := nativeops.Status(goctxOf(ctx), paths, args.stringNamed("dir"))
 		if err != nil {
 			return nil, err
 		}
@@ -218,13 +218,13 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("git.rev_parse requires a string ref as its first argument")
 		}
-		return nativeops.RevParse(context.Background(), ref, args.stringNamed("dir"))
+		return nativeops.RevParse(goctxOf(ctx), ref, args.stringNamed("dir"))
 	case "git.log":
 		n, ok := args.intNamedOrAt("n", 0)
 		if !ok {
 			return nil, fmt.Errorf("git.log requires an integer n (number of entries) as its first argument")
 		}
-		return nativeops.Log(context.Background(), n, args.stringNamed("dir"))
+		return nativeops.Log(goctxOf(ctx), n, args.stringNamed("dir"))
 	case "fs.read":
 		path, ok := args.stringAt(0)
 		if !ok {
@@ -284,19 +284,19 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		}
 		return out, nil
 	case "http.get":
-		return httpCall("GET", args)
+		return httpCall(goctxOf(ctx), "GET", args)
 	case "http.post":
-		return httpCall("POST", args)
+		return httpCall(goctxOf(ctx), "POST", args)
 	case "http.put":
-		return httpCall("PUT", args)
+		return httpCall(goctxOf(ctx), "PUT", args)
 	case "http.patch":
-		return httpCall("PATCH", args)
+		return httpCall(goctxOf(ctx), "PATCH", args)
 	case "http.delete":
-		return httpCall("DELETE", args)
+		return httpCall(goctxOf(ctx), "DELETE", args)
 	case "http.head":
-		return httpCall("HEAD", args)
+		return httpCall(goctxOf(ctx), "HEAD", args)
 	case "http.options":
-		return httpCall("OPTIONS", args)
+		return httpCall(goctxOf(ctx), "OPTIONS", args)
 	case "http.download":
 		url, ok := args.stringNamedOrFirst("url")
 		if !ok {
@@ -310,7 +310,7 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if err != nil {
 			return nil, err
 		}
-		return nativeops.Download(context.Background(), url, path, opts)
+		return nativeops.Download(goctxOf(ctx), url, path, opts)
 	case "json.parse":
 		text, ok := args.stringAt(0)
 		if !ok {
@@ -391,10 +391,10 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 // httpCall is the shared body of every http.<verb> native op: it resolves
 // the URL (named `url:` or first positional, like http.post always allowed),
 // reads the optional parameters into a nativeops.Options, and issues the
-// request. context.Background() matches the other native ops — the
-// interpreter does not thread a cancellable context in, so nativeops.Do
-// applies its own `timeout:` bound.
-func httpCall(method string, args callArgs) (any, error) {
+// request. gctx is the run's Go context (goctxOf(ctx)) — a run-level cancel
+// aborts an in-flight request; nativeops.Do still applies its own `timeout:`
+// bound on top.
+func httpCall(gctx context.Context, method string, args callArgs) (any, error) {
 	url, ok := args.stringNamedOrFirst("url")
 	if !ok {
 		return nil, fmt.Errorf("http.%s requires a string url", strings.ToLower(method))
@@ -403,7 +403,7 @@ func httpCall(method string, args callArgs) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return nativeops.Do(context.Background(), method, url, opts)
+	return nativeops.Do(gctx, method, url, opts)
 }
 
 // httpOptions reads every optional named argument an http.<verb> call

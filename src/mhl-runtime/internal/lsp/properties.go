@@ -17,6 +17,7 @@ func propertyItem(name, detail string) completionItem {
 // what it declares), so it's offered as an addition on top of the shared
 // list rather than folded into it.
 var pipelinePropertyItems = []completionItem{
+	propertyItem("description", `"..." — human-readable summary; surfaced as the MCP tool / A2A skill description by "mhl serve"`),
 	propertyItem("checkpoint", "{ enabled, strategy, storage, ttl }"),
 	propertyItem("spawn", "{ max_concurrency } — run-wide ceiling on concurrent spawned agent calls"),
 	propertyItem("context", "{ source, require } — expose read-only context.session_id / .vars to steps"),

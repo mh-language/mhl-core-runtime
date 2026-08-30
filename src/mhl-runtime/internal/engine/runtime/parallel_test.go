@@ -1,6 +1,7 @@
 package runtime_test
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -62,7 +63,7 @@ func TestParallelStageRunsConcurrently(t *testing.T) {
 	runner := runtime.NewRunner(root)
 
 	start := time.Now()
-	_, err := runner.Run(parallelStagePipeline(), nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := runner.Run(context.Background(), parallelStagePipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		time.Sleep(150 * time.Millisecond)
 		return nil
 	}, false)
@@ -79,7 +80,7 @@ func TestParallelStageMergesBranchWrites(t *testing.T) {
 	root := t.TempDir()
 	runner := runtime.NewRunner(root)
 
-	res, err := runner.Run(parallelStagePipeline(), nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := runner.Run(context.Background(), parallelStagePipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		ctx.Vars[step] = "wrote-" + step
 		return nil
 	}, false)
@@ -97,7 +98,7 @@ func TestParallelStageConflictingWritesFail(t *testing.T) {
 	root := t.TempDir()
 	runner := runtime.NewRunner(root)
 
-	_, err := runner.Run(parallelStagePipeline(), nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := runner.Run(context.Background(), parallelStagePipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		ctx.Vars["shared"] = step // "A" vs "B"
 		return nil
 	}, false)
@@ -111,7 +112,7 @@ func TestParallelStageSameValueNoConflict(t *testing.T) {
 	root := t.TempDir()
 	runner := runtime.NewRunner(root)
 
-	res, err := runner.Run(parallelStagePipeline(), nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := runner.Run(context.Background(), parallelStagePipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		ctx.Vars["shared"] = "agreed"
 		return nil
 	}, false)
@@ -131,7 +132,7 @@ func TestParallelStageFailSlowSurfacesBranchError(t *testing.T) {
 
 	var mu sync.Mutex
 	var ran []string
-	_, err := runner.Run(parallelStagePipeline(), nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := runner.Run(context.Background(), parallelStagePipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		if step == "A" {
 			return fmt.Errorf("branch A boom")
 		}
@@ -167,7 +168,7 @@ func TestResumeReRunsWholeParallelGroup(t *testing.T) {
 	}
 
 	crash := true
-	_, err := runtime.NewRunner(root).Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	_, err := runtime.NewRunner(root).Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		if step == "B" && crash {
 			return errSimulatedCrash
 		}
@@ -180,7 +181,7 @@ func TestResumeReRunsWholeParallelGroup(t *testing.T) {
 	crash = false
 	var mu sync.Mutex
 	var executed []string
-	res, err := runtime.NewRunner(root).Run(p, nil, func(step string, ctx *runtime.RunContext) error {
+	res, err := runtime.NewRunner(root).Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		mu.Lock()
 		executed = append(executed, step)
 		mu.Unlock()

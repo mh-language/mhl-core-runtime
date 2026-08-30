@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -25,13 +26,21 @@ import (
 // MemContext (memvar.go). file is the .mh path being run, used only to
 // prefix a failing statement's error with its position (see
 // execStatement's positionedError wrap below).
-func RunStep(prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView, spawnSem chan struct{}) (err error) {
+//
+// goctx is the run's Go context (runtime.Runner threads it in via execsvc):
+// it governs every blocking call the step makes — an agent subprocess/HTTP
+// call, a `cmd.exec`/`git.*`/`http.*` native op, an extension call — so a
+// run-level cancel (a server request timeout, an A2A tasks/cancel) aborts
+// work already in flight, not just at the next step boundary. nil is
+// tolerated (goctxOf normalizes it to context.Background()), which is what
+// the direct-call interpreter tests and RunTests pass.
+func RunStep(goctx context.Context, prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView, spawnSem chan struct{}) (err error) {
 	step := findStep(prog, stepName)
 	if step == nil {
 		return fmt.Errorf("pipeline step %q not found", stepName)
 	}
 
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, stepName)}
+	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, stepName)}
 	// A non-nil spawnSem enables `spawn`/`wait` for this step and confines
 	// them to it: drainAtStepEnd joins whatever the step body left running,
 	// so no spawned goroutine ever outlives the step (and no handle is live
