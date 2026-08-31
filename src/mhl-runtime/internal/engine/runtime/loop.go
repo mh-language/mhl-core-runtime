@@ -41,6 +41,18 @@ func newInstanceID() string {
 	return NewSessionID()
 }
 
+// LoopStateStore is the per-iteration checkpoint persistence a LoopRunner
+// performs. The built-in implementation is *LoopStore (JSON under .mhl/state);
+// the serve layer swaps it via LoopRunner.WithLoopStateStore (Phase 3),
+// mirroring StateStore for the plain-pipeline path. A completed loop leaves
+// its terminal checkpoint in place (no Clear), so the interface has none.
+type LoopStateStore interface {
+	Load(loop string) (*LoopCheckpoint, bool, error)
+	Save(cp *LoopCheckpoint) error
+}
+
+var _ LoopStateStore = (*LoopStore)(nil)
+
 // LoopStore persists LoopCheckpoints as JSON files under <root>/.mhl/state,
 // alongside (never colliding with) the pipeline Checkpoints Store already
 // keeps there — a "loop-" filename prefix keeps the two apart even though a
@@ -151,11 +163,15 @@ type LoopResult struct {
 type LoopRunner struct {
 	Runner *Runner
 	Store  *LoopStore
+	// cp is where loop checkpoints actually go; defaults to Store, swapped by
+	// WithLoopStateStore. Mirrors Runner.cp.
+	cp LoopStateStore
 }
 
 // NewLoopRunner returns a LoopRunner backed by stores rooted at root.
 func NewLoopRunner(root string) *LoopRunner {
-	return &LoopRunner{Runner: NewRunner(root), Store: NewLoopStore(root)}
+	s := NewLoopStore(root)
+	return &LoopRunner{Runner: NewRunner(root), Store: s, cp: s}
 }
 
 // Session scopes both of the LoopRunner's stores to one per-execution
@@ -163,7 +179,24 @@ func NewLoopRunner(root string) *LoopRunner {
 // pipeline's per-step checkpoints share it. An empty id leaves the runner
 // unscoped.
 func (lr *LoopRunner) Session(id string) *LoopRunner {
-	return &LoopRunner{Runner: lr.Runner.Session(id), Store: lr.Store.Session(id)}
+	s := lr.Store.Session(id)
+	return &LoopRunner{Runner: lr.Runner.Session(id), Store: s, cp: s}
+}
+
+// WithLoopStateStore routes the loop's per-iteration checkpoints through cp
+// instead of the built-in file LoopStore (Phase 3). cp is expected to be
+// scoped to this run already. Returns lr for chaining.
+func (lr *LoopRunner) WithLoopStateStore(cp LoopStateStore) *LoopRunner {
+	lr.cp = cp
+	return lr
+}
+
+// loopCheckpoints returns the LoopStateStore this runner persists through.
+func (lr *LoopRunner) loopCheckpoints() LoopStateStore {
+	if lr.cp != nil {
+		return lr.cp
+	}
+	return lr.Store
 }
 
 // Run repeats p, once per iteration via exec, until evalStopWhen reports
@@ -201,7 +234,7 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 	var finalVars map[string]any
 	instanceID := ""
 	if resume {
-		cp, ok, err := lr.Store.Load(p.Name)
+		cp, ok, err := lr.loopCheckpoints().Load(p.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -221,7 +254,7 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			return nil, fmt.Errorf("runtime: loop %q cancelled before iteration %d: %w", p.Name, iteration, err)
 		}
 		if p.MaxIterations > 0 && iteration >= p.MaxIterations {
-			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "max_iterations", InstanceID: instanceID}); err != nil {
+			if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "max_iterations", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			return &LoopResult{Iterations: iteration, TerminalReason: "max_iterations", Resumed: resumed, FinalVars: finalVars}, nil
@@ -232,7 +265,7 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			return nil, err
 		}
 		if result.Broke {
-			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "break", InstanceID: instanceID}); err != nil {
+			if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "break", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			return &LoopResult{Iterations: iteration + 1, TerminalReason: "break", BreakReason: result.BreakReason, Resumed: resumed, FinalVars: finalVars}, nil
@@ -245,13 +278,13 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			return nil, err
 		}
 		if done {
-			if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "stop_when", InstanceID: instanceID}); err != nil {
+			if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "stop_when", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			return &LoopResult{Iterations: iteration, TerminalReason: "stop_when", Resumed: resumed, FinalVars: finalVars}, nil
 		}
 
-		if err := lr.Store.Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "", InstanceID: instanceID}); err != nil {
+		if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "", InstanceID: instanceID}); err != nil {
 			return nil, err
 		}
 	}

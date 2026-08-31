@@ -55,6 +55,22 @@ func (c *Checkpoint) Expired(now time.Time) bool {
 	return now.After(deadline)
 }
 
+// StateStore is the checkpoint persistence a Runner performs: load/save/clear
+// the in-progress checkpoint for a pipeline, and write a completed run's
+// result.json. The built-in implementation is *Store (JSON files under
+// .mhl/state); the serve layer supplies an alternative — an extension-backed
+// store for a fleet of concurrent runs — via Runner.WithStateStore (Phase 3).
+// Session scoping stays a concern of the concrete store: a Runner is always
+// handed an already-scoped StateStore.
+type StateStore interface {
+	Load(pipeline string) (*Checkpoint, bool, error)
+	Save(cp *Checkpoint) error
+	Clear(pipeline string) error
+	WriteResult(pipeline string, vars map[string]any) error
+}
+
+var _ StateStore = (*Store)(nil)
+
 // Store persists checkpoints as JSON files under <root>/.mhl/state. When
 // Session has scoped it to a per-execution id, dir is <base>/<sessionID> and
 // checkpoints for two concurrent runs of the same pipeline never collide;
@@ -112,7 +128,7 @@ func (s *Store) Save(cp *Checkpoint) error {
 	}
 	cp.SavedAt = s.now()
 	redacted := *cp
-	redacted.Variables = redactVars(cp.Variables)
+	redacted.Variables = RedactVars(cp.Variables)
 	data, err := json.MarshalIndent(&redacted, "", "  ")
 	if err != nil {
 		return fmt.Errorf("runtime: encoding checkpoint: %w", err)
@@ -179,12 +195,13 @@ func (s *Store) Clear(pipeline string) error {
 	return nil
 }
 
-// redactVars returns a copy of vars with every string value scrubbed through
+// RedactVars returns a copy of vars with every string value scrubbed through
 // auth.Redact. A number, bool, array or object passes through unredacted —
 // the same coarse-grained treatment a logged array/object already gets. It
 // is shared by checkpoint Save and result.json WriteResult so both persist
-// resolved secrets the same way.
-func redactVars(vars map[string]any) map[string]any {
+// resolved secrets the same way; an alternative StateStore implementation
+// (an extension-backed store) must call it before persisting too.
+func RedactVars(vars map[string]any) map[string]any {
 	out := make(map[string]any, len(vars))
 	for key, value := range vars {
 		if s, ok := value.(string); ok {
@@ -208,7 +225,7 @@ func (s *Store) WriteResult(pipeline string, vars map[string]any) error {
 	if err := os.MkdirAll(s.dir, 0o755); err != nil {
 		return fmt.Errorf("runtime: creating session dir: %w", err)
 	}
-	data, err := json.MarshalIndent(redactVars(vars), "", "  ")
+	data, err := json.MarshalIndent(RedactVars(vars), "", "  ")
 	if err != nil {
 		return fmt.Errorf("runtime: encoding result: %w", err)
 	}

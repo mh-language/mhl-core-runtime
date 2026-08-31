@@ -20,7 +20,7 @@ var pipelinePropertyItems = []completionItem{
 	propertyItem("description", `"..." — human-readable summary; surfaced as the MCP tool / A2A skill description by "mhl serve"`),
 	propertyItem("checkpoint", "{ enabled, strategy, storage, ttl }"),
 	propertyItem("spawn", "{ max_concurrency } — run-wide ceiling on concurrent spawned agent calls"),
-	propertyItem("context", "{ source, require } — expose read-only context.session_id / .vars to steps"),
+	propertyItem("context", "{ source, require } — expose read-only context.session_id / .principal / .vars to steps"),
 }
 
 // spawnFieldItems mirrors runtime.spawnConfigFromExpr's field switch.

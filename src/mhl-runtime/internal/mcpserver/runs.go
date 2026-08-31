@@ -2,33 +2,17 @@ package mcpserver
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io"
+	"log/slog"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 )
-
-// ownerKey identifies the caller that owns a run: the SHA-256 of its
-// Mcp-Session-Id (hashed so a leaked run view never carries a usable session
-// credential). A stateless caller has no session and shares the anonymous
-// owner "" with every other stateless caller — stateless mode has no
-// per-caller run isolation.
-func ownerKey(sessionID string) string {
-	if sessionID == "" {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(sessionID))
-	return hex.EncodeToString(sum[:])
-}
 
 // asyncRun is one workflow execution started by `run/start` and tracked
 // server-side so a client can poll `run/status` (which step it is on, which
@@ -41,26 +25,37 @@ func ownerKey(sessionID string) string {
 // it up from the failing step (the HITL pattern: a gate step calls
 // `fail("awaiting approval")`, the operator resumes once approved).
 //
-// Every run is owned by the session that started it (see ownerKey); status,
-// resume, cancel and list only act for a matching caller. A completed run is
-// swept after sessionTTL; a resumable one is kept for the process lifetime so
-// its owner binding holds, and its on-disk state is GC'd by
-// runtime.PruneExpired. After a restart the owner session is gone, so the
-// first caller to name the (unguessable) runId reclaims it.
+// Every run is owned by its caller (httpServer.ownerOf — the verified
+// principal when a TokenVerifier is configured, else the Phase-0 per-session
+// hash); status, resume, cancel and list only act for a matching caller. A
+// completed run is swept after sessionTTL; a resumable one is kept for the
+// process lifetime so its owner binding holds, and its on-disk state is GC'd
+// by runtime.PruneExpired. After a restart the in-memory run is gone, so the
+// owner is persisted alongside the checkpoint (CheckpointStore.WriteOwner) and
+// reconstructRun refuses to hand it to a different caller.
 type asyncRun struct {
 	id string
-	// owner is ownerKey(creating session id); run/status, run/resume,
+	// owner is httpServer.ownerOf(creating session); run/status, run/resume,
 	// run/cancel and run/list only act for a matching caller. Set once at
-	// creation (or claimed on reconstruct after a restart) — immutable after.
-	owner   string
-	tool    execsvc.Workflow
-	args    map[string]any
-	started time.Time
-	cancel  context.CancelFunc
-	done    chan struct{}
+	// creation (or restored on reconstruct after a restart) — immutable after.
+	owner Owner
+	// principal is the raw verified identity of the caller for the current
+	// leg (the starter, or the resumer), surfaced to the workflow as
+	// context.principal. "" without a verifier; "" on a run reconstructed
+	// from disk until it is resumed.
+	principal string
+	tool      execsvc.Workflow
+	args      map[string]any
+	started   time.Time
+	cancel    context.CancelFunc
+	done      chan struct{}
+	// logs is this run's own bounded copy of its step/log() output, for
+	// run/logs. A run reconstructed from disk after a restart has an empty one
+	// (its output happened in the previous process).
+	logs *ringLog
 
 	mu        sync.Mutex
-	state     string // "working" | "completed" | "failed" | "canceled"
+	state     string // "queued" | "working" | "completed" | "failed" | "canceled"
 	step      string // last step reached
 	stepIndex int    // 1-based position of step
 	stepTotal int    // pipeline's declared step count
@@ -69,6 +64,102 @@ type asyncRun struct {
 	vars      map[string]any
 	errMsg    string
 	updated   time.Time
+}
+
+// --- concurrency slots -------------------------------------------------
+
+// tryAcquireSlot takes a run slot without blocking. When concurrency is
+// unlimited (h.sem == nil) it always succeeds. The returned func releases the
+// slot; it is safe to call even when nothing was taken.
+func (h *httpServer) tryAcquireSlot() (release func(), ok bool) {
+	if h.sem == nil {
+		return func() {}, true
+	}
+	select {
+	case h.sem <- struct{}{}:
+		return func() { <-h.sem }, true
+	default:
+		return func() {}, false
+	}
+}
+
+// acquireSlot blocks until a run slot is free or ctx is done.
+func (h *httpServer) acquireSlot(ctx context.Context) (release func(), ok bool) {
+	if h.sem == nil {
+		return func() {}, true
+	}
+	select {
+	case h.sem <- struct{}{}:
+		return func() { <-h.sem }, true
+	case <-ctx.Done():
+		return func() {}, false
+	}
+}
+
+// acquireSlotWait is acquireSlot bounded by wait — the synchronous tools/call
+// path sheds load rather than parking a client connection indefinitely.
+func (h *httpServer) acquireSlotWait(ctx context.Context, wait time.Duration) (release func(), ok bool) {
+	if h.sem == nil {
+		return func() {}, true
+	}
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case h.sem <- struct{}{}:
+		return func() { <-h.sem }, true
+	case <-t.C:
+		return func() {}, false
+	case <-ctx.Done():
+		return func() {}, false
+	}
+}
+
+// launch starts rn, or parks it as "queued" until a slot frees. The slot,
+// when concurrency is bounded, is held for exactly the execRun call.
+func (h *httpServer) launch(ctx context.Context, rn *asyncRun, resume bool) {
+	if release, ok := h.tryAcquireSlot(); ok {
+		rn.mu.Lock()
+		rn.state, rn.updated = "working", time.Now()
+		rn.mu.Unlock()
+		go func() {
+			defer release()
+			h.execRun(ctx, rn, resume)
+		}()
+		return
+	}
+	rn.mu.Lock()
+	rn.state, rn.updated = "queued", time.Now()
+	rn.mu.Unlock()
+	h.srv.logEvent(slog.LevelInfo, "run queued",
+		"runId", rn.id, "owner", string(rn.owner), "tool", rn.tool.Name)
+	go h.waitAndRun(ctx, rn, resume)
+}
+
+// waitAndRun blocks for a slot on behalf of a queued run, then runs it — or
+// gives up if the run was cancelled (run/cancel or shutdown) while it waited.
+// execRun closes rn.done on its own; the give-up paths must close it here.
+func (h *httpServer) waitAndRun(ctx context.Context, rn *asyncRun, resume bool) {
+	release, ok := h.acquireSlot(ctx)
+	if !ok {
+		rn.mu.Lock()
+		if rn.state == "queued" {
+			rn.state, rn.updated = "canceled", time.Now()
+		}
+		rn.mu.Unlock()
+		close(rn.done)
+		return
+	}
+	rn.mu.Lock()
+	if rn.state != "queued" { // cancelled between the select and here
+		rn.mu.Unlock()
+		release()
+		close(rn.done)
+		return
+	}
+	rn.state, rn.updated = "working", time.Now()
+	rn.mu.Unlock()
+	defer release()
+	h.execRun(ctx, rn, resume)
 }
 
 // handleRun dispatches this server's run/* async-execution extension. The
@@ -85,6 +176,8 @@ func (h *httpServer) handleRun(sess *session, msg rpcMsg) *rpcMsg {
 		return h.runCancel(sess, msg)
 	case "run/list":
 		return h.runList(sess, msg)
+	case "run/logs":
+		return h.runLogs(sess, msg)
 	default:
 		return errMsg(msg.ID, -32601, "method not found: "+msg.Method)
 	}
@@ -108,26 +201,33 @@ func (h *httpServer) runStart(sess *session, msg rpcMsg) *rpcMsg {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown tool %q", p.Name))
 	}
 
-	// The run outlives this request, so its context descends from the server
-	// lifetime (baseCtx), not r.Context(). run/cancel and shutdown stop it.
-	ctx, cancel := context.WithCancel(h.baseCtx)
+	// The run outlives this request, so its context descends from runsCtx
+	// (the drain-aware child of the server lifetime), not r.Context().
+	// run/cancel, the drain deadline, and shutdown all stop it.
+	ctx, cancel := context.WithCancel(h.runsCtx)
 	rn := &asyncRun{
-		id:      runtime.NewSessionID(),
-		owner:   ownerKey(sess.id),
-		tool:    w,
-		args:    p.Arguments,
-		started: time.Now(),
-		updated: time.Now(),
-		cancel:  cancel,
-		done:    make(chan struct{}),
-		state:   "working",
+		id:        runtime.NewSessionID(),
+		owner:     h.ownerOf(sess),
+		principal: sess.principal,
+		tool:      w,
+		args:      p.Arguments,
+		started:   time.Now(),
+		updated:   time.Now(),
+		cancel:    cancel,
+		done:      make(chan struct{}),
+		logs:      newRingLog(),
+		state:     "queued", // launch sets the authoritative state synchronously
 	}
-	h.mu.Lock()
-	h.runs[rn.id] = rn
-	h.mu.Unlock()
+	h.runs.Put(rn)
+	// Persist the owner only for a verified principal: a session-hash owner
+	// (no verifier) can't survive a restart anyway — each process mints fresh
+	// session ids — so cross-restart reclaim stays as in Phase 0 there.
+	if sess.principal != "" {
+		_ = h.cps.WriteOwner(rn.id, rn.owner)
+	}
 
-	go h.execRun(ctx, rn, false)
-	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+	h.launch(ctx, rn, false)
+	return h.srv.replyResult(sess, msg.ID, h.runViewFor(rn))
 }
 
 // runResume relaunches a stopped run from its checkpoint. params:
@@ -150,7 +250,7 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	if !rn.tool.Pipeline.Checkpoint.Enabled {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q's workflow declares no checkpoint { strategy: \"per_step\" } — nothing to resume", p.RunID))
 	}
-	if !h.checkpointExists(rn.id) {
+	if !h.cps.Exists(rn.id) {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q has no checkpoint on disk to resume from", p.RunID))
 	}
 
@@ -167,17 +267,19 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 			rn.args[k] = v
 		}
 	}
-	ctx, cancel := context.WithCancel(h.baseCtx)
-	rn.state, rn.errMsg, rn.updated = "working", "", time.Now()
+	ctx, cancel := context.WithCancel(h.runsCtx)
+	rn.errMsg, rn.updated = "", time.Now()
+	rn.principal = sess.principal // context.principal for this leg = the resumer
 	rn.cancel, rn.done = cancel, make(chan struct{})
 	rn.mu.Unlock()
 
-	h.mu.Lock()
-	h.runs[rn.id] = rn
-	h.mu.Unlock()
+	h.runs.Put(rn)
+	if sess.principal != "" { // (re)bind — see runStart
+		_ = h.cps.WriteOwner(rn.id, rn.owner)
+	}
 
-	go h.execRun(ctx, rn, true)
-	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+	h.launch(ctx, rn, true)
+	return h.srv.replyResult(sess, msg.ID, h.runViewFor(rn))
 }
 
 // execRun drives one asyncRun to a terminal state.
@@ -185,19 +287,29 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	defer close(rn.done)
 	defer rn.cancel()
 
+	start := time.Now()
 	w := rn.tool
+	h.srv.logEvent(slog.LevelInfo, "run started",
+		"runId", rn.id, "owner", string(rn.owner), "tool", w.Name, "resume", resume)
+
+	var stateStore runtime.StateStore
+	if h.store != nil {
+		stateStore = newExtStateStore(h.store, rn.id) // checkpoints go to the extension, not disk
+	}
 	res, runErr := execsvc.Run(execsvc.Request{
-		Context:  ctx,
-		Program:  w.Program,
-		File:     w.File,
-		Workflow: w.Name,
-		Inputs:   rn.args,
-		BaseDir:  h.runsDir,
-		Session:  rn.id,
-		Resume:   resume,
-		// A running tool's log()/step output goes to the diagnostics sink,
-		// never to a protocol response.
-		Out: h.srv.logw,
+		Context:    ctx,
+		Program:    w.Program,
+		File:       w.File,
+		Workflow:   w.Name,
+		Inputs:     rn.args,
+		BaseDir:    h.cps.BaseDir(),
+		Session:    rn.id,
+		Resume:     resume,
+		Principal:  rn.principal,
+		StateStore: stateStore,
+		// Tee step/log() output to this run's own bounded buffer (for
+		// run/logs) and to the shared diagnostics sink (stderr / kubectl logs).
+		Out: io.MultiWriter(rn.logs, h.srv.logw),
 		OnStep: func(step string, idx, total int) {
 			rn.mu.Lock()
 			rn.step, rn.stepIndex, rn.stepTotal = step, idx, total
@@ -227,14 +339,21 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 			}
 		}
 	}
-	rn.resumable = rn.state != "completed" && w.Pipeline.Checkpoint.Enabled && h.checkpointExists(rn.id)
+	rn.resumable = rn.state != "completed" && w.Pipeline.Checkpoint.Enabled && h.cps.Exists(rn.id)
 	terminal := rn.state
+	steps := len(rn.reached)
 	rn.mu.Unlock()
+
+	dur := time.Since(start)
+	h.metrics.ObserveRun(terminal, dur)
+	h.srv.logEvent(slog.LevelInfo, "run "+terminal,
+		"runId", rn.id, "owner", string(rn.owner), "tool", w.Name,
+		"durationMs", dur.Milliseconds(), "steps", steps)
 
 	// A clean finish clears its own checkpoint (runtime does that); drop the
 	// now-empty state dir. A stopped run keeps it for run/resume.
 	if terminal == "completed" {
-		_ = os.RemoveAll(h.stateDirOf(rn.id))
+		_ = h.cps.Remove(rn.id)
 	}
 }
 
@@ -244,7 +363,32 @@ func (h *httpServer) runStatus(sess *session, msg rpcMsg) *rpcMsg {
 	if rn == nil {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", id))
 	}
-	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+	return h.srv.replyResult(sess, msg.ID, h.runViewFor(rn))
+}
+
+// runLogs returns this run's retained step/log() output from a byte cursor.
+// params: {runId, since?}. reply: {text, nextSince, dropped?}. Poll with the
+// previous nextSince to stream. Owner-gated like run/status.
+func (h *httpServer) runLogs(sess *session, msg rpcMsg) *rpcMsg {
+	var p struct {
+		RunID string `json:"runId"`
+		Since int64  `json:"since"`
+	}
+	if len(msg.Params) > 0 {
+		if err := json.Unmarshal(msg.Params, &p); err != nil {
+			return errMsg(msg.ID, -32602, "invalid params: "+err.Error())
+		}
+	}
+	rn := h.ownedRun(p.RunID, sess)
+	if rn == nil {
+		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", p.RunID))
+	}
+	text, next, dropped := rn.logs.read(p.Since)
+	out := map[string]any{"runId": rn.id, "text": text, "nextSince": next}
+	if dropped {
+		out["dropped"] = true
+	}
+	return h.srv.replyResult(sess, msg.ID, out)
 }
 
 func (h *httpServer) runCancel(sess *session, msg rpcMsg) *rpcMsg {
@@ -253,38 +397,37 @@ func (h *httpServer) runCancel(sess *session, msg rpcMsg) *rpcMsg {
 	if rn == nil {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", id))
 	}
-	rn.cancel()
+	rn.cancel() // wakes a queued run's waitAndRun, which finishes the cancel
 	rn.mu.Lock()
-	if rn.state == "working" {
+	if rn.state == "working" || rn.state == "queued" {
 		rn.state, rn.updated = "canceled", time.Now()
 	}
 	rn.mu.Unlock()
-	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+	return h.srv.replyResult(sess, msg.ID, h.runViewFor(rn))
 }
 
 func (h *httpServer) runList(sess *session, msg rpcMsg) *rpcMsg {
-	owner := ownerKey(sess.id)
-	h.mu.Lock()
-	ids := make([]string, 0, len(h.runs))
-	for id := range h.runs {
-		ids = append(ids, id)
-	}
-	h.mu.Unlock()
-	sort.Strings(ids)
-	views := make([]map[string]any, 0, len(ids))
-	for _, id := range ids {
-		rn := h.lookupRun(id)
-		if rn != nil && rn.owner == owner {
-			views = append(views, h.runView(rn))
+	owner := h.ownerOf(sess)
+	runs := h.runs.List()
+	sort.Slice(runs, func(i, j int) bool { return runs[i].id < runs[j].id })
+	views := make([]map[string]any, 0, len(runs))
+	for _, rn := range runs {
+		if rn.owner == owner {
+			views = append(views, h.runViewFor(rn))
 		}
 	}
 	return h.srv.replyResult(sess, msg.ID, map[string]any{"runs": views})
 }
 
-func (h *httpServer) lookupRun(id string) *asyncRun {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.runs[id]
+// ownerOf is the Owner a run started or resumed by sess belongs to: the
+// verified principal when a TokenVerifier produced one (Phase 2), else the
+// Phase-0 per-session hash so a plain --token / no-verifier deployment is
+// unchanged.
+func (h *httpServer) ownerOf(sess *session) Owner {
+	if sess.principal != "" {
+		return ownerFor(sess.principal)
+	}
+	return ownerFromSession(sess.id)
 }
 
 // ownedRun resolves a runId for the calling session: an in-memory run, or
@@ -293,11 +436,12 @@ func (h *httpServer) lookupRun(id string) *asyncRun {
 // or belongs to another caller — callers surface both as "unknown runId" so
 // the method is not an existence oracle.
 func (h *httpServer) ownedRun(id string, sess *session) *asyncRun {
-	rn := h.lookupRun(id)
-	if rn == nil {
-		rn = h.reconstructRun(id, ownerKey(sess.id))
+	owner := h.ownerOf(sess)
+	rn, ok := h.runs.Get(id)
+	if !ok {
+		rn = h.reconstructRun(id, owner)
 	}
-	if rn == nil || rn.owner != ownerKey(sess.id) {
+	if rn == nil || rn.owner != owner {
 		return nil
 	}
 	return rn
@@ -305,55 +449,44 @@ func (h *httpServer) ownedRun(id string, sess *session) *asyncRun {
 
 // reconstructRun rebuilds an asyncRun from on-disk checkpoint state for a run
 // that is no longer in the registry (swept, or a fresh process after a
-// restart) and claims it for ownerK. Returns nil when there is no resumable
-// state.
-func (h *httpServer) reconstructRun(id, ownerK string) *asyncRun {
+// restart). It returns nil when there is no resumable state, or when a
+// persisted owner (CheckpointStore.WriteOwner) does not match ownerK — a run
+// started by another principal is not reclaimable. When no owner was persisted
+// (a pre-Phase-2 run, or an anonymous "" owner) it is claimed for ownerK, the
+// historical behaviour.
+func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 	if id == "" {
 		return nil
 	}
-	stateDir := h.stateDirOf(id)
-	entries, err := os.ReadDir(stateDir)
-	if err != nil {
+	if persisted, ok := h.cps.ReadOwner(id); ok && persisted != ownerK {
 		return nil
 	}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".json") || name == "result.json" {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(stateDir, name))
-		if err != nil {
-			continue
-		}
-		var cp runtime.Checkpoint
-		if json.Unmarshal(data, &cp) != nil {
-			continue
-		}
-		w, ok := h.srv.tools[cp.Pipeline]
-		if !ok {
-			continue
-		}
-		rn := &asyncRun{
-			id:        id,
-			owner:     ownerK,
-			tool:      w,
-			args:      map[string]any{},
-			started:   cp.SavedAt,
-			updated:   cp.SavedAt,
-			cancel:    func() {}, // replaced by runResume before any goroutine runs
-			done:      make(chan struct{}),
-			state:     "failed",
-			step:      cp.NextStep,
-			stepTotal: len(w.Pipeline.Steps),
-			reached:   append([]string(nil), cp.CompletedSteps...),
-			resumable: true,
-		}
-		h.mu.Lock()
-		h.runs[id] = rn
-		h.mu.Unlock()
-		return rn
+	cp, ok := h.cps.Load(id)
+	if !ok {
+		return nil
 	}
-	return nil
+	w, ok := h.srv.tools[cp.Pipeline]
+	if !ok {
+		return nil
+	}
+	rn := &asyncRun{
+		id:        id,
+		owner:     ownerK,
+		tool:      w,
+		args:      map[string]any{},
+		started:   cp.SavedAt,
+		updated:   cp.SavedAt,
+		cancel:    func() {}, // replaced by runResume before any goroutine runs
+		done:      make(chan struct{}),
+		logs:      newRingLog(), // empty: this run's output was in a prior process
+		state:     "failed",
+		step:      cp.NextStep,
+		stepTotal: len(w.Pipeline.Steps),
+		reached:   append([]string(nil), cp.CompletedSteps...),
+		resumable: true,
+	}
+	h.runs.Put(rn)
+	return rn
 }
 
 // runView renders an asyncRun as the JSON status object a run/* reply carries.
@@ -386,25 +519,32 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 	return v
 }
 
-// stateDirOf is where run id's .mhl/state checkpoint tree lives.
-func (h *httpServer) stateDirOf(id string) string {
-	return filepath.Join(h.runsDir, runtime.StateDirName, id)
+// runViewFor is runView plus the fields that depend on other runs — kept out
+// of runView so it never nests one run's lock inside another's.
+func (h *httpServer) runViewFor(rn *asyncRun) map[string]any {
+	v := h.runView(rn)
+	if v["state"] == "queued" {
+		v["queuePosition"] = h.queuePosition(rn)
+	}
+	return v
 }
 
-// checkpointExists reports whether run id has a checkpoint file on disk (a
-// <pipeline>.json that is not result.json).
-func (h *httpServer) checkpointExists(id string) bool {
-	entries, err := os.ReadDir(h.stateDirOf(id))
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		n := e.Name()
-		if !e.IsDir() && strings.HasSuffix(n, ".json") && n != "result.json" {
-			return true
+// queuePosition is how many other runs are queued ahead of rn (0 = next up).
+// Call it without holding rn.mu.
+func (h *httpServer) queuePosition(rn *asyncRun) int {
+	pos := 0
+	for _, other := range h.runs.List() {
+		if other == rn {
+			continue
+		}
+		other.mu.Lock()
+		ahead := other.state == "queued" && other.started.Before(rn.started)
+		other.mu.Unlock()
+		if ahead {
+			pos++
 		}
 	}
-	return false
+	return pos
 }
 
 // sweepRuns is opportunistic registry housekeeping, called on `initialize`.
@@ -416,19 +556,17 @@ func (h *httpServer) checkpointExists(id string) bool {
 // once its TTL passes.
 func (h *httpServer) sweepRuns() {
 	cut := time.Now().Add(-sessionTTL)
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for id, rn := range h.runs {
+	for _, rn := range h.runs.List() {
 		rn.mu.Lock()
 		state := rn.state
 		old := rn.updated.Before(cut)
 		rn.mu.Unlock()
 		switch {
 		case state == "completed" && old:
-			delete(h.runs, id)
-			_ = os.RemoveAll(h.stateDirOf(id))
-		case (state == "failed" || state == "canceled") && !h.checkpointExists(id):
-			delete(h.runs, id)
+			h.runs.Delete(rn.id)
+			_ = h.cps.Remove(rn.id)
+		case (state == "failed" || state == "canceled") && !h.cps.Exists(rn.id):
+			h.runs.Delete(rn.id)
 		}
 	}
 }
@@ -437,15 +575,11 @@ func (h *httpServer) sweepRuns() {
 // The state tree is removed only when we own a throwaway one; a caller-given
 // --state-dir is left so runs can be resumed by a later process.
 func (h *httpServer) cleanupRuns() {
-	h.mu.Lock()
-	for _, rn := range h.runs {
+	for _, rn := range h.runs.List() {
 		rn.cancel()
+		h.runs.Delete(rn.id)
 	}
-	h.runs = map[string]*asyncRun{}
-	h.mu.Unlock()
-	if h.ownsRunsDir {
-		_ = os.RemoveAll(h.runsDir)
-	}
+	_ = h.cps.Close()
 }
 
 func runIDParam(params json.RawMessage) string {

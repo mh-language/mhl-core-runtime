@@ -67,10 +67,17 @@ type PipelineMember struct {
 // `goto` may not target a step inside a group nor be used from within one,
 // and `break` may not be used from within one — internal/lang/lint enforces
 // all three (checkParallelGroups).
+//
+// An optional `timeout <duration>` header clause caps the whole barrier:
+// runtime.Runner wraps the group's shared context with context.WithTimeout,
+// so an expiry cancels every still-running branch at once and fails the
+// group. A branch step may carry its own `timeout` too — the deadlines
+// compose and the earliest one fires.
 type ParallelGroup struct {
-	Pos   lexer.Position
-	Name  string  `parser:"'parallel' @Ident"`
-	Steps []*Step `parser:"'{' @@+ '}'"`
+	Pos     lexer.Position
+	Name    string  `parser:"'parallel' @Ident"`
+	Timeout string  `parser:"( 'timeout' @Duration )?"`
+	Steps   []*Step `parser:"'{' @@+ '}'"`
 }
 
 // MemDecl declares and initializes a pipeline-scoped persistent variable:
@@ -90,10 +97,19 @@ type PipelineInput struct {
 	Type *TypeExpr `parser:"@@"`
 }
 
-// Step is a named block of statements.
+// Step is a named block of statements. An optional `timeout <duration>`
+// header clause (`step Build timeout 3m { ... }`) caps how long the step may
+// run: runtime.Runner wraps the step's context with context.WithTimeout, and
+// an expiry fails the step the same way an explicit fail() would — a
+// checkpoint is written when checkpointing is enabled, so `run/resume`
+// re-enters the step with a fresh budget. A step literally named `timeout`
+// cannot also carry the clause; the word is reserved in that position, like
+// `parallel`/`any`/`of`.
 type Step struct {
-	Name string       `parser:"'step' @Ident"`
-	Body []*Statement `parser:"'{' @@* '}'"`
+	Pos     lexer.Position
+	Name    string       `parser:"'step' @Ident"`
+	Timeout string       `parser:"( 'timeout' @Duration )?"`
+	Body    []*Statement `parser:"'{' @@* '}'"`
 }
 
 // Statement is a single statement inside a step body. Assignment is tried

@@ -75,6 +75,19 @@ type Request struct {
 	Session string
 	Resume  bool
 
+	// Principal is the verified caller identity, surfaced to a pipeline that
+	// declares a `context:` block as read-only `context.principal`. "" for a
+	// plain `mhl run` or when the serving layer has no token verifier.
+	Principal string
+
+	// StateStore, when non-nil, is where this run's per-step checkpoints and
+	// result.json go instead of the on-disk .mhl/state tree — the serve
+	// layer passes an extension-backed store (Phase 3) scoped to this run.
+	// LoopStateStore is the same for a `loop pipeline`'s iteration
+	// checkpoints; nil there falls back to disk.
+	StateStore     runtime.StateStore
+	LoopStateStore runtime.LoopStateStore
+
 	// Out receives progress output (`session:`/`step:` lines and anything a
 	// step's log()/trace writes). nil discards it.
 	Out io.Writer
@@ -173,6 +186,7 @@ func Run(req Request) (*Result, error) {
 			SessionID: sessionID,
 			StartedAt: time.Now().UTC().Format(time.RFC3339),
 			Resumed:   req.Resume,
+			Principal: req.Principal,
 			Vars:      priorVars,
 		}
 	}
@@ -237,11 +251,16 @@ func Run(req Request) (*Result, error) {
 	if !pipeline.Loop {
 		runner := runtime.NewRunner(base).Session(sessionID)
 		runner.Out = out
+		resultSink := runtime.StateStore(runner.Store)
+		if req.StateStore != nil {
+			runner.WithStateStore(req.StateStore)
+			resultSink = req.StateStore
+		}
 		res, err := runner.Run(runCtx, pipeline, init, exec, req.Resume)
 		if err != nil {
 			return nil, err
 		}
-		if err := persistContextResult(runner.Store, pipeline, res.FinalVars); err != nil {
+		if err := persistContextResult(resultSink, pipeline, res.FinalVars); err != nil {
 			return nil, err
 		}
 		return &Result{
@@ -265,11 +284,19 @@ func Run(req Request) (*Result, error) {
 	}
 	loopRunner := runtime.NewLoopRunner(base).Session(sessionID)
 	loopRunner.Runner.Out = out
+	loopResultSink := runtime.StateStore(loopRunner.Runner.Store)
+	if req.StateStore != nil {
+		loopRunner.Runner.WithStateStore(req.StateStore)
+		loopResultSink = req.StateStore
+	}
+	if req.LoopStateStore != nil {
+		loopRunner.WithLoopStateStore(req.LoopStateStore)
+	}
 	res, err := loopRunner.Run(runCtx, pipeline, init, exec, evalStopWhen, req.Resume)
 	if err != nil {
 		return nil, err
 	}
-	if err := persistContextResult(loopRunner.Runner.Store, pipeline, res.FinalVars); err != nil {
+	if err := persistContextResult(loopResultSink, pipeline, res.FinalVars); err != nil {
 		return nil, err
 	}
 	return &Result{
@@ -323,7 +350,7 @@ func publicVars(vars map[string]any) map[string]any {
 // session's result.json (and refreshes the .latest pointer), but only when
 // the pipeline declared a `context:` block. A nil finalVars (broke/failed)
 // writes nothing.
-func persistContextResult(store *runtime.Store, pipeline runtime.Pipeline, finalVars map[string]any) error {
+func persistContextResult(store runtime.StateStore, pipeline runtime.Pipeline, finalVars map[string]any) error {
 	if pipeline.Context == nil || finalVars == nil {
 		return nil
 	}

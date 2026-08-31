@@ -86,6 +86,10 @@ func pollRun(t *testing.T, url, sid, runID string) map[string]any {
 }
 
 func newHTTPServer(t *testing.T, token string, files map[string]string) *httptest.Server {
+	return newHTTPServerCfg(t, mcpserver.HTTPConfig{Token: token}, files)
+}
+
+func newHTTPServerCfg(t *testing.T, cfg mcpserver.HTTPConfig, files map[string]string) *httptest.Server {
 	t.Helper()
 	dir := t.TempDir()
 	if files == nil {
@@ -96,7 +100,8 @@ func newHTTPServer(t *testing.T, token string, files map[string]string) *httptes
 			t.Fatal(err)
 		}
 	}
-	h, err := mcpserver.Handler(dir, token, io.Discard)
+	cfg.Dir = dir
+	h, err := mcpserver.Handler(cfg, io.Discard)
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
@@ -281,6 +286,21 @@ func TestHTTPOrigin(t *testing.T) {
 	}
 }
 
+func TestHTTPHealthEndpoints(t *testing.T) {
+	ts := newHTTPServer(t, "s3cr3t", nil)
+	// Probes are unauthenticated (no bearer token) and always GET-able.
+	for _, path := range []string{"/healthz", "/readyz"} {
+		resp, err := http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s = %d, want 200", path, resp.StatusCode)
+		}
+	}
+}
+
 func TestHTTPGetNotAllowed(t *testing.T) {
 	ts := newHTTPServer(t, "", nil)
 	resp, err := http.Get(ts.URL + "/mcp")
@@ -387,6 +407,64 @@ func TestHTTPRunLifecycle(t *testing.T) {
 	}
 }
 
+func TestHTTPMaxConcurrentRunsQueues(t *testing.T) {
+	ts := newHTTPServerCfg(t, mcpserver.HTTPConfig{MaxConcurrentRuns: 1},
+		map[string]string{"slow.mh": httpSlowWF})
+	sid := initHTTPSession(t, ts.URL)
+
+	start := func(id int) map[string]any {
+		_, body := postMCP(t, ts.URL, sid, rpcMap(id, "run/start", map[string]any{
+			"name": "Slow",
+		}), nil)
+		return body["result"].(map[string]any)
+	}
+
+	first := start(2)
+	if first["state"] != "working" {
+		t.Fatalf("first run state = %v, want working", first["state"])
+	}
+	second := start(3)
+	if second["state"] != "queued" {
+		t.Fatalf("second run state = %v, want queued", second["state"])
+	}
+	if second["queuePosition"].(float64) != 0 {
+		t.Errorf("queuePosition = %v, want 0", second["queuePosition"])
+	}
+
+	// The queued run gets its slot once the first finishes.
+	final := pollRun(t, ts.URL, sid, second["runId"].(string))
+	if final["state"] != "completed" {
+		t.Fatalf("queued run never ran: final = %v", final)
+	}
+}
+
+func TestHTTPRunLogs(t *testing.T) {
+	ts := newHTTPServer(t, "", map[string]string{"slow.mh": httpSlowWF})
+	sid := initHTTPSession(t, ts.URL)
+
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "run/start", map[string]any{"name": "Slow"}), nil)
+	runID := body["result"].(map[string]any)["runId"].(string)
+
+	pollRun(t, ts.URL, sid, runID) // let it finish
+
+	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "run/logs", map[string]any{"runId": runID}), nil)
+	res := body["result"].(map[string]any)
+	text, _ := res["text"].(string)
+	if !strings.Contains(text, "step: Wait") || !strings.Contains(text, "step: Finish") {
+		t.Fatalf("run/logs text missing step lines:\n%s", text)
+	}
+	next := res["nextSince"].(float64)
+	if next <= 0 {
+		t.Errorf("nextSince = %v, want > 0", next)
+	}
+
+	// Polling from the end-cursor yields nothing new.
+	_, body = postMCP(t, ts.URL, sid, rpcMap(4, "run/logs", map[string]any{"runId": runID, "since": next}), nil)
+	if got := body["result"].(map[string]any)["text"].(string); got != "" {
+		t.Errorf("tail read = %q, want empty", got)
+	}
+}
+
 func TestHTTPRunStatusUnknown(t *testing.T) {
 	ts := newHTTPServer(t, "", nil)
 	sid := initHTTPSession(t, ts.URL)
@@ -419,6 +497,110 @@ func TestHTTPRunCancel(t *testing.T) {
 				t.Errorf("cancelled run still reached Finish: %v", reached)
 			}
 		}
+	}
+}
+
+// With --token + --principal-header, runs are isolated per verified principal:
+// run/list shows only the caller's own, and a cross-principal run/status is
+// answered exactly like an unknown runId.
+func TestHTTPPrincipalIsolation(t *testing.T) {
+	ts := newHTTPServerCfg(t, mcpserver.HTTPConfig{Token: "gw", PrincipalHeader: "X-Mhl-Principal"}, nil)
+
+	hdr := func(who string) map[string]string {
+		return map[string]string{"Authorization": "Bearer gw", "X-Mhl-Principal": who}
+	}
+	initAs := func(who string) string {
+		resp, _ := postMCP(t, ts.URL, "", rpcMap(1, "initialize", map[string]any{
+			"protocolVersion": "2025-06-18", "capabilities": map[string]any{},
+		}), hdr(who))
+		return resp.Header.Get("Mcp-Session-Id")
+	}
+	startAs := func(who, sid string) string {
+		_, body := postMCP(t, ts.URL, sid, rpcMap(2, "run/start", map[string]any{
+			"name": "Greet", "arguments": map[string]any{"name": who},
+		}), hdr(who))
+		return body["result"].(map[string]any)["runId"].(string)
+	}
+
+	sidA, sidB := initAs("alice"), initAs("bob")
+	runA := startAs("alice", sidA)
+	_ = startAs("bob", sidB)
+
+	// bob's run/list must not contain alice's run.
+	_, body := postMCP(t, ts.URL, sidB, rpcMap(3, "run/list", nil), hdr("bob"))
+	for _, r := range body["result"].(map[string]any)["runs"].([]any) {
+		if r.(map[string]any)["runId"] == runA {
+			t.Fatalf("bob's run/list leaked alice's run %s", runA)
+		}
+	}
+
+	// bob probing alice's runId → "unknown runId", indistinguishable from a
+	// nonexistent one.
+	_, body = postMCP(t, ts.URL, sidB, rpcMap(4, "run/status", map[string]any{"runId": runA}), hdr("bob"))
+	if code := body["error"].(map[string]any)["code"].(float64); code != -32602 {
+		t.Fatalf("cross-principal run/status code = %v, want -32602", code)
+	}
+
+	// alice can still see her own.
+	_, body = postMCP(t, ts.URL, sidA, rpcMap(5, "run/status", map[string]any{"runId": runA}), hdr("alice"))
+	if body["result"] == nil {
+		t.Fatalf("alice cannot see her own run: %v", body)
+	}
+}
+
+// Per-method routes (2b): POST /mcp/<method> runs the same dispatch as
+// POST /mcp; the body method must match the path, and GET is 405.
+func TestHTTPPerMethodRoutes(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	post := func(path, sid, bodyMethod string, params any) (*http.Response, map[string]any) {
+		t.Helper()
+		b, _ := json.Marshal(rpcMap(7, bodyMethod, params))
+		reqr, _ := http.NewRequest(http.MethodPost, ts.URL+path, strings.NewReader(string(b)))
+		reqr.Header.Set("Content-Type", "application/json")
+		if sid != "" {
+			reqr.Header.Set("Mcp-Session-Id", sid)
+		}
+		resp, err := http.DefaultClient.Do(reqr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { resp.Body.Close() })
+		raw, _ := io.ReadAll(resp.Body)
+		var out map[string]any
+		_ = json.Unmarshal(raw, &out)
+		return resp, out
+	}
+
+	// Matching path + body → normal result.
+	resp, body := post("/mcp/run/list", sid, "run/list", map[string]any{
+		"_meta": map[string]any{
+			"io.modelcontextprotocol/protocolVersion":   "2026-07-28",
+			"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+		},
+	})
+	if resp.StatusCode != 200 || body["result"] == nil {
+		t.Fatalf("/mcp/run/list matched call: %d %v", resp.StatusCode, body)
+	}
+
+	// Path says run/list, body says run/start → -32600, 400.
+	resp, body = post("/mcp/run/list", sid, "run/start", nil)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("mismatch status = %d, want 400", resp.StatusCode)
+	}
+	if code := body["error"].(map[string]any)["code"].(float64); code != -32600 {
+		t.Errorf("mismatch code = %v, want -32600", code)
+	}
+
+	// GET on a scoped path → 405.
+	g, err := http.Get(ts.URL + "/mcp/run/list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Body.Close()
+	if g.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("GET /mcp/run/list = %d, want 405", g.StatusCode)
 	}
 }
 
@@ -477,7 +659,7 @@ func TestHTTPRunResumeAcrossProcess(t *testing.T) {
 	stateDir := t.TempDir()
 
 	serverWith := func() *httptest.Server {
-		h, err := mcpserver.HandlerWithState(t.Context(), dir, "", stateDir, io.Discard)
+		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
 		if err != nil {
 			t.Fatalf("HandlerWithState: %v", err)
 		}
@@ -516,6 +698,76 @@ func TestHTTPRunResumeAcrossProcess(t *testing.T) {
 	final := pollRun(t, b.URL, sidB, runID)
 	if final["state"] != "completed" {
 		t.Fatalf("resumed-on-B state = %v (%v)", final["state"], final)
+	}
+}
+
+// With a verified principal, the post-restart reclaim is bound: only the
+// original principal can pick a run back up from disk.
+func TestHTTPReconstructBoundToPrincipal(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "gate.mh"), []byte(httpGateWF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	cfg := mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir, Token: "gw", PrincipalHeader: "X-Mhl-Principal"}
+	hdr := func(who string) map[string]string {
+		return map[string]string{"Authorization": "Bearer gw", "X-Mhl-Principal": who}
+	}
+	serverWith := func() *httptest.Server {
+		h, err := mcpserver.HandlerWithState(t.Context(), cfg, io.Discard)
+		if err != nil {
+			t.Fatalf("HandlerWithState: %v", err)
+		}
+		s := httptest.NewServer(h)
+		t.Cleanup(s.Close)
+		return s
+	}
+	initAs := func(url, who string) string {
+		resp, _ := postMCP(t, url, "", rpcMap(1, "initialize", map[string]any{
+			"protocolVersion": "2025-06-18", "capabilities": map[string]any{},
+		}), hdr(who))
+		return resp.Header.Get("Mcp-Session-Id")
+	}
+
+	a := serverWith()
+	sidA := initAs(a.URL, "alice")
+	_, body := postMCP(t, a.URL, sidA, rpcMap(2, "run/start", map[string]any{
+		"name": "Approval", "arguments": map[string]any{"approved": "no"},
+	}), hdr("alice"))
+	runID := body["result"].(map[string]any)["runId"].(string)
+	pollRun2(t, a.URL, sidA, runID, hdr("alice"))
+	a.Close()
+
+	b := serverWith()
+	// bob names alice's runId → unknown (the persisted owner does not match).
+	sidBob := initAs(b.URL, "bob")
+	_, body = postMCP(t, b.URL, sidBob, rpcMap(3, "run/status", map[string]any{"runId": runID}), hdr("bob"))
+	if code := body["error"].(map[string]any)["code"].(float64); code != -32602 {
+		t.Fatalf("bob reclaimed alice's run: %v", body)
+	}
+	// alice, on the fresh process, still can.
+	sidAlice := initAs(b.URL, "alice")
+	_, body = postMCP(t, b.URL, sidAlice, rpcMap(4, "run/status", map[string]any{"runId": runID}), hdr("alice"))
+	if body["result"] == nil {
+		t.Fatalf("alice cannot reclaim her own run after restart: %v", body)
+	}
+}
+
+// pollRun2 is pollRun with caller-supplied headers.
+func pollRun2(t *testing.T, url, sid, runID string, hdr map[string]string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, body := postMCP(t, url, sid, rpcMap(9, "run/status", map[string]any{"runId": runID}), hdr)
+		res := body["result"].(map[string]any)
+		switch res["state"] {
+		case "completed", "failed", "canceled":
+			return res
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("run %s did not finish: %v", runID, res)
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
 }
 

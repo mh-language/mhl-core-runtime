@@ -2,12 +2,14 @@ package execsvc_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
 
+	mhlruntime "github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
@@ -36,6 +38,32 @@ workflow Second {
     step Done { n = n + 1 }
 }
 `
+
+// Request.Principal surfaces to a pipeline that declares a `context:` block as
+// the read-only identifier context.principal; "" when unset.
+func TestRunExposesPrincipal(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline P {
+    context: {}
+    var who = ""
+    step S { who = context.principal }
+}
+`)
+	got := func(principal string) any {
+		res, err := execsvc.Run(execsvc.Request{Source: src, BaseDir: t.TempDir(), Principal: principal})
+		if err != nil {
+			t.Fatalf("run(%q): %v", principal, err)
+		}
+		return res.Vars["who"]
+	}
+	if v := got("alice@acme.com"); v != "alice@acme.com" {
+		t.Errorf("context.principal = %v, want alice@acme.com", v)
+	}
+	if v := got(""); v != "" {
+		t.Errorf("context.principal with no principal = %v, want empty", v)
+	}
+}
 
 // Run from a source path returns the final variable state and the steps that
 // executed, exactly as `mhl run` would drive it.
@@ -155,6 +183,32 @@ pipeline P {
 	}
 	if elapsed > 10*time.Second {
 		t.Fatalf("run took %s — the sleep was not aborted by the context", elapsed)
+	}
+}
+
+// A step that declares `timeout <dur>` self-terminates when it runs over,
+// with no run-level cancel — the derived per-step context aborts the
+// in-flight cmd.exec and Run surfaces runtime.ErrStepTimeout.
+func TestRunStepTimeoutAbortsInFlightCmdExec(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("relies on POSIX `sleep`")
+	}
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline P {
+    step Slow timeout 200ms { var r = cmd.exec(["sleep", "30"]) }
+}
+`)
+
+	start := time.Now()
+	_, err := execsvc.Run(execsvc.Request{Source: src, BaseDir: dir})
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, mhlruntime.ErrStepTimeout) {
+		t.Fatalf("err = %v, want runtime.ErrStepTimeout", err)
+	}
+	if elapsed > 10*time.Second {
+		t.Fatalf("run took %s — the step timeout did not abort the sleep", elapsed)
 	}
 }
 

@@ -1,0 +1,15 @@
+[
+  {
+    "kind": "store",
+    "documentation": "Key/value backend for `mhl serve mcp --http` durable state (sessions + run checkpoints). One JSON file per key, mirrored under `dir`.",
+    "properties": [
+      { "name": "dir", "type": "string", "documentation": "Filesystem root for the store. Ephemeral temp dir when omitted." }
+    ],
+    "methods": [
+      { "name": "get",    "signature": "get(key: string) -> any",          "documentation": "The value at key, or null when absent." },
+      { "name": "put",    "signature": "put(key: string, value: any)",      "documentation": "Store value at key, overwriting." },
+      { "name": "delete", "signature": "delete(key: string)",              "documentation": "Remove key. Absent key is not an error." },
+      { "name": "list",   "signature": "list(prefix: string) -> [string]", "documentation": "Every key with the given prefix." }
+    ]
+  }
+]

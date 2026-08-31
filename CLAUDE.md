@@ -56,7 +56,7 @@ mhl test <file.mh|dir>
 mhl lint [dir]
 mhl lsp        # LSP server over stdio, used by vscode-mhl
 mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
-mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [dir]  # ... over Streamable HTTP (POST /mcp)
+mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics)
 mhl serve a2a [--addr h:p] [dir]    # workflows as A2A skills (HTTP JSON-RPC)
 mhl version    # or --version / -v
 ```
@@ -67,18 +67,29 @@ tool per pipeline/workflow on top (`tools/call` → `execsvc.Run`, `inputSchema`
 `runtime.Pipeline.InputSchema()`, `description` ← the optional `description: "..."` body
 property, else generic); its `server.dispatch(ctx, *session, rpcMsg) *rpcMsg` is
 transport-independent — `Serve` (stdio, `server.go`) and `ServeHTTP` (Streamable HTTP,
-`http.go`: `POST /mcp`, JSON responses only, `Mcp-Session-Id` sessions + the stateless
-`_meta` form, bearer-token + loopback-`Origin` guards) both drive it. HTTP-only, in
+`http.go`: `POST /mcp` — plus `POST /mcp/<method>` thin wrappers so an external policy
+engine can gate one method, body `method` still authoritative — JSON responses only,
+`Mcp-Session-Id` sessions + the stateless `_meta` form; a `TokenVerifier` (`verifier.go`:
+static token, or `--principal-header` trusted-header) yields a principal that keys run
+ownership via `httpServer.ownerOf`, else the Phase-0 session hash; loopback-`Origin` guard)
+both drive it. HTTP-only, in
 `runs.go`: `run/start`/`run/status`/`run/resume`/`run/cancel`/`run/list` — async execution
 (returns a `runId`, poll for current step / `reached` steps / final vars) for workflows too
 long to hold a `tools/call` open; backed by `execsvc.Request.OnStep`. `run/resume` continues
 a stopped run from its `checkpoint { strategy: "per_step" }` (the HITL pattern: a gate step
 `fail()`s until approved, then `run/resume {runId, arguments}` merges the decision in) via
 `execsvc.Request.{Session,Resume}`; `--state-dir` / `MHL_SERVE_STATE_DIR` makes that run
-state outlive the process (else a per-process temp dir). Each run is owned by the session
-that started it (`ownerKey` = sha256 of the Mcp-Session-Id); `run/{status,resume,cancel,list}`
-only act for that caller — a non-owner gets "unknown runId". After a restart the owner
-session is gone, so the first caller to name the (unguessable) runId reclaims it. End-to-end request flow for all
+state outlive the process (else a per-process temp dir), or a single
+`extension store <Name> { dir: ... }` declaration in the serve dir routes all durable state
+(sessions + `run/*` checkpoints/owner) through that extension instead — `cli/serve.go` binds
+it host-side (`storext.go`), `mcpserver`'s `ext*` adapters (`extstore.go`) wrap it as the
+`KVStore` the `SessionStore`/`CheckpointStore`/`runtime.StateStore` seams speak; the run
+*registry* stays in-memory per pod. Each run is owned by its caller (`httpServer.ownerOf` —
+the `--principal-header` principal hashed, else sha256 of the Mcp-Session-Id);
+`run/{status,resume,cancel,list,logs}` only act for that caller — a non-owner gets "unknown
+runId". A principal-owned run persists its owner (`CheckpointStore.WriteOwner`), so after a
+restart `reconstructRun` hands it back only to that principal; a session-hash owner is not
+persisted and the first caller to name the (unguessable) runId reclaims it. End-to-end request flow for all
 modes (stdio, HTTP sync, HTTP async, resume) with sequence diagrams:
 `internal/mcpserver/FLOW.md`. `internal/a2aserver`
 puts one A2A skill per workflow on top
@@ -143,7 +154,13 @@ Key packages:
   `evalCtx.goctx`, so a run-level cancel also aborts a blocking call already in flight — an
   agent subprocess/HTTP call, a `cmd`/`git`/`http` native op, an extension call (`goctxOf(ctx)`
   everywhere those are issued). `RunTests` and direct interpreter-test calls pass no ctx;
-  `goctxOf` normalizes nil to `context.Background()`.
+  `goctxOf` normalizes nil to `context.Background()`. A step's (or a `parallel` group's)
+  optional `timeout <dur>` header clause (`ast.Step.Timeout`, projected onto
+  `runtime.Pipeline.StepTimeouts`) is enforced in `runner.go`'s `execStage` via
+  `context.WithTimeout` on that one step's ctx; an expiry wraps `runtime.ErrStepTimeout` and
+  flows through `saveCancelCheckpoint` (resume point written when checkpointing is on), i.e.
+  it fails the step like `fail()` — per attempt, deadline never persisted.
+  `lint.checkPipelineStepTimeout` rejects a non-positive value.
 - **`internal/execsvc`** — `Run(Request) (*Result, error)`: the reusable "run a pipeline,
   get a structured result" entry point extracted from `cli.runPipeline`. `internal/cli`'s
   `run` and (later) the MCP/A2A server adapters call it. `Request.Context` carries the

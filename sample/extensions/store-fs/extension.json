@@ -1,0 +1,8 @@
+{
+  "id": "dev.mhl.store-fs",
+  "version": "0.1.0",
+  "api_version": "1",
+  "executable": "bin/store-fs",
+  "declarations_file": "declarations.json",
+  "permissions": { "secrets": [] }
+}

@@ -74,3 +74,29 @@ pipeline P {
 		t.Fatalf("Parse: %v", err)
 	}
 }
+
+// A `timeout <duration>` clause parses both on the group header and on an
+// individual branch step; a branch without one has an empty Timeout.
+func TestParallelGroupTimeoutParses(t *testing.T) {
+	prog, err := Parse(`
+pipeline P {
+    parallel Review timeout 5m {
+        step Lint timeout 90s { log("lint") }
+        step Build { log("build") }
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	g := prog.Decls[0].Pipeline.Body[0].Parallel
+	if g == nil || g.Timeout != "5m" {
+		t.Fatalf("group Timeout = %q, want 5m (group %+v)", g.Timeout, g)
+	}
+	if g.Steps[0].Timeout != "90s" {
+		t.Fatalf("branch Lint Timeout = %q, want 90s", g.Steps[0].Timeout)
+	}
+	if g.Steps[1].Timeout != "" {
+		t.Fatalf("branch Build Timeout = %q, want empty", g.Steps[1].Timeout)
+	}
+}

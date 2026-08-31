@@ -701,7 +701,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
         }
     }
 }</code></pre>
-          <div class="tip-row"><span>CONTEXT</span><p><code>context</code> is read-only. <code>context.session_id</code>, <code>context.started_at</code> and <code>context.resumed</code> describe the current run; <code>context.vars</code> is the variable state the <em>previous completed</em> run of this pipeline finished with (persisted as <code>result.json</code> in that run's session directory). It is empty until a run has completed once — guard with <code>context.vars.keys().contains(...)</code>.</p></div>
+          <div class="tip-row"><span>CONTEXT</span><p><code>context</code> is read-only. <code>context.session_id</code>, <code>context.started_at</code> and <code>context.resumed</code> describe the current run; <code>context.principal</code> is the verified caller identity when the run was started through <code>mhl serve mcp --http</code> with a token verifier (<code>--principal-header</code>), and <code>""</code> otherwise (a plain <code>mhl run</code>, or no verifier) — use it to record who triggered or approved a run, not to authorize. <code>context.vars</code> is the variable state the <em>previous completed</em> run of this pipeline finished with (persisted as <code>result.json</code> in that run's session directory). It is empty until a run has completed once — guard with <code>context.vars.keys().contains(...)</code>.</p></div>
 
           <p class="block-label">LOOP WITH AN EXPLICIT STOP</p>
           <pre class="code-block"><code class="language-mhl">loop pipeline PollBuild {
@@ -750,9 +750,9 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
     var docs   = ""
     var issues = ""
 
-    parallel Gather {                 // both steps run at once
-        step FetchDocs   { docs   = Docs.run(prompt: "summarize ${topic}") }
-        step FetchIssues { issues = Issues.run(prompt: "open issues for ${topic}") }
+    parallel Gather timeout 2m {      // both steps run at once; barrier caps at 2m
+        step FetchDocs timeout 45s { docs = Docs.run(prompt: "summarize ${topic}") }
+        step FetchIssues           { issues = Issues.run(prompt: "open issues for ${topic}") }
     }
 
     step Merge {                      // runs only after BOTH branches finish
@@ -767,14 +767,15 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
             <div><b><code>var</code></b><span>state shared across steps in the current execution</span></div>
             <div><b><code>mem</code></b><span>persistent state shared across iterations and <code>stop_when</code></span></div>
             <div><b><code>context</code></b><span>read-only view of this session and the previous run's <code>vars</code></span></div>
-            <div><b><code>step</code></b><span>ordered, named, resumable unit</span></div>
-            <div><b><code>parallel</code></b><span>named group whose steps run concurrently; a barrier before the next step</span></div>
+            <div><b><code>step</code></b><span>ordered, named, resumable unit; optional <code>timeout &lt;duration&gt;</code> header clause</span></div>
+            <div><b><code>parallel</code></b><span>named group whose steps run concurrently; a barrier before the next step; takes the same <code>timeout</code> clause</span></div>
             <div><b><code>goto</code></b><span>jump to another step (<code>workflow</code> only), forward or backward</span></div>
             <div><b><code>break</code></b><span>immediate stop with an optional reason</span></div>
             <div><b><code>spawn</code></b><span>start an <code>Agent.run(...)</code> in the background; binds a <code>task</code> handle (<code>.result</code>, <code>.ok</code>, <code>.error</code>, <code>.status</code>, <code>.duration_ms</code>)</span></div>
             <div><b><code>wait</code></b><span>join handles — all (fail-fast), <code>any</code> (first success), or <code>N of</code> (quorum); options <code>timeout:</code> and <code>on_error: "collect"</code></span></div>
           </div>
           <div class="tip-row"><span>LIMITS</span><p>For loops, always prefer an observable <code>stop_when</code> plus <code>max_iterations</code> as a safety ceiling. Step-local variables are not visible to <code>stop_when</code>; use <code>mem</code> or <code>memory</code>.</p></div>
+          <div class="tip-row"><span>TIMEOUT</span><p>A <code>step &lt;Name&gt; timeout &lt;duration&gt; { … }</code> clause caps how long that step may run — <code>step Build timeout 3m { … }</code>. The runtime wraps the step's context with that deadline, so every blocking call it makes (an agent, <code>http</code>, <code>cmd</code>, an extension) is aborted when it elapses; the step then fails exactly as an explicit <code>fail()</code> would, so a <code>checkpoint</code> block still lets <code>--resume</code> / <code>run/resume</code> re-enter the step — with a <em>fresh</em> budget (the duration is per attempt, never persisted). The same clause on a <code>parallel &lt;Name&gt; timeout &lt;duration&gt; { … }</code> group bounds the whole barrier and cancels every still-running branch; a branch may also carry its own <code>timeout</code>, and the earliest deadline wins. A purely non-blocking runaway (a spinning <code>while</code>) is still bounded by <code>max_iterations</code> / the interpreter's loop cap, not by this.</p></div>
           <div class="tip-row"><span>SPAWN</span><p><code>spawn</code>/<code>wait</code> are step-scoped: any handle not joined by a <code>wait</code> is joined automatically when the step ends, so nothing runs across a checkpoint. If the process dies mid-step, <code>--resume</code> re-runs the whole step and re-issues every <code>spawn</code> — keep them idempotent (or give the agent a <code>cache</code>). A spawned agent cannot itself <code>spawn</code>, and an agent's <code>log:</code> file is ignored under <code>spawn</code> (its output goes to the step log instead).</p></div>
           <div class="tip-row"><span>PARALLEL</span><p>A <code>parallel &lt;Name&gt; { … }</code> group runs its steps concurrently and joins them all before the pipeline advances — the step-level counterpart of <code>spawn</code> (which parallelises agent calls <em>within</em> one step). Each branch gets its own copy of the pipeline vars; on join, the writes are merged back, and a var two branches set to <em>different</em> values fails the run — so the outcome is deterministic. Branch output is buffered and printed in declared order. The group is atomic for checkpointing: a crash re-runs the whole group on <code>--resume</code>, so branch steps must stay idempotent. <code>goto</code> may not target a grouped step or be used from within one, and <code>break</code> may not be used from within one.</p></div>
         </section>

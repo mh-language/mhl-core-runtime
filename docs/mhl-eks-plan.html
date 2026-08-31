@@ -111,6 +111,8 @@
   .phase article { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; padding: 1.1rem 1.2rem 1.2rem; box-shadow: var(--shadow); }
   .phase h3 { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
   .phase h3 .tag { font-family: "IBM Plex Mono",monospace; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.14em 0.6em; }
+  .phase article.done { border-left-color: var(--accent); background: var(--accent-soft); }
+  .phase h3 .status { font-family: "IBM Plex Mono",monospace; font-size: 0.64rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--surface); background: var(--accent); border-radius: 999px; padding: 0.16em 0.62em; }
   .phase dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; margin: 0.9rem 0 0; font-size: 0.96rem; line-height: 1.55; }
   .phase dt { font-family: "IBM Plex Mono",monospace; font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); padding-top: 0.3em; }
   .phase dd { margin: 0; }
@@ -185,7 +187,7 @@
           <rect class="d-new" x="40" y="210" width="430" height="70" rx="8"/>
           <text class="d-newtag" x="255" y="234" text-anchor="middle">interfaces (NEW)</text>
           <text class="d-sub" x="255" y="252" text-anchor="middle">StateStore · SessionStore · RunRegistry</text>
-          <text class="d-sub" x="255" y="267" text-anchor="middle">Lease · TokenVerifier</text>
+          <text class="d-sub" x="255" y="267" text-anchor="middle">KVStore · TokenVerifier · MetricsSink</text>
 
           <rect class="d-box-2" x="40" y="300" width="430" height="60" rx="8"/>
           <text class="d-title" x="255" y="323" text-anchor="middle">built-in implementation</text>
@@ -237,12 +239,15 @@
     </figure>
 
     <div class="callout">
-      <strong>Why the store backend is an extension but JWT verification is not.</strong>
-      A store backend is a swappable I/O detail with no trust implications &mdash;
-      perfect for an out-of-process, pinned binary. Token verification decides
-      <em>who a caller is</em>; delegating that to an unpinned child process widens the
-      trust boundary. It stays in core, behind a <code>TokenVerifier</code> interface
-      with a JWKS default.
+      <strong>Three different questions, three different homes.</strong>
+      A <em>store backend</em> is swappable I/O with no trust implications &mdash; an
+      out-of-process pinned extension. <em>Who a caller is</em> (token / JWT
+      verification) is a trust boundary the runtime must not delegate to an unpinned
+      binary &mdash; it stays in core behind a <code>TokenVerifier</code>, which only
+      extracts a principal. <em>Whether that caller may do this</em> (may they resume
+      run R?) is dynamic policy with live IdP-group and on-call state &mdash; it lives
+      in Istio / OPA / the gateway authorizer, never as a list in a <code>.mh</code>
+      file.
     </div>
   </section>
 
@@ -252,126 +257,204 @@
       <p>Each phase ships on its own and preserves the invariant: a single replica
       behind API Gateway keeps working with no database and no new flags. The gap
       numbers refer to the architecture note.</p>
+      <p><strong>Status:</strong> Phases&nbsp;0&ndash;2, Phase&nbsp;3a and Phase&nbsp;4
+      are complete on branch <code>feature/mcp-http-transport</code> (full test +
+      functional gate green, including <code>-race</code>; e2e smoke with the
+      <code>store-fs</code> reference extension and <code>mhl run</code> /
+      <code>mhl lint</code>). Durable run/session state can live in a shared external
+      store, and a step's <code>timeout</code> clause makes a runaway or orphaned run
+      self-terminate on any pod. Phase&nbsp;3b/3c (restart policy, hot-path cache, real
+      backends) and the optional Phase&nbsp;5 (cluster ergonomics, client longevity)
+      remain.</p>
     </div>
 
     <div class="phase">
 
-      <article>
-        <h3><span class="tag">Phase 0</span> Seams &amp; safety net</h3>
+      <article class="done">
+        <h3><span class="tag">Phase 0</span> Seams &amp; safety net <span class="status">✓ done</span></h3>
         <dl>
           <dt>Goal</dt><dd>Introduce the interfaces with <em>zero</em> behaviour change.</dd>
-          <dt>Changes</dt><dd>Extract <code>StateStore</code> (checkpoint read / write /
-          list / delete + per-run log buffer), <code>SessionStore</code>,
-          <code>RunRegistry</code>, <code>Lease</code> from the current code in
-          <code>runs.go</code> / <code>http.go</code> / <code>engine/runtime</code>; move
-          today's <code>os.*</code> and in-memory maps behind them as the default impl.
-          Replace <code>ownerKey = sha256(sessionID)</code> with an <code>Owner</code>
-          value that a later phase fills from a principal. Characterization tests around
-          <code>run/*</code> first.</dd>
+          <dt>Landed</dt><dd>New <code>internal/mcpserver/store.go</code>: the
+          <code>Owner</code> type + <code>ownerFromSession</code> (replaces
+          <code>ownerKey</code>), and <code>SessionStore</code> / <code>RunRegistry</code> /
+          <code>CheckpointStore</code> with in-memory and disk defaults — today's
+          <code>os.*</code> calls and <code>httpServer</code> maps moved behind them
+          verbatim; the stdio <code>Serve</code> path untouched. In
+          <code>internal/engine/runtime</code>: <code>StateStore</code> +
+          <code>LoopStateStore</code> interfaces, with <code>Runner</code> /
+          <code>LoopRunner</code> routing checkpoints through an unexported field
+          (<code>WithStateStore</code> is the Phase&nbsp;3 injection point) — no signature
+          change to <code>Store</code>, <code>.Session</code>, or any existing test. New
+          tests: a fake in-memory <code>StateStore</code> drives a <code>Runner</code>
+          through completion and resume; the three <code>mcpserver</code> defaults have
+          unit tests. The existing <code>http_test.go</code> run-lifecycle suite is the
+          characterization net and passes unchanged.</dd>
+          <dt>Deferred</dt><dd>Run ownership stays on <code>RunRegistry</code> +
+          <code>Owner</code> (no lease — the Phase&nbsp;4 direction change dropped
+          lease-based ownership entirely). Per-run log buffer and the
+          <code>execsvc.Request.StateStore</code> injection field → Phases&nbsp;1 / 3.</dd>
           <dt>Single pod</dt><dd><span class="yes">unchanged</span> — same binary, same
-          behaviour, <code>make test</code> + <code>make functional-test</code> green.</dd>
+          behaviour; <code>go vet</code>, <code>make test</code>,
+          <code>make functional-test</code> green, plus a manual HITL-across-restart smoke
+          against <code>sample/serve</code>.</dd>
           <dt>Gaps</dt><dd>prerequisite for 1, 3, 12</dd>
         </dl>
       </article>
 
-      <article>
-        <h3><span class="tag">Phase 1</span> Kubernetes-native (single pod)</h3>
+      <article class="done">
+        <h3><span class="tag">Phase 1</span> Kubernetes-native (single pod) <span class="status">✓ done</span></h3>
         <dl>
           <dt>Goal</dt><dd>Make one replica a well-behaved citizen: probes, drain,
           backpressure, telemetry.</dd>
-          <dt>Changes</dt><dd><code>GET /healthz</code> + <code>/readyz</code> on the mux;
-          <code>/readyz</code> flips false on <code>SIGTERM</code>. Drain: stop accepting
-          <code>run/start</code> / <code>tools/call</code>, let in-flight finish, bounded
-          by <code>--drain-timeout</code>. Checkpoint on shutdown regardless of declared
-          <code>strategy</code>. <code>--max-concurrent-runs</code> semaphore + a
-          first-class <code>queued</code> state. Structured JSON logs keyed by
-          <code>runId</code> + principal; <code>run/logs { runId, since }</code> from the
-          Phase-0 log buffer. OpenTelemetry spans + metrics (in-flight gauge, duration,
-          outcome, token / cost), OTLP export via standard env — no extension.</dd>
-          <dt>Single pod</dt><dd><span class="yes">improved</span> — new endpoints and
-          flags all default to today's behaviour.</dd>
+          <dt>Landed</dt><dd><b>Probes</b> — <code>GET /healthz</code> (liveness, stays
+          200 while draining) + <code>GET /readyz</code> (503 once shutdown begins),
+          unauthenticated, in <code>internal/mcpserver/health.go</code>. <b>Drain</b> —
+          <code>--drain-timeout</code> / <code>MHL_SERVE_DRAIN_TIMEOUT</code> (0 =
+          today's immediate cancel); async runs descend from a
+          <code>runsCtx</code> the drain path controls, so a synchronous
+          <code>tools/call</code> still dies at once on SIGTERM; a draining server
+          refuses new <code>run/start</code> / <code>tools/call</code> with
+          <code>-32000</code>. <b>Shutdown checkpoint</b> — a cancelled run whose
+          workflow set <code>checkpoint { enabled: true }</code> without
+          <code>per_step</code> still leaves a resume point. <b>Backpressure</b> —
+          <code>--max-concurrent-runs</code> semaphore, a first-class
+          <code>queued</code> state with <code>queuePosition</code>; sync
+          <code>tools/call</code> waits ~5s for a slot then sheds with
+          <code>-32000</code>. <b>Observability</b> — <code>log/slog</code> JSON
+          lifecycle lines keyed by <code>runId</code> + <code>owner</code>;
+          <code>run/logs { runId, since }</code> from a per-run 64&nbsp;KiB ring buffer
+          (also teed to stderr); <code>GET /metrics</code> Prometheus text behind a
+          <code>MetricsSink</code> interface (instrumentation in core, exposition
+          swappable) &mdash; <b>no OpenTelemetry SDK</b>, the repo keeps its single
+          dependency.</dd>
+          <dt>Deferred</dt><dd>Token / cost metrics (need adapter-level accounting).
+          A push / OTLP <code>MetricsSink</code> is a future implementation of the
+          same interface.</dd>
+          <dt>Single pod</dt><dd><span class="yes">improved</span> — every new endpoint
+          and flag defaults to today's behaviour; full test + functional gate green
+          (incl. <code>-race</code>), manual smoke against <code>sample/cloud</code>.</dd>
           <dt>Gaps</dt><dd>5, 6, 7, 8, 9 (P1) &middot; 4 partial (per-pod cap)</dd>
         </dl>
       </article>
 
-      <article>
-        <h3><span class="tag">Phase 2</span> Identity &amp; authorization</h3>
+      <article class="done">
+        <h3><span class="tag">Phase 2</span> Identity &amp; authorization <span class="status">✓ done</span></h3>
         <dl>
-          <dt>Goal</dt><dd>A verified principal reaches the runtime; teams are isolated;
-          approvals are authorized.</dd>
-          <dt>Changes</dt><dd><code>TokenVerifier</code> interface with three modes:
-          static token (today), JWKS / JWT, and trusted-header
-          (<code>--principal-header</code>, set by the API Gateway authorizer). Thread the
-          principal into <code>Owner</code>: <code>run/list</code> filters by it,
-          <code>reconstructRun</code> requires a principal match rather than mere
-          possession of the <code>runId</code>. Add an <code>approvers:</code> allowlist to
-          the <code>checkpoint</code> / gate step — a small language-surface change
-          (allowlist in <code>lint.checkPipelineProperties</code> +
-          <code>lsp/properties.go</code> + <code>signatures.go</code>), evaluated against
-          the verified principal at <code>run/resume</code>.</dd>
+          <dt>Goal</dt><dd>A <em>verified</em> principal reaches the runtime and scopes
+          every run; the <em>allow / deny</em> decision is left to an external policy
+          layer that has live membership.</dd>
+          <dt>Landed</dt><dd><b>Identity.</b> A <code>TokenVerifier</code> interface
+          (<code>verifier.go</code>): <code>staticToken</code> (today's bearer check, the
+          default) and <code>trustedHeader</code> — with <code>--principal-header</code>,
+          the request must pass the bearer <em>and then</em> the principal is read from
+          that header (set by the gateway authorizer). <code>serve.go</code> refuses
+          <code>--principal-header</code> without <code>--token</code> (the header would be
+          client-spoofable). <code>httpServer.ownerOf</code> keys run ownership on
+          <code>sha256("principal:"+p)</code> when a principal is present, else the Phase-0
+          per-session hash — so <code>run/list</code> / <code>run/status</code> /
+          <code>run/resume</code> / <code>run/cancel</code> / <code>run/logs</code> isolate
+          per principal, and a non-owner gets the same <code>-32602</code> as a
+          nonexistent <code>runId</code>. <code>CheckpointStore.WriteOwner</code> persists
+          a principal-owned run's owner to <code>&lt;runId&gt;/owner</code>, so after a
+          restart <code>reconstructRun</code> hands it back only to that principal.
+          <b>Legible to a policy engine.</b> <code>POST /mcp/&lt;method&gt;</code> thin
+          wrappers (<code>/mcp/run/resume</code>, …) run the identical dispatch as
+          <code>POST /mcp</code>; the body's <code>method</code> stays authoritative, a
+          path/body mismatch is <code>-32600</code>. An Istio
+          <code>AuthorizationPolicy</code> / API Gateway route / WAF rule then matches
+          <code>run/resume</code> without parsing JSON-RPC.</dd>
+          <dt>Not in the language</dt><dd>No <code>approvers:</code> list. &ldquo;Who may
+          resume / approve&rdquo; is dynamic policy (on-call rotation, IdP groups) and
+          belongs to Istio / OPA / the gateway authorizer, not a versioned
+          <code>.mh</code> file. Added: <code>context.principal</code> only — read-only,
+          the verified caller identity of the current leg (starter or resumer), for a
+          workflow to <em>record</em> who approved as audit data.</dd>
+          <dt>Deferred</dt><dd>JWKS / JWT verification (re-opens the dependency question;
+          only needed with no gateway authenticating) and an <code>--authz-endpoint</code>
+          OPA-style webhook — future <code>TokenVerifier</code> mode / flag.</dd>
           <dt>Single pod</dt><dd><span class="yes">unchanged</span> — default verifier is
-          the current static token; <code>approvers:</code> is optional.</dd>
+          the static token; with no verifier there is no principal, and ownership falls
+          back to the Phase-0 session hash. Full gate green (incl. <code>-race</code>),
+          smoke against <code>sample/cloud</code>.</dd>
           <dt>Gaps</dt><dd>3 (P0) &middot; 10 (P1) &middot; 12 (P2)</dd>
         </dl>
       </article>
 
-      <article>
-        <h3><span class="tag">Phase 3</span> The <code>store</code> extension contract</h3>
+      <article class="done">
+        <h3><span class="tag">Phase 3</span> The <code>store</code> extension contract <span class="status">3a done</span></h3>
         <dl>
-          <dt>Goal</dt><dd>Let the four interfaces be backed by an external extension;
-          ship two reference backends.</dd>
-          <dt>Changes</dt><dd>Freeze the consumer-side interface shape. Add the host-side
-          bind path to <code>cli/serve.go</code>: an <code>extension store Backend { ... }</code>
-          declaration discovered in the serve dir (or <code>--store-extension &lt;id&gt;</code>)
-          &rarr; bind an <code>extension.Instance</code> of kind <code>store</code> &rarr;
-          adapter implementing <code>StateStore</code> / <code>SessionStore</code> /
-          <code>RunRegistry</code>. Protocol additions the store needs: a
-          <b>server-lifetime</b> binding with restart-and-backoff (today's
-          <code>maxRestarts = 3</code> is a per-run policy); batched / pipelined calls for
-          the checkpoint hot path; a <code>subscribe</code> / <code>event</code> message
-          shape for watch (or ship poll-only for v1 and decide later). Reference
-          extensions <code>mhl-store-dynamodb</code> and <code>mhl-store-redis</code> in
-          their own repos: kind <code>store</code>, methods <code>get / put / delete /
-          list / cas / lease / renew</code> (+ <code>subscribe</code>),
-          <code>permissions.network</code> for the endpoint, credentials via
-          <code>secret.resolve</code>.</dd>
+          <dt>Goal</dt><dd>Let the durable-state interfaces be backed by an external
+          extension; ship a reference backend.</dd>
+          <dt>Landed (3a)</dt><dd>A single <code>extension store &lt;Name&gt; { dir: ... }</code>
+          declaration in the workflow directory is discovered by <code>cli/serve.go</code>
+          (<code>storext.go</code>), bound <b>host-side</b> — not through the interpreter —
+          with an auth-backed <code>HostContext</code>, and wrapped as a narrow
+          <code>KVStore</code> (<code>get/put/delete/list</code>). <code>mcpserver</code>'s
+          <code>extSessionStore</code> / <code>extCheckpointStore</code> / <code>extStateStore</code>
+          adapters route sessions and <code>run/*</code> checkpoints + owner through it
+          instead of <code>.mhl/state</code>; the per-step checkpoint sink is injected via
+          <code>execsvc.Request.StateStore</code>. The <b>run registry stays in-memory per
+          pod</b> — another pod still <code>reconstructRun</code>s a run from the shared
+          store. Reference: <code>sample/extensions/store-fs</code> (~150-line stdlib Go,
+          one JSON file per key). <code>mcpserver</code> imports no
+          <code>internal/extension</code>.</dd>
+          <dt>Remaining</dt><dd><b>3b</b> — server-lifetime restart-with-backoff
+          (today's <code>maxRestarts = 3</code> is per-run) and a write-through cache for
+          the per-step hot path. <b>3c</b> — <code>mhl-store-dynamodb</code> /
+          <code>mhl-store-redis</code> reference backends (separate repos), a shared
+          contract-test suite, and promoting <code>internal/extension</code> to
+          <code>pkg/</code> to freeze the wire protocol. The <code>store</code> contract
+          stays <code>get</code>/<code>put</code>/<code>delete</code>/<code>list</code> —
+          <code>cas</code>/<code>lease</code>/<code>subscribe</code> were dropped with the
+          Phase 4 direction change.</dd>
           <dt>Single pod</dt><dd><span class="yes">unchanged</span> — with no
-          <code>store</code> declaration, the built-in disk impl is used exactly as now.</dd>
-          <dt>Gaps</dt><dd>unblocks 1 &amp; 2 (P0)</dd>
+          <code>store</code> declaration, the built-in disk impl is used exactly as now.
+          Gate green (incl. <code>-race</code>) + e2e smoke.</dd>
+          <dt>Gaps</dt><dd>durable half of 1 &amp; 2 (P0); the live registry stays per-pod</dd>
         </dl>
       </article>
 
       <article>
-        <h3><span class="tag">Phase 4</span> Distributed run execution</h3>
+        <h3><span class="tag">Phase 4</span> Self-limiting steps: the <code>timeout</code> clause <span class="status">✓ done</span></h3>
         <dl>
-          <dt>Goal</dt><dd>N replicas behind a round-robin load balancer, correctly.</dd>
-          <dt>Changes</dt><dd>Cross-pod cancel: <code>run/cancel</code> writes
-          <code>cancelRequested</code> to the store; the owning pod already checks
-          <code>ctx.Err()</code> at each step boundary — also poll that flag there. Live
-          progress across pods: the owner writes <code>step</code> / <code>stepIndex</code>
-          to the store on each <code>OnStep</code>, so a non-owner <code>run/status</code>
-          returns near-real-time state, not just committed checkpoints. Lease-based
-          ownership: an owner renews a lease; on expiry (pod died mid-run) another pod
-          resumes from the last checkpoint. Decide per load test whether the
-          <code>queued</code> pool is cluster-wide (any pod drains it) or per-pod with the
-          HPA sizing the fleet.</dd>
-          <dt>Single pod</dt><dd><span class="yes">unchanged</span> — the lease and flags
-          are no-ops with one owner and the in-memory registry.</dd>
-          <dt>Gaps</dt><dd>completes 1 (P0) &middot; 4 at cluster scale</dd>
+          <dt>Goal</dt><dd>A runaway or orphaned run self-terminates on whatever pod
+          holds it — no cross-pod coordination — so the terminal state is visible
+          everywhere from the shared store.</dd>
+          <dt>Direction change</dt><dd>The original Phase 4 (distributed live run
+          registry, lease-based ownership, <code>cas</code>/<code>lease</code>/<code>subscribe</code>
+          store methods) was rejected as wrong-layer. Instead the workflow author
+          declares the ceiling in the <code>.mh</code>: <code>step Build timeout 3m { … }</code>,
+          and the same clause on a <code>parallel</code> group bounds the whole barrier.</dd>
+          <dt>Changes</dt><dd>Grammar: an optional <code>( 'timeout' @Duration )?</code>
+          on <code>ast.Step</code> / <code>ast.ParallelGroup</code> (no new lexer token).
+          <code>runtime.Pipeline.StepTimeouts</code> carries it; <code>runner.go</code>'s
+          <code>execStage</code> wraps that one step's context with
+          <code>context.WithTimeout</code>, so every blocking call it makes is aborted on
+          expiry. The step then fails like an explicit <code>fail()</code> — wrapping
+          <code>runtime.ErrStepTimeout</code>, routed through <code>saveCancelCheckpoint</code>
+          — so a <code>checkpoint</code> block keeps it resumable, with a fresh budget each
+          attempt (the deadline is never persisted). <code>mhl lint</code> rejects a
+          non-positive value.</dd>
+          <dt>Single pod</dt><dd><span class="yes">unchanged</span> — a pipeline with no
+          <code>timeout</code> clause is byte-for-byte as before.</dd>
+          <dt>Gaps</dt><dd>a purely non-blocking runaway is still bounded by
+          <code>max_iterations</code>, not this</dd>
         </dl>
       </article>
 
       <article>
-        <h3><span class="tag">Phase 5</span> Client longevity &amp; MCP-standard progress</h3>
+        <h3><span class="tag">Phase 5</span> Optional: cluster ergonomics &amp; client longevity</h3>
         <dl>
-          <dt>Goal</dt><dd>A stock MCP client survives the API Gateway timeout without
-          bespoke <code>run/*</code> code.</dd>
-          <dt>Changes</dt><dd>A <code>tools/call</code> that runs past a threshold is
-          auto-promoted to an async run, returning a <code>runId</code> reference in the
-          tool result. Advertise the <code>run/*</code> capability in
-          <code>initialize</code> / <code>server/discover</code> with an explicit version.
-          Track the upstream MCP progress-notification mechanism and adopt it when it
-          stabilizes.</dd>
+          <dt>Goal</dt><dd>Smooth the remaining rough edges of an N-replica deploy —
+          only as load tests show they matter.</dd>
+          <dt>Changes</dt><dd>An operational <code>--max-run-duration</code> backstop for
+          workflows that declare no <code>timeout</code> anywhere. Cross-pod
+          <code>run/cancel</code> via a <code>cancelRequested</code> flag in the shared
+          store (the owning pod polls it at each step boundary). Per-step progress
+          writes to the store so a non-owner <code>run/status</code> shows the current
+          step. A <code>tools/call</code> that runs long is auto-promoted to an async run,
+          returning a <code>runId</code>; advertise the <code>run/*</code> capability in
+          <code>initialize</code> with a version.</dd>
           <dt>Single pod</dt><dd><span class="yes">improved</span></dd>
           <dt>Gaps</dt><dd>4 client story (P0) &middot; 11 (P2)</dd>
         </dl>
@@ -382,7 +465,7 @@
     <figure>
       <div class="fig-scroll">
         <svg class="diagram" viewBox="0 0 1000 210" role="img"
-             aria-label="A horizontal timeline of phases 0 through 5. A continuous baseline runs beneath all of them labelled: single-replica deploy works with zero config at every phase. A marker at Phase 3 reads: from here, N replicas are safe. Phases 0 to 2 are grouped as single-pod hardening; phases 3 to 5 as horizontal scale.">
+             aria-label="A horizontal timeline of phases 0 through 5. Phases 0 (seams), 1 (k8s-native), 2 (identity) and 4 (step timeout) are marked done; Phase 3 (store) is partly done. A continuous baseline runs beneath all of them labelled: single-replica deploy works with zero config at every phase. A marker at Phase 3 reads: from here, N replicas are safe. Phases 0 to 2 are grouped as single-pod hardening; phases 3 to 5 as horizontal scale.">
           <defs>
             <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
               <path d="M0 0L10 5L0 10z" fill="currentColor"/>
@@ -393,24 +476,32 @@
           <line class="d-div" x1="470" y1="34" x2="470" y2="150"/>
 
           <g>
-            <rect class="d-box-2" x="20" y="40" width="140" height="44" rx="6"/>
-            <text class="d-sub" x="90" y="60" text-anchor="middle">Phase 0</text>
-            <text class="d-sub" x="90" y="75" text-anchor="middle">seams</text>
-            <rect class="d-box-2" x="172" y="40" width="140" height="44" rx="6"/>
-            <text class="d-sub" x="242" y="60" text-anchor="middle">Phase 1</text>
-            <text class="d-sub" x="242" y="75" text-anchor="middle">k8s-native</text>
-            <rect class="d-box-2" x="324" y="40" width="140" height="44" rx="6"/>
-            <text class="d-sub" x="394" y="60" text-anchor="middle">Phase 2</text>
-            <text class="d-sub" x="394" y="75" text-anchor="middle">identity</text>
-            <rect class="d-new" x="484" y="40" width="140" height="44" rx="6"/>
+            <rect x="20" y="40" width="140" height="44" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6"/>
+            <circle cx="150" cy="50" r="8" fill="var(--accent)"/>
+            <path d="M146 50 l3 3 l5 -6" fill="none" stroke="var(--surface)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <text class="d-sub" x="86" y="60" text-anchor="middle">Phase 0</text>
+            <text class="d-sub" x="86" y="75" text-anchor="middle">seams · done</text>
+            <rect x="172" y="40" width="140" height="44" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6"/>
+            <circle cx="302" cy="50" r="8" fill="var(--accent)"/>
+            <path d="M298 50 l3 3 l5 -6" fill="none" stroke="var(--surface)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <text class="d-sub" x="238" y="60" text-anchor="middle">Phase 1</text>
+            <text class="d-sub" x="238" y="75" text-anchor="middle">k8s-native · done</text>
+            <rect x="324" y="40" width="140" height="44" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6"/>
+            <circle cx="454" cy="50" r="8" fill="var(--accent)"/>
+            <path d="M450 50 l3 3 l5 -6" fill="none" stroke="var(--surface)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <text class="d-sub" x="390" y="60" text-anchor="middle">Phase 2</text>
+            <text class="d-sub" x="390" y="75" text-anchor="middle">identity · done</text>
+            <rect x="484" y="40" width="140" height="44" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="5 3"/>
             <text class="d-sub" x="554" y="60" text-anchor="middle">Phase 3</text>
-            <text class="d-sub" x="554" y="75" text-anchor="middle">store contract</text>
-            <rect class="d-new" x="636" y="40" width="140" height="44" rx="6"/>
+            <text class="d-sub" x="554" y="75" text-anchor="middle">store · 3a done</text>
+            <rect x="636" y="40" width="140" height="44" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6"/>
+            <circle cx="766" cy="50" r="8" fill="var(--accent)"/>
+            <path d="M762 50 l3 3 l5 -6" fill="none" stroke="var(--surface)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             <text class="d-sub" x="706" y="60" text-anchor="middle">Phase 4</text>
-            <text class="d-sub" x="706" y="75" text-anchor="middle">distributed runs</text>
-            <rect class="d-box-2" x="788" y="40" width="140" height="44" rx="6"/>
+            <text class="d-sub" x="706" y="75" text-anchor="middle">step timeout · done</text>
+            <rect class="d-box-2" x="788" y="40" width="140" height="44" rx="6" stroke-dasharray="5 3"/>
             <text class="d-sub" x="858" y="60" text-anchor="middle">Phase 5</text>
-            <text class="d-sub" x="858" y="75" text-anchor="middle">client longevity</text>
+            <text class="d-sub" x="858" y="75" text-anchor="middle">optional</text>
           </g>
           <path class="d-edge" d="M160 62 L172 62" marker-end="url(#ah2)"/>
           <path class="d-edge" d="M312 62 L324 62" marker-end="url(#ah2)"/>
@@ -436,9 +527,12 @@
   <section>
     <h2>Language core vs. external extension</h2>
     <div class="prose">
-      <p>The dividing test: <b>does it decide trust, or does it just move bytes?</b>
-      Trust decisions and process lifecycle stay in core; swappable I/O and
-      vendor-specific glue become extensions.</p>
+      <p>The dividing test has three answers, not two. <b>Trust boundaries</b> (who a
+      caller is) and <b>process lifecycle</b> stay in core. <b>Swappable I/O</b> and
+      vendor glue become extensions. <b>Dynamic policy</b> (may this caller do this,
+      given today's on-call and IdP groups) leaves the runtime entirely — it lives in
+      the mesh / an authorizer. Anything that would otherwise be a static list in a
+      versioned <code>.mh</code> file is a smell.</p>
     </div>
     <div class="split-wrap">
       <table>
@@ -448,7 +542,7 @@
         <tbody>
           <tr>
             <td>The <code>StateStore</code> / <code>SessionStore</code> /
-            <code>RunRegistry</code> / <code>Lease</code> <b>interfaces</b>, plus the
+            <code>RunRegistry</code> / <code>KVStore</code> <b>interfaces</b>, plus the
             built-in disk + in-memory implementation</td>
             <td>DynamoDB, Redis, S3, Postgres <b>backends</b> for those interfaces
             (kind <code>store</code>)</td>
@@ -462,25 +556,34 @@
           <tr>
             <td>Concurrency limiting, the <code>queued</code> state, run scheduling
             policy</td>
-            <td>A cluster-wide queue backend (SQS) <em>if</em> Phase 4 needs one &mdash;
-            same <code>store</code> family or a sibling <code>queue</code> kind</td>
+            <td>A cluster-wide queue backend (SQS) <em>if</em> Phase 5 ever needs one
+            &mdash; same <code>store</code> family or a sibling <code>queue</code> kind</td>
           </tr>
           <tr>
             <td><code>TokenVerifier</code> and its JWKS / JWT / trusted-header modes
-            &mdash; a trust boundary</td>
-            <td>&mdash; never; token verification is not delegated to a pinned binary</td>
+            &mdash; it only <em>extracts</em> a verified principal (a trust boundary,
+            not delegated to a pinned binary); run/session ownership keyed on that
+            principal</td>
+            <td>The identity provider (Cognito, the team IdP) &mdash; already upstream
+            of the gateway</td>
           </tr>
           <tr>
-            <td>OpenTelemetry instrumentation (the spans and metrics themselves);
-            OTLP export configured by standard env</td>
-            <td>Optional: a bespoke metrics / trace <b>exporter</b> only if you refuse an
-            OTel SDK dependency in core (not recommended)</td>
+            <td>Metrics <b>instrumentation</b> (the counter increments at run
+            start/end — only core sees the lifecycle) and the <code>MetricsSink</code>
+            interface; the built-in <code>*promMetrics</code> renders Prometheus text
+            at <code>/metrics</code> (a neutral format every scraper consumes)</td>
+            <td>A push / OTLP / StatsD <b>sink</b> as another <code>MetricsSink</code>
+            implementation (no <code>/metrics</code> route). Not OpenTelemetry in
+            core — the repo keeps its single dependency</td>
           </tr>
           <tr>
-            <td>The <code>approvers:</code> language surface and its evaluation against
-            the principal</td>
-            <td>The identity provider itself (Cognito, the team IdP) &mdash; already
-            external, upstream of API Gateway</td>
+            <td>The gate <em>mechanism</em> (<code>fail()</code> + <code>run/resume</code>)
+            and <code>context.principal</code> (read-only audit data); a path / header
+            per <code>run/*</code> method so the request is legible to a policy engine</td>
+            <td>The <em>allow / deny</em> decision for <code>run/resume</code> &mdash;
+            Istio <code>AuthorizationPolicy</code> / Envoy ext_authz + OPA / the gateway
+            authorizer, which have live IdP-group and on-call membership. No
+            <code>approvers:</code> list in <code>.mh</code></td>
           </tr>
           <tr>
             <td>The host-side extension-consumer path in <code>cli/serve</code> and the
@@ -551,8 +654,8 @@ call { declaration: Backend, operation: "cas",
         <thead><tr><th>Decision</th><th>When</th><th>Default if undecided</th></tr></thead>
         <tbody>
           <tr><td>Pipe-RPC latency acceptable on the checkpoint hot path?</td><td>Phase 0 benchmark, before Phase 3</td><td>Adapter write-through cache + async flush</td></tr>
-          <tr><td>Protocol gains <code>subscribe</code>, or poll-only?</td><td>Phase 3</td><td>Poll-only v1; revisit in Phase 4</td></tr>
-          <tr><td>Cluster-wide queue, or per-pod + HPA?</td><td>Phase 4, from a load test</td><td>Per-pod; HPA on the in-flight gauge</td></tr>
+          <tr><td>Protocol gains <code>subscribe</code>, or poll-only?</td><td>Phase 3</td><td>Poll-only; <code>subscribe</code> dropped with the Phase 4 change</td></tr>
+          <tr><td>Cluster-wide queue, or per-pod + HPA?</td><td>Phase 5, from a load test</td><td>Per-pod; HPA on the in-flight gauge</td></tr>
           <tr><td>Promote <code>internal/extension</code> to <code>pkg/</code> (freezes the wire protocol)?</td><td>Gates Phase 3's out-of-process story</td><td>Keep <code>internal/</code>; freeze the consumer interface only</td></tr>
           <tr><td>IRSA credential passthrough mechanism</td><td>Before the DynamoDB backend</td><td>Manifest <code>env</code> allowlist</td></tr>
         </tbody>
