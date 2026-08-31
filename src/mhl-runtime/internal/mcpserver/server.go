@@ -39,6 +39,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
@@ -95,6 +96,10 @@ type session struct {
 	protocol string
 	// id is the Mcp-Session-Id value (HTTP session mode only; "" otherwise).
 	id string
+	// principal is the verified caller identity (HTTP only, from
+	// TokenVerifier), refreshed on every request. "" when no verifier yields
+	// one — run ownership then falls back to the per-session hash.
+	principal string
 }
 
 // Serve loads every .mh file under dir, then reads JSON-RPC messages from in
@@ -138,6 +143,19 @@ type server struct {
 	// logw is the diagnostics sink (stderr on stdio) — a running tool's
 	// log()/step output goes here, never to the protocol stream.
 	logw io.Writer
+	// log is structured lifecycle logging (JSON to the diagnostics writer).
+	// Non-nil for the HTTP transport; nil on stdio, where callers must
+	// nil-check (see slog helper `logAttrs`).
+	log *slog.Logger
+}
+
+// logEvent emits one structured lifecycle line, tolerating a nil logger
+// (stdio never sets one).
+func (s *server) logEvent(level slog.Level, msg string, args ...any) {
+	if s == nil || s.log == nil {
+		return
+	}
+	s.log.Log(context.Background(), level, msg, args...)
 }
 
 // writeLine marshals m as one newline-terminated JSON object.
@@ -360,12 +378,13 @@ func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage
 	defer os.RemoveAll(base)
 
 	res, runErr := execsvc.Run(execsvc.Request{
-		Context:  ctx,
-		Program:  w.Program,
-		File:     w.File,
-		Workflow: w.Name,
-		Inputs:   p.Arguments,
-		BaseDir:  base,
+		Context:   ctx,
+		Program:   w.Program,
+		File:      w.File,
+		Workflow:  w.Name,
+		Inputs:    p.Arguments,
+		BaseDir:   base,
+		Principal: sess.principal,
 		// A running tool's log()/step output goes to the diagnostics sink
 		// (stderr), never to the protocol stream. The deprecated Logging
 		// feature's own migration guidance for stdio is "log to stderr".

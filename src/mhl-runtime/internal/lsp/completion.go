@@ -12,7 +12,7 @@ var keywords = []string{
 	"agent", "memory", "tool", "prompt", "pipeline", "workflow", "extension", "loop",
 	"use", "from", "as", "export", "input", "step", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
-	"return", "break", "goto", "spawn", "wait", "parallel", "true", "false", "null",
+	"return", "break", "goto", "spawn", "wait", "parallel", "timeout", "true", "false", "null",
 }
 
 // memberAccessRe matches an in-progress "name.partial" at the very end of

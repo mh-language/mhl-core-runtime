@@ -63,9 +63,15 @@ type Pipeline struct {
 	// Description is the optional `description: "..."` body property — a
 	// human-readable summary surfaced as the MCP tool / A2A skill description
 	// by the serve adapters. Empty when the pipeline declares none.
-	Description   string
-	Steps         []string
-	Stages        []Stage
+	Description string
+	Steps       []string
+	Stages      []Stage
+	// StepTimeouts maps a step name — or a `parallel` group name — to the
+	// duration from its optional `timeout <dur>` header clause. Nil when no
+	// clause is declared anywhere (a missing key reads back as 0, i.e. no
+	// cap). Runner.Run wraps that step's / group's context with
+	// context.WithTimeout; an expiry fails it like an explicit fail().
+	StepTimeouts  map[string]time.Duration
 	Checkpoint    CheckpointConfig
 	Spawn         SpawnConfig
 	Loop          bool
@@ -113,13 +119,16 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 		case m.Step != nil:
 			out.Steps = append(out.Steps, m.Step.Name)
 			out.Stages = append(out.Stages, Stage{Name: m.Step.Name, Steps: []string{m.Step.Name}})
+			out.setStepTimeout(m.Step.Name, m.Step.Timeout)
 		case m.Parallel != nil:
 			names := make([]string, 0, len(m.Parallel.Steps))
 			for _, s := range m.Parallel.Steps {
 				names = append(names, s.Name)
+				out.setStepTimeout(s.Name, s.Timeout)
 			}
 			out.Steps = append(out.Steps, names...)
 			out.Stages = append(out.Stages, Stage{Name: m.Parallel.Name, Steps: names, Parallel: true})
+			out.setStepTimeout(m.Parallel.Name, m.Parallel.Timeout)
 		case m.Prop != nil && m.Prop.Name == "checkpoint":
 			out.Checkpoint = checkpointFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "spawn":
@@ -139,6 +148,24 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 		}
 	}
 	return out
+}
+
+// setStepTimeout records the parsed duration of a `timeout <dur>` header
+// clause under the given step or parallel-group name. A blank or
+// unparseable string is ignored (internal/lang/lint reports the typo); the
+// map is created lazily so a pipeline with no clause keeps a nil map.
+func (p *Pipeline) setStepTimeout(name, raw string) {
+	if raw == "" {
+		return
+	}
+	d, ok := ast.ParseDuration(raw)
+	if !ok || d <= 0 {
+		return
+	}
+	if p.StepTimeouts == nil {
+		p.StepTimeouts = make(map[string]time.Duration)
+	}
+	p.StepTimeouts[name] = d
 }
 
 // firstStage returns the pipeline's first stage, or ok=false for a pipeline

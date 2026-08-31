@@ -104,6 +104,33 @@ pipeline Flow {
 	}
 }
 
+// TestStepTimeoutClauseParses covers the optional `timeout <duration>`
+// header clause on a step (internal/lang/ast/pipeline.go Step.Timeout): the
+// duration lexes as a single token, a step without the clause has an empty
+// Timeout, and a plain step after one still parses.
+func TestStepTimeoutClauseParses(t *testing.T) {
+	prog, err := Parse(`
+pipeline P {
+    step A timeout 3m { log("a") }
+    step B { log("b") }
+    step C timeout 500ms { log("c") }
+}
+`)
+	if err != nil {
+		t.Fatalf("expected the timeout clause to parse, got: %v", err)
+	}
+	body := prog.Decls[0].Pipeline.Body
+	if body[0].Step == nil || body[0].Step.Timeout != "3m" {
+		t.Fatalf("step A Timeout = %q, want 3m", body[0].Step.Timeout)
+	}
+	if body[1].Step.Timeout != "" {
+		t.Fatalf("step B Timeout = %q, want empty", body[1].Step.Timeout)
+	}
+	if body[2].Step.Timeout != "500ms" {
+		t.Fatalf("step C Timeout = %q, want 500ms", body[2].Step.Timeout)
+	}
+}
+
 // TestInlineControlFlowBodyParses covers the brace-less inline form of
 // if/else, while, and for-in bodies (internal/lang/ast/pipeline.go): each
 // accepts a single bare statement in place of a `{ ... }` block, and both

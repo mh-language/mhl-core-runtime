@@ -110,7 +110,7 @@ func TestDiskCheckpointStoreLoadExists(t *testing.T) {
 		t.Error("missing run reported as present")
 	}
 
-	sd := d.StateDir("run1")
+	sd := d.stateDir("run1")
 	if err := os.MkdirAll(sd, 0o755); err != nil {
 		t.Fatal(err)
 	}

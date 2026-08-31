@@ -1,0 +1,40 @@
+// A deliberately slow workflow (~9s) with no per-step checkpoint — for
+// exercising the Phase-1 lifecycle features against `mhl serve mcp --http`:
+//
+//   * graceful drain: SIGTERM the server with `--drain-timeout 30s` while a
+//     SlowBuild run is `working`; it should finish (not be killed) and only
+//     then does the process exit. Without the flag the run is canceled at once.
+//   * shutdown checkpoint: with `checkpoint { enabled: true }` (no strategy)
+//     and `--state-dir`, a run cut short by a drain deadline still leaves a
+//     resume point on disk — `run/status` after a restart shows resumable:true.
+//   * concurrency (Phase 1b, once landed): with `--max-concurrent-runs 1`,
+//     a second run/start returns `state: "queued"` until the first finishes.
+//   * step timeout: the `Ship` step declares `timeout 1s` but sleeps 3s, so
+//     it self-terminates — `run/status` reports `failed` with an error that
+//     mentions the timeout, and `run/resume` re-enters `Ship` with a fresh
+//     1s budget (bump it to `timeout 10s` to let the run complete).
+
+pipeline SlowBuild {
+    description: "Three ~3s stages: compile, package, ship."
+
+    input target: string
+
+    checkpoint: {
+        enabled: true
+        ttl: 7d
+    }
+
+    var out = ""
+
+    step Compile {
+        out = cmd.exec(["sh", "-c", "sleep 3; echo compiled ${target}"]).stdout
+    }
+
+    step Package {
+        out = cmd.exec(["sh", "-c", "sleep 3; echo packaged"]).stdout + " / " + out
+    }
+
+    step Ship timeout 1s {
+        out = cmd.exec(["sh", "-c", "sleep 3; echo shipped"]).stdout + " / " + out
+    }
+}

@@ -10,8 +10,26 @@ differs is the transport and **who waits for the run to finish**.
 | 3. HTTP asynchronous (`run/*`) | `POST /mcp` | no — returns a `runId` | yes, via `run/status` |
 
 HTTP server config: default bind `127.0.0.1:8711`; `--token` /
-`MHL_SERVE_TOKEN` turns on `Authorization: Bearer`; `Origin`, when sent, must
-be loopback.
+`MHL_SERVE_TOKEN` turns on `Authorization: Bearer`; `--principal-header` /
+`MHL_SERVE_PRINCIPAL_HEADER` (requires `--token`) keys run ownership on a
+verified principal from that header; `Origin`, when sent, must be loopback.
+`--state-dir` / `MHL_SERVE_STATE_DIR` persists async run state across a restart. `--drain-timeout` / `MHL_SERVE_DRAIN_TIMEOUT` (default 0 =
+cancel at once) gives in-flight async runs that long to finish on SIGTERM.
+`--max-concurrent-runs` / `MHL_SERVE_MAX_CONCURRENT_RUNS` (default 0 =
+unlimited) bounds executing runs; extras are `queued`.
+
+Per-method paths: `POST /mcp/<method>` (`/mcp/run/resume`, `/mcp/tools/call`, …)
+run the identical dispatch as `POST /mcp`, but let an Istio `AuthorizationPolicy`
+/ API Gateway route / WAF rule match one method without parsing the JSON-RPC
+body. The body's `method` stays authoritative; a mismatch is `-32600` (400).
+POST-only (no DELETE); `GET` → 405.
+
+Operational endpoints, unauthenticated: `GET /healthz` (liveness, always 200
+while up), `GET /readyz` (200, or 503 once draining), `GET /metrics`
+(Prometheus text — run counters, duration sum/count, tool-call counters, and
+live `runs_active` / `runs_queued` / `sessions_active` gauges; 404 if a
+non-Prometheus `MetricsSink` is configured). Lifecycle events also go to
+stderr as JSON (`log/slog`), keyed by `runId` and `owner`.
 
 ---
 
@@ -180,30 +198,65 @@ sequenceDiagram
 ### `asyncRun` states
 
 ```
-working ──▶ completed        (run finished with no error — state dir removed)
-        ├─▶ failed           (runErr != nil and ctx not cancelled — resumable if a checkpoint is on disk)
-        └─▶ canceled         (run/cancel, or runErr with ctx cancelled)
+queued  ──▶ working           (a concurrency slot freed — see --max-concurrent-runs)
+        └─▶ canceled          (run/cancel or shutdown while still waiting for a slot)
 
-failed / canceled ──▶ working   (run/resume, when the workflow has a per_step checkpoint)
+working ──▶ completed         (run finished with no error — state dir removed)
+        ├─▶ failed            (runErr != nil and ctx not cancelled — resumable if a checkpoint is on disk;
+        │                      a step's `timeout <dur>` clause elapsing lands here, `error` wraps
+        │                      runtime.ErrStepTimeout, and a resume re-enters the step with a fresh budget)
+        └─▶ canceled          (run/cancel, or runErr with ctx cancelled)
+
+failed / canceled ──▶ queued|working   (run/resume, when the workflow has a per_step checkpoint)
 ```
+
+A run starts `working` immediately unless `--max-concurrent-runs` is set and
+every slot is taken — then it is `queued` and `run/status` reports its
+`queuePosition` (0 = next up). A synchronous `tools/call` does not queue: it
+holds the client connection while it waits up to ~5s for a slot, then either
+runs or returns `-32000` "server at capacity".
 
 `reached` is the ordered list of steps that **started** (fed by `OnStep`);
 on completion it becomes `Result.Skipped ++ Result.Executed` (authoritative,
 and across a resume it includes the steps the resume skipped over). `vars`
 appears only in `completed`; `error` only in `failed` / `canceled`;
-`resumable` only when `run/resume` can continue the run.
+`resumable` only when `run/resume` can continue the run; `queuePosition` only
+while `queued`.
 
-### Ownership
+`run/logs { runId, since? }` returns `{ text, nextSince, dropped? }` — this
+run's own ~64 KiB rolling copy of its `step:` / `log()` output, cursored by
+byte offset (poll with the previous `nextSince`). Owner-gated like
+`run/status`. A run reconstructed from disk after a restart has an empty
+buffer (its output happened in the previous process). The same output is also
+written to the server's stderr diagnostics sink.
 
-`rn.owner` = `sha256(Mcp-Session-Id)` of the session that ran `run/start`
-(hashed so a leaked run view carries no usable session credential). `ownedRun`
-gates `run/status` / `run/resume` / `run/cancel`, and `run/list` filters to
-the caller's own runs; a non-owner is answered exactly like an unknown
-`runId` (`-32602`), so the method is not an existence oracle. Stateless
-callers have no session, so `owner` is `""` and all stateless callers share
-it — stateless mode has no per-caller isolation. After a restart the owner
-session no longer exists; `reconstructRun` then claims the run for the first
-caller that names the (128-bit, unguessable) `runId`.
+### Identity & ownership
+
+`handleMCP` runs a `TokenVerifier` (verifier.go) on every request: `staticToken`
+(the historical `Authorization: Bearer <--token>` check, principal `""`) or —
+with `--principal-header` — `trustedHeader`, which requires that bearer check to
+pass *and then* reads the principal from the named header (set by an upstream
+authorizer; see `sample/cloud/README.md`). serve.go refuses `--principal-header`
+without `--token`.
+
+`rn.owner` = `httpServer.ownerOf(session)` — `sha256("principal:"+p)` when the
+verifier produced a principal `p`, else the Phase-0 `sha256(Mcp-Session-Id)`
+fallback (so a plain `--token` / no-verifier deployment is unchanged; stateless
+callers still share the `""` owner). `ownedRun` gates `run/status` /
+`run/resume` / `run/cancel` / `run/logs`, and `run/list` filters to the
+caller's own runs; a non-owner is answered exactly like an unknown `runId`
+(`-32602`), so the method is not an existence oracle.
+
+For a principal-owned run the owner is persisted to `<runId>/owner`
+(`CheckpointStore.WriteOwner`), so after a restart `reconstructRun` hands the run
+back only to that same principal — a different caller naming the `runId` gets
+`-32602`. A session-hash owner is *not* persisted (each process mints fresh
+session ids), so there the historical "first caller to name the `runId`
+reclaims it" still applies.
+
+`context.principal` (a `context:` block) exposes the raw verified identity of
+the current leg's caller (the starter, or the resumer) to the workflow — for
+audit, not authorization.
 
 ### Persistence
 
@@ -216,3 +269,16 @@ small JSON file (`tmp` + `rename`) per completed step, sized by the pipeline's
 variable state. `run/status` on a live run stays a pure in-memory read; disk
 is touched only on `run/resume` or a status poll after the registry entry is
 gone.
+
+**External store (Phase 3a).** When the workflow directory declares one
+`extension store <Name> { dir: ... }`, `mhl serve mcp --http` binds that
+extension (host-side, not via the interpreter) and routes durable state
+through it instead of `.mhl/state`: an `extStateStore` intercepts the Runner's
+per-step checkpoints (`runtime.StateStore`, injected via
+`execsvc.Request.StateStore`), `extCheckpointStore` serves the
+reconstruct/owner path, and `extSessionStore` holds sessions — all as
+`get`/`put`/`delete`/`list` calls on `run/<id>/…` and `session/<id>` keys.
+The **run registry stays in-memory per pod**: another pod still
+`reconstructRun`s a run from the shared store, but live cross-pod
+cancel/progress is Phase 4. `--state-dir` is then only a scratch path for the
+interpreter's own working files.

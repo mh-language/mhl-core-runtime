@@ -1,0 +1,50 @@
+// The "daily documentation workflow" from the EKS scenario: several teams run
+// this against `mhl serve mcp --http` behind an authenticated API Gateway.
+//
+// It is long enough (and gated on a human review) that a plain `tools/call`
+// would hit the gateway's ~29s integration timeout — so callers use the async
+// surface: run/start -> poll run/status -> run/resume once approved.
+//
+//   run/start  {"name":"DocPipeline","arguments":{"repo":"payments-api","approved":"no"}}
+//     -> state "failed", step "Review", resumable: true
+//   ...a reviewer reads the draft and decides...
+//   run/resume {"runId":"...","arguments":{"approved":"yes"}}
+//     -> re-runs from Review -> state "completed"
+//
+// `checkpoint { strategy: "per_step" }` is what makes the gate resumable and
+// what lets the run survive a pod restart when the server is started with
+// `--state-dir` / `MHL_SERVE_STATE_DIR`.
+
+pipeline DocPipeline {
+    description: "Draft docs for a repo, wait for human review, then publish."
+
+    input repo: string
+
+    // "no" on run/start parks the run at Review; "yes" on run/resume releases it.
+    input approved: string
+
+    checkpoint: {
+        enabled: true
+        strategy: "per_step"
+        ttl: 7d
+    }
+
+    var draft = ""
+    var review = ""
+    var published = ""
+
+    step Draft {
+        draft = cmd.exec(["sh", "-c", "sleep 1; echo draft docs for ${repo}"]).stdout
+    }
+
+    step Review {
+        if (approved != "yes") {
+            fail("awaiting documentation review for " + repo)
+        }
+        review = "reviewed"
+    }
+
+    step Publish {
+        published = "published docs for " + repo + " (" + review + ")"
+    }
+}

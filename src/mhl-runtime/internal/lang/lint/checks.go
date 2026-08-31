@@ -295,9 +295,13 @@ func pipelineMemberSteps(m *ast.PipelineMember) []*ast.Step {
 	}
 }
 
-// stepLine reports a step's source line, falling back to 1 when the step's
-// first statement carries no position (an empty body).
+// stepLine reports a step's source line, preferring the `step` keyword's own
+// position and falling back to its first statement (then to 1 for an empty
+// body with no position at all).
 func stepLine(s *ast.Step) int {
+	if s.Pos.Line > 0 {
+		return s.Pos.Line
+	}
 	if len(s.Body) > 0 && s.Body[0].Pos.Line > 0 {
 		return s.Body[0].Pos.Line
 	}

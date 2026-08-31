@@ -8,11 +8,15 @@
 //
 // Both take the optional `loop` prefix (`loop pipeline` / `loop workflow`)
 // and the same `repeat: { stop_when, max_iterations }` policy.
+//
+// A `step` (or a `parallel` group) may carry a `timeout <duration>` header
+// clause: the runtime caps that step's wall-clock at the given duration and
+// fails it like `fail()` if it runs over — resumable, per attempt.
 
 pipeline LinearRelease {
     input environment: string
 
-    step Build {
+    step Build timeout 10m {
         log.info("building for ${environment}")
     }
 

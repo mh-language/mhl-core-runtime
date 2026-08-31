@@ -9,7 +9,7 @@ workflow Release {
         ttl: 7d
     }
 
-    step Validate {
+    step Validate timeout 10m {
         var result = cmd.exec(["go", "test", "./..."], timeout: 2m)
         if (result.exit_code != 0) {
             fail(result.stderr)

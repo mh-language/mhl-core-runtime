@@ -15,6 +15,11 @@ type ContextView struct {
 	SessionID string
 	StartedAt string
 	Resumed   bool
+	// Principal is the verified caller identity when the run was started
+	// through `mhl serve mcp --http` with a token verifier configured;
+	// "" otherwise (a plain `mhl run`, stdio, or no verifier). Read-only,
+	// for a workflow to record who triggered or approved a run.
+	Principal string
 	Vars      map[string]any
 }
 
@@ -30,6 +35,7 @@ func contextSnapshot(c *ContextView) map[string]any {
 		"session_id": c.SessionID,
 		"started_at": c.StartedAt,
 		"resumed":    c.Resumed,
+		"principal":  c.Principal,
 		"vars":       vars,
 	}
 }

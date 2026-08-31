@@ -7,7 +7,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/a2aserver"
 	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
@@ -41,12 +43,30 @@ func runServe(args []string, out io.Writer) error {
 
 func runServeMCP(args []string, out io.Writer) error {
 	var (
-		httpMode bool
-		addr     = "127.0.0.1:8711"
-		token    = os.Getenv("MHL_SERVE_TOKEN")
-		stateDir = os.Getenv("MHL_SERVE_STATE_DIR")
-		dir      string
+		httpMode   bool
+		addr       = "127.0.0.1:8711"
+		token      = os.Getenv("MHL_SERVE_TOKEN")
+		stateDir   = os.Getenv("MHL_SERVE_STATE_DIR")
+		principalH = os.Getenv("MHL_SERVE_PRINCIPAL_HEADER")
+		dir        string
 	)
+	var drainTimeout time.Duration
+	if v := os.Getenv("MHL_SERVE_DRAIN_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("MHL_SERVE_DRAIN_TIMEOUT %q: %w", v, err)
+		}
+		drainTimeout = d
+	}
+	var maxRuns int
+	if v := os.Getenv("MHL_SERVE_MAX_CONCURRENT_RUNS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return fmt.Errorf("MHL_SERVE_MAX_CONCURRENT_RUNS %q: want a non-negative integer", v)
+		}
+		maxRuns = n
+	}
+	var err error
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--http":
@@ -69,6 +89,30 @@ func runServeMCP(args []string, out io.Writer) error {
 			}
 			i++
 			stateDir = args[i]
+		case "--drain-timeout":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--drain-timeout requires a duration argument (e.g. 30s)")
+			}
+			i++
+			drainTimeout, err = time.ParseDuration(args[i])
+			if err != nil {
+				return fmt.Errorf("--drain-timeout %q: %w", args[i], err)
+			}
+		case "--max-concurrent-runs":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--max-concurrent-runs requires an integer argument")
+			}
+			i++
+			maxRuns, err = strconv.Atoi(args[i])
+			if err != nil || maxRuns < 0 {
+				return fmt.Errorf("--max-concurrent-runs %q: want a non-negative integer", args[i])
+			}
+		case "--principal-header":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--principal-header requires a header name (e.g. X-Mhl-Principal)")
+			}
+			i++
+			principalH = args[i]
 		default:
 			if dir != "" {
 				return fmt.Errorf("unexpected argument %q", args[i])
@@ -88,13 +132,35 @@ func runServeMCP(args []string, out io.Writer) error {
 	defer loadSessionExtensions(os.Stderr)()
 
 	if httpMode {
+		if principalH != "" && token == "" {
+			return fmt.Errorf("--principal-header needs --token / MHL_SERVE_TOKEN: without the shared gateway↔mhl secret the header is client-spoofable")
+		}
 		if token == "" && !isLoopbackAddr(addr) {
 			fmt.Fprintf(os.Stderr, "mhl serve mcp --http: warning: binding %s with no --token/MHL_SERVE_TOKEN — the endpoint is unauthenticated\n", addr)
 		}
-		if stateDir == "" {
-			fmt.Fprintf(os.Stderr, "mhl serve mcp --http: note: no --state-dir/MHL_SERVE_STATE_DIR — async run state is per-process and lost on restart\n")
+
+		// A `extension store <Name>` declaration in the workflow directory
+		// backs durable state (sessions + checkpoints) with that extension;
+		// otherwise the on-disk .mhl/state tree is used.
+		store, closeStore, err := discoverStoreExtension(dir, os.Stderr)
+		if err != nil {
+			return err
 		}
-		return mcpserver.ServeHTTP(ctx, addr, dir, token, stateDir, os.Stderr)
+		defer closeStore()
+		if store == nil && stateDir == "" {
+			fmt.Fprintf(os.Stderr, "mhl serve mcp --http: note: no --state-dir/MHL_SERVE_STATE_DIR and no `extension store` — async run state is per-process and lost on restart\n")
+		}
+
+		return mcpserver.ServeHTTP(ctx, mcpserver.HTTPConfig{
+			Addr:              addr,
+			Dir:               dir,
+			Token:             token,
+			StateDir:          stateDir,
+			PrincipalHeader:   principalH,
+			Store:             store,
+			DrainTimeout:      drainTimeout,
+			MaxConcurrentRuns: maxRuns,
+		}, os.Stderr)
 	}
 	return mcpserver.Serve(ctx, dir, os.Stdin, os.Stdout, os.Stderr)
 }

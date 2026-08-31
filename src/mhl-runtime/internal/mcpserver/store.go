@@ -30,12 +30,26 @@ type Owner string
 
 // ownerFromSession derives the Owner of a run started by the session with the
 // given id. An empty id (a stateless caller) yields the shared anonymous
-// Owner "" — stateless mode has no per-caller run isolation.
+// Owner "" — stateless mode has no per-caller run isolation. This is the
+// Phase-0 fallback: it applies only when no TokenVerifier produced a
+// principal (see ownerFor / httpServer.ownerOf).
 func ownerFromSession(sessionID string) Owner {
 	if sessionID == "" {
 		return ""
 	}
 	sum := sha256.Sum256([]byte(sessionID))
+	return Owner(hex.EncodeToString(sum[:]))
+}
+
+// ownerFor derives the Owner from a verified caller principal (Phase 2). The
+// principal is hashed with a domain prefix so a leaked run view or log line
+// never carries the raw identity, and so it can't collide with a
+// ownerFromSession value. An empty principal yields "" (no verified identity).
+func ownerFor(principal string) Owner {
+	if principal == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("principal:" + principal))
 	return Owner(hex.EncodeToString(sum[:]))
 }
 
@@ -54,6 +68,8 @@ type SessionStore interface {
 	Delete(id string) bool
 	// SweepIdle drops every session untouched for longer than olderThan.
 	SweepIdle(olderThan time.Duration)
+	// Len is the current session count (for the sessions_active gauge).
+	Len() int
 }
 
 // httpSession is one stored protocol session plus its last-touched time.
@@ -105,6 +121,12 @@ func (s *memSessionStore) SweepIdle(olderThan time.Duration) {
 			delete(s.m, id)
 		}
 	}
+}
+
+func (s *memSessionStore) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.m)
 }
 
 // --- run registry -------------------------------------------------------
@@ -162,20 +184,26 @@ func (r *memRunRegistry) List() []*asyncRun {
 
 // --- checkpoint store -------------------------------------------------
 
-// CheckpointStore is the view of the on-disk .mhl/state tree that runs.go
-// needs: where a run's checkpoint directory lives, whether it holds a
-// resumable checkpoint, that checkpoint's parsed contents (for
-// reconstructRun after a restart), and removal of a finished run's state.
-// BaseDir is what execsvc.Request.BaseDir is set to for every run.
+// CheckpointStore is what runs.go needs about a run's durable state: a
+// scratch BaseDir for execsvc, whether the run has a resumable checkpoint,
+// that checkpoint's parsed contents (for reconstructRun after a restart), the
+// per-run owner (Phase 2), and removal of a finished run's state. The
+// built-in diskCheckpointStore reads the .mhl/state tree; Phase 3 adds an
+// extension-backed one (extstore.go) — the actual per-step checkpoint writes
+// are intercepted upstream by an injected runtime.StateStore.
 type CheckpointStore interface {
 	BaseDir() string
-	StateDir(runID string) string
-	// Exists reports whether runID has any checkpoint file on disk (a
-	// <pipeline>.json that is not result.json), parseable or not.
+	// Exists reports whether runID has a resumable checkpoint.
 	Exists(runID string) bool
 	// Load returns runID's first parseable checkpoint, or ok=false when the
 	// directory is missing or holds none.
 	Load(runID string) (cp *runtime.Checkpoint, ok bool)
+	// WriteOwner records which Owner a run belongs to, next to its checkpoint,
+	// so reconstructRun after a restart hands the run back only to that owner.
+	WriteOwner(runID string, o Owner) error
+	// ReadOwner returns the persisted Owner for runID; ok=false when none was
+	// written (a pre-Phase-2 run, or an anonymous "" owner).
+	ReadOwner(runID string) (o Owner, ok bool)
 	// Remove deletes runID's entire state directory. Idempotent.
 	Remove(runID string) error
 	// Close releases the store; the disk implementation removes a
@@ -210,12 +238,14 @@ func newDiskCheckpointStore(stateDir string) (*diskCheckpointStore, error) {
 
 func (d *diskCheckpointStore) BaseDir() string { return d.runsDir }
 
-func (d *diskCheckpointStore) StateDir(runID string) string {
+// stateDir is where run id's .mhl/state checkpoint tree lives (private now —
+// only this type's own methods touch it).
+func (d *diskCheckpointStore) stateDir(runID string) string {
 	return filepath.Join(d.runsDir, runtime.StateDirName, runID)
 }
 
 func (d *diskCheckpointStore) Exists(runID string) bool {
-	entries, err := os.ReadDir(d.StateDir(runID))
+	entries, err := os.ReadDir(d.stateDir(runID))
 	if err != nil {
 		return false
 	}
@@ -229,7 +259,7 @@ func (d *diskCheckpointStore) Exists(runID string) bool {
 }
 
 func (d *diskCheckpointStore) Load(runID string) (*runtime.Checkpoint, bool) {
-	stateDir := d.StateDir(runID)
+	stateDir := d.stateDir(runID)
 	entries, err := os.ReadDir(stateDir)
 	if err != nil {
 		return nil, false
@@ -252,8 +282,35 @@ func (d *diskCheckpointStore) Load(runID string) (*runtime.Checkpoint, bool) {
 	return nil, false
 }
 
+// ownerFileName is the per-run file holding its Owner, next to the checkpoint
+// JSON under the run's state dir. No .json suffix, so Exists/Load ignore it.
+const ownerFileName = "owner"
+
+func (d *diskCheckpointStore) WriteOwner(runID string, o Owner) error {
+	if o == "" {
+		return nil // nothing to bind — anonymous run
+	}
+	dir := d.stateDir(runID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp := filepath.Join(dir, ownerFileName+".tmp")
+	if err := os.WriteFile(tmp, []byte(o), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(dir, ownerFileName))
+}
+
+func (d *diskCheckpointStore) ReadOwner(runID string) (Owner, bool) {
+	data, err := os.ReadFile(filepath.Join(d.stateDir(runID), ownerFileName))
+	if err != nil || len(data) == 0 {
+		return "", false
+	}
+	return Owner(strings.TrimSpace(string(data))), true
+}
+
 func (d *diskCheckpointStore) Remove(runID string) error {
-	return os.RemoveAll(d.StateDir(runID))
+	return os.RemoveAll(d.stateDir(runID))
 }
 
 func (d *diskCheckpointStore) Close() error {
