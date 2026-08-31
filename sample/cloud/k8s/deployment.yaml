@@ -1,0 +1,94 @@
+# Single-replica mhl MCP server. State on an emptyDir: it is scoped to the pod
+# and lost when the pod is replaced — fine for the probe / drain / signal
+# smoke test (CENARIO-K8S-001). For run state that survives a pod restart use
+# deployment-durable.yaml + pvc.yaml instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mhl-serve
+  namespace: mhl-serve
+  labels:
+    app.kubernetes.io/name: mhl-serve
+spec:
+  replicas: 1                       # single replica until a shared store lands (design gaps 1-2)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mhl-serve
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mhl-serve
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8711"
+        prometheus.io/path: /metrics
+    spec:
+      # a bit above MHL_SERVE_DRAIN_TIMEOUT so the kubelet lets the drain finish
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mhl
+          image: mhl-serve:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8711
+          env:
+            - name: MHL_SERVE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mhl-serve-token
+                  key: token
+            - name: MHL_SERVE_PRINCIPAL_HEADER
+              value: X-Mhl-Principal
+            - name: MHL_SERVE_STATE_DIR
+              value: /state
+            - name: MHL_SERVE_DRAIN_TIMEOUT
+              value: "30s"
+            - name: MHL_SERVE_MAX_CONCURRENT_RUNS
+              value: "4"
+            - name: TMPDIR
+              value: /tmp
+          # /healthz and /readyz are unauthenticated by design (a kubelet probe
+          # carries no bearer). /readyz flips to 503 the instant a drain starts.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 1
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: state, mountPath: /state }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: state
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

@@ -162,9 +162,11 @@ type httpServer struct {
 
 	// baseCtx is the process lifetime (the SIGINT/SIGTERM context). A
 	// synchronous tools/call descends from it via http.Server.BaseContext, so
-	// it dies at once on a signal. runsCtx is a child of baseCtx that only the
-	// drain path cancels: async runs descend from it, so --drain-timeout can
-	// let them finish past the signal. runsCancel is idempotent.
+	// it dies at once on a signal. runsCtx is deliberately detached from it
+	// (context.WithoutCancel in buildHTTP): async runs descend from runsCtx, and
+	// only the drain path (runsCancel) — or a per-run cancel — stops them, so
+	// --drain-timeout can let them finish past the signal. runsCancel is
+	// idempotent.
 	baseCtx    context.Context
 	runsCtx    context.Context
 	runsCancel context.CancelFunc
@@ -220,7 +222,13 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 		return nil, nil, err
 	}
 
-	runsCtx, runsCancel := context.WithCancel(ctx)
+	// runsCtx must NOT inherit ctx's cancellation: async runs (run/*) descend
+	// from it, and --drain-timeout is what decides when they stop. WithoutCancel
+	// keeps ctx's values while dropping signal propagation, so runsCancel —
+	// called only by drain() — is the sole trigger. (Do not "simplify" this
+	// back to WithCancel(ctx): that lets SIGTERM kill in-flight runs at once and
+	// makes --drain-timeout a no-op.)
+	runsCtx, runsCancel := context.WithCancel(context.WithoutCancel(ctx))
 	var sem chan struct{}
 	if cfg.MaxConcurrentRuns > 0 {
 		sem = make(chan struct{}, cfg.MaxConcurrentRuns)

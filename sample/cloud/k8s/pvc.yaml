@@ -1,0 +1,16 @@
+# Durable run state: a PVC so a `runId` survives a pod restart / reschedule
+# (the CENARIO-011 property, but across a real pod boundary). Pair with
+# deployment-durable.yaml. Uses the cluster default StorageClass
+# (Docker Desktop: "hostpath"; minikube: "standard").
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mhl-serve-state
+  namespace: mhl-serve
+  labels:
+    app.kubernetes.io/name: mhl-serve
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi

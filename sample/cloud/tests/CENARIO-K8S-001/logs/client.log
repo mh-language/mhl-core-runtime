@@ -1,0 +1,34 @@
+[11:10:12] contexto kubectl: docker-desktop
+[11:10:12] docker build -f sample/cloud/Dockerfile -t mhl-serve:local . (a partir de /Users/yanjustino/Documents/mhl.lang.nosync)
+[11:10:15] imagem construída
+[11:10:15] aplicando namespace/service/deployment e Secret (token aleatório)
+namespace/mhl-serve created
+secret/mhl-serve-token created
+service/mhl-serve created
+deployment.apps/mhl-serve created
+[11:10:15] aguardando rollout (até 150s)...
+Waiting for deployment "mhl-serve" rollout to finish: 0 of 1 updated replicas are available...
+deployment "mhl-serve" successfully rolled out
+[11:10:17] pod=mhl-serve-6d5ddbf488-q9p55 ip=10.1.0.10
+[11:10:17] Endpoints antes: [10.1.0.10]
+[11:10:17] probes: /healthz=200 /readyz=200 /metrics=200 ; POST /mcp sem token=401
+[11:10:17] initialize serverInfo.name=mhl ; tools/list=[DocPipeline,SlowBuild]
+[11:10:17] run/start SlowBuild -> runId=26b9ccecb988c3b3a34f4c686a76ba68 state=working
+[11:10:19] kubectl delete pod mhl-serve-6d5ddbf488-q9p55 --grace-period=40 (assíncrono)
+pod "mhl-serve-6d5ddbf488-q9p55" deleted from mhl-serve namespace
+[11:10:19] IP do pod saiu dos Endpoints na sondagem #1
+pod/mhl-serve-6d5ddbf488-q9p55 condition met
+[11:10:21] pod removido 2s após o delete
+[11:10:21] ----- logs do pod drenado (fim) -----
+mhl serve mcp --http: 2 tool(s) from /workflows on http://[::]:8711/mcp
+{"time":"2026-08-31T14:10:17.809219627Z","level":"INFO","msg":"run started","component":"mcpserver","runId":"26b9ccecb988c3b3a34f4c686a76ba68","owner":"8f5bbb17ae8b6c2e3cbeb4c6e98bdb32711b408177d011229006ce8750d0107c","tool":"SlowBuild","resume":false}
+session: 26b9ccecb988c3b3a34f4c686a76ba68
+step: Compile
+{"time":"2026-08-31T14:10:20.235988087Z","level":"INFO","msg":"draining","component":"mcpserver","timeout":"30s","working":1}
+{"time":"2026-08-31T14:10:20.236739795Z","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"26b9ccecb988c3b3a34f4c686a76ba68","owner":"8f5bbb17ae8b6c2e3cbeb4c6e98bdb32711b408177d011229006ce8750d0107c","tool":"SlowBuild","durationMs":2427,"steps":1}
+deployment "mhl-serve" successfully rolled out
+[11:10:21] novo pod=mhl-serve-6d5ddbf488-7qfwk phase=Running restartCount=0 ; deploy availableReplicas=1
+[11:10:21]   ! logs sem 'run completed'/'run failed' (a run não terminou no drain?)
+[11:10:21]   ! pod sumiu em 2s (<4s): não esperou a run
+[11:10:21] RESULTADO: NÃO FUNCIONOU — veja as verificações acima
+[11:10:21] KEEP=1 — namespace mhl-serve preservado

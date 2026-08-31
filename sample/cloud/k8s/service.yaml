@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mhl-serve
+  namespace: mhl-serve
+  labels:
+    app.kubernetes.io/name: mhl-serve
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mhl-serve
+  ports:
+    - name: http
+      port: 8711
+      targetPort: http

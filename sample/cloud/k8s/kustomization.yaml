@@ -1,0 +1,19 @@
+# Base overlay: namespace + secret + service + the emptyDir Deployment.
+#   kubectl apply -k sample/cloud/k8s
+#
+# For the durable variant, comment out deployment.yaml below and add
+# pvc.yaml + deployment-durable.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - secret.yaml
+  - service.yaml
+  - deployment.yaml
+  # - pvc.yaml
+  # - deployment-durable.yaml
+
+images:
+  - name: mhl-serve
+    newTag: local

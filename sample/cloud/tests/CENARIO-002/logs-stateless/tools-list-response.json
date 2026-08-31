@@ -1,0 +1,53 @@
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "_meta": {
+            "io.modelcontextprotocol/serverInfo": {
+                "name": "mhl",
+                "version": "v1.1.0-alpha-6-g439ea52"
+            }
+        },
+        "cacheScope": "public",
+        "resultType": "complete",
+        "tools": [
+            {
+                "description": "Draft docs for a repo, wait for human review, then publish.",
+                "inputSchema": {
+                    "additionalProperties": false,
+                    "properties": {
+                        "approved": {
+                            "type": "string"
+                        },
+                        "repo": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "approved",
+                        "repo"
+                    ],
+                    "type": "object"
+                },
+                "name": "DocPipeline"
+            },
+            {
+                "description": "Three ~3s stages: compile, package, ship.",
+                "inputSchema": {
+                    "additionalProperties": false,
+                    "properties": {
+                        "target": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "target"
+                    ],
+                    "type": "object"
+                },
+                "name": "SlowBuild"
+            }
+        ],
+        "ttlMs": 300000
+    }
+}

@@ -143,7 +143,10 @@ sequenceDiagram
 `run/*` is routed in `handleMCP` **before** `dispatch` (it is HTTP-only — it
 needs the `h.runs` registry). It passes the same protocol-context gate as
 `tools/*`. The run lives in a goroutine whose context descends from
-`h.baseCtx` (the server lifetime), **not** from `r.Context()`.
+`h.runsCtx`, **not** from `r.Context()`. `runsCtx` is deliberately detached from
+the SIGINT/SIGTERM context (`context.WithoutCancel` in `buildHTTP`): a signal
+alone does not stop an async run — only `drain()` (`runsCancel`, gated by
+`--drain-timeout`) or a per-run `cancel()` (`run/cancel`, shutdown) does.
 
 ```mermaid
 sequenceDiagram
@@ -156,7 +159,7 @@ sequenceDiagram
 
     C->>H: POST /mcp  run/start { name, arguments }
     H->>H: gate (session or params._meta) · resolve tool  (-32602 if unknown)
-    H->>H: ctx,cancel = WithCancel(baseCtx)
+    H->>H: ctx,cancel = WithCancel(runsCtx)   %% runsCtx detached from SIGTERM
     H->>Reg: runs[runId] = asyncRun{ state:"working", cancel, done }
     H->>G: go execRun(ctx, rn, resume=false)
     H-->>C: 200 + { runId, state:"working" }
