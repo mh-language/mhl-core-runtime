@@ -1,0 +1,36 @@
+[15:17:00] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/CENARIO-003/mhl serve mcp --http --addr 127.0.0.1:8715 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud)
+[15:17:00] servidor PID=80620
+[15:17:00] healthz 200 (tentativa 2)
+[15:17:00] request stateless (tools/call name=NaoExisteTool — inexistente):
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "name": "NaoExisteTool",
+        "arguments": {
+            "repo": "demo-api",
+            "approved": "yes"
+        },
+        "_meta": {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {}
+        }
+    }
+}
+[15:17:00] POST /mcp tools/call (nome inexistente) -> HTTP 200
+[15:17:00] corpo da resposta:
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "error": {
+        "code": -32602,
+        "message": "unknown tool \"NaoExisteTool\""
+    }
+}
+
+[15:17:00] controle (nome 'docpipeline', caixa errada) -> error.code=-32602
+[15:17:01] controle (nome válido 'DocPipeline') -> tem error? False ; result.isError=False
+[15:17:01] resposta: http=200 error.code=-32602 error.message='unknown tool "NaoExisteTool"'
+[15:17:01] RESULTADO: FUNCIONOU — servidor rejeitou a tool inexistente com JSON-RPC -32602 "unknown tool"
+PASS

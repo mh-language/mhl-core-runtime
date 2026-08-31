@@ -613,6 +613,33 @@ pipeline P {
 	}
 }
 
+// An `extension store S { ... }` name shares its method names (get/set/append)
+// with `memory`; a call like `var v = S.get("k")` must not be flagged as
+// `memory "S" not found` — the extension declares the target.
+func TestExtensionMethodCallNotFlaggedAsMemory(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+extension store S {
+    dir: "/tmp/x"
+}
+
+pipeline P {
+    step seed {
+        S.put("n", 0)
+    }
+    step bump {
+        var v = S.get("n")
+        S.put("n", v + 1)
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Fatalf("expected no findings, got %d: %+v", len(findings), findings)
+	}
+}
+
 func TestCheckMemoryUnsupportedType(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")

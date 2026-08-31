@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":9,"result":{"reached":["Compile"],"runId":"4359e7c4fa1eb27bcaca29c1f58db9b8","startedAt":"2026-08-31T18:17:09Z","state":"canceled","step":"Compile","stepIndex":1,"stepTotal":3,"tool":"SlowBuild"}}

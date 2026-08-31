@@ -370,6 +370,12 @@ func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage
 	if !ok {
 		return errMsg(id, -32602, fmt.Sprintf("unknown tool %q", p.Name))
 	}
+	// Enforce the advertised inputSchema before spending a run dir on it: a
+	// missing required argument or an undeclared one is -32602 here, not a
+	// late "undefined variable" once a step references it.
+	if err := w.Pipeline.ValidateInputs(p.Arguments); err != nil {
+		return errMsg(id, -32602, err.Error())
+	}
 
 	base, err := os.MkdirTemp("", "mhl-mcp-run-")
 	if err != nil {

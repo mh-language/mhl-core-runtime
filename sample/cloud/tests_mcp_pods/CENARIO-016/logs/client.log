@@ -1,0 +1,22 @@
+[15:17:49] iniciando servidor em 127.0.0.1:8737
+[15:17:49] run/start SlowBuild -> runId=1e3117807451bc615dfccec0d00f9918 state=working
+[15:17:50] run/cancel...
+[15:17:50] run/cancel -> state=canceled (t+1.05s do start)
+[15:17:51] run/status imediato -> state=canceled reached=['Compile']
+[15:17:51] observando 4s se a run avança para Package...
+[15:17:55] run/logs (t+~5s):
+{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "result": {
+        "nextSince": 56,
+        "runId": "1e3117807451bc615dfccec0d00f9918",
+        "text": "session: 1e3117807451bc615dfccec0d00f9918\nstep: Compile\n"
+    }
+}
+[15:17:55] run/status (t+~5s) -> state=canceled reached=['Compile']
+[15:17:55] ----- stderr do servidor -----
+{"time":"2026-08-31T15:17:49.847274-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"1e3117807451bc615dfccec0d00f9918","owner":"53227c8d02044b2c0dce31d30210bade9ab4c337c8110e48d86a048546d574ba","tool":"SlowBuild","resume":false}
+step: Compile
+{"time":"2026-08-31T15:17:50.914971-03:00","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"1e3117807451bc615dfccec0d00f9918","owner":"53227c8d02044b2c0dce31d30210bade9ab4c337c8110e48d86a048546d574ba","tool":"SlowBuild","durationMs":1067,"steps":1}
+[15:17:55] RESULTADO: FUNCIONOU — run/cancel abortou o subprocesso do Compile; a run não avançou para Package

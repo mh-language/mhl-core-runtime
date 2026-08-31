@@ -1,0 +1,10 @@
+foo/bar (id, sessão)                            | HTTP 200  code=-32601  msg=method not found: foo/bar
+corpo não-JSON                                  | HTTP 400  code=-32700
+header MCP-Protocol-Version: 9999-99-99          | HTTP 400  code=-32602  msg=unsupported MCP-Protocol-Version: 9999-99-99
+initialize protocolVersion=1999-01-01            | HTTP 200  result.protocolVersion=2025-06-18
+DELETE /mcp (sessão válida)                    | HTTP 204
+DELETE /mcp (sessão inexistente)                | HTTP 404
+POST /mcp (Mcp-Session-Id inexistente)           | HTTP 404
+notificação notifications/initialized          | HTTP 202  corpo_bytes=0
+ping (sessão legada)                            | HTTP 200  hasResult=True  err=
+ping (stateless)                                 | HTTP 200  code=-32601  msg=method not found: ping

@@ -12,6 +12,12 @@ directory documents the two files that wire one into a project. The end-to-end
 behaviour is covered by `src/mhl-runtime/internal/extension/external` and
 `src/mhl-runtime/internal/cli`'s tests.
 
+The sources here are references (`store-fs`) and test instrumentation
+(`store-probe`). A production-grade extension lives under `src/`, named
+`mhl-*`: [`src/mhl-store-s3/`](../../src/mhl-store-s3/) is an official
+S3-backed `store` backend (real AWS S3 or MinIO/R2/Ceph), with its own
+`docker compose` MinIO and an end-to-end smoke test.
+
 ## Layout
 
 ```

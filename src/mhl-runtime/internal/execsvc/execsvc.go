@@ -58,11 +58,13 @@ type Request struct {
 	// first one declared.
 	Workflow string
 
-	// Inputs are the pipeline's declared inputs. A string value is coerced
-	// against its declared `input name: Type` (the `mhl run --input k=v`
-	// path); a non-string value is assumed already typed (the JSON path an
-	// MCP/A2A adapter takes) and only type-checked. Either way a bad value
-	// fails here, before any step runs.
+	// Inputs are the pipeline's declared inputs. Unless Resume is set, they
+	// are first checked against the pipeline's InputSchema (every declared
+	// input present, no undeclared key — *runtime.InvalidInputsError if not),
+	// then a string value is coerced against its declared `input name: Type`
+	// (the `mhl run --input k=v` path) and a non-string value (the JSON path
+	// an MCP/A2A adapter takes) is type-checked. Any failure returns here,
+	// before a session or state dir is created and before any step runs.
 	Inputs map[string]any
 
 	// BaseDir is the directory the .mhl/ state tree lives under; "" means
@@ -165,6 +167,16 @@ func Run(req Request) (*Result, error) {
 	pipeline, err := runtime.FindPipeline(prog, req.Workflow)
 	if err != nil {
 		return nil, err
+	}
+
+	// Admission check: enforce the pipeline's input contract (InputSchema) —
+	// required inputs present, no undeclared keys — before creating a session,
+	// state dir, or run. Strict always: an unrecognised input is an error, not
+	// a silent no-op. Skipped on resume: the checkpoint owns the inputs then.
+	if !req.Resume {
+		if err := pipeline.ValidateInputs(req.Inputs); err != nil {
+			return nil, err
+		}
 	}
 
 	baseStore := runtime.NewStore(base)

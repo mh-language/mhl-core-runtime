@@ -826,3 +826,54 @@ func TestHTTPRunOwnership(t *testing.T) {
 		t.Errorf("owner-resumed run did not complete")
 	}
 }
+
+// tools/call enforces the advertised inputSchema: a missing required argument
+// is -32602 naming the field, not a run that executes and fails on a step.
+func TestHTTPToolsCallEnforcesInputSchema(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "tools/call", map[string]any{
+		"name": "Greet", "arguments": map[string]any{},
+	}), nil)
+	if body["result"] != nil {
+		t.Fatalf("tools/call with no args returned a result: %v", body["result"])
+	}
+	e := body["error"].(map[string]any)
+	if e["code"].(float64) != -32602 {
+		t.Errorf("code = %v, want -32602", e["code"])
+	}
+	if msg, _ := e["message"].(string); !strings.Contains(msg, `"name"`) {
+		t.Errorf("message %q does not name the missing input", msg)
+	}
+
+	// An undeclared argument is rejected too (additionalProperties:false).
+	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "tools/call", map[string]any{
+		"name": "Greet", "arguments": map[string]any{"name": "ana", "extra": 1},
+	}), nil)
+	if body["error"].(map[string]any)["code"].(float64) != -32602 {
+		t.Errorf("undeclared arg: code = %v, want -32602", body["error"])
+	}
+}
+
+// run/start rejects a malformed call before any run is registered: -32602, and
+// run/list stays empty.
+func TestHTTPRunStartEnforcesInputSchema(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "run/start", map[string]any{
+		"name": "Greet", "arguments": map[string]any{"wrong": "x"},
+	}), nil)
+	if body["result"] != nil {
+		t.Fatalf("run/start with a bad arg returned a result: %v", body["result"])
+	}
+	if body["error"].(map[string]any)["code"].(float64) != -32602 {
+		t.Errorf("code = %v, want -32602", body["error"])
+	}
+
+	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "run/list", nil), nil)
+	if runs := body["result"].(map[string]any)["runs"].([]any); len(runs) != 0 {
+		t.Errorf("a rejected run/start still registered %d run(s): %v", len(runs), runs)
+	}
+}

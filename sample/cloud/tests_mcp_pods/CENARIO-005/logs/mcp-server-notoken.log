@@ -1,0 +1,3 @@
+mhl serve mcp --http: warning: binding 0.0.0.0:8723 with no --token/MHL_SERVE_TOKEN — the endpoint is unauthenticated
+mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/CENARIO-005/../.. on http://[::]:8723/mcp
+{"time":"2026-08-31T15:17:03.513286-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}

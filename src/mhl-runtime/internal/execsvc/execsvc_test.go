@@ -230,3 +230,74 @@ pipeline P {
 		t.Fatal("expected an error coercing count=not-a-number against `input count: number`")
 	}
 }
+
+// The pipeline's InputSchema is enforced before any step runs: a missing
+// required input, or an undeclared one, is an *runtime.InvalidInputsError —
+// never a silent no-op or a late "undefined variable".
+func TestRunEnforcesInputSchema(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline P {
+    input repo: string
+    input approved: string
+    step S { var x = repo + approved }
+}
+`)
+	cases := []struct {
+		name    string
+		inputs  map[string]any
+		missing []string
+		unknown []string
+	}{
+		{"missing required", map[string]any{"approved": "yes"}, []string{"repo"}, nil},
+		{"undeclared key", map[string]any{"repo": "r", "approved": "y", "extra": 1}, nil, []string{"extra"}},
+		{"both", map[string]any{"nope": 1}, []string{"approved", "repo"}, []string{"nope"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := execsvc.Run(execsvc.Request{Source: src, Inputs: tc.inputs, BaseDir: dir})
+			var ie *mhlruntime.InvalidInputsError
+			if !errors.As(err, &ie) {
+				t.Fatalf("err = %v, want *runtime.InvalidInputsError", err)
+			}
+			if !slicesEqual(ie.Missing, tc.missing) {
+				t.Errorf("Missing = %v, want %v", ie.Missing, tc.missing)
+			}
+			if !slicesEqual(ie.Unknown, tc.unknown) {
+				t.Errorf("Unknown = %v, want %v", ie.Unknown, tc.unknown)
+			}
+		})
+	}
+}
+
+// A resume trusts the checkpoint for inputs, so schema admission is skipped:
+// `mhl run --resume` with no --input flags must not trip "missing required".
+func TestRunResumeSkipsInputSchema(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline P {
+    input repo: string
+    checkpoint { strategy: "per_step" }
+    step S { var x = repo }
+}
+`)
+	// No prior checkpoint exists; Resume still must get past admission and
+	// fail later (nothing to resume), not at the InputSchema check.
+	_, err := execsvc.Run(execsvc.Request{Source: src, Inputs: nil, BaseDir: dir, Resume: true})
+	var ie *mhlruntime.InvalidInputsError
+	if errors.As(err, &ie) {
+		t.Fatalf("resume tripped InputSchema admission: %v", err)
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

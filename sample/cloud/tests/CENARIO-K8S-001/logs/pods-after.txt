@@ -1,2 +1,0 @@
-NAME                         READY   STATUS    RESTARTS   AGE   IP          NODE             NOMINATED NODE   READINESS GATES
-mhl-serve-6d5ddbf488-7qfwk   1/1     Running   0          2s    10.1.0.11   docker-desktop   <none>           <none>

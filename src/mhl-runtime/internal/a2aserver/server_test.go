@@ -149,6 +149,34 @@ func TestMessageSendUnknownSkill(t *testing.T) {
 	}
 }
 
+// message/send enforces the skill's advertised inputSchema before a task is
+// created: a missing required input, or an undeclared one, is a -32602 error.
+func TestMessageSendEnforcesInputSchema(t *testing.T) {
+	ts := newTestServer(t, map[string]string{"g.mh": greet})
+
+	// Missing the required `name` input.
+	r := rpc(t, ts.URL+"/", "message/send", map[string]any{
+		"message": map[string]any{"metadata": map[string]any{"skill": "Greet"}},
+	})
+	e, ok := r["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected a -32602 error for the missing input, got %v", r)
+	}
+	if e["code"].(float64) != -32602 {
+		t.Errorf("code = %v, want -32602", e["code"])
+	}
+
+	// Undeclared input.
+	r = rpc(t, ts.URL+"/", "message/send", map[string]any{
+		"message": map[string]any{"metadata": map[string]any{
+			"skill": "Greet", "input": map[string]any{"name": "ana", "extra": 1},
+		}},
+	})
+	if r["error"] == nil {
+		t.Fatalf("expected a -32602 error for the undeclared input, got %v", r)
+	}
+}
+
 // configuration.blocking:true holds the response until the task is terminal.
 func TestMessageSendBlocking(t *testing.T) {
 	ts := newTestServer(t, map[string]string{"g.mh": greet})

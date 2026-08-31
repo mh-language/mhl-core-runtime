@@ -200,6 +200,12 @@ func (h *httpServer) runStart(sess *session, msg rpcMsg) *rpcMsg {
 	if !ok {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown tool %q", p.Name))
 	}
+	// Enforce the advertised inputSchema before a run is registered, a slot
+	// taken, or a goroutine launched: a malformed run/start fails fast with
+	// -32602 naming the field, not as a late state:"failed" on the first step.
+	if err := w.Pipeline.ValidateInputs(p.Arguments); err != nil {
+		return errMsg(msg.ID, -32602, err.Error())
+	}
 
 	// The run outlives this request, so its context descends from runsCtx
 	// (the drain-aware child of the server lifetime), not r.Context().

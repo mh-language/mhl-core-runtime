@@ -1,6 +1,10 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
+# go.mod lives in src/mhl-runtime, not the repo root, so GoReleaser can't infer
+# the project name from it — set it explicitly.
+project_name: mhl
+
 builds:
   - id: mhl
     dir: src/mhl-runtime
@@ -29,6 +33,9 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+changelog:
+  # Use GitHub's own "Generate release notes" API for the release body.
+  use: github-native
+
 release:
   draft: false
-  generate_release_notes: true

@@ -1,0 +1,19 @@
+[
+  {
+    "kind": "store",
+    "documentation": "Instrumented key/value `store` backend for exercising the mhl extension mechanism under load. Superset of store-fs: one JSON file per key under `dir` (persists across processes), plus per-call logging, injected latency, chaos-crash, and a serial/concurrent toggle — all read from the declaration's own properties.",
+    "properties": [
+      { "name": "dir",         "type": "string", "documentation": "Filesystem root for the store. Ephemeral temp dir when omitted." },
+      { "name": "log",         "type": "string", "documentation": "Path to append one JSON line per handled message (init / call / shutdown / crash)." },
+      { "name": "latency_ms",  "type": "number", "documentation": "Sleep this many milliseconds inside every call — to force interleaving / act as a bottleneck." },
+      { "name": "crash_after", "type": "number", "documentation": "os.Exit(1) after this many calls — exercises the host's respawn / maxRestarts path." },
+      { "name": "serial",      "type": "bool",   "documentation": "Handle one call at a time (store-fs behaviour). Default: a goroutine per call." }
+    ],
+    "methods": [
+      { "name": "get",    "signature": "get(key: string) -> any",          "documentation": "The value at key, or null when absent." },
+      { "name": "put",    "signature": "put(key: string, value: any)",      "documentation": "Store value at key, overwriting." },
+      { "name": "delete", "signature": "delete(key: string)",              "documentation": "Remove key. Absent key is not an error." },
+      { "name": "list",   "signature": "list(prefix: string) -> [string]", "documentation": "Every key with the given prefix." }
+    ]
+  }
+]

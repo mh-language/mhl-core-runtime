@@ -1,0 +1,6 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Mcp-Session-Id: ab9b0efa0fb06f49079f1ace94a59020
+Date: Mon, 31 Aug 2026 18:17:40 GMT
+Content-Length: 184
+

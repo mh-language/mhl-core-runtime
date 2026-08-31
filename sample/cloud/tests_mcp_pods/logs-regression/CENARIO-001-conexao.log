@@ -1,0 +1,11 @@
+[15:16:55] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/CENARIO-001/mhl serve mcp --http --addr 127.0.0.1:8711 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud)
+[15:16:55] servidor PID=80260
+[15:16:55] healthz respondeu 200 (tentativa 2)
+[15:16:56] POST /mcp initialize -> HTTP 200
+[15:16:56] Mcp-Session-Id: eb5ed51776e5ad11dd3299c678fa8cd0
+[15:16:56] corpo da resposta:
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":{"listChanged":false}},"protocolVersion":"2025-06-18","serverInfo":{"name":"mhl","version":"v1.1.0-alpha-7-g418d7dc-dirty"}}}
+
+[15:16:56] controle negativo (sem token) -> HTTP 401 (esperado 401)
+[15:16:56] RESULTADO: FUNCIONOU — conexão MCP estabelecida (initialize OK, sessão eb5ed51776e5ad11dd3299c678fa8cd0)
+PASS

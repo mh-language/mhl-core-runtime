@@ -1,0 +1,77 @@
+[15:16:56] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/CENARIO-002/mhl serve mcp --http --addr 127.0.0.1:8713 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud)
+[15:16:56] servidor PID=80420
+[15:16:57] healthz 200 (tentativa 3)
+[15:16:57] request stateless:
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {
+        "_meta": {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {}
+        }
+    }
+}
+[15:16:57] POST /mcp tools/list (stateless) -> HTTP 200
+[15:16:57] header Mcp-Session-Id na resposta: <ausente, como esperado no stateless>
+[15:16:57] corpo da resposta:
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "_meta": {
+            "io.modelcontextprotocol/serverInfo": {
+                "name": "mhl",
+                "version": "v1.1.0-alpha-7-g418d7dc-dirty"
+            }
+        },
+        "cacheScope": "public",
+        "resultType": "complete",
+        "tools": [
+            {
+                "description": "Draft docs for a repo, wait for human review, then publish.",
+                "inputSchema": {
+                    "additionalProperties": false,
+                    "properties": {
+                        "approved": {
+                            "type": "string"
+                        },
+                        "repo": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "approved",
+                        "repo"
+                    ],
+                    "type": "object"
+                },
+                "name": "DocPipeline"
+            },
+            {
+                "description": "Three ~3s stages: compile, package, ship.",
+                "inputSchema": {
+                    "additionalProperties": false,
+                    "properties": {
+                        "target": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "target"
+                    ],
+                    "type": "object"
+                },
+                "name": "SlowBuild"
+            }
+        ],
+        "ttlMs": 300000
+    }
+}
+
+[15:16:57] controle (a) tools/list sem _meta -> error.code=-32602 (esperado -32602)
+[15:16:57] controle (b) tools/list com protocolVersion inválida -> error.code=-32022 (esperado -32022)
+[15:16:57] stateless tools/list: count=2 names=[DocPipeline,SlowBuild] com_descricao=2 com_inputSchema=2 resultType=complete serverInfo=mhl/v1.1.0-alpha-7-g418d7dc-dirty
+[15:16:57] servidor anunciou no startup: 2 tool(s)
+[15:16:57] RESULTADO: FUNCIONOU — 2 tools via stateless (DocPipeline,SlowBuild); resultType=complete; serverInfo=mhl/v1.1.0-alpha-7-g418d7dc-dirty; sem sessão
