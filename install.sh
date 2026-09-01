@@ -44,21 +44,32 @@ if [ "$mhl_os" = "darwin" ] && [ "$mhl_arch" != "arm64" ]; then
   die "darwin-amd64 (Intel Mac) has no published release; only darwin-arm64 is supported on macOS"
 fi
 
-version="${MHL_VERSION:-}"
-if [ -z "$version" ]; then
+tag="${MHL_VERSION:-}"
+if [ -z "$tag" ]; then
   info "resolving latest release..."
-  version="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+  tag="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
     | grep '"tag_name"' | head -n1 | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
-  [ -n "$version" ] || die "could not resolve latest release version"
+  [ -n "$tag" ] || die "could not resolve latest release version"
 fi
+# A manual MHL_VERSION may be given with or without the leading "v" the repo's
+# tags use (e.g. "1.2.0-beta.1" or "v1.2.0-beta.1") — normalize to the tag.
+case "$tag" in
+  v*) ;;
+  *) tag="v${tag}" ;;
+esac
+# GitHub's release-download URL is keyed by the git tag (with "v"), but
+# GoReleaser's archive/checksum filenames use {{.Version}} — the tag with
+# that leading "v" stripped. Conflating the two 404s: mhl-v1.2.0-... isn't a
+# real asset name, only mhl-1.2.0-... is.
+version="${tag#v}"
 
 archive="mhl-${version}-${mhl_os}-${mhl_arch}.tar.gz"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 
-info "downloading ${archive} (${version})..."
-curl -fsSL -o "$work_dir/$archive" "$BASE_URL/$version/$archive"
-curl -fsSL -o "$work_dir/checksums.txt" "$BASE_URL/$version/checksums.txt"
+info "downloading ${archive} (${tag})..."
+curl -fsSL -o "$work_dir/$archive" "$BASE_URL/$tag/$archive"
+curl -fsSL -o "$work_dir/checksums.txt" "$BASE_URL/$tag/checksums.txt"
 
 info "verifying checksum..."
 expected="$(grep " ${archive}\$" "$work_dir/checksums.txt" | awk '{print $1}')"
@@ -101,7 +112,7 @@ esac
 vsix="$(grep -o 'mhl-language-[^"[:space:]]*\.vsix' "$work_dir/checksums.txt" | head -n1 || true)"
 if [ -n "$vsix" ]; then
   info "downloading VS Code extension (${vsix})..."
-  curl -fsSL -o "$work_dir/$vsix" "$BASE_URL/$version/$vsix"
+  curl -fsSL -o "$work_dir/$vsix" "$BASE_URL/$tag/$vsix"
 
   vsix_expected="$(grep " ${vsix}\$" "$work_dir/checksums.txt" | awk '{print $1}')"
   if command -v sha256sum >/dev/null 2>&1; then

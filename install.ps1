@@ -23,22 +23,30 @@ $Arch = switch ($env:PROCESSOR_ARCHITECTURE) {
   default  { Die "unsupported architecture: $env:PROCESSOR_ARCHITECTURE (only windows-amd64 and windows-arm64 are published)" }
 }
 
-$Version = $env:MHL_VERSION
-if (-not $Version) {
+$Tag = $env:MHL_VERSION
+if (-not $Tag) {
   Info "resolving latest release..."
   $release = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$Repo/releases/latest"
-  $Version = $release.tag_name
-  if (-not $Version) { Die "could not resolve latest release version" }
+  $Tag = $release.tag_name
+  if (-not $Tag) { Die "could not resolve latest release version" }
 }
+# A manual $env:MHL_VERSION may be given with or without the leading "v" the
+# repo's tags use (e.g. "1.2.0-beta.1" or "v1.2.0-beta.1") — normalize to the tag.
+if ($Tag -notmatch '^v') { $Tag = "v$Tag" }
+# GitHub's release-download URL is keyed by the git tag (with "v"), but
+# GoReleaser's archive/checksum filenames use {{.Version}} — the tag with that
+# leading "v" stripped. Conflating the two 404s: mhl-v1.2.0-... isn't a real
+# asset name, only mhl-1.2.0-... is.
+$Version = $Tag -replace '^v', ''
 
 $Archive = "mhl-$Version-windows-$Arch.zip"
 $WorkDir = Join-Path $env:TEMP ([System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $WorkDir | Out-Null
 
 try {
-  Info "downloading $Archive ($Version)..."
-  Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Version/$Archive" -OutFile (Join-Path $WorkDir $Archive)
-  Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Version/checksums.txt" -OutFile (Join-Path $WorkDir "checksums.txt")
+  Info "downloading $Archive ($Tag)..."
+  Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Tag/$Archive" -OutFile (Join-Path $WorkDir $Archive)
+  Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Tag/checksums.txt" -OutFile (Join-Path $WorkDir "checksums.txt")
 
   Info "verifying checksum..."
   $checksums = Get-Content (Join-Path $WorkDir "checksums.txt")
@@ -64,7 +72,7 @@ try {
   if ($vsixLine) {
     $vsix = ($vsixLine -split '\s+')[1]
     Info "downloading VS Code extension ($vsix)..."
-    Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Version/$vsix" -OutFile (Join-Path $WorkDir $vsix)
+    Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/$Tag/$vsix" -OutFile (Join-Path $WorkDir $vsix)
 
     $vsixExpected = ($vsixLine -split '\s+')[0]
     $vsixActual = (Get-FileHash -Algorithm SHA256 (Join-Path $WorkDir $vsix)).Hash.ToLower()

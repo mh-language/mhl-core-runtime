@@ -24,7 +24,8 @@ irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.
 ```
 
 This installs `mhl` to `~/.mhl/bin` (`%LOCALAPPDATA%\mhl\bin` on Windows) and adds it to your
-PATH. Supported platforms today: `linux-amd64`, `darwin-arm64` (Apple Silicon), `windows-amd64`.
+PATH. Supported platforms today: `linux-amd64`, `linux-arm64`, `darwin-arm64` (Apple Silicon),
+`windows-amd64`, `windows-arm64`. Intel Mac (`darwin-amd64`) has no published binary.
 
 ### Manual install
 
@@ -64,7 +65,12 @@ feature — run any of them directly with `mhl test <file>`:
 
 - [`src/mhl-runtime/`](src/mhl-runtime) — the Go implementation of the `mhl` CLI (parser,
   interpreter, runtime, LSP)
+- [`src/mhl-extensions/`](src/mhl-extensions) — the official external extensions (S3/Postgres
+  `store`, Postgres `sql`, Redis `cache`), each its own Go module, installed with
+  `mhl extension install`
 - [`vscode-mhl/`](vscode-mhl) — the VS Code extension (syntax highlighting, diagnostics,
   completion), a thin wrapper around `mhl lsp`
 - [`docs/site/`](docs/site) — the canonical language reference, deployed to GitHub Pages
 - [`sample/`](sample) — worked `.mh` examples, doubling as the docs-facing test suite
+- [`tests/`](tests) — scenario suites that aren't `go test`: `mhl serve mcp` across a pod fleet
+  (`tests/cloud/`) and external-extension behavior (`tests/extensions/`)
