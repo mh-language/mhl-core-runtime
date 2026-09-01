@@ -42,3 +42,58 @@ func TestPipelineInputSchemaNoInputs(t *testing.T) {
 		t.Errorf("no-input schema = %#v, want %#v (no `required` key)", got, want)
 	}
 }
+
+func TestPipelineValidateInputs(t *testing.T) {
+	p := runtime.Pipeline{
+		Name: "DocPipeline",
+		Inputs: []runtime.PipelineInputSpec{
+			{Name: "repo", Type: types.String},
+			{Name: "approved", Type: types.String},
+		},
+	}
+
+	tests := []struct {
+		name    string
+		args    map[string]any
+		ok      bool
+		missing []string
+		unknown []string
+	}{
+		{"all present", map[string]any{"repo": "r", "approved": "y"}, true, nil, nil},
+		{"missing one", map[string]any{"approved": "y"}, false, []string{"repo"}, nil},
+		{"missing all / nil", nil, false, []string{"approved", "repo"}, nil},
+		{"undeclared key", map[string]any{"repo": "r", "approved": "y", "campoExtra": 123}, false, nil, []string{"campoExtra"}},
+		{"missing and undeclared", map[string]any{"campoExtra": 1}, false, []string{"approved", "repo"}, []string{"campoExtra"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := p.ValidateInputs(tc.args)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("ValidateInputs = %v, want nil", err)
+				}
+				return
+			}
+			ie, ok := err.(*runtime.InvalidInputsError)
+			if !ok {
+				t.Fatalf("err = %T %v, want *InvalidInputsError", err, err)
+			}
+			if !reflect.DeepEqual(ie.Missing, tc.missing) {
+				t.Errorf("Missing = %#v, want %#v", ie.Missing, tc.missing)
+			}
+			if !reflect.DeepEqual(ie.Unknown, tc.unknown) {
+				t.Errorf("Unknown = %#v, want %#v", ie.Unknown, tc.unknown)
+			}
+		})
+	}
+}
+
+func TestPipelineValidateInputsNoInputsDeclared(t *testing.T) {
+	p := runtime.Pipeline{Name: "P"}
+	if err := p.ValidateInputs(nil); err != nil {
+		t.Errorf("nil args against no declared inputs: %v", err)
+	}
+	if err := p.ValidateInputs(map[string]any{"x": 1}); err == nil {
+		t.Error("undeclared key against a no-input pipeline should be rejected")
+	}
+}

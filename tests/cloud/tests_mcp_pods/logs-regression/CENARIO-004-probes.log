@@ -1,0 +1,6 @@
+[09:36:53] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-004/mhl serve mcp --http --addr 127.0.0.1:8721 --token <gerado>
+[09:36:53] servidor PID=2020
+[09:36:53] probes sem Authorization:
+[09:36:53] POST /mcp (no auth) -> HTTP 401 (esperado 401)
+[09:36:53] RESULTADO: FUNCIONOU — /healthz e /readyz 200 sem auth; /metrics 200 sem auth; /mcp 401 sem auth
+PASS

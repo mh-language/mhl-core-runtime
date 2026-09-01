@@ -1,0 +1,479 @@
+/* Page-specific polish for the external extension developer guide. */
+
+.extensions-page .extension-content {
+  min-width:0;
+}
+
+.extensions-page .extension-hero {
+  max-width:none;
+  margin-bottom:88px;
+  padding:34px 36px 32px;
+  border:1px solid var(--line);
+  border-top:3px solid var(--accent);
+  border-radius:14px;
+  background:
+    radial-gradient(circle at 100% 0,color-mix(in srgb,var(--teal) 10%,transparent),transparent 36%),
+    var(--panel);
+  box-shadow:var(--shadow);
+}
+
+.extensions-page .extension-hero h1 {
+  max-width:720px;
+  font-size:clamp(40px,5vw,57px);
+}
+
+.extensions-page .extension-hero .lead {
+  max-width:690px;
+  font-size:16px;
+}
+
+.extensions-page .extension-hero .legend {
+  padding-bottom:23px;
+  border-bottom:1px solid var(--line);
+}
+
+.extensions-page .extension-hero .quick-index {
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+
+.extensions-page .extension-hero .quick-index a {
+  min-width:0;
+  min-height:72px;
+  justify-content:center;
+  transition:transform .18s,border-color .18s,background .18s;
+}
+
+.extensions-page .extension-hero .quick-index a:hover {
+  transform:translateY(-2px);
+  background:color-mix(in srgb,var(--accent) 4%,var(--panel));
+}
+
+.extensions-page .extension-hero>.tip-row {
+  margin-bottom:0;
+}
+
+.extensions-page .extension-content .feature {
+  padding-top:66px;
+  padding-bottom:82px;
+}
+
+.extensions-page .extension-content .feature-head {
+  padding-bottom:13px;
+  border-bottom:1px solid var(--line);
+}
+
+.extensions-page .extension-content .feature-head h2 {
+  font-size:29px;
+}
+
+.extensions-page .extension-content .feature-lede {
+  max-width:740px;
+  margin-bottom:30px;
+  font-size:14px;
+  line-height:1.72;
+}
+
+.extensions-page .extension-flow {
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);
+  margin:30px 0 18px;
+}
+
+.extensions-page .extension-flow>div {
+  min-width:0;
+  min-height:168px;
+}
+
+.extensions-page .extension-flow strong {
+  overflow-wrap:anywhere;
+}
+
+.extensions-page .extension-principles {
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  margin-top:14px;
+}
+
+.extensions-page .extension-principles .info-card {
+  min-width:0;
+  min-height:190px;
+  display:flex;
+  flex-direction:column;
+}
+
+.extensions-page .extension-principles h3 {
+  min-height:42px;
+}
+
+.extensions-page .extension-principles p {
+  margin-top:auto;
+}
+
+.extensions-page .extension-architecture-intro {
+  max-width:750px;
+  margin-top:46px;
+}
+
+.extensions-page .extension-architecture-intro .block-label {
+  margin-bottom:10px;
+}
+
+.extensions-page .extension-architecture-intro h3 {
+  margin:0 0 9px;
+  color:var(--ink);
+  font-family:'DM Sans',sans-serif;
+  font-size:20px;
+  letter-spacing:-.02em;
+}
+
+.extensions-page .extension-architecture-intro>p:last-child {
+  max-width:720px;
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.7;
+}
+
+.extensions-page .extension-architecture {
+  margin:20px 0 0;
+  padding:22px 22px 17px;
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:
+    linear-gradient(135deg,color-mix(in srgb,var(--teal) 4%,transparent),transparent 38%),
+    var(--panel);
+  box-shadow:var(--shadow);
+}
+
+.extensions-page .extension-diagram-scroll {
+  max-width:100%;
+  overflow-x:auto;
+  padding-bottom:7px;
+  scrollbar-color:var(--line) transparent;
+}
+
+.extensions-page .extension-diagram {
+  display:block;
+  width:100%;
+  min-width:760px;
+  height:auto;
+  color:var(--ink);
+  font-family:'DM Mono',monospace;
+}
+
+.extensions-page .extension-diagram text {
+  fill:currentColor;
+}
+
+.extensions-page .extension-diagram .d-box {
+  fill:var(--panel);
+  stroke:color-mix(in srgb,var(--ink) 62%,var(--line));
+  stroke-width:1.2;
+}
+
+.extensions-page .extension-diagram .d-box-2 {
+  fill:var(--soft);
+  stroke:var(--line);
+  stroke-width:1;
+}
+
+.extensions-page .extension-diagram .d-new {
+  fill:color-mix(in srgb,var(--teal) 11%,var(--panel));
+  stroke:var(--teal);
+  stroke-width:1.5;
+}
+
+.extensions-page .extension-diagram .d-title {
+  font-family:'DM Sans',sans-serif;
+  font-size:12px;
+  font-weight:700;
+}
+
+.extensions-page .extension-diagram .d-sub,
+.extensions-page .extension-diagram .d-lab {
+  fill:var(--muted);
+  font-size:10px;
+}
+
+.extensions-page .extension-diagram .d-lab {
+  font-size:9px;
+}
+
+.extensions-page .extension-diagram .d-newtag {
+  fill:var(--teal);
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.04em;
+}
+
+.extensions-page .extension-diagram .d-edge,
+.extensions-page .extension-diagram .d-edge-new {
+  fill:none;
+  stroke:var(--ink);
+  stroke-width:1.5;
+}
+
+.extensions-page .extension-diagram .d-edge-new {
+  stroke:var(--teal);
+  stroke-width:2;
+}
+
+.extensions-page .extension-diagram .d-div {
+  stroke:var(--muted);
+  stroke-width:1;
+  stroke-dasharray:6 5;
+}
+
+.extensions-page .extension-architecture figcaption {
+  margin-top:7px;
+  padding:15px 4px 0;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.65;
+}
+
+.extensions-page .extension-architecture figcaption strong {
+  color:var(--ink);
+}
+
+.extensions-page .extension-content .code-wrap {
+  min-width:0;
+  max-width:100%;
+}
+
+.extensions-page .extension-content .code-block,
+.extensions-page .extension-content .grammar-block {
+  max-width:100%;
+}
+
+.extensions-page #layout .code-wrap {
+  margin-top:6px;
+}
+
+.extensions-page #layout .code-block {
+  min-height:245px;
+  padding:25px 26px;
+  font-size:12px;
+}
+
+.extensions-page #manifest>.code-wrap {
+  margin-bottom:26px;
+}
+
+.extensions-page #manifest>.code-wrap .code-block {
+  padding-right:52px;
+}
+
+.extensions-page .extension-content .syntax-columns {
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+  margin-top:28px;
+}
+
+.extensions-page .extension-content .syntax-columns>div {
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  padding:19px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--panel);
+}
+
+.extensions-page .extension-content .syntax-columns h3 {
+  margin:0 0 8px;
+  font-size:13px;
+}
+
+.extensions-page .extension-content .syntax-columns .muted {
+  margin:0 0 15px;
+  line-height:1.55;
+}
+
+.extensions-page .extension-content .syntax-columns .code-block {
+  width:100%;
+  margin-top:auto;
+  font-size:10px;
+}
+
+.extensions-page #protocol .reference-table {
+  overflow-x:auto;
+}
+
+.extensions-page #protocol .table-row {
+  grid-template-columns:.9fr .75fr 1.7fr;
+  min-width:660px;
+}
+
+.extensions-page #permissions .security-banner {
+  margin-top:16px;
+  padding:18px;
+}
+
+.extensions-page #workflow .cli-grid {
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+
+.extensions-page #workflow .cli-command {
+  min-width:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(110px,.8fr);
+  min-height:68px;
+  padding:14px 15px;
+}
+
+.extensions-page #workflow .cli-command code {
+  min-width:0;
+  overflow-wrap:anywhere;
+  line-height:1.55;
+}
+
+.extensions-page #workflow .cli-command span {
+  line-height:1.45;
+}
+
+.extensions-page #workflow .lock-example {
+  max-width:620px;
+  margin-top:0;
+  padding:20px 22px;
+}
+
+.extensions-page #checklist .checklist {
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+
+.extensions-page #checklist .checklist>div {
+  min-width:0;
+  min-height:86px;
+  align-items:flex-start;
+  padding:16px;
+}
+
+.extensions-page #checklist .checklist>div>span {
+  flex:0 0 23px;
+  display:grid;
+  place-items:center;
+  width:23px;
+  height:23px;
+  border-radius:50%;
+  color:#fff;
+  background:var(--teal);
+  font-size:11px;
+}
+
+.extensions-page #checklist .checklist p {
+  font-size:11px;
+  line-height:1.55;
+}
+
+.extensions-page .extension-content .tip-row {
+  margin-top:20px;
+  padding:13px 15px;
+}
+
+@media (max-width:900px) {
+  .extensions-page .extension-hero {
+    margin-bottom:72px;
+  }
+
+  .extensions-page .extension-flow {
+    grid-template-columns:1fr;
+  }
+
+  .extensions-page .extension-flow i {
+    justify-self:center;
+    transform:rotate(90deg);
+  }
+}
+
+@media (max-width:760px) {
+  .extensions-page .extension-hero {
+    padding:26px 23px;
+  }
+
+  .extensions-page .extension-hero .quick-index,
+  .extensions-page .extension-principles,
+  .extensions-page .extension-content .syntax-columns,
+  .extensions-page #workflow .cli-grid,
+  .extensions-page #checklist .checklist {
+    grid-template-columns:1fr;
+  }
+
+  .extensions-page .extension-principles .info-card {
+    min-height:160px;
+  }
+
+  .extensions-page .extension-architecture-intro {
+    margin-top:38px;
+  }
+
+  .extensions-page .extension-architecture {
+    margin-right:-6px;
+    margin-left:-6px;
+    padding:15px 14px 13px;
+    border-radius:10px;
+  }
+
+  .extensions-page .extension-diagram {
+    min-width:720px;
+  }
+
+  .extensions-page .extension-principles h3 {
+    min-height:0;
+  }
+
+  .extensions-page #workflow .cli-command {
+    grid-template-columns:1fr;
+    gap:7px;
+  }
+
+  .extensions-page #workflow .cli-command span {
+    text-align:left;
+  }
+}
+
+@media (max-width:520px) {
+  .extensions-page .extension-hero {
+    padding:22px 18px;
+    border-radius:11px;
+  }
+
+  .extensions-page .extension-hero h1 {
+    font-size:38px;
+  }
+
+  .extensions-page .extension-content .feature {
+    padding-top:52px;
+    padding-bottom:66px;
+  }
+
+  .extensions-page .extension-content .syntax-columns>div {
+    padding:14px;
+  }
+
+  .extensions-page #layout .code-block {
+    min-height:0;
+    padding:18px 15px;
+    font-size:10px;
+  }
+}
+
+/* Readable type scale for the extension guide. */
+.extensions-page .extension-hero .lead { font-size:18px; }
+.extensions-page .extension-content .feature-lede { font-size:16px; }
+.extensions-page .extension-architecture-intro>p:last-child { font-size:14px; }
+.extensions-page .extension-diagram .d-title { font-size:13px; }
+.extensions-page .extension-diagram .d-sub { font-size:11.5px; }
+.extensions-page .extension-diagram .d-lab,
+.extensions-page .extension-diagram .d-newtag { font-size:10.5px; }
+.extensions-page .extension-architecture figcaption { font-size:13px; }
+.extensions-page .extension-content .syntax-columns h3 { font-size:16px; }
+.extensions-page .extension-content .syntax-columns .muted { font-size:14px; }
+.extensions-page .extension-content .syntax-columns .code-block { font-size:13px; }
+.extensions-page #checklist .checklist p { font-size:13px; }
+
+@media (max-width:520px) {
+  .extensions-page #layout .code-block { font-size:13px; }
+}

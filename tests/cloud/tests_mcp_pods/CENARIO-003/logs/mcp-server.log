@@ -1,0 +1,9 @@
+mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-003/../.. on http://127.0.0.1:8714/mcp
+session: 2f9b8b55b7c27f7d28bbdef8d358fa21
+step: Draft
+step: Review
+step: Publish
+session: 2cd3383e38305e34133354fcde2900c7
+step: Draft
+step: Review
+{"time":"2026-09-01T09:36:51.474363-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}

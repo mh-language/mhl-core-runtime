@@ -232,6 +232,13 @@ func (s *server) rpcMessageSend(w http.ResponseWriter, r *http.Request, req rpcR
 		return
 	}
 	inputs, _ := meta["input"].(map[string]any)
+	// Enforce the skill's advertised inputSchema before a task exists: a
+	// missing required input or an undeclared one is -32602 here, not a
+	// task that fails on its first step.
+	if err := wf.Pipeline.ValidateInputs(inputs); err != nil {
+		writeJSON(w, http.StatusOK, rpcErrResp(req.ID, -32602, err.Error()))
+		return
+	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	t := &task{

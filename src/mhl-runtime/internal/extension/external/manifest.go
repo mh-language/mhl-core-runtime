@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/extension"
 )
@@ -146,12 +149,80 @@ func (m *Manifest) launchEnv() []string {
 	return append(env, m.Env...)
 }
 
-// ExecutablePath is the absolute path to the extension binary.
+// ExecutablePath is the absolute path to the extension binary for the running
+// host. A manifest ships either a single "executable", or — for a
+// multi-platform package — one file per platform named
+// "<executable>-<goos>-<goarch>" ("…​.exe" on Windows) in the same directory.
+// The plain name is tried first, the host-suffixed name second; if neither is
+// on disk the plain path is returned anyway (the caller surfaces the open
+// error), preserving the historical contract.
 func (m *Manifest) ExecutablePath() string {
 	if filepath.IsAbs(m.Executable) {
 		return m.Executable
 	}
-	return filepath.Join(m.dir, m.Executable)
+	rel := m.executableRel(runtime.GOOS, runtime.GOARCH)
+	if rel == "" {
+		rel = m.Executable
+	}
+	return filepath.Join(m.dir, rel)
+}
+
+// executableRel returns the manifest-relative path to the binary for
+// goos/goarch that actually exists on disk: the plain "executable", else the
+// "<executable>-<goos>-<goarch>" convention. "" when neither is present. An
+// absolute "executable", or a manifest with no directory context, is returned
+// as given (the historical contract — nothing to look up).
+func (m *Manifest) executableRel(goos, goarch string) string {
+	if m.Executable == "" {
+		return ""
+	}
+	if filepath.IsAbs(m.Executable) || m.dir == "" {
+		return m.Executable
+	}
+	if _, err := os.Stat(filepath.Join(m.dir, m.Executable)); err == nil {
+		return m.Executable
+	}
+	suffixed := m.Executable + "-" + goos + "-" + goarch
+	if goos == "windows" {
+		suffixed += ".exe"
+	}
+	if _, err := os.Stat(filepath.Join(m.dir, suffixed)); err == nil {
+		return suffixed
+	}
+	return ""
+}
+
+// HostExecutableRel resolves the binary for the running host and returns its
+// manifest-relative path, or an error naming the platforms the package does
+// provide. Used by `mhl extension install` to vendor just the one binary.
+func (m *Manifest) HostExecutableRel() (string, error) {
+	if rel := m.executableRel(runtime.GOOS, runtime.GOARCH); rel != "" {
+		return rel, nil
+	}
+	target := runtime.GOOS + "/" + runtime.GOARCH
+	if got := m.availablePlatforms(); len(got) > 0 {
+		return "", fmt.Errorf("no %s binary — this package provides: %s", target, strings.Join(got, ", "))
+	}
+	return "", fmt.Errorf("no %s binary at %q", target, m.Executable)
+}
+
+// availablePlatforms lists the "<goos>/<goarch>" a multi-platform package
+// ships, discovered from the "<executable>-*" files next to the manifest.
+func (m *Manifest) availablePlatforms() []string {
+	if m.Executable == "" || m.dir == "" {
+		return nil
+	}
+	matches, _ := filepath.Glob(filepath.Join(m.dir, m.Executable+"-*"))
+	var out []string
+	for _, p := range matches {
+		tail := strings.TrimPrefix(filepath.Base(p), filepath.Base(m.Executable)+"-")
+		tail = strings.TrimSuffix(tail, ".exe")
+		if i := strings.LastIndex(tail, "-"); i > 0 {
+			out = append(out, tail[:i]+"/"+tail[i+1:])
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // AllowsSecret reports whether the manifest permits resolving ref. An empty

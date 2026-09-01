@@ -162,9 +162,11 @@ type httpServer struct {
 
 	// baseCtx is the process lifetime (the SIGINT/SIGTERM context). A
 	// synchronous tools/call descends from it via http.Server.BaseContext, so
-	// it dies at once on a signal. runsCtx is a child of baseCtx that only the
-	// drain path cancels: async runs descend from it, so --drain-timeout can
-	// let them finish past the signal. runsCancel is idempotent.
+	// it dies at once on a signal. runsCtx is deliberately detached from it
+	// (context.WithoutCancel in buildHTTP): async runs descend from runsCtx, and
+	// only the drain path (runsCancel) — or a per-run cancel — stops them, so
+	// --drain-timeout can let them finish past the signal. runsCancel is
+	// idempotent.
 	baseCtx    context.Context
 	runsCtx    context.Context
 	runsCancel context.CancelFunc
@@ -215,12 +217,25 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 		cps, err = newExtCheckpointStore(cfg.Store)
 	} else {
 		cps, err = newDiskCheckpointStore(cfg.StateDir)
+		// A caller-supplied --state-dir also makes protocol sessions
+		// cross-replica: an Mcp-Session-Id minted on one pod resolves on any
+		// other pointed at the same dir (no forced re-initialize). A
+		// per-process temp dir (no --state-dir) keeps the in-memory behaviour.
+		if err == nil && cps.Shared() {
+			sessions = newDiskSessionStore(cps.BaseDir())
+		}
 	}
 	if err != nil {
 		return nil, nil, err
 	}
 
-	runsCtx, runsCancel := context.WithCancel(ctx)
+	// runsCtx must NOT inherit ctx's cancellation: async runs (run/*) descend
+	// from it, and --drain-timeout is what decides when they stop. WithoutCancel
+	// keeps ctx's values while dropping signal propagation, so runsCancel —
+	// called only by drain() — is the sole trigger. (Do not "simplify" this
+	// back to WithCancel(ctx): that lets SIGTERM kill in-flight runs at once and
+	// makes --drain-timeout a no-op.)
+	runsCtx, runsCancel := context.WithCancel(context.WithoutCancel(ctx))
 	var sem chan struct{}
 	if cfg.MaxConcurrentRuns > 0 {
 		sem = make(chan struct{}, cfg.MaxConcurrentRuns)
@@ -230,9 +245,10 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 		// mutex keeps lines from interleaving mid-write. slog does its own
 		// locking, so it takes the raw writer.
 		srv: &server{
-			tools: tools,
-			logw:  &syncWriter{w: logw},
-			log:   slog.New(slog.NewJSONHandler(logw, nil)).With("component", "mcpserver"),
+			tools:     tools,
+			logw:      &syncWriter{w: logw},
+			log:       slog.New(slog.NewJSONHandler(logw, nil)).With("component", "mcpserver"),
+			asyncRuns: true, // this transport routes run/* (runs.go)
 		},
 		verifier:     newVerifier(cfg),
 		baseCtx:      ctx,

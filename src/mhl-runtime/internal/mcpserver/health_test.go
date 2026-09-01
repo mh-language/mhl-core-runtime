@@ -13,6 +13,11 @@ import (
 
 func buildTestHTTP(t *testing.T, cfg HTTPConfig) *httpServer {
 	t.Helper()
+	return buildTestHTTPCtx(t, context.Background(), cfg)
+}
+
+func buildTestHTTPCtx(t *testing.T, ctx context.Context, cfg HTTPConfig) *httpServer {
+	t.Helper()
 	dir := t.TempDir()
 	if cfg.Dir == "" {
 		if err := os.WriteFile(filepath.Join(dir, "wf.mh"),
@@ -21,7 +26,7 @@ func buildTestHTTP(t *testing.T, cfg HTTPConfig) *httpServer {
 		}
 		cfg.Dir = dir
 	}
-	_, h, err := buildHTTP(context.Background(), cfg, io.Discard)
+	_, h, err := buildHTTP(ctx, cfg, io.Discard)
 	if err != nil {
 		t.Fatalf("buildHTTP: %v", err)
 	}
@@ -123,5 +128,35 @@ func TestDrainWaitsForWorkingRuns(t *testing.T) {
 	}
 	if h.runsCtx.Err() == nil {
 		t.Error("runsCtx not cancelled after drain")
+	}
+}
+
+// A SIGTERM cancels the server context, but async runs descend from runsCtx,
+// which is detached from it: they must keep running until drain() decides to
+// stop them. Without context.WithoutCancel in buildHTTP the signal propagates
+// straight through and --drain-timeout is a no-op.
+func TestRunsSurviveSignalUntilDrain(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	h := buildTestHTTPCtx(t, ctx, HTTPConfig{DrainTimeout: 3 * time.Second})
+
+	runCtx, runCancel := context.WithCancel(h.runsCtx)
+	defer runCancel()
+
+	cancel() // simulate SIGTERM reaching the process context
+	time.Sleep(50 * time.Millisecond)
+
+	if h.runsCtx.Err() != nil {
+		t.Fatal("runsCtx cancelled by the signal — should only fall to drain()")
+	}
+	if runCtx.Err() != nil {
+		t.Fatal("an in-flight run's context was cancelled by the signal")
+	}
+
+	h.drain(io.Discard) // no working runs → returns fast, then runsCancel()
+	if h.runsCtx.Err() == nil {
+		t.Fatal("runsCtx not cancelled after drain")
+	}
+	if runCtx.Err() == nil {
+		t.Fatal("run context not cancelled after drain")
 	}
 }

@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="MHL is a declarative, executable orchestration DSL with imperative control flow for stateful and effectful AI agent workflows." />
+    <meta name="description" content="Start here with MHL: a small language for controlled, auditable AI workflows." />
     <meta name="theme-color" content="#10161f" />
     <meta property="og:title" content="MHL — Meta-Harness Language" />
-    <meta property="og:description" content="Orchestrate agents, prompts, tools, and memory in deterministic pipelines." />
+    <meta property="og:description" content="A first-contact guide to the MHL language, runtime, extensions, and servers." />
     <meta property="og:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="MHL — Meta-Harness Language" />
-    <meta name="twitter:description" content="Orchestrate agents, prompts, tools, and memory in deterministic pipelines." />
+    <meta name="twitter:description" content="A first-contact guide to the MHL language, runtime, extensions, and servers." />
     <meta name="twitter:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
     <link rel="icon" href="assets/mhl-logo-rebrand.png" />
     <title>MHL — Meta-Harness Language</title>
@@ -25,130 +25,113 @@
       <div class="top-actions">
         <label class="search" for="site-search">
           <span aria-hidden="true">⌕</span>
-          <input id="site-search" type="search" placeholder="Search this page" autocomplete="off" />
+          <input id="site-search" type="search" placeholder="Search this guide" autocomplete="off" />
           <kbd>/</kbd>
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
-        <a class="github-link" href="serve.html">Serving</a>
+        <a class="github-link" href="mhl-language-spec.html">Specification</a>
         <a class="github-link" href="extensions.html">Extensions</a>
-        <a class="github-link" href="how-it-works.html">How it works</a>
-        <a class="github-link" href="reference.html">Reference</a>
-        <a class="github-link" href="stdlib.html">Standard library</a>
+        <a class="github-link" href="serve.html">Servers</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
       </div>
     </header>
 
     <div class="layout" id="top">
-      <aside class="sidebar" aria-label="Documentation navigation">
-        <p class="eyebrow">META-HARNESS LANGUAGE</p>
+      <aside class="sidebar" aria-label="Getting started navigation">
+        <p class="eyebrow">START WITH MHL</p>
         <nav id="toc">
-          <a class="nav-link active" href="#overview">Overview</a>
-          <a class="nav-link" href="#motivation">Motivation</a>
-          <a class="nav-link" href="#difference">MHL vs. frameworks</a>
-          <a class="nav-link" href="#first-program">First program</a>
-          <a class="nav-link" href="#mental-model">Mental model</a>
-          <a class="nav-link" href="#features">Features</a>
-          <a class="nav-link" href="#docs">Documentation paths</a>
-          <a class="nav-link" href="#complete-example">Complete example</a>
-          <a class="nav-link" href="#research">Research</a>
-          <a class="nav-link" href="#contributions">Contributions</a>
+          <a class="nav-link active" href="#overview">What is MHL?</a>
+          <a class="nav-link" href="#structure">Program structure</a>
+          <a class="nav-link" href="#features">Language features</a>
+          <a class="nav-link" href="#install">Install and run</a>
+          <a class="nav-link" href="#extensions">Build an extension</a>
+          <a class="nav-link" href="#servers">Run MCP and A2A</a>
+          <a class="nav-link" href="#next">Go deeper</a>
         </nav>
         <div class="sidebar-note">
           <span class="status-dot"></span>
-          <span>Go runtime<br /><small>declarative orchestration with imperative control flow</small></span>
+          <span>First contact<br /><small>learn the shape of MHL before reading the full specification</small></span>
         </div>
       </aside>
 
       <main class="content">
-        <section class="hero doc-section" id="overview" data-title="overview mhl language ai agents pipelines meta harness">
+        <section class="hero doc-section" id="overview" data-title="overview introduction mhl meta harness language ai workflows agents">
           <div class="hero-copy">
             <p class="eyebrow accent">META-HARNESS LANGUAGE · v1.0.0-alpha</p>
-            <h1>Control the loop.<br /><em>Not the agent.</em></h1>
-            <p class="lead">MHL is a declarative, executable orchestration DSL with imperative control flow for stateful and effectful AI agent workflows.</p>
+            <h1>Make AI workflows<br /><em>readable and bounded.</em></h1>
+            <p class="lead">MHL is a small executable language for orchestrating agents, prompts, tools, memory, and external services. Your program owns the flow; AI contributes judgment where it helps.</p>
             <div class="hero-actions">
-              <a class="button primary" href="#first-program">Get started <span>→</span></a>
-              <a class="button secondary" href="reference.html">Explore the language</a>
+              <a class="button primary" href="#install">Install MHL <span>→</span></a>
+              <a class="button secondary" href="mhl-language-spec.html">Read the specification</a>
             </div>
             <div class="hero-proof" aria-label="Core characteristics">
-              <span>deterministic</span><span>local-first</span><span>auditable</span>
+              <span>deterministic flow</span><span>local-first</span><span>auditable state</span>
             </div>
           </div>
           <div class="hero-card">
-            <div class="window-bar"><span></span><span></span><span></span><b>review.mh</b></div>
-            <pre class="code-block"><code class="language-mhl">agent Reviewer {
-    engine: "ollama/qwen2.5-coder"
-    endpoint: "http://localhost:11434"
+            <div class="window-bar"><span></span><span></span><span></span><b>hello.mh</b></div>
+            <pre class="code-block"><code class="language-mhl">agent Echo {
+    command: "echo"
+    args: ["${prompt}"]
 }
 
-prompt Review(diff: string) {
-    "Review the diff and list risks:\n${diff}"
+prompt Greeting(name: string) {
+    "Hello, ${name}."
 }
 
-pipeline PullRequest {
-    step Analyze {
-        var diff = git.diff()
-        var answer = Reviewer.run(
-            prompt: Review(diff: diff)
-        )
-        log.info(answer)
+pipeline Hello {
+    input name: string
+
+    step Greet {
+        log(Echo.run(prompt: Greeting(name: name)))
     }
 }</code></pre>
-            <div class="hero-card-foot"><span class="pulse"></span> configuration + flow + policies in one artifact</div>
+            <div class="hero-card-foot"><span class="pulse"></span> declarations + flow + policies in one file</div>
           </div>
         </section>
 
-        <section class="doc-section" id="motivation" data-title="motivation inverted orchestration determinism enterprise agents autonomy engineering">
+        <section class="doc-section" id="structure" data-title="structure program declarations pipeline agent prompt tool memory step input output">
           <div class="section-heading">
-            <p class="eyebrow">01 · WHY MHL</p>
-            <h2>Agents are probabilistic. Your process does not have to be.</h2>
-            <p>In real engineering workflows, unrestricted agent autonomy makes basic questions hard to answer: what ran, with which data, in what order, under which limits, and how can the process resume after a failure?</p>
+            <p class="eyebrow">01 · THE SHAPE OF A PROGRAM</p>
+            <h2>Declare capabilities, then compose a flow.</h2>
+            <p>An MHL file is a readable set of top-level declarations. A pipeline or workflow connects them into ordered steps with explicit inputs, state, limits, and outputs.</p>
           </div>
-          <div class="principle-grid">
-            <article class="principle-card">
-              <span>01</span>
-              <h3>Invert orchestration</h3>
-              <p>A deterministic harness owns the loop. The model is called only where probabilistic judgment adds value.</p>
-            </article>
-            <article class="principle-card">
-              <span>02</span>
-              <h3>Make policies explicit</h3>
-              <p>Retry, cache, rate limits, fallback, checkpoints, and iteration limits live beside the flow and enter code review.</p>
-            </article>
-            <article class="principle-card">
-              <span>03</span>
-              <h3>Preserve replaceability</h3>
-              <p>The pipeline describes intent; CLI agents, local models, and integrations can change without rewriting orchestration.</p>
-            </article>
+          <div class="architecture-flow architecture-flow-four" aria-label="MHL program structure">
+            <div><small>CAPABILITIES</small><strong>agent · prompt · tool</strong><span>what the workflow can call</span></div>
+            <i>→</i>
+            <div class="active"><small>ORCHESTRATION</small><strong>pipeline · step · loop</strong><span>when and under which limits</span></div>
+            <i>→</i>
+            <div><small>STATE</small><strong>memory · mem</strong><span>what survives the next step</span></div>
+            <i>→</i>
+            <div><small>INTEGRATIONS</small><strong>MCP · A2A · extensions</strong><span>what can live outside MHL</span></div>
           </div>
-          <div class="thesis-strip">
-            <strong>Core principle</strong>
-            <p>Use conventional software for control, state, and verification. Use AI for interpretation, synthesis, and decisions under uncertainty.</p>
+          <div class="syntax-columns">
+            <article class="concept-note"><b>Declarations</b><p>Reusable named blocks such as <code>agent</code>, <code>prompt</code>, <code>tool</code>, <code>memory</code>, and <code>extension</code>.</p><code>export prompt Review(diff: string) { ... }</code></article>
+            <article class="concept-note"><b>Execution</b><p>Statements inside a <code>step</code> evaluate values, call capabilities, branch, loop, handle errors, and write state.</p><code>var result = Project.test()</code></article>
           </div>
         </section>
 
-        <section class="doc-section" id="difference" data-title="comparison frameworks sdk yaml python langgraph temporal agents difference">
+        <section class="doc-section" id="features" data-title="features agents prompts tools memory pipelines tests standard library language constructs">
           <div class="section-heading">
-            <p class="eyebrow">02 · POSITIONING</p>
-            <h2>A harness language, not another framework.</h2>
-            <p>Frameworks are libraries embedded in a host application. MHL is a small, independent executable format designed to describe the workflow's operational contract itself.</p>
+            <p class="eyebrow">02 · WHAT YOU CAN BUILD</p>
+            <h2>A focused language surface for real workflows.</h2>
+            <p>Each construct has a clear role. Start with the essentials below; use the reference pages when you need signatures, fields, or exact behavior.</p>
           </div>
-          <div class="comparison">
-            <div class="comparison-row comparison-head"><span>Decision</span><span>Agent framework</span><span>MHL</span></div>
-            <div class="comparison-row"><strong>Unit of work</strong><span>Code in the framework's host language</span><span>Declarative, executable <code>.mh</code> DSL with imperative control flow</span></div>
-            <div class="comparison-row"><strong>Flow control</strong><span>Callbacks, graphs, or library conventions</span><span>Steps, loops, <code>goto</code>, <code>break</code>, and explicit policies</span></div>
-            <div class="comparison-row"><strong>Replacing an agent</strong><span>Often requires SDK-specific adapters</span><span>Change the <code>agent</code> declaration; keep the pipeline</span></div>
-            <div class="comparison-row"><strong>State and recovery</strong><span>Infrastructure added to the application</span><span><code>memory</code>, <code>mem</code>, checkpoints, and <code>--resume</code></span></div>
-            <div class="comparison-row"><strong>Inspection</strong><span>Distributed across code and configuration</span><span>Flow and limits are readable in one versioned artifact</span></div>
-            <div class="comparison-row"><strong>Best fit</strong><span>Full applications and deep integrations</span><span>Engineering harnesses, local automation, and controlled loops</span></div>
+          <div class="feature-catalog">
+            <a class="feature-card" href="reference.html#agent"><span>01</span><h3><code>agent</code></h3><p>Run a local command or model with retry, cache, timeout, fallback, and traffic controls.</p><b>call an agent →</b></a>
+            <a class="feature-card" href="reference.html#prompt"><span>02</span><h3><code>prompt</code></h3><p>Define typed, reusable templates with interpolation and composition.</p><b>shape context →</b></a>
+            <a class="feature-card" href="reference.html#tool"><span>03</span><h3><code>tool</code></h3><p>Package filesystem, Git, HTTP, command, JSON, and logging operations behind named methods.</p><b>perform work →</b></a>
+            <a class="feature-card" href="reference.html#memory"><span>04</span><h3><code>memory</code> and <code>mem</code></h3><p>Keep ephemeral values, persistent JSON, append-only logs, and pipeline state.</p><b>keep state →</b></a>
+            <a class="feature-card" href="reference.html#pipeline"><span>05</span><h3><code>pipeline</code> and <code>workflow</code></h3><p>Sequence steps, branch, loop, run in parallel, checkpoint, and resume.</p><b>control execution →</b></a>
+            <a class="feature-card" href="reference.html#tests"><span>06</span><h3><code>test</code> and <code>describe</code></h3><p>Turn examples and assertions into executable checks for your workflow.</p><b>verify behavior →</b></a>
           </div>
-          <div class="tip-row"><span>CHOOSING</span><p>MHL complements applications and frameworks. Use it when the flow must be portable, auditable, and controlled by a deterministic layer; use a framework when orchestration must live deeply inside the application.</p></div>
         </section>
 
-        <section class="section-grid doc-section" id="first-program" data-title="installation first program hello pipeline run input cli">
+        <section class="section-grid doc-section" id="install" data-title="install installation quickstart first program run lint test cli mac linux windows">
           <div class="section-heading">
-            <p class="eyebrow">03 · GETTING STARTED</p>
-            <h2>From zero to your first pipeline.</h2>
-            <p>Install the runtime, save the example as <code>hello.mh</code>, and run it. The agent uses <code>echo</code>, so this tutorial needs neither an API key nor network access.</p>
+            <p class="eyebrow">03 · INSTALL AND RUN</p>
+            <h2>Go from an empty folder to a running pipeline.</h2>
+            <p>Install the Go runtime, save the example as <code>hello.mh</code>, and run it. The <code>echo</code> agent needs no API key or network connection.</p>
           </div>
           <div class="section-body">
             <div class="install-tabs" aria-label="Installation commands">
@@ -173,204 +156,93 @@ pipeline Hello {
         var answer = Echo.run(
             prompt: Greeting(name: name)
         )
-        log.info(answer)
+        log(answer)
     }
 }</code></pre>
             </div>
             <div class="run-stack">
               <div class="inline-code"><span>run</span><code>mhl run hello.mh --input name=Ana</code></div>
+              <div class="inline-code"><span>check</span><code>mhl lint hello.mh</code> <code>mhl test hello.mh</code></div>
               <div class="inline-code"><span>output</span><code>Hello, Ana. Your first pipeline is running.</code></div>
             </div>
           </div>
         </section>
 
-        <section class="doc-section" id="mental-model" data-title="mental model declarations execution pipeline step harness flow">
+        <section class="doc-section" id="extensions" data-title="extensions build create own extension manifest json rpc permissions executable install">
           <div class="section-heading">
-            <p class="eyebrow">04 · MENTAL MODEL</p>
-            <h2>Declare capabilities. Compose the flow. Execute with limits.</h2>
-            <p>An MHL file separates reusable building blocks from execution order. This keeps operational decisions visible without mixing them into agent code.</p>
+            <p class="eyebrow">04 · EXTEND THE RUNTIME</p>
+            <h2>Add a capability without changing the language.</h2>
+            <p>An external extension is an isolated executable described by a manifest. MHL starts it on demand and communicates through a small JSON-RPC process protocol. The extension owns its capability; the runtime owns orchestration and policy.</p>
           </div>
-          <div class="architecture-flow" aria-label="MHL conceptual flow">
-            <div><small>DECLARATIONS</small><strong>agent · prompt</strong><span>who reasons and with which context</span></div>
-            <i>→</i>
-            <div><small>CAPABILITIES</small><strong>tool · memory · MCP</strong><span>what the flow can do and remember</span></div>
-            <i>→</i>
-            <div class="active"><small>ORCHESTRATION</small><strong>pipeline · step · loop</strong><span>order, limits, and recovery</span></div>
+          <div class="split-section extension-intro-grid">
+            <div>
+              <p class="block-label">PROJECT LAYOUT</p>
+              <pre class="code-block"><code>my-project/
+├── .mhl/
+│   └── extensions/
+│       └── crm/
+│           ├── extension.json
+│           └── bin/
+│               └── crm
+└── workflow.mh</code></pre>
+              <div class="tip-row"><span>TRUST BOUNDARY</span><p>Pin the extension in <code>extensions.lock</code>. Keep credentials out of source and declare only the permissions it needs.</p></div>
+            </div>
+            <div>
+              <p class="block-label">MINIMAL MANIFEST</p>
+              <pre class="code-block"><code class="language-json">{
+  "id": "crm",
+  "api_version": 1,
+  "executable": "bin/crm",
+  "declarations": [
+    { "kind": "crm", "name": "Customer" }
+  ],
+  "permissions": {
+    "network": ["api.example.com"]
+  }
+}</code></pre>
+              <pre class="code-block"><code class="language-mhl">extension crm Customer {
+    endpoint: "https://api.example.com"
+}
+
+var customer = Customer.lookup(id: "42")</code></pre>
+            </div>
           </div>
-          <div class="syntax-columns">
-            <article class="concept-note"><b>Declarations</b><p>Named top-level blocks. They can be exported and reused by other modules.</p><code>export prompt Review(...)</code></article>
-            <article class="concept-note"><b>Expressions and statements</b><p>They live inside steps and tools: variables, calls, objects, arrays, conditions, loops, and error handling.</p><code>var ready = result.exit_code == 0</code></article>
-          </div>
+          <div class="next-steps"><strong>BUILDING AN EXTENSION</strong><a href="extensions.html#layout">Manifest and project layout →</a><a href="extensions.html#protocol">JSON-RPC protocol →</a><a href="extensions.html#workflow">Install and verify →</a></div>
         </section>
 
-        <section class="doc-section" id="features" data-title="features agents prompts memory tools mcp pipelines tests syntax hooks before after">
+        <section class="doc-section" id="servers" data-title="server mcp a2a serve expose workflows stdio http streamable agent2agent">
           <div class="section-heading">
-            <p class="eyebrow">05 · FEATURES</p>
-            <h2>A small surface for complete workflows.</h2>
-            <p>Each construct has one clear role. The reference includes syntax, fields, and complete examples for all of them.</p>
+            <p class="eyebrow">05 · SERVE YOUR WORKFLOWS</p>
+            <h2>Expose MHL as MCP tools or A2A skills.</h2>
+            <p>The runtime can publish every workflow in a directory. Use MCP over stdio when a client spawns the process, MCP over HTTP for a networked client, or A2A over HTTP for Agent2Agent interoperability.</p>
           </div>
-          <div class="feature-catalog">
-            <a class="feature-card" href="reference.html#agent"><span>01</span><h3><code>agent</code></h3><p>Local CLI or Ollama, with retry, cache, rate limits, fallback, and before/after hooks for real tool/MCP data.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#prompt"><span>02</span><h3><code>prompt</code></h3><p>Typed templates, interpolation, composition, and Markdown files.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#memory"><span>03</span><h3><code>memory</code> / <code>mem</code></h3><p>Ephemeral KV, persistent JSON, append-only logs, and loop state.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#tool"><span>04</span><h3><code>tool</code></h3><p>Reusable methods over processes, files, Git, HTTP, and JSON.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#mcp"><span>05</span><h3><code>extension mcp</code></h3><p>MCP server configuration over stdio or HTTP with credentials, plus <code>.call(...)</code>/<code>.list_tools()</code>/<code>.discover()</code>.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#a2a"><span>06</span><h3><code>extension a2a</code></h3><p>Call a remote Agent2Agent (A2A) agent over JSON-RPC: <code>.send(...)</code>, <code>.agent_card()</code>, <code>.get_task(...)</code>, <code>.cancel(...)</code>.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#pipeline"><span>07</span><h3><code>pipeline</code></h3><p>Inputs, shared variables, steps, checkpoints, and recovery.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#tests"><span>08</span><h3><code>test</code></h3><p>Self-verifying examples with assertions and case isolation.</p><b>view example →</b></a>
-            <a class="feature-card" href="reference.html#syntax"><span>09</span><h3>Syntax</h3><p>Types, collections, lambdas, operators, and control flow.</p><b>view reference →</b></a>
-            <a class="feature-card" href="extensions.html"><span>10</span><h3>Extensions</h3><p>Add capabilities as isolated executables without recompiling the runtime.</p><b>build an extension →</b></a>
+          <div class="card-grid three server-grid">
+            <article class="info-card server-card"><span class="card-icon">MCP</span><h3>Local MCP</h3><p>Newline-delimited JSON-RPC over a subprocess. One workflow becomes one MCP tool.</p><pre class="code-block"><code>mhl serve mcp sample/serve</code></pre></article>
+            <article class="info-card server-card"><span class="card-icon">HTTP</span><h3>MCP over HTTP</h3><p>Expose the same workflows through Streamable HTTP for networked clients.</p><pre class="code-block"><code>mhl serve mcp --http --addr 127.0.0.1:8711 sample/serve</code></pre></article>
+            <article class="info-card server-card"><span class="card-icon">A2A</span><h3>A2A skills</h3><p>Publish workflows as Agent2Agent tasks with an Agent Card and task lifecycle.</p><pre class="code-block"><code>mhl serve a2a --addr 127.0.0.1:8710 sample/serve</code></pre></article>
           </div>
+          <div class="security-banner"><span>!</span><div><strong>Before exposing a server</strong><p>Bind deliberately, configure authentication for non-local use, choose a state directory for resumable runs, and review the permissions of every workflow.</p></div></div>
+          <div class="next-steps"><strong>SERVING GUIDE</strong><a href="serve.html#mcp-stdio">MCP stdio →</a><a href="serve.html#mcp-http">MCP HTTP →</a><a href="serve.html#a2a">A2A →</a><a href="serve.html#resume">Resume long runs →</a></div>
         </section>
 
-        <section class="doc-section" id="docs" data-title="documentation paths guide reference standard library extensions runtime developers">
+        <section class="doc-section" id="next" data-title="documentation resources specification reference standard library how it works">
           <div class="section-heading">
-            <p class="eyebrow">06 · DOCUMENTATION MAP</p>
-            <h2>Choose the page for the job.</h2>
-            <p>The site is organized around a few questions: what is MHL, how does it work, how do I write it, how do I serve it, and how do I make the runtime do more?</p>
+            <p class="eyebrow">06 · NEXT STEPS</p>
+            <h2>Use the right document for the next question.</h2>
+            <p>This page gives you the map. The detailed language behavior is kept in the ECMA-style specification and the focused guides below.</p>
           </div>
           <div class="card-grid four">
-            <a class="info-card accent-card" href="how-it-works.html"><span class="card-icon">00</span><h3>How MHL works</h3><p>A visual tour of the runtime, controlled loops, agents, tools, state, and verification.</p></a>
-            <a class="info-card accent-card" href="reference.html"><span class="card-icon">01</span><h3>Language Reference</h3><p>Declarations, syntax, control flow, pipelines, diagnostics, and complete MHL examples.</p></a>
-            <a class="info-card" href="stdlib.html"><span class="card-icon">02</span><h3>Standard Library</h3><p>Callable functions and methods, signatures, parameters, return values, and native operations.</p></a>
-            <a class="info-card" href="serve.html"><span class="card-icon">03</span><h3>Serving workflows</h3><p><code>mhl serve</code> as MCP tools or A2A skills: stdio and HTTP transports, async <code>run/*</code>, <code>run/resume</code> for human-in-the-loop.</p></a>
-            <a class="info-card" href="extensions.html"><span class="card-icon">04</span><h3>Extend the runtime</h3><p>Manifest, lock file, process lifecycle, JSON-RPC messages, permissions, and CLI workflow.</p></a>
+            <a class="info-card accent-card" href="how-it-works.html"><span class="card-icon">01</span><h3>How MHL works</h3><p>Visual tour of declarations, runtime execution, controlled loops, state, and verification.</p></a>
+            <a class="info-card accent-card" href="mhl-language-spec.html"><span class="card-icon">02</span><h3>Language specification</h3><p>Formal grammar, types, expressions, statements, standard library, extensions, serving, and security.</p></a>
+            <a class="info-card" href="reference.html"><span class="card-icon">03</span><h3>Practical reference</h3><p>Copyable examples for constructs, pipelines, tests, diagnostics, and CLI behavior.</p></a>
+            <a class="info-card" href="stdlib.html"><span class="card-icon">04</span><h3>Standard library</h3><p>Callable functions, collection methods, native operations, and test assertions.</p></a>
           </div>
-        </section>
-
-        <section class="doc-section" id="complete-example" data-title="complete example agent prompt tool memory loop pipeline retry fix test">
-          <div class="section-heading">
-            <p class="eyebrow">07 · APPLIED EXAMPLE</p>
-            <h2>An engineering loop with explicit stop criteria.</h2>
-            <p>This example connects an agent, prompt, tool, and persistent state. The runtime executes a test, asks for a fix only when necessary, and stops on success or at the attempt ceiling.</p>
-          </div>
-          <div class="code-wrap">
-            <button class="copy-button" type="button" data-copy="copy">Copy</button>
-            <pre class="code-block"><code class="language-mhl">agent Fixer {
-    engine: "ollama/qwen2.5-coder"
-    endpoint: "http://localhost:11434"
-    temperature: 0.1
-    retry: { max_attempts: 3, delay: 2s }
-    cache: { ttl: 10m }
-}
-
-prompt Repair(diff: string, failure: string) {
-    """
-    Change as little code as possible to fix the failure.
-
-    Current diff:
-    ${diff}
-
-    Test failure:
-    ${failure}
-    """
-}
-
-tool Project {
-    test() -> cmd.exec(["go", "test", "./..."], timeout: 2m)
-    diff() -> git.diff()
-}
-
-loop pipeline AutoRepair {
-    mem attempts = 0
-    mem done = false
-
-    repeat: {
-        stop_when: done
-        max_iterations: 5
-    }
-
-    step Verify {
-        var result = Project.test()
-        if (result.exit_code == 0) {
-            done = true
-        } else {
-            attempts = attempts + 1
-            var patch = Fixer.run(prompt: Repair(
-                diff: Project.diff(),
-                failure: result.stderr
-            ))
-            fs.write("candidate.patch", patch)
-        }
-    }
-}</code></pre>
-          </div>
-          <div class="example-steps">
-            <div><span>1</span><p><strong>Verify</strong> with a deterministic command.</p></div>
-            <div><span>2</span><p><strong>Call AI</strong> only after an objective failure.</p></div>
-            <div><span>3</span><p><strong>Bound</strong> agent retries and pipeline iterations.</p></div>
-            <div><span>4</span><p><strong>Persist</strong> progress to inspect and resume the loop.</p></div>
-          </div>
-        </section>
-
-        <section class="doc-section research-section" id="research" data-title="research paper study zenodo doi inverted orchestration looping engineering">
-          <div class="section-heading">
-            <p class="eyebrow">08 · FOUNDATIONS</p>
-            <h2>The idea behind the language.</h2>
-            <p>MHL materializes the <em>Inverted Orchestration</em> pattern: a deterministic harness keeps control of transitions, state, verification, and limits while specialized agents operate within that boundary.</p>
-          </div>
-          <article class="paper-card">
-            <div class="paper-mark">DOI</div>
-            <div>
-              <p class="eyebrow accent">REFERENCE STUDY · 2026</p>
-              <h3>Inverted Orchestration in Software Development: A Deterministic Harness and Looping Engineering under Enterprise Constraints</h3>
-              <p>Yan Justino · Zenodo · v0.1.0</p>
-              <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">10.5281/zenodo.21421908 ↗</a>
-            </div>
-          </article>
-          <p class="block-label">BIBTEX CITATION</p>
-          <div class="code-wrap">
-            <button class="copy-button" type="button" data-copy="copy">Copy</button>
-            <pre class="code-block"><code>@misc{justino_2026_21421908,
-  author    = {Justino, Yan},
-  title     = {Inverted Orchestration in Software Development:
-               A Deterministic Harness and Looping Engineering
-               under Enterprise Constraints},
-  year      = {2026},
-  month     = jul,
-  publisher = {Zenodo},
-  version   = {v0.1.0},
-  doi       = {10.5281/zenodo.21421908},
-  url       = {https://doi.org/10.5281/zenodo.21421908}
-}</code></pre>
-          </div>
-        </section>
-
-        <section class="doc-section" id="contributions" data-title="contributions creator yan justino community github credit authorship">
-          <div class="section-heading">
-            <p class="eyebrow">09 · CONTRIBUTIONS</p>
-            <h2>An open language for AI-assisted engineering.</h2>
-            <p>MHL was created by <strong>Yan Justino</strong>, author of the Inverted Orchestration proposal and the original designer of the language and its runtime.</p>
-          </div>
-          <div class="contribution-panel">
-            <div class="contributor-list" aria-label="MHL contributors">
-              <!-- Duplicate a .creator-card and replace its avatar, name, role, and description for future contributors. -->
-              <article class="creator-card">
-                <img class="contributor-avatar" src="assets/contributions/yan-justino.jpeg" alt="Portrait of Yan Justino" />
-                <div>
-                  <small>CREATOR</small><h3>Yan Justino</h3><p>Language, runtime, and original research.</p>
-                  <div class="contributor-links" aria-label="Yan Justino social profiles">
-                    <a href="https://www.linkedin.com/in/yanjustino/" target="_blank" rel="noreferrer">LinkedIn ↗</a>
-                    <a href="https://github.com/yanjustino" target="_blank" rel="noreferrer">GitHub ↗</a>
-                  </div>
-                </div>
-              </article>
-              <article class="creator-card contributor-placeholder">
-                <div class="creator-monogram" aria-hidden="true">+</div>
-                <div><small>OPEN CONTRIBUTION</small><h3>Your name here</h3><p>Add your photo, role, and contribution when you join the project.</p></div>
-              </article>
-            </div>
-            <div class="contribution-copy">
-              <h3>How to contribute</h3>
-              <p>Contributions are welcome across examples, documentation, runtime behavior, diagnostics, and editor support. Include a reproducible case, keep credentials out of source, and accompany new constructs with tests.</p>
-              <a class="button primary" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">Contribute on GitHub <span>↗</span></a>
-            </div>
-          </div>
+          <div class="next-steps"><strong>KEEP EXPLORING</strong><a href="mhl-language-spec.html#lexical">Lexical rules →</a><a href="mhl-language-spec.html#expressions">Expressions →</a><a href="mhl-language-spec.html#security">Security semantics →</a><a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">Source on GitHub ↗</a></div>
         </section>
 
         <footer class="site-footer">
           <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="reference.html">Language reference</a> · <a href="serve.html">Serving workflows</a> · <a href="extensions.html">Extend the runtime</a> · <a href="stdlib.html">Standard library</a> · <a href="https://doi.org/10.5281/zenodo.21421908" target="_blank" rel="noreferrer">Research</a></span>
+          <span><a href="mhl-language-spec.html">Specification</a> · <a href="extensions.html">Extensions</a> · <a href="serve.html">Servers</a> · <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a></span>
         </footer>
       </main>
     </div>

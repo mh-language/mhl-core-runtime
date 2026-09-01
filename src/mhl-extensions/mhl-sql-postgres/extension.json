@@ -1,0 +1,11 @@
+{
+  "id": "dev.mhl.sql-postgres",
+  "version": "0.1.0",
+  "api_version": "1",
+  "executable": "bin/mhl-sql-postgres",
+  "declarations_file": "declarations.json",
+  "permissions": {
+    "network": ["*"],
+    "secrets": []
+  }
+}

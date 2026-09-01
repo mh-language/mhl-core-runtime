@@ -32,6 +32,17 @@ pipeline Slow {
 }
 `
 
+// httpSlow3WF runs long enough (3 x ~2s, no checkpoint) that another replica
+// can watch its step advance and cancel it mid-flight.
+const httpSlow3WF = `
+pipeline Slow3 {
+    var done = ""
+    step A { var r = cmd.exec(["sleep", "2"]) }
+    step B { var r = cmd.exec(["sleep", "2"]) }
+    step C { done = "ok" }
+}
+`
+
 // httpGateWF stops at Gate until it is resumed with approved="yes" — the
 // HITL pattern over run/start + run/resume.
 const httpGateWF = `
@@ -219,6 +230,54 @@ func TestHTTPStatelessNoSession(t *testing.T) {
 	}), nil)
 	if code := body["error"].(map[string]any)["code"].(float64); code != -32602 {
 		t.Errorf("missing-_meta code = %v, want -32602", code)
+	}
+}
+
+// The HTTP transport routes run/*, so initialize must advertise it under
+// capabilities.experimental["mhl.run"] with a version and the method list, and
+// tools/list must hint that each tool can be driven async.
+func TestHTTPAdvertisesAsyncRunCapability(t *testing.T) {
+	ts := newHTTPServer(t, "", map[string]string{
+		"w.mh": "pipeline Doc {\n  input repo: string\n  step S { log(repo) }\n}\n",
+	})
+
+	_, body := postMCP(t, ts.URL, "", rpcMap(1, "initialize", map[string]any{"capabilities": map[string]any{}}), nil)
+	res, _ := body["result"].(map[string]any)
+	caps, _ := res["capabilities"].(map[string]any)
+	exp, ok := caps["experimental"].(map[string]any)
+	if !ok {
+		t.Fatalf("initialize capabilities has no experimental block: %v", caps)
+	}
+	run, ok := exp["mhl.run"].(map[string]any)
+	if !ok {
+		t.Fatalf("experimental has no mhl.run: %v", exp)
+	}
+	if run["version"] != "1" {
+		t.Errorf("mhl.run version = %v, want %q", run["version"], "1")
+	}
+	methods, _ := run["methods"].([]any)
+	got := map[string]bool{}
+	for _, m := range methods {
+		got[m.(string)] = true
+	}
+	for _, want := range []string{"run/start", "run/status", "run/resume", "run/cancel", "run/list", "run/logs"} {
+		if !got[want] {
+			t.Errorf("mhl.run.methods is missing %q (got %v)", want, methods)
+		}
+	}
+
+	sid := ""
+	if r, _ := postMCP(t, ts.URL, "", rpcMap(2, "initialize", map[string]any{"capabilities": map[string]any{}}), nil); r != nil {
+		sid = r.Header.Get("Mcp-Session-Id")
+	}
+	_, tl := postMCP(t, ts.URL, sid, rpcMap(3, "tools/list", nil), nil)
+	tools, _ := tl["result"].(map[string]any)["tools"].([]any)
+	if len(tools) == 0 {
+		t.Fatal("tools/list returned nothing")
+	}
+	meta, _ := tools[0].(map[string]any)["_meta"].(map[string]any)
+	if _, ok := meta["mhl.run"]; !ok {
+		t.Errorf("tools/list entry has no _meta.mhl.run hint: %v", tools[0])
 	}
 }
 
@@ -576,7 +635,7 @@ func TestHTTPPerMethodRoutes(t *testing.T) {
 	// Matching path + body → normal result.
 	resp, body := post("/mcp/run/list", sid, "run/list", map[string]any{
 		"_meta": map[string]any{
-			"io.modelcontextprotocol/protocolVersion":   "2026-07-28",
+			"io.modelcontextprotocol/protocolVersion":    "2026-07-28",
 			"io.modelcontextprotocol/clientCapabilities": map[string]any{},
 		},
 	})
@@ -646,6 +705,118 @@ func TestHTTPRunResume(t *testing.T) {
 	}
 	if final["vars"].(map[string]any)["prepared"] != "done" {
 		t.Errorf("resumed vars = %v", final["vars"])
+	}
+}
+
+// TestHTTPRunLiveStatusAndCancelAcrossReplicas: two servers on the same
+// --state-dir, both running. A run started on A is visible as "working" with an
+// advancing step from B (from the published live status, not a checkpoint —
+// Slow3 has none), and a run/cancel issued at B stops the goroutine on A: the
+// run reaches "canceled", not "completed".
+func TestHTTPRunLiveStatusAndCancelAcrossReplicas(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "slow3.mh"), []byte(httpSlow3WF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	serverWith := func() *httptest.Server {
+		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
+		if err != nil {
+			t.Fatalf("HandlerWithState: %v", err)
+		}
+		s := httptest.NewServer(h)
+		t.Cleanup(s.Close)
+		return s
+	}
+
+	a, b := serverWith(), serverWith()
+	sidA, sidB := initHTTPSession(t, a.URL), initHTTPSession(t, b.URL)
+
+	_, body := postMCP(t, a.URL, sidA, rpcMap(2, "run/start", map[string]any{"name": "Slow3"}), nil)
+	runID := body["result"].(map[string]any)["runId"].(string)
+	if runID == "" {
+		t.Fatalf("run/start on A returned no runId: %v", body)
+	}
+
+	// From B: the run is working, and its step advances across polls.
+	steps := map[string]bool{}
+	sawWorking := false
+	deadline := time.Now().Add(6 * time.Second)
+	for time.Now().Before(deadline) && len(steps) < 2 {
+		time.Sleep(400 * time.Millisecond)
+		_, sb := postMCP(t, b.URL, sidB, rpcMap(3, "run/status", map[string]any{"runId": runID}), nil)
+		res, ok := sb["result"].(map[string]any)
+		if !ok {
+			t.Fatalf("B run/status error while A runs: %v", sb)
+		}
+		if res["state"] == "working" {
+			sawWorking = true
+		}
+		if s, _ := res["step"].(string); s != "" {
+			steps[s] = true
+		}
+	}
+	if !sawWorking {
+		t.Fatal("B never saw the run as working")
+	}
+	if len(steps) < 2 {
+		t.Fatalf("B did not see the step advance (saw %v)", steps)
+	}
+
+	// Cancel from B; A's goroutine must stop.
+	_, body = postMCP(t, b.URL, sidB, rpcMap(4, "run/cancel", map[string]any{"runId": runID}), nil)
+	res, ok := body["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("B run/cancel error: %v", body)
+	}
+	if res["state"] != "canceled" {
+		t.Fatalf("B run/cancel state = %v, want canceled", res["state"])
+	}
+
+	final := pollRun(t, a.URL, sidA, runID)
+	if final["state"] != "canceled" {
+		t.Fatalf("run on A ended %v, want canceled (B's cancel did not reach it)", final["state"])
+	}
+}
+
+// TestHTTPSharedSessionsAcrossReplicas: two servers on the same --state-dir.
+// An Mcp-Session-Id minted by `initialize` on A is a usable session on B —
+// tools/list returns 200 (not 404), and a run started on A is visible via
+// run/status on B using that same session.
+func TestHTTPSharedSessionsAcrossReplicas(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "slow3.mh"), []byte(httpSlow3WF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	serverWith := func() *httptest.Server {
+		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
+		if err != nil {
+			t.Fatalf("HandlerWithState: %v", err)
+		}
+		s := httptest.NewServer(h)
+		t.Cleanup(s.Close)
+		return s
+	}
+
+	a, b := serverWith(), serverWith()
+	sidA := initHTTPSession(t, a.URL)
+
+	// A session minted on A is recognized on B — no forced re-initialize.
+	resp, _ := postMCP(t, b.URL, sidA, rpcMap(2, "tools/list", map[string]any{}), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("tools/list on B with A's session = HTTP %d, want 200", resp.StatusCode)
+	}
+
+	// Cross-pod, same session: run/start on A, run/status on B.
+	_, body := postMCP(t, a.URL, sidA, rpcMap(3, "run/start", map[string]any{"name": "Slow3"}), nil)
+	runID, _ := body["result"].(map[string]any)["runId"].(string)
+	if runID == "" {
+		t.Fatalf("run/start on A returned no runId: %v", body)
+	}
+	_, sb := postMCP(t, b.URL, sidA, rpcMap(4, "run/status", map[string]any{"runId": runID}), nil)
+	if _, ok := sb["result"].(map[string]any); !ok {
+		t.Fatalf("run/status on B with A's session errored: %v", sb)
 	}
 }
 
@@ -824,5 +995,56 @@ func TestHTTPRunOwnership(t *testing.T) {
 	}
 	if pollRun(t, ts.URL, sidA, runID)["state"] != "completed" {
 		t.Errorf("owner-resumed run did not complete")
+	}
+}
+
+// tools/call enforces the advertised inputSchema: a missing required argument
+// is -32602 naming the field, not a run that executes and fails on a step.
+func TestHTTPToolsCallEnforcesInputSchema(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "tools/call", map[string]any{
+		"name": "Greet", "arguments": map[string]any{},
+	}), nil)
+	if body["result"] != nil {
+		t.Fatalf("tools/call with no args returned a result: %v", body["result"])
+	}
+	e := body["error"].(map[string]any)
+	if e["code"].(float64) != -32602 {
+		t.Errorf("code = %v, want -32602", e["code"])
+	}
+	if msg, _ := e["message"].(string); !strings.Contains(msg, `"name"`) {
+		t.Errorf("message %q does not name the missing input", msg)
+	}
+
+	// An undeclared argument is rejected too (additionalProperties:false).
+	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "tools/call", map[string]any{
+		"name": "Greet", "arguments": map[string]any{"name": "ana", "extra": 1},
+	}), nil)
+	if body["error"].(map[string]any)["code"].(float64) != -32602 {
+		t.Errorf("undeclared arg: code = %v, want -32602", body["error"])
+	}
+}
+
+// run/start rejects a malformed call before any run is registered: -32602, and
+// run/list stays empty.
+func TestHTTPRunStartEnforcesInputSchema(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "run/start", map[string]any{
+		"name": "Greet", "arguments": map[string]any{"wrong": "x"},
+	}), nil)
+	if body["result"] != nil {
+		t.Fatalf("run/start with a bad arg returned a result: %v", body["result"])
+	}
+	if body["error"].(map[string]any)["code"].(float64) != -32602 {
+		t.Errorf("code = %v, want -32602", body["error"])
+	}
+
+	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "run/list", nil), nil)
+	if runs := body["result"].(map[string]any)["runs"].([]any); len(runs) != 0 {
+		t.Errorf("a rejected run/start still registered %d run(s): %v", len(runs), runs)
 	}
 }

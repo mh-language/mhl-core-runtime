@@ -12,7 +12,7 @@ code { color:var(--teal); font-size:.9em; }
 .brand { display:flex; gap:11px; align-items:center; letter-spacing:-.02em; }
 .brand-logo { display:block; width:34px; height:34px; object-fit:contain; }
 .brand strong { display:block; font-size:15px; line-height:1.1; }.brand small { display:block; color:var(--muted); font-size:10px; letter-spacing:.04em; margin-top:3px; }
-.top-actions { display:flex; align-items:center; gap:13px; }.search { width:240px; display:flex; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:7px 9px; color:var(--muted); }.search input { width:100%; border:0; outline:0; color:var(--ink); background:transparent; font:12px 'DM Mono',monospace; }.search kbd { font-size:10px; border:1px solid var(--line); border-radius:4px; padding:1px 4px; }.icon-button { border:1px solid var(--line); color:var(--ink); background:var(--panel); border-radius:8px; height:34px; width:34px; cursor:pointer; font-size:17px; }.lang-toggle { width:auto; padding:0 11px; font-size:11px; font-weight:700; font-family:'DM Mono',monospace; letter-spacing:.03em; }.github-link { color:var(--muted); font-size:12px; font-weight:700; }.github-link:hover { color:var(--accent); }
+.top-actions { display:flex; align-items:center; gap:13px; }.search { width:240px; display:flex; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:7px 9px; color:var(--muted); }.search input { width:100%; border:0; outline:0; color:var(--ink); background:transparent; font:12px 'DM Mono',monospace; }.search kbd { font-size:10px; border:1px solid var(--line); border-radius:4px; padding:1px 4px; }.icon-button { border:1px solid var(--line); color:var(--ink); background:var(--panel); border-radius:8px; height:34px; width:34px; cursor:pointer; font-size:17px; }.lang-toggle { width:auto; padding:0 11px; font-size:11px; font-weight:700; font-family:'DM Mono',monospace; letter-spacing:.03em; }.github-link { color:var(--muted); font-size:12px; font-weight:700; }.github-link:hover { color:var(--accent); }.github-link[aria-current="page"] { color:var(--ink); text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:6px; }
 .layout { display:grid; grid-template-columns:220px minmax(0,850px); gap:65px; max-width:1160px; margin:0 auto; padding:65px 30px 80px; }.sidebar { position:sticky; top:125px; align-self:start; height:calc(100vh - 170px); display:flex; flex-direction:column; }.eyebrow { color:var(--muted); font:500 10px/1.2 'DM Mono',monospace; letter-spacing:.13em; margin:0 0 15px; }.accent { color:var(--accent); }.sidebar nav { display:grid; gap:3px; }.nav-link { color:var(--muted); font-size:12px; padding:7px 10px; border-left:2px solid transparent; transition:.2s; }.nav-link:hover,.nav-link.active { color:var(--ink); border-color:var(--accent); background:var(--soft); }.sidebar-note { margin-top:auto; display:flex; gap:9px; align-items:flex-start; border-top:1px solid var(--line); padding:17px 10px 0; color:var(--muted); font-size:11px; }.sidebar-note small { font-size:9px; line-height:1.35; }.status-dot,.pulse { width:7px; height:7px; border-radius:50%; background:#43b77c; display:inline-block; margin-top:7px; box-shadow:0 0 0 4px rgba(67,183,124,.12); }
 .content { min-width:0; }.doc-section { scroll-margin-top:105px; margin-bottom:125px; }.hero { min-height:560px; display:grid; grid-template-columns:1fr 1.1fr; align-items:center; gap:42px; margin-bottom:120px; }.hero h1 { font-size:clamp(42px,6vw,72px); line-height:1.01; letter-spacing:-.065em; margin:0 0 25px; font-weight:800; }.hero h1 em { color:var(--accent); font-style:normal; }.lead { color:var(--muted); font-size:17px; max-width:410px; line-height:1.7; }.hero-actions { display:flex; gap:11px; flex-wrap:wrap; margin-top:30px; }.button { display:inline-flex; gap:10px; align-items:center; border-radius:8px; padding:10px 15px; font-size:12px; font-weight:800; border:1px solid var(--line); }.button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }.button.primary:hover { background:var(--accent-dark); }.button.secondary { background:var(--panel); }.hero-card { background:var(--code); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; transform:rotate(1.2deg); }.window-bar { height:38px; display:flex; align-items:center; gap:6px; padding:0 14px; color:#768782; border-bottom:1px solid #273139; font:10px 'DM Mono',monospace; }.window-bar span { width:7px; height:7px; border-radius:50%; background:#e35c4d; }.window-bar span:nth-child(2){background:#e8af4e}.window-bar span:nth-child(3){background:#56b77d}.window-bar b { margin-left:10px; font-weight:400; }.hero-card .code-block { border-radius:0; min-height:275px; }.hero-card-foot { color:#6b8179; font:10px 'DM Mono',monospace; padding:12px 18px 16px; }.hero-card-foot .pulse { margin:0 8px 1px 0; }
 .section-heading { max-width:690px; margin-bottom:32px; }.section-heading h2 { font-size:36px; letter-spacing:-.045em; line-height:1.1; margin:0 0 12px; }.section-heading p:not(.eyebrow) { color:var(--muted); max-width:650px; margin:0; }.section-body { min-width:0; }.callout { display:flex; align-items:center; gap:14px; flex-wrap:wrap; border:1px solid var(--line); border-left:3px solid var(--accent); padding:13px 15px; background:var(--panel); margin-bottom:17px; font-size:12px; }.callout strong { font-size:12px; }.callout span { color:var(--muted); font:10px 'DM Mono',monospace; }.callout code { flex-basis:100%; min-width:0; color:var(--teal); font-size:10px; overflow:auto; }
@@ -91,6 +91,19 @@ code { color:var(--teal); font-size:.9em; }
 .architecture-flow strong { margin:28px 0 6px; font:500 11px 'DM Mono',monospace; }
 .architecture-flow span { color:var(--muted); font-size:10px; }
 .architecture-flow i { color:var(--accent); font-style:normal; }
+.architecture-flow-four { grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr); gap:9px; }
+.architecture-flow-four>div { min-width:0; padding:16px; }
+.architecture-flow-four strong { overflow-wrap:anywhere; }
+.extension-intro-grid>* { min-width:0; }
+.extension-intro-grid .code-block { max-width:100%; }
+.extension-intro-grid .code-block+.code-block { margin-top:12px; }
+#extensions>.next-steps { margin-top:24px; }
+.server-grid { grid-template-columns:repeat(3,minmax(0,1fr)); align-items:stretch; }
+.server-card { min-width:0; display:flex; flex-direction:column; }
+.server-card p { margin-bottom:18px; }
+.server-card .code-block { width:100%; margin-top:auto; padding:14px; font-size:9px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; }
+#servers>.security-banner { margin-top:16px; }
+#servers>.next-steps { margin-top:12px; }
 .concept-note { padding:18px; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
 .concept-note b { font-size:13px; }
 .concept-note p { color:var(--muted); font-size:11px; }
@@ -162,16 +175,26 @@ code { color:var(--teal); font-size:.9em; }
 .checklist span { color:var(--teal); font-weight:800; }
 .checklist p { color:var(--muted); font-size:10px; margin:0; }
 
+@media (min-width:901px) and (max-width:1050px) {
+  .architecture-flow-four { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .architecture-flow-four i { display:none; }
+}
+
 @media (max-width:900px) {
   .principle-grid,.feature-catalog,.card-grid.four { grid-template-columns:repeat(2,1fr); }
   .example-steps { grid-template-columns:repeat(2,1fr); }
-  .architecture-flow { grid-template-columns:1fr; }
+  .architecture-flow,.architecture-flow-four { grid-template-columns:1fr; }
   .architecture-flow i { transform:rotate(90deg); justify-self:center; }
+  .architecture-flow-four { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .architecture-flow-four i { display:none; }
+  .server-grid { grid-template-columns:1fr; }
+  .server-card .code-block { font-size:10px; }
   .quick-index { grid-template-columns:repeat(2,1fr); }
 }
 
 @media (max-width:600px) {
   .principle-grid,.feature-catalog,.file-example,.method-grid,.native-reference,.pipeline-anatomy,.checklist,.contribution-panel,.card-grid.four { grid-template-columns:1fr; }
+  .architecture-flow-four { grid-template-columns:1fr; }
   .install-tabs { grid-template-columns:minmax(0,1fr); }
   .comparison { overflow-x:auto; }
   .comparison-row { min-width:650px; }
@@ -271,4 +294,131 @@ code { color:var(--teal); font-size:.9em; }
   .loop-outcomes { grid-template-columns:1fr; }
   .recovery-flow { grid-template-columns:1fr 18px 1fr 18px 1fr; }
   .diagram-caption { flex-direction:column; gap:5px; }
+}
+
+/* Legibility scale
+ * Keep small interface labels compact without letting essential copy fall
+ * below a comfortable reading size.
+ */
+body { font-size:17px; line-height:1.7; }
+.brand strong { font-size:16px; }
+.brand small,
+.search kbd,
+.sidebar-note small { font-size:11px; }
+.search input,
+.github-link,
+.lang-toggle,
+.nav-link { font-size:13px; }
+.eyebrow { font-size:12px; }
+.sidebar-note { font-size:13px; }
+.lead { font-size:18px; }
+.button { font-size:14px; }
+.window-bar,
+.hero-card-foot { font-size:12px; }
+.callout,
+.callout strong { font-size:14px; }
+.callout span,
+.callout code { font-size:12px; }
+.code-block { font-size:14px; line-height:1.75; }
+.copy-button { font-size:11px; }
+.inline-code { font-size:14px; }
+.inline-code span { font-size:12px; }
+.info-card h3,
+.syntax-columns h3 { font-size:16px; }
+.info-card p,
+.muted { font-size:14px; }
+.syntax-columns .code-block { font-size:13px; }
+.table-row { font-size:13px; line-height:1.55; }
+.table-head { font-size:12px; }
+.prompt-label,
+.tip-row span,
+.native-list span { font-size:12px; }
+.tip-row p { font-size:13px; line-height:1.6; }
+.flow-diagram { font-size:13px; }
+.mini-stats strong { font-size:14px; }
+.mini-stats span { font-size:12px; }
+.cli-command code,
+.cli-command span { font-size:12px; }
+.security-banner strong { font-size:14px; }
+.security-banner p { font-size:13px; }
+.site-footer { font-size:13px; }
+.legend-item { font-size:13px; }
+.feature-lede { font-size:16px; line-height:1.7; }
+.plain-list li { font-size:15px; }
+.gap-box strong,
+.gap-box .plain-list li,
+.variation h4,
+.variation p { font-size:14px; }
+.crosscut h3 { font-size:17px; }
+.hero-proof span,
+.principle-card>span,
+.thesis-strip strong { font-size:11px; }
+.principle-card h3 { font-size:17px; }
+.principle-card p,
+.thesis-strip p { font-size:14px; }
+.comparison-row,
+.comparison-row strong { font-size:13px; }
+.comparison-head { font-size:11px; }
+.architecture-flow small { font-size:11px; }
+.architecture-flow strong { font-size:13px; }
+.architecture-flow span { font-size:12px; line-height:1.5; }
+.server-card .code-block { font-size:12px; }
+.concept-note b { font-size:15px; }
+.concept-note p { font-size:13px; }
+.concept-note>code { font-size:12px; }
+.feature-card>span,
+.feature-card b { font-size:11px; }
+.feature-card h3 { font-size:17px; }
+.feature-card p { font-size:13px; }
+.example-steps span { font-size:11px; }
+.example-steps p { font-size:13px; line-height:1.55; }
+.paper-card p:not(.eyebrow) { font-size:13px; }
+.paper-card a,
+.creator-card small,
+.contributor-links a { font-size:12px; }
+.creator-card p,
+.contribution-copy p { font-size:13px; }
+.quick-index span,
+.file-example>div>span { font-size:12px; }
+.file-example .code-block,
+.grammar-block { font-size:13px; }
+.method-grid h3,
+.native-reference h3 { font-size:15px; }
+.method-grid code,
+.assertion-cloud code { font-size:12px; }
+.method-grid p,
+.native-reference p,
+.pipeline-anatomy span,
+.checklist p { font-size:13px; line-height:1.55; }
+.orientation-top,
+.orientation-caption { font-size:12px; }
+.diagram-node small { font-size:11px; }
+.diagram-node strong { font-size:13px; }
+.diagram-node span,
+.diagram-caption span { font-size:12px; }
+.diagram-caption p { font-size:13px; }
+.runtime-timeline article>span { font-size:11px; }
+.runtime-timeline h3 { font-size:16px; }
+.runtime-timeline p { font-size:13px; }
+.runtime-timeline code,
+.harness-label { font-size:11px; }
+.loop-node small,
+.loop-node span,
+.outcome-heading { font-size:12px; }
+.loop-node strong { font-size:13px; }
+.loop-return strong,
+.harness-policies span,
+.guarantee-grid span,
+.next-steps strong { font-size:11px; }
+.loop-return span { font-size:12px; }
+.guarantee-grid h3 { font-size:15px; }
+.guarantee-grid p,
+.next-steps a { font-size:13px; }
+
+@media (max-width:600px) {
+  body { font-size:16px; }
+  .code-block,
+  .file-example .code-block,
+  .grammar-block { font-size:13px; }
+  .flow-diagram { font-size:12px; }
 }

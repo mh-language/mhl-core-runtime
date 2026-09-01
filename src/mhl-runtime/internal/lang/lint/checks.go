@@ -686,6 +686,16 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 					}
 					break
 				}
+				if _, found := findExtension(prog, target); found {
+					// `S.get(...)` on `extension store S { ... }`: extension
+					// method calls are dispatched dynamically against the bound
+					// instance at run time, and the manifest that declares the
+					// method set isn't loaded here. Shape is already matched —
+					// nothing more to check statically. (A `store` extension's
+					// get/set/append also happen to be memory method names, so
+					// this must come before the isMemoryMethod fallback.)
+					break
+				}
 				if isMemoryMethod(method) {
 					return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 						Message: fmt.Sprintf("memory %q not found", target)}}
@@ -791,6 +801,18 @@ func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
 	for _, decl := range prog.Decls {
 		if decl.Tool != nil && decl.Tool.Name == name {
 			return decl.Tool, true
+		}
+	}
+	return nil, false
+}
+
+// findExtension resolves an `extension <kind> <Name> { ... }` declaration by
+// the name methods are called on (`S` in `S.get("k")`).
+func findExtension(prog *ast.Program, name string) (*ast.Extension, bool) {
+	name = resolveName(prog, name)
+	for _, decl := range prog.Decls {
+		if decl.Extension != nil && decl.Extension.Name == name {
+			return decl.Extension, true
 		}
 	}
 	return nil, false

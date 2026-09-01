@@ -147,6 +147,38 @@ type server struct {
 	// Non-nil for the HTTP transport; nil on stdio, where callers must
 	// nil-check (see slog helper `logAttrs`).
 	log *slog.Logger
+	// asyncRuns is set by the HTTP transport, which serves the run/* method
+	// family (runs.go). When true, `initialize` / `server/discover` advertise
+	// it under capabilities.experimental["mhl.run"] so a client can discover
+	// that a long pipeline must use run/start instead of a blocking
+	// tools/call. Always false on stdio, where run/* is not routed.
+	asyncRuns bool
+}
+
+// asyncRunMethods is the run/* family the HTTP transport serves. Advertised in
+// the capability so the set is discoverable, not just documented.
+var asyncRunMethods = []string{
+	"run/start", "run/status", "run/resume", "run/cancel", "run/list", "run/logs",
+}
+
+// asyncRunCapabilityVersion is bumped when the run/* request/response shape
+// changes in a way a client must adapt to.
+const asyncRunCapabilityVersion = "1"
+
+// capabilities is the object both `initialize` and `server/discover` return.
+// `tools` is always present; `experimental["mhl.run"]` only when this server
+// actually routes run/* (HTTP transport).
+func (s *server) capabilities() map[string]any {
+	caps := map[string]any{"tools": map[string]any{"listChanged": false}}
+	if s.asyncRuns {
+		caps["experimental"] = map[string]any{
+			"mhl.run": map[string]any{
+				"version": asyncRunCapabilityVersion,
+				"methods": asyncRunMethods,
+			},
+		}
+	}
+	return caps
 }
 
 // logEvent emits one structured lifecycle line, tolerating a nil logger
@@ -320,7 +352,7 @@ func (s *server) initializeResult(params json.RawMessage) map[string]any {
 	}
 	return map[string]any{
 		"protocolVersion": pv,
-		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
+		"capabilities":    s.capabilities(),
 		"serverInfo":      map[string]any{"name": "mhl", "version": ServerVersion},
 	}
 }
@@ -330,7 +362,7 @@ func (s *server) initializeResult(params json.RawMessage) map[string]any {
 func (s *server) discoverResult() map[string]any {
 	return map[string]any{
 		"supportedVersions": []string{statelessVersion},
-		"capabilities":      map[string]any{"tools": map[string]any{"listChanged": false}},
+		"capabilities":      s.capabilities(),
 	}
 }
 
@@ -347,11 +379,20 @@ func (s *server) toolList() []map[string]any {
 		if desc == "" {
 			desc = fmt.Sprintf("Runs the mhl %s %q.", w.KindLabel(), n)
 		}
-		list = append(list, map[string]any{
+		entry := map[string]any{
 			"name":        n,
 			"description": desc,
 			"inputSchema": w.Pipeline.InputSchema(),
-		})
+		}
+		if s.asyncRuns {
+			// A pipeline can run longer than a gateway's request timeout;
+			// tell the client it can also be driven async (see the
+			// experimental.mhl.run capability).
+			entry["_meta"] = map[string]any{
+				"mhl.run": map[string]any{"async": true, "via": "run/start"},
+			}
+		}
+		list = append(list, entry)
 	}
 	return list
 }
@@ -369,6 +410,12 @@ func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage
 	w, ok := s.tools[p.Name]
 	if !ok {
 		return errMsg(id, -32602, fmt.Sprintf("unknown tool %q", p.Name))
+	}
+	// Enforce the advertised inputSchema before spending a run dir on it: a
+	// missing required argument or an undeclared one is -32602 here, not a
+	// late "undefined variable" once a step references it.
+	if err := w.Pipeline.ValidateInputs(p.Arguments); err != nil {
+		return errMsg(id, -32602, err.Error())
 	}
 
 	base, err := os.MkdirTemp("", "mhl-mcp-run-")

@@ -1,0 +1,47 @@
+[09:37:39] iniciando servidor em 127.0.0.1:8736
+[09:37:40] inputSchema de DocPipeline:
+{
+  "additionalProperties": false,
+  "properties": {
+    "approved": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "approved",
+    "repo"
+  ],
+  "type": "object"
+}
+[09:37:40] caso 1 (tools/call sem repo) -> HTTP 200
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "error": {
+        "code": -32602,
+        "message": "invalid inputs for \"DocPipeline\": missing required input \"repo\" (declared: \"approved\", \"repo\")"
+    }
+}
+[09:37:40] caso 2 (tools/call campo extra) -> HTTP 200
+{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "error": {
+        "code": -32602,
+        "message": "invalid inputs for \"DocPipeline\": undeclared input \"campoExtra\" (declared: \"approved\", \"repo\")"
+    }
+}
+[09:37:40] caso 3 (run/start sem repo) -> HTTP 200
+{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "error": {
+        "code": -32602,
+        "message": "invalid inputs for \"DocPipeline\": missing required input \"repo\" (declared: \"approved\", \"repo\")"
+    }
+}
+[09:37:40] RESULTADO: FUNCIONOU — o servidor faz cumprir o inputSchema anunciado (rejeita nos parâmetros)
+PASS

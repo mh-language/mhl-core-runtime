@@ -1,0 +1,33 @@
+[09:37:10] P1: iniciando servidor --drain-timeout 20s em 127.0.0.1:8728
+[09:37:11] run/start SlowBuild -> runId=f5fe190a2314eedefdb89d8a3d716bad state=working
+[09:37:12] enviando SIGTERM ao PID 3466
+[09:37:12] durante o dreno: /readyz=503 /healthz=200 ; run/start HTTP=503 code=-32000 msg="server is draining — not accepting new runs"
+[09:37:18] processo encerrou 6s após o SIGTERM (rc=0)
+{"time":"2026-09-01T09:37:12.574775-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"20s","working":1}
+[09:37:18] P2: reiniciando servidor no mesmo --state-dir
+[09:37:18] run/status pós-restart:
+{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+        "error": "runtime: step \"Ship\" exceeded its timeout: step timeout exceeded",
+        "reached": [
+            "Compile",
+            "Package",
+            "Ship"
+        ],
+        "resumable": true,
+        "runId": "f5fe190a2314eedefdb89d8a3d716bad",
+        "startedAt": "2026-09-01T12:37:18Z",
+        "state": "failed",
+        "step": "Ship",
+        "stepIndex": 3,
+        "stepTotal": 3,
+        "tool": "SlowBuild"
+    }
+}
+[09:37:18] P3: servidor --drain-timeout 0 em 127.0.0.1:8729
+[09:37:19] P3: processo encerrou 0s após o SIGTERM
+{"time":"2026-09-01T09:37:19.410409-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}
+[09:37:19] RESULTADO: FUNCIONOU — dreno gracioso, /readyz 503, run/start bloqueado, checkpoint de shutdown, drain-timeout 0 imediato
+PASS

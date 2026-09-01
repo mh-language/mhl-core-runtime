@@ -1,0 +1,66 @@
+[09:36:48] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-002/mhl serve mcp --http --addr 127.0.0.1:8712 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud)
+[09:36:48] servidor PID=1572
+[09:36:48] healthz respondeu 200 (tentativa 2)
+[09:36:48] POST /mcp initialize -> HTTP 200 ; Mcp-Session-Id: 52be92fbde36cca43c326671b5a2536c
+[09:36:48] POST /mcp tools/list -> HTTP 200
+[09:36:48] corpo da resposta:
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+        "tools": [
+            {
+                "_meta": {
+                    "mhl.run": {
+                        "async": true,
+                        "via": "run/start"
+                    }
+                },
+                "description": "Draft docs for a repo, wait for human review, then publish.",
+                "inputSchema": {
+                    "additionalProperties": false,
+                    "properties": {
+                        "approved": {
+                            "type": "string"
+                        },
+                        "repo": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "approved",
+                        "repo"
+                    ],
+                    "type": "object"
+                },
+                "name": "DocPipeline"
+            },
+            {
+                "_meta": {
+                    "mhl.run": {
+                        "async": true,
+                        "via": "run/start"
+                    }
+                },
+                "description": "Three ~3s stages: compile, package, ship.",
+                "inputSchema": {
+                    "additionalProperties": false,
+                    "properties": {
+                        "target": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "target"
+                    ],
+                    "type": "object"
+                },
+                "name": "SlowBuild"
+            }
+        ]
+    }
+}
+
+[09:36:48] tools retornadas: count=2 names=[DocPipeline,SlowBuild] com_descricao=2 com_inputSchema=2
+[09:36:48] servidor anunciou no startup: 2 tool(s)
+[09:36:48] RESULTADO: FUNCIONOU — 2 tools listadas (DocPipeline,SlowBuild), todas com description e inputSchema

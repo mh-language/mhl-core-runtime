@@ -332,7 +332,7 @@
           same interface.</dd>
           <dt>Single pod</dt><dd><span class="yes">improved</span> — every new endpoint
           and flag defaults to today's behaviour; full test + functional gate green
-          (incl. <code>-race</code>), manual smoke against <code>sample/cloud</code>.</dd>
+          (incl. <code>-race</code>), manual smoke against <code>tests/cloud</code>.</dd>
           <dt>Gaps</dt><dd>5, 6, 7, 8, 9 (P1) &middot; 4 partial (per-pod cap)</dd>
         </dl>
       </article>
@@ -375,7 +375,7 @@
           <dt>Single pod</dt><dd><span class="yes">unchanged</span> — default verifier is
           the static token; with no verifier there is no principal, and ownership falls
           back to the Phase-0 session hash. Full gate green (incl. <code>-race</code>),
-          smoke against <code>sample/cloud</code>.</dd>
+          smoke against <code>tests/cloud</code>.</dd>
           <dt>Gaps</dt><dd>3 (P0) &middot; 10 (P1) &middot; 12 (P2)</dd>
         </dl>
       </article>
@@ -395,7 +395,7 @@
           instead of <code>.mhl/state</code>; the per-step checkpoint sink is injected via
           <code>execsvc.Request.StateStore</code>. The <b>run registry stays in-memory per
           pod</b> — another pod still <code>reconstructRun</code>s a run from the shared
-          store. Reference: <code>sample/extensions/store-fs</code> (~150-line stdlib Go,
+          store. Reference: <code>tests/extensions/store-fs</code> (~150-line stdlib Go,
           one JSON file per key). <code>mcpserver</code> imports no
           <code>internal/extension</code>.</dd>
           <dt>Remaining</dt><dd><b>3b</b> — server-lifetime restart-with-backoff
@@ -678,7 +678,7 @@ call { declaration: Backend, operation: "cas",
   <p class="foot">Companion to the architecture note. Grounded in
   <code>internal/extension</code>, <code>internal/extension/external</code>,
   <code>internal/mcpserver</code>, <code>internal/execsvc</code>, and
-  <code>sample/extensions/extension-protocol.md</code> on branch
+  <code>tests/extensions/extension-protocol.md</code> on branch
   <code>feature/mcp-http-transport</code>.</p>
 
 </div>

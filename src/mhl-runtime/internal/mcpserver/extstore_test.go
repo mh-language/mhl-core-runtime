@@ -146,6 +146,46 @@ func TestExtCheckpointStoreAndStateStore(t *testing.T) {
 	}
 }
 
+// The extension store is Shared, and its status record / cancel flag
+// round-trip through the KV without tripping Exists/Load.
+func TestExtCheckpointStoreLiveStatusAndCancel(t *testing.T) {
+	kv := newFakeKV()
+	cps, _ := newExtCheckpointStore(kv)
+	t.Cleanup(func() { _ = cps.Close() })
+
+	if !cps.Shared() {
+		t.Error("extension store must report Shared() == true")
+	}
+	if _, ok := cps.ReadStatus("r1"); ok || cps.CancelRequested("r1") {
+		t.Fatal("empty store should have no status / cancel for r1")
+	}
+
+	rec := RunStatusRec{Tool: "P", State: "working", Step: "Two", Reached: []string{"One", "Two"}}
+	if err := cps.WriteStatus("r1", rec); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := cps.ReadStatus("r1")
+	if !ok || got.State != "working" || got.Step != "Two" {
+		t.Fatalf("ReadStatus = %+v ok=%v", got, ok)
+	}
+	if cps.Exists("r1") {
+		t.Error("a status key must not make Exists() true")
+	}
+
+	if err := cps.RequestCancel("r1"); err != nil {
+		t.Fatal(err)
+	}
+	if !cps.CancelRequested("r1") {
+		t.Fatal("CancelRequested should be true after RequestCancel")
+	}
+	if err := cps.Remove("r1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cps.ReadStatus("r1"); ok || cps.CancelRequested("r1") {
+		t.Error("Remove should drop the status key and the cancel flag")
+	}
+}
+
 // A "" owner is a no-op (nothing persisted) — matches the disk store.
 func TestExtCheckpointStoreOwnerEmpty(t *testing.T) {
 	kv := newFakeKV()

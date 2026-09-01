@@ -174,6 +174,38 @@ func (c *extCheckpointStore) Remove(runID string) error {
 
 func (c *extCheckpointStore) Close() error { return os.RemoveAll(c.scratch) }
 
+// An extension store is by definition shared across replicas.
+func (c *extCheckpointStore) Shared() bool { return true }
+
+func (c *extCheckpointStore) WriteStatus(runID string, rec RunStatusRec) error {
+	return c.kv.Put(context.Background(), runKey(runID, "status"), rec)
+}
+
+func (c *extCheckpointStore) ReadStatus(runID string) (RunStatusRec, bool) {
+	raw, found, err := c.kv.Get(context.Background(), runKey(runID, "status"))
+	if err != nil || !found {
+		return RunStatusRec{}, false
+	}
+	var rec RunStatusRec
+	if json.Unmarshal(raw, &rec) != nil {
+		return RunStatusRec{}, false
+	}
+	return rec, true
+}
+
+func (c *extCheckpointStore) RequestCancel(runID string) error {
+	return c.kv.Put(context.Background(), runKey(runID, "cancel"), true)
+}
+
+func (c *extCheckpointStore) CancelRequested(runID string) bool {
+	raw, found, err := c.kv.Get(context.Background(), runKey(runID, "cancel"))
+	if err != nil || !found {
+		return false
+	}
+	var v bool
+	return json.Unmarshal(raw, &v) == nil && v
+}
+
 // --- per-step checkpoints / result (runtime.StateStore) -----------------
 
 // extStateStore is the runtime.StateStore a run's Runner writes through

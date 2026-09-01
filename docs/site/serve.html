@@ -15,8 +15,9 @@
     <link rel="icon" href="assets/mhl-logo-rebrand.png" />
     <title>Serving workflows — Meta-Harness Language</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="serve.css" />
   </head>
-  <body>
+  <body class="servers-page">
     <header class="topbar">
       <a class="brand" href="index.html" aria-label="MHL home">
         <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
@@ -29,10 +30,9 @@
           <kbd>/</kbd>
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
-        <a class="github-link" href="reference.html">Reference</a>
-        <a class="github-link" href="how-it-works.html">How it works</a>
+        <a class="github-link" href="mhl-language-spec.html">Specification</a>
         <a class="github-link" href="extensions.html">Extensions</a>
-        <a class="github-link" href="index.html">Overview</a>
+        <a class="github-link" href="serve.html" aria-current="page">Servers</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
       </div>
     </header>
@@ -56,8 +56,8 @@
         </div>
       </aside>
 
-      <main class="content reference-content">
-        <section class="ref-hero doc-section" id="intro" data-title="serve serving workflows mcp a2a server stdio http streamable expose tools skills mhl serve directory">
+      <main class="content reference-content serve-content">
+        <section class="ref-hero serve-hero doc-section" id="intro" data-title="serve serving workflows mcp a2a server stdio http streamable expose tools skills mhl serve directory">
           <p class="eyebrow accent">MHL · SERVING WORKFLOWS · v1.2.0-alpha</p>
           <h1>Turn a folder of workflows into a server.</h1>
           <p class="lead"><code>mhl serve</code> exposes every <code>pipeline</code>/<code>workflow</code> declared under a directory to another agent — as Model Context Protocol tools or Agent2Agent skills — without writing any server code. This page is the server side; calling <em>out</em> to someone else's MCP or A2A server is <a href="reference.html#mcp"><code>extension mcp</code></a> / <a href="reference.html#a2a"><code>extension a2a</code></a> in the reference.</p>
@@ -105,6 +105,7 @@ mhl serve a2a sample/serve          # http://127.0.0.1:8710/</code></pre>
         <section class="feature doc-section" id="mcp-stdio" data-title="mcp stdio subprocess newline json-rpc initialize handshake stateless params meta server discover tools list tools call stderr stdout">
           <div class="feature-head"><h2><span class="feature-num">03</span>MCP over stdio</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede"><code>mhl serve mcp &lt;dir&gt;</code> speaks newline-delimited JSON-RPC 2.0 on stdin/stdout — the form an MCP client uses when it spawns the server as a subprocess. One tool per declaration; <code>tools/call</code> returns the final variable state (<code>isError: true</code> on a run failure). Diagnostics go to <strong>stderr</strong>; stdout is the raw protocol stream.</p>
+          <p class="block-label">Initialize, list tools, and call a workflow</p>
           <div class="code-wrap">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code>printf '%s\n' \
@@ -161,6 +162,7 @@ curl -s -X DELETE localhost:8711/mcp -H "Mcp-Session-Id: $sid"   # 204 — end t
         <section class="feature doc-section" id="async" data-title="async run start run status run cancel run list long running poll step progress reached vars stepIndex stepTotal ownership session owner unknown runId">
           <div class="feature-head"><h2><span class="feature-num">05</span>Long runs: <code>run/start</code>, <code>run/status</code>, <code>run/cancel</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede"><code>tools/call</code> blocks until the workflow finishes. For a long one, <code>run/start</code> takes the same <code>{name, arguments}</code> and returns a <code>runId</code> immediately; you poll <code>run/status</code> for the current step, the steps reached so far, and the final <code>vars</code>. <code>run/cancel</code> stops one and <code>run/list</code> enumerates your runs. All are gated by the same protocol context as <code>tools/*</code> (a session, or <code>params._meta</code>).</p>
+          <p class="block-label">Start, poll, and cancel</p>
           <div class="code-wrap">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code>rid=$(curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
@@ -191,7 +193,8 @@ curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-S
         <section class="feature doc-section" id="resume" data-title="run resume human in the loop hitl approval gate fail checkpoint per_step strategy state-dir restart survive merge arguments decision">
           <div class="feature-head"><h2><span class="feature-num">06</span>Human-in-the-loop: <code>run/resume</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">A workflow that declares <code>checkpoint { strategy: "per_step" }</code> and stops at a <strong>failing step</strong> keeps its checkpoint. <code>run/resume {runId, arguments?}</code> continues it from that step, merging <code>arguments</code> over the originals — that is where an approval decision goes. The gate is an ordinary step that calls <code>fail("...")</code> until it is approved.</p>
-          <div class="code-wrap">
+          <p class="block-label">Approval workflow</p>
+          <div class="code-wrap workflow-example">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code class="language-mhl">pipeline Approval {
     description: "Prepare, wait for human approval, then finish."
@@ -218,7 +221,8 @@ curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-S
     step Act { summary = "acted on: " + request }
 }</code></pre>
           </div>
-          <div class="code-wrap">
+          <p class="block-label">Start, inspect, and resume</p>
+          <div class="code-wrap resume-example">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code>rid=$(curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
   -d '{"jsonrpc":"2.0","id":7,"method":"run/start","params":{"name":"Approval","arguments":{"request":"ship it","approved":"no"}}}' \
@@ -239,6 +243,7 @@ curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-S
         <section class="feature doc-section" id="a2a" data-title="a2a agent2agent skills http json-rpc agent card message send tasks get tasks cancel task state submitted working completed metadata skill input">
           <div class="feature-head"><h2><span class="feature-num">07</span>A2A skills over HTTP</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede"><code>mhl serve a2a [--addr host:port] &lt;dir&gt;</code> publishes one A2A skill per declaration: JSON-RPC 2.0 over HTTP, with an Agent Card at <code>/.well-known/agent-card.json</code>. <code>message/send</code> starts a run as a task; <code>tasks/get</code> polls it and <code>tasks/cancel</code> stops it. The skill and inputs are named explicitly in the message metadata.</p>
+          <p class="block-label">Start the server, discover it, and send a task</p>
           <div class="code-wrap">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code>mhl serve a2a --addr 127.0.0.1:8710 sample/serve &amp;
@@ -259,12 +264,14 @@ curl -s -X POST localhost:8710/ -d '{"jsonrpc":"2.0","id":2,"method":"tasks/get"
         <section class="feature doc-section" id="clients" data-title="wiring client claude mcp add transport http claude desktop config mcpServers command args method reference flags security token shared">
           <div class="feature-head"><h2><span class="feature-num">08</span>Wiring a client</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Point any MCP client at the command (stdio) or the URL (HTTP).</p>
-          <div class="code-wrap">
+          <p class="block-label">Networked client</p>
+          <div class="code-wrap network-client-example">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code># networked
 claude mcp add --transport http mhl-local http://127.0.0.1:8711/mcp</code></pre>
           </div>
-          <div class="code-wrap">
+          <p class="block-label">Stdio client configuration</p>
+          <div class="code-wrap stdio-client-example">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code class="language-json">{
   "mcpServers": {
@@ -291,7 +298,7 @@ claude mcp add --transport http mhl-local http://127.0.0.1:8711/mcp</code></pre>
 
         <footer class="site-footer">
           <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="index.html">Overview</a> · <a href="reference.html">Language reference</a> · <a href="stdlib.html">Standard library</a> · <a href="extensions.html">Extensions</a></span>
+          <span><a href="mhl-language-spec.html">Specification</a> · <a href="extensions.html">Extensions</a> · <a href="serve.html">Servers</a> · <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a></span>
         </footer>
       </main>
     </div>

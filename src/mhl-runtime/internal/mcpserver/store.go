@@ -129,6 +129,115 @@ func (s *memSessionStore) Len() int {
 	return len(s.m)
 }
 
+// diskSessionStore persists sessions as one JSON file per id under
+// <runsDir>/.mhl/state/sessions/, so every replica sharing a --state-dir
+// resolves an Mcp-Session-Id minted by any of them — an `initialize` on one
+// pod is a usable session on the next. Every call hits the filesystem (no
+// in-process cache); sessions are small and short-lived, the same tradeoff
+// extSessionStore makes for an external store. Without a --state-dir the
+// server keeps the process-local memSessionStore.
+type diskSessionStore struct {
+	dir string // <runsDir>/.mhl/state/sessions
+}
+
+func newDiskSessionStore(runsDir string) *diskSessionStore {
+	return &diskSessionStore{dir: filepath.Join(runsDir, runtime.StateDirName, "sessions")}
+}
+
+func (d *diskSessionStore) path(id string) string { return filepath.Join(d.dir, id+".json") }
+
+func (d *diskSessionStore) Get(id string) (*session, bool) {
+	if id == "" {
+		return nil, false
+	}
+	b, err := os.ReadFile(d.path(id))
+	if err != nil {
+		return nil, false
+	}
+	var rec sessionRec
+	if json.Unmarshal(b, &rec) != nil {
+		return nil, false
+	}
+	// Bump the idle timer, best-effort.
+	rec.LastUsed = time.Now()
+	if nb, mErr := json.Marshal(rec); mErr == nil {
+		_ = os.WriteFile(d.path(id), nb, 0o600)
+	}
+	return &session{id: rec.ID, principal: rec.Principal, initialized: rec.Initialized, protocol: rec.Protocol}, true
+}
+
+func (d *diskSessionStore) Put(sess *session) {
+	if sess.id == "" {
+		return
+	}
+	if err := os.MkdirAll(d.dir, 0o755); err != nil {
+		return
+	}
+	b, err := json.Marshal(sessionRec{
+		ID: sess.id, Principal: sess.principal, Initialized: sess.initialized,
+		Protocol: sess.protocol, LastUsed: time.Now(),
+	})
+	if err != nil {
+		return
+	}
+	tmp := d.path(sess.id) + ".tmp"
+	if os.WriteFile(tmp, b, 0o600) == nil {
+		_ = os.Rename(tmp, d.path(sess.id))
+	}
+}
+
+func (d *diskSessionStore) Delete(id string) bool {
+	if id == "" {
+		return false
+	}
+	if _, err := os.Stat(d.path(id)); err != nil {
+		return false
+	}
+	_ = os.Remove(d.path(id))
+	return true
+}
+
+func (d *diskSessionStore) SweepIdle(olderThan time.Duration) {
+	cut := time.Now().Add(-olderThan)
+	entries, err := os.ReadDir(d.dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		p := filepath.Join(d.dir, e.Name())
+		b, rErr := os.ReadFile(p)
+		if rErr != nil {
+			continue
+		}
+		var rec sessionRec
+		if json.Unmarshal(b, &rec) == nil && rec.LastUsed.Before(cut) {
+			_ = os.Remove(p)
+		}
+	}
+}
+
+func (d *diskSessionStore) Len() int {
+	entries, err := os.ReadDir(d.dir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+			n++
+		}
+	}
+	return n
+}
+
+var (
+	_ SessionStore = (*memSessionStore)(nil)
+	_ SessionStore = (*diskSessionStore)(nil)
+)
+
 // --- run registry -------------------------------------------------------
 
 // RunRegistry tracks the async runs started by run/start for the life of the
@@ -184,11 +293,29 @@ func (r *memRunRegistry) List() []*asyncRun {
 
 // --- checkpoint store -------------------------------------------------
 
+// RunStatusRec is a run's live status, published to the (shared) CheckpointStore
+// each step boundary so another replica's run/status can report progress it did
+// not itself produce. It carries no secrets — just what runView renders.
+type RunStatusRec struct {
+	Tool      string    `json:"tool"`
+	State     string    `json:"state"`
+	Step      string    `json:"step,omitempty"`
+	StepIndex int       `json:"stepIndex,omitempty"`
+	StepTotal int       `json:"stepTotal,omitempty"`
+	Reached   []string  `json:"reached,omitempty"`
+	Resumable bool      `json:"resumable,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	StartedAt time.Time `json:"startedAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // CheckpointStore is what runs.go needs about a run's durable state: a
 // scratch BaseDir for execsvc, whether the run has a resumable checkpoint,
 // that checkpoint's parsed contents (for reconstructRun after a restart), the
-// per-run owner (Phase 2), and removal of a finished run's state. The
-// built-in diskCheckpointStore reads the .mhl/state tree; Phase 3 adds an
+// per-run owner (Phase 2), removal of a finished run's state, and — when the
+// store is shared between replicas — a live status record and a cancel flag so
+// one replica can observe and stop a run executing on another. The built-in
+// diskCheckpointStore reads the .mhl/state tree; Phase 3 adds an
 // extension-backed one (extstore.go) — the actual per-step checkpoint writes
 // are intercepted upstream by an injected runtime.StateStore.
 type CheckpointStore interface {
@@ -209,6 +336,19 @@ type CheckpointStore interface {
 	// Close releases the store; the disk implementation removes a
 	// process-owned temp directory (a caller-supplied --state-dir is kept).
 	Close() error
+
+	// Shared reports whether this store is visible to other replicas (a
+	// caller-supplied --state-dir, or an extension store) rather than a
+	// per-process temp dir. Gates the cross-replica run coordination below.
+	Shared() bool
+	// WriteStatus publishes runID's live status; ReadStatus reads it back.
+	// Best-effort — a write error is ignored by the caller.
+	WriteStatus(runID string, rec RunStatusRec) error
+	ReadStatus(runID string) (rec RunStatusRec, ok bool)
+	// RequestCancel marks runID for cancellation; the replica executing it
+	// observes CancelRequested (poll + step boundary) and stops its goroutine.
+	RequestCancel(runID string) error
+	CancelRequested(runID string) bool
 }
 
 // diskCheckpointStore is the built-in CheckpointStore: run state lives under
@@ -318,4 +458,56 @@ func (d *diskCheckpointStore) Close() error {
 		return os.RemoveAll(d.runsDir)
 	}
 	return nil
+}
+
+// Shared: a caller-supplied --state-dir is reachable by other replicas (EFS,
+// a shared PVC); a process-owned temp dir is not.
+func (d *diskCheckpointStore) Shared() bool { return !d.owns }
+
+// runStatusFileName / cancelFileName sit next to the checkpoint JSON. No
+// .json suffix, so Exists/Load ignore them (like the owner file).
+const (
+	runStatusFileName = "run-status"
+	cancelFileName    = "cancel"
+)
+
+func (d *diskCheckpointStore) WriteStatus(runID string, rec RunStatusRec) error {
+	dir := d.stateDir(runID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	b, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	tmp := filepath.Join(dir, runStatusFileName+".tmp")
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(dir, runStatusFileName))
+}
+
+func (d *diskCheckpointStore) ReadStatus(runID string) (RunStatusRec, bool) {
+	b, err := os.ReadFile(filepath.Join(d.stateDir(runID), runStatusFileName))
+	if err != nil || len(b) == 0 {
+		return RunStatusRec{}, false
+	}
+	var rec RunStatusRec
+	if json.Unmarshal(b, &rec) != nil {
+		return RunStatusRec{}, false
+	}
+	return rec, true
+}
+
+func (d *diskCheckpointStore) RequestCancel(runID string) error {
+	dir := d.stateDir(runID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, cancelFileName), []byte("1"), 0o600)
+}
+
+func (d *diskCheckpointStore) CancelRequested(runID string) bool {
+	_, err := os.Stat(filepath.Join(d.stateDir(runID), cancelFileName))
+	return err == nil
 }

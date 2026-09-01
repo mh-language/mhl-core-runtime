@@ -1,0 +1,1210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MHL MCP Server on EKS</title>
+<meta name="description" content="Target architecture for running the mhl MCP server behind API Gateway on EKS for many teams, and where the runtime needs work.">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html { color-scheme: light dark; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground: #f6f7f8;
+    --surface: #ffffff;
+    --surface-2: #eef1f3;
+    --ink: #191f26;
+    --muted: #5a656f;
+    --border: #d8dde2;
+    --accent: #0c7d73;
+    --accent-soft: rgba(12, 125, 115, 0.10);
+    --crit: #b3261e;
+    --warn: #97540b;
+    --info: #3f5a73;
+    --gap: #b3261e;
+    --shadow: 0 1px 2px rgba(20, 30, 40, 0.06), 0 8px 24px -12px rgba(20, 30, 40, 0.14);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #11151a;
+      --surface: #191e24;
+      --surface-2: #212831;
+      --ink: #e7eaed;
+      --muted: #99a3ad;
+      --border: #2c343d;
+      --accent: #45cabb;
+      --accent-soft: rgba(69, 202, 187, 0.14);
+      --crit: #ef6f66;
+      --warn: #e0a458;
+      --info: #9db6cc;
+      --gap: #ef6f66;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #11151a;
+    --surface: #191e24;
+    --surface-2: #212831;
+    --ink: #e7eaed;
+    --muted: #99a3ad;
+    --border: #2c343d;
+    --accent: #45cabb;
+    --accent-soft: rgba(69, 202, 187, 0.14);
+    --crit: #ef6f66;
+    --warn: #e0a458;
+    --info: #9db6cc;
+    --gap: #ef6f66;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 1rem + 3vw, 4rem) clamp(1.1rem, 0.6rem + 2.4vw, 3rem) 5rem;
+  }
+
+  .prose { max-width: 66ch; }
+
+  h1, h2, h3 {
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h1 {
+    font-weight: 800;
+    font-size: clamp(2rem, 1.4rem + 2.8vw, 3.1rem);
+    letter-spacing: -0.022em;
+  }
+
+  h2 {
+    font-weight: 700;
+    font-size: clamp(1.4rem, 1.15rem + 1vw, 1.75rem);
+    letter-spacing: -0.014em;
+    padding-top: 2.6rem;
+    border-top: 1px solid var(--border);
+    margin-top: 3.4rem;
+  }
+
+  h3 {
+    font-weight: 700;
+    font-size: 1.075rem;
+    letter-spacing: -0.01em;
+  }
+
+  p { margin: 1rem 0; }
+  a { color: var(--accent); }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin: 0 0 1rem;
+  }
+
+  .lede {
+    font-size: 1.2rem;
+    line-height: 1.6;
+    color: var(--ink);
+    margin: 1.4rem 0 0;
+    max-width: 62ch;
+  }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.4rem;
+    margin-top: 1.8rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.76rem;
+    color: var(--muted);
+  }
+  .meta-row span::before { content: "· "; color: var(--accent); }
+  .meta-row span:first-child::before { content: ""; }
+
+  code, kbd, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.86em;
+  }
+  code {
+    background: var(--surface-2);
+    padding: 0.12em 0.38em;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  ul.clean { padding-left: 1.15rem; margin: 1rem 0; }
+  ul.clean li { margin: 0.4rem 0; padding-left: 0.2rem; }
+  ul.clean li::marker { color: var(--accent); }
+
+  /* ---- figures ---- */
+  figure {
+    margin: 2.4rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.4rem clamp(0.8rem, 0.4rem + 1.5vw, 1.8rem) 1.1rem;
+    box-shadow: var(--shadow);
+  }
+  .fig-scroll { overflow-x: auto; }
+  .diagram {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-width: 620px;
+    color: var(--ink);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  .diagram text { fill: currentColor; }
+  .d-box { fill: var(--surface); stroke: currentColor; stroke-width: 1.4; }
+  .d-box-2 { fill: var(--surface-2); stroke: currentColor; stroke-width: 1.4; }
+  .d-mhl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .d-gapbox { fill: none; stroke: var(--gap); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .d-title { font-size: 13px; font-weight: 600; }
+  .d-sub { font-size: 11px; fill: var(--muted); }
+  .d-lab { font-size: 10.5px; fill: var(--muted); }
+  .d-edge { stroke: currentColor; stroke-width: 1.5; fill: none; }
+  .d-edge-gap { stroke: var(--gap); stroke-width: 1.6; fill: none; stroke-dasharray: 6 4; }
+  .d-ret { stroke: var(--muted); stroke-width: 1.3; fill: none; stroke-dasharray: 3 3; }
+  .d-life { stroke: var(--border); stroke-width: 1.4; }
+  .d-gaptag { font-size: 10.5px; font-weight: 600; fill: var(--gap); }
+  .d-accent { fill: var(--accent); font-weight: 600; }
+  .d-edge-done { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+  .d-gaptag-done { font-size: 10.5px; font-weight: 600; fill: var(--accent); }
+
+  figcaption {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--muted);
+    margin-top: 1rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border);
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  /* ---- assumptions grid ---- */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 0.9rem;
+    margin: 1.8rem 0;
+  }
+  .cards div {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  .cards strong {
+    display: block;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 0.35rem;
+  }
+
+  /* ---- improvement list ---- */
+  .imp {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    margin: 2rem 0;
+  }
+  .imp article {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--sev, var(--border));
+    border-radius: 10px;
+    padding: 1.1rem 1.2rem 1.2rem;
+    box-shadow: var(--shadow);
+  }
+  .imp article.p0 { --sev: var(--crit); }
+  .imp article.p1 { --sev: var(--warn); }
+  .imp article.p2 { --sev: var(--info); }
+
+  .imp h3 {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .imp h3 .num {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .chip {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.64rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.16em 0.5em;
+    border-radius: 999px;
+    border: 1px solid var(--sev, currentColor);
+    color: var(--sev, currentColor);
+    white-space: nowrap;
+    align-self: center;
+  }
+  .imp dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.35rem 1rem;
+    margin: 0.9rem 0 0;
+    font-size: 0.97rem;
+    line-height: 1.55;
+  }
+  .imp dt {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    padding-top: 0.28em;
+  }
+  .imp dd { margin: 0; }
+  @media (max-width: 540px) {
+    .imp dl { grid-template-columns: 1fr; gap: 0.15rem; }
+    .imp dt { padding-top: 0.5em; }
+  }
+
+  /* ---- two-column table ---- */
+  .split-wrap { overflow-x: auto; margin: 1.8rem 0; }
+  table.split {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+    min-width: 560px;
+  }
+  table.split th {
+    text-align: left;
+    font-family: "Archivo", sans-serif;
+    font-size: 0.95rem;
+    padding: 0.7rem 1rem;
+    border-bottom: 2px solid var(--accent);
+  }
+  table.split td {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  table.split tr td:first-child { border-right: 1px solid var(--border); }
+  table.split code { font-size: 0.82em; }
+
+  .foot {
+    margin-top: 3.4rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  /* ---- verified-status ---- */
+  .pill {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.64rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.16em 0.55em;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .pill.done    { color: var(--accent); }
+  .pill.partial { color: var(--warn); }
+  .pill.open    { color: var(--crit); }
+  .pill.out     { color: var(--muted); }
+
+  .chip.st-done    { border-color: var(--accent); color: var(--accent); }
+  .chip.st-partial { border-color: var(--warn); color: var(--warn); }
+  .chip.st-open    { border-color: var(--crit); color: var(--crit); }
+  .chip.st-out     { border-color: var(--muted); color: var(--muted); }
+
+  .st-wrap { overflow-x: auto; margin: 1.8rem 0; }
+  table.st { width: 100%; border-collapse: collapse; font-size: 0.92rem; min-width: 640px; }
+  table.st th, table.st td {
+    text-align: left;
+    padding: 0.55rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 1.45;
+  }
+  table.st th {
+    font-family: "Archivo", sans-serif;
+    font-size: 0.9rem;
+    border-bottom: 2px solid var(--accent);
+  }
+  table.st td:first-child {
+    font-family: "IBM Plex Mono", monospace;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .imp dd a, table.st a, .prose a { color: var(--accent); }
+
+  :where(a, button):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header>
+    <p class="eyebrow">Architecture note</p>
+    <h1>MHL MCP Server on EKS</h1>
+    <p class="lede">A target design for exposing the <code>mhl</code> documentation
+    workflow to many AWS teams through an authenticated API Gateway &mdash; and the
+    points where the runtime, as written today, does not yet hold up under that load.</p>
+    <div class="meta-row">
+      <span>scope: <code>mhl serve mcp --http</code></span>
+      <span>transport: Streamable HTTP (<code>POST /mcp</code>)</span>
+      <span>refs: <code>internal/mcpserver</code>, <code>internal/execsvc</code></span>
+      <span>status: <code>tests_mcp_pods</code> 18/18 + <code>tests_ext</code> 21/21 &mdash; 2026-08-31</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>The scenario</h2>
+    <div class="prose">
+      <p>One documentation workflow, written in <code>.mh</code>, is run every day by
+      several product teams. Each team lives in its own AWS account, reaches a shared
+      regional <b>API Gateway</b> endpoint, authenticates there, and the request is
+      forwarded privately into an <b>EKS</b> cluster where the <code>mhl</code> server
+      runs as a <b>Deployment</b> of several pods behind a load balancer.</p>
+      <p>The workflow is long: it fans out to LLM calls and, for a documentation
+      pipeline, almost certainly includes a human approval gate before anything is
+      published. That makes it a natural fit for the server's async
+      <code>run/start</code>&nbsp;&rarr;&nbsp;<code>run/status</code>&nbsp;&rarr;&nbsp;<code>run/resume</code>
+      extension rather than a single blocking <code>tools/call</code>.</p>
+    </div>
+
+    <div class="cards">
+      <div><strong>Load shape</strong>Bursty. Many teams trigger the same pipeline in
+      the same morning window; each run is minutes long and spawns sub-agents.</div>
+      <div><strong>Identity</strong>Teams are distinct principals. Runs, logs and
+      approvals must not cross team boundaries.</div>
+      <div><strong>Ingress</strong>API Gateway is the only door and does the real
+      authentication (Cognito / Lambda authorizer / SigV4).</div>
+      <div><strong>Runtime</strong>Stateless-looking pods, rotated by deploys and the
+      HPA. Anything a run needs to survive a pod must live outside the pod.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Target architecture</h2>
+    <div class="prose">
+      <p>The request path is conventional AWS. What matters for <code>mhl</code> are
+      the marked edges &mdash; each is a place where the implementation once assumed a
+      single process on one machine. Three are now closed and test-verified (green);
+      one dashed edge remains: pod affinity for the live session and run registry.</p>
+    </div>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg class="diagram" viewBox="0 0 1040 620" role="img"
+             aria-label="Teams in AWS accounts call a shared API Gateway, which forwards through a VPC Link and ALB into an EKS Deployment of mhl server pods; the pods call out to LLM providers and depend on Secrets Manager, a shared run and session store, and an observability sink. All four edges once marked as gaps are now resolved and test-verified: caller identity (--principal-header), a global concurrency cap (--max-concurrent-runs), node-local run state (checkpoints and owner routed to an S3 or Postgres extension store, with a live run-status published per step), and pod affinity — an Mcp-Session-Id minted on one pod resolves on any other via the shared --state-dir or store.">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+            </marker>
+            <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="var(--gap)"/>
+            </marker>
+            <marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="var(--accent)"/>
+            </marker>
+          </defs>
+
+          <!-- Teams -->
+          <text class="d-lab" x="24" y="40">TEAMS &middot; separate AWS accounts</text>
+          <rect class="d-box-2" x="24" y="54" width="150" height="150" rx="8"/>
+          <text class="d-title" x="99" y="86" text-anchor="middle">Team A</text>
+          <text class="d-title" x="99" y="126" text-anchor="middle">Team B</text>
+          <text class="d-title" x="99" y="166" text-anchor="middle">Team C</text>
+          <text class="d-sub" x="99" y="192" text-anchor="middle">MCP client</text>
+
+          <!-- edge teams -> apigw -->
+          <path class="d-edge" d="M174 129 L232 129" marker-end="url(#ah)"/>
+          <text class="d-lab" x="203" y="120" text-anchor="middle">HTTPS</text>
+
+          <!-- API Gateway -->
+          <rect class="d-box" x="234" y="86" width="170" height="86" rx="8"/>
+          <text class="d-title" x="319" y="120" text-anchor="middle">API Gateway</text>
+          <text class="d-sub" x="319" y="140" text-anchor="middle">Cognito / Lambda</text>
+          <text class="d-sub" x="319" y="155" text-anchor="middle">authorizer</text>
+
+          <!-- edge apigw -> alb -->
+          <path class="d-edge" d="M404 129 L462 129" marker-end="url(#ah)"/>
+          <text class="d-lab" x="433" y="120" text-anchor="middle">VPC Link</text>
+
+          <!-- gap 3: identity — RESOLVED (--principal-header) -->
+          <path class="d-edge-done" d="M319 172 L319 214 L470 214" marker-end="url(#ahd)"/>
+          <text class="d-gaptag-done" x="326" y="205">gap 3 &#10003; --principal-header X-Mhl-Principal &mdash; CENARIO-006</text>
+
+          <!-- ALB -->
+          <rect class="d-box" x="464" y="86" width="150" height="86" rx="8"/>
+          <text class="d-title" x="539" y="120" text-anchor="middle">ALB</text>
+          <text class="d-sub" x="539" y="140" text-anchor="middle">LB Controller</text>
+          <text class="d-sub" x="539" y="155" text-anchor="middle">+ K8s Service</text>
+
+          <!-- edge alb -> deployment : gap 2 — RESOLVED (shared sessions) -->
+          <path class="d-edge-done" d="M614 129 L672 129" marker-end="url(#ahd)"/>
+          <text class="d-gaptag-done" x="643" y="120" text-anchor="middle">gap 2 &#10003;</text>
+          <text class="d-lab" x="643" y="150" text-anchor="middle">sessão em store compartilhado</text>
+
+          <!-- EKS Deployment -->
+          <rect class="d-box" x="674" y="46" width="212" height="188" rx="10"/>
+          <text class="d-lab d-accent" x="686" y="66">EKS &middot; Deployment</text>
+          <rect class="d-mhl" x="690" y="78" width="180" height="42" rx="6"/>
+          <text class="d-sub" x="780" y="103" text-anchor="middle">mhl serve mcp --http</text>
+          <rect class="d-mhl" x="690" y="128" width="180" height="42" rx="6"/>
+          <text class="d-sub" x="780" y="153" text-anchor="middle">mhl serve mcp --http</text>
+          <rect class="d-mhl" x="690" y="178" width="180" height="42" rx="6"/>
+          <text class="d-sub" x="780" y="203" text-anchor="middle">mhl serve mcp --http</text>
+
+          <!-- outbound to LLM : gap 4 — RESOLVED (--max-concurrent-runs + queue) -->
+          <path class="d-edge-done" d="M886 100 L946 100" marker-end="url(#ahd)"/>
+          <text class="d-gaptag-done" x="916" y="130" text-anchor="middle">gap 4 &#10003;</text>
+          <rect class="d-box-2" x="948" y="72" width="86" height="66" rx="8"/>
+          <text class="d-sub" x="991" y="99" text-anchor="middle">Anthropic</text>
+          <text class="d-sub" x="991" y="114" text-anchor="middle">API /</text>
+          <text class="d-sub" x="991" y="129" text-anchor="middle">Bedrock</text>
+
+          <!-- lower band -->
+          <text class="d-lab" x="24" y="300">CLUSTER-EXTERNAL DEPENDENCIES</text>
+
+          <!-- Secrets -->
+          <rect class="d-box" x="234" y="320" width="170" height="76" rx="8"/>
+          <text class="d-title" x="319" y="352" text-anchor="middle">Secrets Manager</text>
+          <text class="d-sub" x="319" y="372" text-anchor="middle">LLM API keys</text>
+          <path class="d-edge" d="M740 234 L740 280 L360 280 L340 318" marker-end="url(#ah)"/>
+          <text class="d-lab" x="470" y="272" text-anchor="middle">IRSA</text>
+
+          <!-- Shared store : gap 1 — extension store backends delivered -->
+          <rect class="d-box" x="444" y="320" width="210" height="76" rx="8"/>
+          <text class="d-title" x="549" y="349" text-anchor="middle">Shared run + session store</text>
+          <text class="d-sub" x="549" y="369" text-anchor="middle">S3 / Postgres &mdash; extension store</text>
+          <path class="d-edge-done" d="M780 234 L780 300 L620 300 L580 318" marker-end="url(#ahd)"/>
+          <text class="d-gaptag-done" x="712" y="292" text-anchor="middle">gap 1 &#10003; extension store &mdash; CENARIO-013/016</text>
+
+          <!-- Observability -->
+          <rect class="d-box" x="694" y="320" width="180" height="76" rx="8"/>
+          <text class="d-title" x="784" y="349" text-anchor="middle">ADOT collector</text>
+          <text class="d-sub" x="784" y="369" text-anchor="middle">CloudWatch / AMP</text>
+          <path class="d-edge" d="M830 234 L830 318" marker-end="url(#ah)"/>
+          <text class="d-lab" x="866" y="280" text-anchor="middle">logs</text>
+
+          <!-- legend -->
+          <line class="d-edge" x1="24" y1="430" x2="60" y2="430" marker-end="url(#ah)"/>
+          <text class="d-lab" x="70" y="434">request path / AWS-managed</text>
+          <rect class="d-mhl" x="300" y="421" width="30" height="16" rx="4"/>
+          <text class="d-lab" x="340" y="434">mhl runtime</text>
+          <line class="d-edge-done" x1="470" y1="430" x2="506" y2="430" marker-end="url(#ahd)"/>
+          <text class="d-lab" x="516" y="434">gap fechado &mdash; verificado por teste (tests_mcp_pods + tests_ext + tests_mcp_targets, 2026-09-01)</text>
+        </svg>
+      </div>
+      <figcaption>
+        <b>Gap 1</b> &mdash; <b>resolvido para o estado durável</b>: um
+        <code>extension store</code> com backends de produção &mdash; S3
+        (<code>src/mhl-extensions/mhl-store-s3</code>: SigV4 + retry + IRSA/IMDSv2) ou PostgreSQL
+        (<code>src/mhl-extensions/mhl-store-postgres</code>: upsert atômico) &mdash; recebe
+        <code>session/*</code>, <code>run/&lt;id&gt;/checkpoint/*</code> e o owner. Um segundo
+        processo no mesmo bucket/tabela <b>reconstrói e retoma</b> a run
+        (<code>run/resume</code> &rarr; <code>completed</code>), e <code>run/start</code>
+        concorrentes gravam chaves <code>run/&lt;id&gt;/</code> disjuntas
+        (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> /
+        <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>;
+        FS local + <code>--state-dir</code> em
+        <a href="tests_mcp_pods/CENARIO-011/CENARIO-011-state-dir-restart.resultado.md">CENARIO-011</a>).
+        <b>Registro live entre pods:</b> a réplica dona publica um <code>run-status</code> por
+        passo e lê um flag <code>cancel</code> no store compartilhado, então
+        <code>run/status</code> (progresso vivo) e <code>run/cancel</code> (cancel distribuído)
+        de outra réplica funcionam
+        (<a href="tests_mcp_targets/ITEM-01/ITEM-01-live-registry-distributed-cancel.md">ITEM-01</a>).
+        <b>Gap 2</b> &mdash; <b>resolvido</b>: com <code>--state-dir</code> as sessões vão para
+        <code>diskSessionStore</code> (um arquivo por <code>Mcp-Session-Id</code> em
+        <code>.mhl/state/sessions/</code>), então uma sessão cunhada num pod vale em qualquer
+        outro; a partição por <code>--principal-header</code> segue valendo entre pods
+        (<a href="tests_mcp_targets/ITEM-02/ITEM-02-shared-sessions.md">ITEM-02</a>,
+        <a href="tests_mcp_pods/CENARIO-006/CENARIO-006-principal-isolation.resultado.md">CENARIO-006</a>).
+        <b>Gap 3</b> &mdash; <b>resolvido</b>: <code>--principal-header X-Mhl-Principal</code>
+        (+ <code>--token</code>) leva a identidade verificada ao runtime e keia ownership,
+        <code>run/list</code> e acesso a logs por principal
+        (<a href="tests_mcp_pods/CENARIO-006/CENARIO-006-principal-isolation.resultado.md">CENARIO-006</a>).
+        <b>Gap 4</b> &mdash; <b>resolvido</b>: <code>--max-concurrent-runs</code> + estado
+        <code>queued</code>/<code>queuePosition</code> + shed <code>-32000</code> em
+        <code>tools/call</code>; gauges <code>runs_active</code>/<code>runs_queued</code>
+        (<a href="tests_mcp_pods/CENARIO-008/CENARIO-008-concurrency-queue.resultado.md">CENARIO-008</a>).
+      </figcaption>
+    </figure>
+
+    <div class="prose">
+      <h3>AWS-side choices (uncontested)</h3>
+      <ul class="clean">
+        <li><b>API Gateway</b> HTTP API with a JWT authorizer (Cognito or the team IdP),
+        private integration over a <b>VPC Link</b> to an internal <b>ALB</b> managed by the
+        AWS Load Balancer Controller.</li>
+        <li><b>EKS</b> Deployment, <code>HorizontalPodAutoscaler</code> on CPU plus a custom
+        &ldquo;in-flight runs&rdquo; metric, <code>PodDisruptionBudget</code> so drains are
+        staggered.</li>
+        <li><b>IRSA</b> for the pod service account &mdash; read access to the specific
+        Secrets Manager paths holding LLM keys, and (proposed) to the run-state table.</li>
+        <li>Egress to the LLM provider via NAT Gateway, or a <b>Bedrock VPC endpoint</b> if
+        the workflow's agents target Bedrock.</li>
+        <li><b>Observability</b>: ADOT sidecar / collector &rarr; CloudWatch Logs + Amazon
+        Managed Prometheus; per-team, per-workflow dashboards for usage and cost.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>What one documentation run looks like</h2>
+    <div class="prose">
+      <p>The human-in-the-loop pattern the server already supports: a gate step calls
+      <code>fail()</code> until approved, then <code>run/resume</code> merges the decision
+      in. Every hop below crosses a pod boundary &mdash; and, with the shared
+      <code>--state-dir</code> / store, each one now works: the session resolves on any
+      pod, <code>run/status</code> reads a live <code>run-status</code>, and the run is
+      bound to its owner. Only &ldquo;who may approve&rdquo; stays outside the runtime.</p>
+    </div>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg class="diagram" viewBox="0 0 960 500" role="img"
+             aria-label="Sequence: a team client calls run/start which lands on Pod A; Pod A writes run state to a shared store and returns a runId. The client polls run/status, which the load balancer sends to Pod B; Pod B resolves the same session from the shared store and reads the live run-status Pod A publishes each step. Pod A's gate step fails awaiting approval, leaving a resumable checkpoint. The client calls run/resume with an approval argument; it lands on Pod B, which loads the checkpoint and rejects a non-owner with -32602 — deciding who may approve is left to the service mesh.">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+            </marker>
+            <marker id="ahg2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="var(--gap)"/>
+            </marker>
+            <marker id="ahd2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="var(--accent)"/>
+            </marker>
+          </defs>
+
+          <text class="d-lab" x="480" y="22" text-anchor="middle">every call traverses API Gateway (authenticated) &rarr; ALB &rarr; some pod</text>
+
+          <!-- lifelines -->
+          <text class="d-title" x="90" y="52" text-anchor="middle">Client</text>
+          <line class="d-life" x1="90" y1="62" x2="90" y2="470"/>
+          <text class="d-title d-accent" x="350" y="52" text-anchor="middle">Pod A</text>
+          <line class="d-life" x1="350" y1="62" x2="350" y2="470"/>
+          <text class="d-title d-accent" x="600" y="52" text-anchor="middle">Pod B</text>
+          <line class="d-life" x1="600" y1="62" x2="600" y2="470"/>
+          <text class="d-title" x="850" y="52" text-anchor="middle">Shared store</text>
+          <line class="d-life" x1="850" y1="62" x2="850" y2="470"/>
+
+          <!-- 1 run/start -->
+          <path class="d-edge" d="M90 90 L346 90" marker-end="url(#ah2)"/>
+          <text class="d-lab" x="120" y="82">run/start &nbsp;(doc build)</text>
+
+          <!-- 2 write state — checkpoints/sessions/owner now go to the extension store -->
+          <path class="d-edge-done" d="M354 118 L846 118" marker-end="url(#ahd2)"/>
+          <text class="d-gaptag-done" x="360" y="110">persist runId + checkpoints + owner &rarr; extension store &#10003; (S3 / Postgres)</text>
+
+          <!-- 3 return -->
+          <path class="d-ret" d="M346 146 L92 146" marker-end="url(#ah2)"/>
+          <text class="d-lab" x="120" y="139">202 &nbsp;{ runId, working }</text>
+
+          <!-- 4 poll status -> Pod B (gap 2 — RESOLVED: shared session) -->
+          <path class="d-edge-done" d="M90 190 L596 190" marker-end="url(#ahd2)"/>
+          <text class="d-gaptag-done" x="120" y="182">run/status { runId } &mdash; LB picks another pod; Pod B resolves the same session (gap 2 &#10003;)</text>
+
+          <!-- 5 Pod B reads store -->
+          <path class="d-edge" d="M608 216 L846 216" marker-end="url(#ah2)"/>
+          <text class="d-lab" x="620" y="209">read live run-status + committed checkpoints</text>
+
+          <!-- 6 answer -->
+          <path class="d-ret" d="M596 244 L92 244" marker-end="url(#ah2)"/>
+          <text class="d-lab" x="120" y="237">step 3/7 &mdash; live progress from the run-status Pod A publishes each step (ITEM-01)</text>
+
+          <!-- 7 gate fail on Pod A -->
+          <path class="d-edge" d="M354 290 L846 290" marker-end="url(#ah2)"/>
+          <text class="d-lab" x="360" y="283">gate step fail("awaiting approval") &rarr; resumable checkpoint</text>
+
+          <!-- 8 resume -> Pod B -->
+          <path class="d-edge" d="M90 336 L596 336" marker-end="url(#ah2)"/>
+          <text class="d-lab" x="120" y="328">run/resume { arguments: { approved: true } }</text>
+
+          <!-- 9 Pod B loads checkpoint; owner enforced, approver authz delegated -->
+          <path class="d-edge-done" d="M608 364 L846 364" marker-end="url(#ahd2)"/>
+          <text class="d-gaptag-done" x="620" y="357">load checkpoint &mdash; owner verificado (&minus;32602); &ldquo;quem aprova&rdquo; fica no mesh (item 12)</text>
+
+          <!-- 10 complete -->
+          <path class="d-ret" d="M596 400 L92 400" marker-end="url(#ah2)"/>
+          <text class="d-lab" x="120" y="393">{ completed, vars }</text>
+
+          <text class="d-lab" x="90" y="452" text-anchor="middle">poll loop</text>
+          <path class="d-ret" d="M70 430 L70 410" marker-end="url(#ah2)"/>
+          <path class="d-ret" d="M70 430 L110 430"/>
+          <path class="d-ret" d="M110 430 L110 410"/>
+        </svg>
+      </div>
+      <figcaption>
+        The naïve deployment only works if <b>every</b> call for a given run lands on the pod
+        that started it. Closing that needed the run registry, session table and progress
+        state in a store both pods share &mdash; plus binding the run to a verified principal
+        so <code>run/resume</code> can reject an approval from the wrong team.
+        <br><b>Situação:</b> a run é ligada ao principal e o owner persiste
+        (<code>CheckpointStore.WriteOwner</code>); as sessões vão para
+        <code>diskSessionStore</code> (<code>--state-dir</code>) ou um
+        <code>extension store</code> S3/Postgres, que também carrega checkpoints e owner
+        (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> /
+        <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>);
+        e o registro <i>live</i> + <code>run/cancel</code> cruzam entre réplicas
+        (ITEM-01/02). Toda a lista de distribuição está fechada. (Auth e authz de aprovador
+        ficam no service mesh.)
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Status &mdash; verificado por testes</h2>
+    <div class="prose">
+      <p>Suíte de cenários <b>single-pod</b> em <code>tests/cloud/tests_mcp_pods/</code>.
+      Regressivo de <b>2026-08-31</b> (<code>mhl v1.1.0-alpha-7-g418d7dc</code>):
+      <a href="tests_mcp_pods/REGRESSION.md">18/18 <span class="pill done">PASS</span></a>
+      (CENARIO-K8S-001 sob Docker Desktop). Escopo: <b>um pod</b> atrás do API Gateway.
+      Dois defeitos foram achados e corrigidos durante a execução: imagem
+      <code>distroless</code> sem <code>/bin/sh</code> (&rarr; base <code>alpine</code>) e
+      <code>--drain-timeout</code> virando no-op porque <code>runsCtx</code> herdava o
+      cancelamento do sinal (&rarr; <code>context.WithoutCancel</code>).</p>
+      <p>Uma segunda suíte, <code>tests/extensions/tests_ext/</code>
+      (<a href="../extensions/tests_ext/REGRESSION.md">21/21 <span class="pill done">PASS</span></a>),
+      exercita o <code>extension store</code> pela linguagem <b>e pelo caminho
+      <code>mhl serve mcp --http</code></b>: com <code>extension store S { ... }</code> no
+      diretório de workflows, sessões + checkpoints de <code>run/*</code> + owner vão para o
+      backend externo, e um segundo processo no mesmo backend reconstrói e retoma a run.
+      Backends de produção verificados: <b>S3</b>
+      (<code>src/mhl-extensions/mhl-store-s3</code> &mdash; SigV4 + retry + IRSA/IMDSv2) e <b>PostgreSQL</b>
+      (<code>src/mhl-extensions/mhl-store-postgres</code> &mdash; <code>INSERT ... ON CONFLICT</code> atômico).
+      Um defeito de LSP foi achado e corrigido (falso positivo <code>memory "S" not found</code>
+      para <code>S.get()</code> numa <code>extension store</code>).</p>
+
+      <p>Uma terceira suíte, <code>tests/cloud/tests_mcp_targets/</code>
+      (<a href="tests_mcp_targets/REGRESSION.md">3 MET · 0 <span class="pill open">PENDING</span></a>),
+      é o outro sentido: cada cenário afirma o <b>comportamento-alvo</b> de um item ainda em
+      aberto/parcial e hoje <b>falha</b> &mdash; cada asserção não satisfeita vira um
+      <code>PENDING</code> com <i>o que precisa ser implementado</i>. É a lista de critérios
+      de aceite para solicitar as correções; quando uma landa, o cenário vira
+      <code>MET</code>. Só entram itens de <b>distribuição</b> (rodar em várias réplicas) e de
+      <b>isolamento da informação do cliente</b> (partição por tenant) &mdash; o runtime não
+      faz o papel do service mesh (auth, política de acesso, roteamento).
+      <b>01</b> (registro live + cancel distribuído entre 2 réplicas),
+      <b>02</b> (<code>Mcp-Session-Id</code> reconhecido em qualquer réplica; partição por
+      principal entre pods) e
+      <b>11</b> (<code>run/*</code> anunciado em <code>initialize</code> com versão) &mdash;
+      todos <span class="pill done">MET</span>. Os itens <b>04</b> (ergonomia de
+      gateway), <b>10</b> (auth &mdash; Istio/JWKS) e <b>12</b> (authz de aprovador &mdash;
+      <code>AuthorizationPolicy</code>) foram movidos para
+      <a href="tests_mcp_targets/_delegated/">_delegated/</a>: documentados, fora da lista de
+      trabalho. Um <code>PENDING</code> não é falha de build.</p>
+    </div>
+
+    <div class="st-wrap">
+      <table class="st">
+        <thead><tr><th>#</th><th>Item</th><th>Status</th><th>Verificado por / pendência</th></tr></thead>
+        <tbody>
+          <tr><td>01</td><td>Async run state node-local</td>
+            <td><span class="pill done">atendido</span></td>
+            <td>Estado durável (checkpoints + owner) num <code>extension store</code> S3/Postgres, reclaim/resume por outro processo (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> / <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>). E o <b>registro live</b> agora cruza: a réplica que executa publica um <code>run-status</code> por passo no store compartilhado, então <code>run/status</code> noutra réplica reporta <code>working</code> + o step corrente; <code>run/cancel</code> noutra réplica grava um flag <code>cancel</code> que a réplica dona lê (poll de 1&nbsp;s + step boundary) e para a goroutine &mdash; a run alcança <code>canceled</code>, não <code>completed</code> (<a href="tests_mcp_targets/ITEM-01/ITEM-01-live-registry-distributed-cancel.md">tests_mcp_targets/ITEM-01</a> &rarr; <b>MET</b>; <code>TestHTTPRunLiveStatusAndCancelAcrossReplicas</code>).</td></tr>
+          <tr><td>02</td><td>Sessões MCP na memória de um pod</td>
+            <td><span class="pill done">atendido</span></td>
+            <td>Com <code>--state-dir</code> as sessões passam a <code>diskSessionStore</code> (um JSON por <code>Mcp-Session-Id</code> em <code>.mhl/state/sessions/</code>) &mdash; ou ao <code>extension store</code> quando há uma <code>extension store</code> declarada. Um <code>Mcp-Session-Id</code> cunhado no Pod A responde <code>200</code> no Pod B (sem re-<code>initialize</code>), e <code>run/start</code> no A + <code>run/status</code> no B com a mesma sessão funciona. Regressão: <code>--principal-header</code> mantém a partição por identidade entre os dois pods (<a href="tests_mcp_targets/ITEM-02/ITEM-02-shared-sessions.md">tests_mcp_targets/ITEM-02</a> &rarr; <b>MET</b>; <code>TestHTTPSharedSessionsAcrossReplicas</code>, <code>TestDiskSessionStoreSharesAcrossInstances</code>). Sem <code>--state-dir</code>: <code>memSessionStore</code> por processo, como antes.</td></tr>
+          <tr><td>03</td><td>Nenhuma identidade do chamador chega ao runtime</td>
+            <td><span class="pill done">atendido</span></td>
+            <td><a href="tests_mcp_pods/CENARIO-006/CENARIO-006-principal-isolation.resultado.md">CENARIO-006</a> (isolamento por principal) + <a href="tests_mcp_pods/CENARIO-005/CENARIO-005-auth-guards.resultado.md">CENARIO-005</a> (bearer / Origin).</td></tr>
+          <tr><td>04</td><td><code>tools/call</code> bloqueia pela run inteira</td>
+            <td><span class="pill out">fora do runtime</span></td>
+            <td>Ergonomia de gateway, não distribuição. Atrás do API Gateway o cliente usa <code>run/start</code> &rarr; <code>run/status</code> &rarr; <code>run/resume</code> (a capability <code>experimental["mhl.run"]</code> do item 11 anuncia a família). Escape hatch <code>run/*</code> provado em <a href="tests_mcp_pods/CENARIO-007/CENARIO-007-async-lifecycle.resultado.md">CENARIO-007</a>; registro em <a href="tests_mcp_targets/_delegated/ITEM-04/ITEM-04-tools-call-autopromote.md">_delegated/ITEM-04</a>.</td></tr>
+          <tr><td>05</td><td>Sem limite de concorrência / fila</td>
+            <td><span class="pill done">atendido</span></td>
+            <td><a href="tests_mcp_pods/CENARIO-008/CENARIO-008-concurrency-queue.resultado.md">CENARIO-008</a> + gauges em <a href="tests_mcp_pods/CENARIO-012/CENARIO-012-metrics.resultado.md">CENARIO-012</a>.</td></tr>
+          <tr><td>06</td><td>Sem <code>/healthz</code> / <code>/readyz</code></td>
+            <td><span class="pill done">atendido</span></td>
+            <td><a href="tests_mcp_pods/CENARIO-004/CENARIO-004-probes.md">CENARIO-004</a>; readiness&rarr;503 no dreno em <a href="tests_mcp_pods/CENARIO-009/CENARIO-009-drain-shutdown.resultado.md">CENARIO-009</a>; sob kubelet real em <a href="tests_mcp_pods/CENARIO-K8S-001/CENARIO-K8S-001-pod-lifecycle.resultado.md">CENARIO-K8S-001</a>.</td></tr>
+          <tr><td>07</td><td>Shutdown mata run em 5&nbsp;s</td>
+            <td><span class="pill done">atendido</span></td>
+            <td><a href="tests_mcp_pods/CENARIO-009/CENARIO-009-drain-shutdown.resultado.md">CENARIO-009</a> (drain-timeout, checkpoint de shutdown sem <code>per_step</code>, <code>--drain-timeout 0</code>).</td></tr>
+          <tr><td>08</td><td>Diagnóstico não-estruturado, sem métricas</td>
+            <td><span class="pill done">atendido</span></td>
+            <td>Núcleo: <a href="tests_mcp_pods/CENARIO-012/CENARIO-012-metrics.resultado.md">CENARIO-012</a> (<code>/metrics</code>) + <a href="tests_mcp_pods/CENARIO-013/CENARIO-013-run-logs.resultado.md">CENARIO-013</a> (JSON <code>runId</code>+<code>owner</code>). OTLP tracing e token/custo: pendentes.</td></tr>
+          <tr><td>09</td><td>Logs por run não recuperáveis</td>
+            <td><span class="pill done">atendido</span></td>
+            <td><a href="tests_mcp_pods/CENARIO-013/CENARIO-013-run-logs.resultado.md">CENARIO-013</a> (<code>run/logs { runId, since? }</code>, cursored, owner-scoped).</td></tr>
+          <tr><td>10</td><td>Auth é um único token estático</td>
+            <td><span class="pill out">delegado ao mesh</span></td>
+            <td>Validar JWT / tokens por time / escopos é do <b>Istio</b> (<code>RequestAuthentication</code> + JWKS) ou do <b>API Gateway</b>: o ingress valida e injeta o <code>sub</code> em <code>X-Mhl-Principal</code>. O runtime só consome essa identidade &mdash; e já faz, via <code>--principal-header</code> (item 03), isolando runs/logs/sessões por principal (<a href="tests_mcp_pods/CENARIO-006/CENARIO-006-principal-isolation.resultado.md">CENARIO-006</a>). O <code>--token</code> é só o segredo gateway&harr;mhl (anti-spoof do header). Registro em <a href="tests_mcp_targets/_delegated/ITEM-10/ITEM-10-per-principal-auth.md">_delegated/ITEM-10</a>.</td></tr>
+          <tr><td>11</td><td><code>run/*</code> é extensão fora do padrão</td>
+            <td><span class="pill done">atendido</span></td>
+            <td>Sobre HTTP, <code>initialize</code> / <code>server/discover</code> anunciam <code>capabilities.experimental["mhl.run"] = { version: "1", methods: ["run/start", …] }</code> e cada tool em <code>tools/list</code> traz <code>_meta.mhl.run</code>; sobre stdio (que não roteia <code>run/*</code>) o bloco fica ausente. <a href="tests_mcp_targets/ITEM-11/ITEM-11-run-capability-discovery.md">tests_mcp_targets/ITEM-11</a> &rarr; <b>MET</b>; conformidade geral em <a href="tests_mcp_pods/CENARIO-014/CENARIO-014-protocol-conformance.resultado.md">CENARIO-014</a>.</td></tr>
+          <tr><td>12</td><td>Gates HITL sem authz de aprovador</td>
+            <td><span class="pill done">isolamento atendido</span> · <span class="pill out">authz no mesh</span></td>
+            <td><b>Isolamento (runtime):</b> a run é ligada ao principal e o owner é persistido, então um não-dono recebe <code>-32602</code> em <code>run/status</code>/<code>run/resume</code>, inclusive pós-restart e entre réplicas (<a href="tests_mcp_pods/CENARIO-006/CENARIO-006-principal-isolation.resultado.md">CENARIO-006</a> / <a href="tests_mcp_pods/CENARIO-011/CENARIO-011-state-dir-restart.resultado.md">CENARIO-011</a>). <b>Authz de aprovador (mesh):</b> "quem pode aprovar" vai numa <code>AuthorizationPolicy</code> do Istio em <code>POST /mcp/run/resume</code>; <code>approvers:</code> não vira propriedade da linguagem. Registro em <a href="tests_mcp_targets/_delegated/ITEM-12/ITEM-12-approver-authz.md">_delegated/ITEM-12</a>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="prose">
+      <p><b>Resumo:</b> <span class="pill done">9 atendidos</span> (01, 02, 03, 05, 06, 07, 08, 09, 11) &middot;
+      <span class="pill out">3 delegados ao mesh</span> (04, 10, 12) &middot; 0 parciais &middot; 0 abertos. Toda a coluna de <em>quick wins</em>
+      está entregue e verificada. Da coluna de <em>bigger bets</em>, o backend cloud do
+      <code>StateStore</code> saiu do papel &mdash; <code>extension store</code> sobre S3 e
+      PostgreSQL, verificado ponta a ponta com <code>mhl serve</code> (CENARIO-013/016).
+      Toda a lista de distribuição (registro <i>live</i> + cancel entre réplicas, sessões
+      compartilhadas entre pods) está fechada; segue pendente só tracing/custo (OTLP, item
+      de observabilidade). Auth (10), authz de aprovador (12) e
+      auto-promote (04) ficam no service mesh / gateway, não no runtime.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Where MHL needs work</h2>
+    <div class="prose">
+      <p>Ordered by whether the scenario functions without the change.
+      <b class="mono" style="color:var(--crit)">P0</b> blocks it,
+      <b class="mono" style="color:var(--warn)">P1</b> is required for production quality,
+      <b class="mono" style="color:var(--info)">P2</b> is a real improvement that can wait.
+      Cada item traz agora um chip de status
+      (<span class="chip st-done">atendido</span>
+      <span class="chip st-partial">parcial</span>
+      <span class="chip st-open">aberto</span>
+      <span class="chip st-out">fora do runtime</span>) e a linha <b>Verificado</b>.</p>
+    </div>
+
+    <div class="imp">
+
+      <article class="p0">
+        <h3><span class="num">01</span> Async run state is node-local <span class="chip">P0</span> <span class="chip st-done">atendido</span></h3>
+        <dl>
+          <dt>Today</dt><dd>In <code>internal/mcpserver/runs.go</code>, a run's checkpoint
+          tree lives under <code>h.runsDir</code> (a per-process temp dir, or a single
+          <code>--state-dir</code> path), and the <code>h.runs</code> registry, its
+          <code>cancel</code> func and the executing goroutine are in-memory on one pod.</dd>
+          <dt>Breaks here</dt><dd>With replicas, <code>run/status</code> / <code>run/resume</code>
+          / <code>run/cancel</code> routed to another pod hit <code>reconstructRun</code>,
+          which sees only committed checkpoints &mdash; no live step progress, and no way to
+          cancel a goroutine on a different pod. A shared <code>--state-dir</code> on EFS
+          fixes disk but not the registry or the cancel signal.</dd>
+          <dt>Direction</dt><dd>A <code>StateStore</code> interface (list / get / put / claim
+          / watch) with the current disk code as one implementation and DynamoDB or Redis as
+          another; a distributed cancel (store a <code>cancelRequested</code> flag the owning
+          pod polls at each step boundary) or explicit run affinity.</dd>
+          <dt>Verificado</dt><dd>O seam <code>StateStore</code> / <code>CheckpointStore</code> /
+          <code>SessionStore</code> existe e roteia por um <code>extension store</code>. Além do
+          disco (<code>--state-dir</code>, <a href="tests_mcp_pods/CENARIO-011/CENARIO-011-state-dir-restart.resultado.md">CENARIO-011</a>),
+          há dois backends de <b>produção</b> verificados ponta a ponta com
+          <code>mhl serve mcp --http</code>: <b>S3</b> (<code>src/mhl-extensions/mhl-store-s3</code> &mdash; cliente
+          SigV4 sem dependências, retry com backoff, credenciais IRSA
+          <code>AssumeRoleWithWebIdentity</code> / IMDSv2) e <b>PostgreSQL</b>
+          (<code>src/mhl-extensions/mhl-store-postgres</code> &mdash; <code>INSERT ... ON CONFLICT DO UPDATE</code>).
+          Com <code>extension store S { ... }</code> no dir de workflows, <code>session/*</code>,
+          <code>run/&lt;id&gt;/checkpoint/*</code> e o owner vão para o backend; um segundo processo
+          no mesmo bucket/tabela reconstrói a run e <code>run/resume</code> chega a
+          <code>completed</code>; <code>run/start</code> concorrentes gravam chaves disjuntas
+          (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> /
+          <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>).
+          <b>Pendente:</b> o registro <i>live</i> (<code>h.runs</code>, goroutine, <code>cancel</code>)
+          multi-pod e o cancel distribuído &mdash; o store não carrega o progresso em memória.</dd>
+        </dl>
+      </article>
+
+      <article class="p0">
+        <h3><span class="num">02</span> MCP sessions live in one pod's memory <span class="chip">P0</span> <span class="chip st-done">atendido</span></h3>
+        <dl>
+          <dt>Today</dt><dd><code>h.sessions</code> in <code>http.go</code> is behind the
+          <code>SessionStore</code> seam. With <code>--state-dir</code> it is
+          <code>diskSessionStore</code> (one JSON per <code>Mcp-Session-Id</code> under
+          <code>.mhl/state/sessions/</code>); with an <code>extension store</code> declared it
+          is <code>extSessionStore</code> (keys <code>session/&lt;sid&gt;</code> on the
+          backend); with neither, the process-local <code>memSessionStore</code>.</dd>
+          <dt>Breaks here</dt><dd>Solved for the shared-storage deployment: round-robin
+          across pods no longer misses the session &mdash; any replica pointed at the same
+          <code>--state-dir</code> (or store) resolves an id minted by another, with no
+          forced re-<code>initialize</code>. The stateless <code>params._meta</code> form's
+          <code>ownerKey=""</code> is closed by <code>--principal-header</code> (item 03),
+          where ownership is the identity hash, not the session.</dd>
+          <dt>Direction</dt><dd>Done: sessions sit behind the same seam as run state.
+          A routing contract (stable client key + ingress hash-route) was the alternative;
+          the store path won &mdash; an ALB cannot key on a body field.</dd>
+          <dt>Verificado</dt><dd><code>tests_mcp_targets/ITEM-02</code> &rarr; <b>MET</b>:
+          <code>tools/list</code> no Pod B com um <code>Mcp-Session-Id</code> cunhado no Pod A
+          &rarr; <code>200</code>; <code>run/start</code> no A + <code>run/status</code> no B
+          com a mesma sessão funciona; e (regressão) com <code>--principal-header</code> o
+          <code>bob</code> no Pod B <b>não</b> vê a run de <code>alice</code> iniciada no Pod A
+          (<code>-32602</code>), <code>alice</code> vê. Cobertura Go:
+          <code>TestHTTPSharedSessionsAcrossReplicas</code>,
+          <code>TestDiskSessionStoreSharesAcrossInstances</code>. Backend externo:
+          <code>session/&lt;sid&gt;</code> num <code>extension store</code>
+          (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> /
+          <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>).</dd>
+        </dl>
+      </article>
+
+      <article class="p0">
+        <h3><span class="num">03</span> No caller identity reaches the runtime <span class="chip">P0</span> <span class="chip st-done">atendido</span></h3>
+        <dl>
+          <dt>Today</dt><dd>The only credential the server understands is one static bearer
+          token (<code>--token</code> / <code>MHL_SERVE_TOKEN</code>), checked for equality in
+          <code>handleMCP</code>. Run ownership is <code>sha256(Mcp-Session-Id)</code> &mdash;
+          possession of a self-minted id, not an identity.</dd>
+          <dt>Breaks here</dt><dd>Every team arrives behind API Gateway with the same
+          upstream token, so <code>run/list</code> and resumable runs are shared across teams.
+          The loopback-<code>Origin</code> guard is meaningless behind an ALB.</dd>
+          <dt>Direction</dt><dd>Accept a principal from a trusted header
+          (<code>--principal-header X-Mhl-Principal</code>, populated by the API Gateway
+          authorizer) or validate a JWT against JWKS directly; key ownership, memory scoping
+          and log access on that principal.</dd>
+          <dt>Verificado</dt><dd>Implementado como a variante trusted-header. Com
+          <code>--principal-header X-Mhl-Principal</code> + <code>--token</code>, o
+          <i>owner</i> de uma run é <code>ownerFor(principal)</code> (hash da identidade
+          verificada): <code>bob</code> não vê nem toca a run de <code>alice</code>
+          (<code>run/list</code> vazio, <code>run/status</code> &rarr; <code>-32602</code>),
+          e o servidor recusa <code>--principal-header</code> sem <code>--token</code>
+          (<a href="tests_mcp_pods/CENARIO-006/CENARIO-006-principal-isolation.resultado.md">CENARIO-006</a>).
+          Guard de bearer/Origin em
+          <a href="tests_mcp_pods/CENARIO-005/CENARIO-005-auth-guards.resultado.md">CENARIO-005</a>.
+          JWT/JWKS direto continua em aberto (item 10).</dd>
+        </dl>
+      </article>
+
+      <article class="p0">
+        <h3><span class="num">04</span> <code>tools/call</code> blocks for the whole run <span class="chip">P0</span> <span class="chip st-out">fora do runtime</span></h3>
+        <dl>
+          <dt>Today</dt><dd><code>callTool</code> in <code>server.go</code> holds the HTTP
+          request open through <code>execsvc.Run</code>. The async <code>run/*</code> methods
+          are the escape hatch.</dd>
+          <dt>Breaks here</dt><dd>API Gateway's integration timeout is ~29&nbsp;s and the ALB
+          idle timeout defaults to 60&nbsp;s; a real documentation run exceeds both. A stock
+          MCP client that only knows <code>tools/call</code> will always time out.</dd>
+          <dt>Direction</dt><dd><b>Fora do runtime.</b> Não é distribuição nem isolamento —
+          é ergonomia de gateway. O contrato: atrás do API Gateway o cliente usa
+          <code>run/start</code> &rarr; <code>run/status</code> &rarr; <code>run/resume</code>,
+          e a capability <code>experimental["mhl.run"]</code> (item 11) torna isso
+          descobrível. Um auto-promote de <code>tools/call</code> pode entrar depois como
+          conveniência, mas não como pré-requisito do cenário.</dd>
+          <dt>Verificado</dt><dd>A superfície assíncrona &mdash; <code>run/start</code> &rarr;
+          poll <code>run/status</code> &rarr; <code>run/resume</code> no gate &rarr;
+          <code>completed</code> &mdash; funciona ponta a ponta
+          (<a href="tests_mcp_pods/CENARIO-007/CENARIO-007-async-lifecycle.resultado.md">CENARIO-007</a>),
+          e um <code>tools/call</code> síncrono com o pool cheio devolve <code>-32000</code>
+          apontando <code>run/start</code>
+          (<a href="tests_mcp_pods/CENARIO-008/CENARIO-008-concurrency-queue.resultado.md">CENARIO-008</a>).
+          Registro do gap de auto-promote em
+          <a href="tests_mcp_targets/_delegated/ITEM-04/ITEM-04-tools-call-autopromote.md">_delegated/ITEM-04</a>.</dd>
+        </dl>
+      </article>
+
+      <article class="p1">
+        <h3><span class="num">05</span> No server-level concurrency limit or queue <span class="chip">P1</span> <span class="chip st-done">atendido</span></h3>
+        <dl>
+          <dt>Today</dt><dd><code>run/start</code> and <code>tools/call</code> launch a run
+          unconditionally. The only ceiling is per-pipeline <code>spawn.MaxConcurrency</code>
+          for sub-agents (<code>execsvc.go</code>).</dd>
+          <dt>Breaks here</dt><dd>A synchronized morning burst across teams multiplies into
+          hundreds of concurrent LLM calls &mdash; pod OOM, fd exhaustion, and a provider
+          <code>429</code> storm with no shed load.</dd>
+          <dt>Direction</dt><dd><code>--max-concurrent-runs</code> with a weighted semaphore,
+          a bounded queue, and a first-class <code>queued</code> run state so clients poll
+          instead of retrying. Export the in-flight gauge for HPA.</dd>
+          <dt>Verificado</dt><dd>Com <code>--max-concurrent-runs 1</code>: 3&times;
+          <code>run/start</code> &rarr; <code>working</code>, <code>queued</code> (<code>queuePosition</code>
+          0/1); <code>tools/call</code> em capacidade máxima &rarr; <code>-32000 server at
+          capacity</code> após ~5&nbsp;s; <code>run/cancel</code> numa run <code>queued</code>
+          a descarta sem executar; a fila anda quando o slot libera. Gauges
+          <code>mhl_serve_runs_active</code> / <code>runs_queued</code> refletem o estado
+          (<a href="tests_mcp_pods/CENARIO-008/CENARIO-008-concurrency-queue.resultado.md">CENARIO-008</a>,
+          <a href="tests_mcp_pods/CENARIO-012/CENARIO-012-metrics.resultado.md">CENARIO-012</a>).</dd>
+        </dl>
+      </article>
+
+      <article class="p1">
+        <h3><span class="num">06</span> No health or readiness endpoints <span class="chip">P1</span> <span class="chip st-done">atendido</span></h3>
+        <dl>
+          <dt>Today</dt><dd>The mux registers only <code>/mcp</code> (<code>POST</code> /
+          <code>DELETE</code>). There is no <code>/healthz</code> or <code>/readyz</code>.</dd>
+          <dt>Breaks here</dt><dd>Kubernetes has nothing to probe; it cannot tell a
+          starting pod from a ready one, and cannot be told to stop routing to a draining
+          pod.</dd>
+          <dt>Direction</dt><dd>Add <code>GET /healthz</code> (liveness) and
+          <code>GET /readyz</code> (flips to unready on <code>SIGTERM</code>, before the
+          drain window starts).</dd>
+          <dt>Verificado</dt><dd><code>GET /healthz</code> e <code>/readyz</code> respondem
+          <code>200</code> <b>sem</b> bearer (assim como <code>/metrics</code>), enquanto
+          <code>POST /mcp</code> continua <code>401</code>
+          (<a href="tests_mcp_pods/CENARIO-004/CENARIO-004-probes.md">CENARIO-004</a>).
+          No <code>SIGTERM</code>, <code>/readyz</code> vira <code>503</code> antes do dreno e
+          <code>/healthz</code> fica <code>200</code>
+          (<a href="tests_mcp_pods/CENARIO-009/CENARIO-009-drain-shutdown.resultado.md">CENARIO-009</a>);
+          sob kubelet real o IP do pod sai dos <code>Endpoints</code> do Service
+          (<a href="tests_mcp_pods/CENARIO-K8S-001/CENARIO-K8S-001-pod-lifecycle.resultado.md">CENARIO-K8S-001</a>).</dd>
+        </dl>
+      </article>
+
+      <article class="p1">
+        <h3><span class="num">07</span> Shutdown cancels in-flight runs after 5&nbsp;s <span class="chip">P1</span> <span class="chip st-done">atendido</span></h3>
+        <dl>
+          <dt>Today</dt><dd>On <code>SIGTERM</code> the server context is cancelled &mdash;
+          every async run's context ends at the next step boundary &mdash; and
+          <code>httpSrv.Shutdown</code> gets a hard 5&nbsp;second window
+          (<code>http.go</code>).</dd>
+          <dt>Breaks here</dt><dd>Routine pod rotation (deploys, HPA scale-in, node drain)
+          kills running documentation builds. They survive only if the workflow happened to
+          declare <code>checkpoint { strategy: "per_step" }</code>.</dd>
+          <dt>Direction</dt><dd>A configurable drain timeout; &ldquo;stop accepting new runs,
+          let in-flight ones finish&rdquo;; and write a checkpoint on shutdown regardless of
+          the declared strategy so any run is resumable.</dd>
+          <dt>Verificado</dt><dd>Com <code>--drain-timeout 20s</code>: no <code>SIGTERM</code> a
+          run em andamento <b>continua</b> (<code>Compile&rarr;Package&rarr;Ship</code>) e
+          termina sozinha; o processo só encerra depois (~6&nbsp;s), <code>run/start</code>
+          responde <code>-32000 server is draining</code>, e o stderr registra a linha JSON
+          <code>draining</code>. Um restart no mesmo <code>--state-dir</code> mostra a run como
+          <code>resumable</code> mesmo <code>SlowBuild</code> não declarando <code>per_step</code>
+          (checkpoint de shutdown). <code>--drain-timeout 0</code> mantém o corte imediato
+          (<a href="tests_mcp_pods/CENARIO-009/CENARIO-009-drain-shutdown.resultado.md">CENARIO-009</a>;
+          sob kubelet real em
+          <a href="tests_mcp_pods/CENARIO-K8S-001/CENARIO-K8S-001-pod-lifecycle.resultado.md">CENARIO-K8S-001</a>).
+          <i>Nota:</i> um defeito foi achado e corrigido &mdash; <code>runsCtx</code> era filho
+          do contexto de sinal, então o <code>SIGTERM</code> cancelava a run por propagação de
+          contexto antes de o dreno esperar; agora
+          <code>runsCtx := context.WithCancel(context.WithoutCancel(ctx))</code>.</dd>
+        </dl>
+      </article>
+
+      <article class="p1">
+        <h3><span class="num">08</span> Unstructured diagnostics, no metrics <span class="chip">P1</span> <span class="chip st-done">atendido (núcleo)</span></h3>
+        <dl>
+          <dt>Today</dt><dd>All output is free text to a single <code>syncWriter</code> over
+          stderr (<code>logw</code>). No request counts, run durations, error rates, token or
+          cost counters; no trace or <code>runId</code> correlation.</dd>
+          <dt>Breaks here</dt><dd>&ldquo;Which team is spending what, and what's failing&rdquo;
+          &mdash; the first questions a daily multi-team service raises &mdash; are
+          unanswerable.</dd>
+          <dt>Direction</dt><dd>Structured JSON log lines keyed by <code>runId</code> and
+          principal; an OTLP exporter or <code>/metrics</code> with in-flight, duration,
+          outcome, and per-workflow token/cost series.</dd>
+          <dt>Verificado</dt><dd><code>GET /metrics</code> (texto Prometheus, sem auth):
+          <code>mhl_serve_runs_total{outcome}</code>,
+          <code>run_duration_seconds_{sum,count}</code>,
+          <code>tool_calls_total{ok|error}</code>, gauges
+          <code>runs_active</code>/<code>runs_queued</code>/<code>sessions_active</code>
+          &mdash; os valores acompanham a atividade
+          (<a href="tests_mcp_pods/CENARIO-012/CENARIO-012-metrics.resultado.md">CENARIO-012</a>).
+          O stderr emite linhas JSON <code>run started</code>/<code>run completed</code> com
+          <code>runId</code> + <code>owner</code>
+          (<a href="tests_mcp_pods/CENARIO-013/CENARIO-013-run-logs.resultado.md">CENARIO-013</a>).
+          <b>Pendente:</b> exporter OTLP / tracing e séries token+custo por workflow.</dd>
+        </dl>
+      </article>
+
+      <article class="p1">
+        <h3><span class="num">09</span> Per-run logs are not retrievable <span class="chip">P1</span> <span class="chip st-done">atendido</span></h3>
+        <dl>
+          <dt>Today</dt><dd><code>execRun</code> sends a run's <code>log()</code> / step
+          output to the shared server sink. <code>run/status</code> returns step names and
+          final vars only.</dd>
+          <dt>Breaks here</dt><dd>A team whose run failed cannot see <i>why</i> through the
+          API; an operator has to grep pod stdout and correlate by hand.</dd>
+          <dt>Direction</dt><dd>Capture per-run output (ring buffer in the state store) and
+          add <code>run/logs { runId, since }</code>, principal-scoped.</dd>
+          <dt>Verificado</dt><dd><code>run/logs { runId }</code> devolve
+          <code>{ text, nextSince }</code> com a saída <code>step:</code> da run; a releitura
+          com <code>since: nextSince</code> volta vazia e com o cursor estável; outra sessão
+          recebe <code>-32602 unknown runId</code> (owner-scoped). Ring de 64&nbsp;KiB
+          (<a href="tests_mcp_pods/CENARIO-013/CENARIO-013-run-logs.resultado.md">CENARIO-013</a>).</dd>
+        </dl>
+      </article>
+
+      <article class="p1">
+        <h3><span class="num">10</span> Auth is a single static token <span class="chip">P1</span> <span class="chip st-out">delegado ao mesh</span></h3>
+        <dl>
+          <dt>Today</dt><dd>One process-wide <code>--token</code> string, checked for equality.
+          No JWT, no per-team tokens, no scopes, no rotation.</dd>
+          <dt>Breaks here</dt><dd>Only if the runtime is expected to <i>do</i> auth. It is not:
+          the API Gateway / Istio validate the credential and inject the caller's identity;
+          the runtime just needs to trust and partition on it.</dd>
+          <dt>Direction</dt><dd><b>Delegado ao mesh.</b> Validação de JWT contra JWKS fica no
+          Istio (<code>RequestAuthentication</code>) ou no API Gateway (Cognito / Lambda
+          authorizer), que injeta o <code>sub</code> em <code>X-Mhl-Principal</code>. O runtime
+          já faz sua parte: <code>--principal-header</code> (item 03) transforma essa
+          identidade verificada no <code>owner</code> das runs, isolando
+          <code>run/list</code>/<code>run/status</code>/<code>run/logs</code>/<code>run/resume</code>
+          por principal &mdash; inclusive entre réplicas (item 02). O <code>--token</code>
+          permanece só como o segredo compartilhado gateway&harr;mhl (anti-spoof do header).</dd>
+          <dt>Verificado</dt><dd>O isolamento por principal funciona
+          (<a href="tests_mcp_pods/CENARIO-006/CENARIO-006-principal-isolation.resultado.md">CENARIO-006</a>);
+          o guard 401/200 do <code>--token</code> também
+          (<a href="tests_mcp_pods/CENARIO-005/CENARIO-005-auth-guards.resultado.md">CENARIO-005</a>).
+          O gap de auth-por-principal fica documentado, fora da lista de trabalho, em
+          <a href="tests_mcp_targets/_delegated/ITEM-10/ITEM-10-per-principal-auth.md">_delegated/ITEM-10</a>.</dd>
+        </dl>
+      </article>
+
+      <article class="p2">
+        <h3><span class="num">11</span> <code>run/*</code> is a non-standard extension <span class="chip">P2</span> <span class="chip st-done">atendido</span></h3>
+        <dl>
+          <dt>Today</dt><dd>Sobre HTTP (o transporte que roteia <code>run/*</code>),
+          <code>initialize</code> e <code>server/discover</code> devolvem
+          <code>capabilities.experimental["mhl.run"] = { "version": "1", "methods":
+          ["run/start", "run/status", "run/resume", "run/cancel", "run/list", "run/logs"] }</code>,
+          e cada tool em <code>tools/list</code> ganha <code>_meta.mhl.run = { async: true, via:
+          "run/start" }</code>. Sobre stdio, que não roteia <code>run/*</code>, o bloco
+          <code>experimental</code> fica ausente. Clientes que ignoram <code>experimental</code>
+          seguem funcionando.</dd>
+          <dt>Breaks here</dt><dd>Fechado para o cenário: um cliente descobre a família
+          <code>run/*</code> e sua versão no handshake, em vez de precisar de código sob medida.</dd>
+          <dt>Direction</dt><dd>Acompanhar o mecanismo de progress-notification do MCP conforme
+          estabiliza e migrar quando fizer sentido; hoje é uma extensão via
+          <code>experimental</code>.</dd>
+          <dt>Verificado</dt><dd><code>initialize</code> sobre HTTP &rarr; <code>capabilities</code>
+          com as chaves <code>experimental</code> + <code>tools</code>;
+          <code>experimental["mhl.run"].version == "1"</code> e os 6 métodos listados;
+          <code>tools/list</code> traz o <code>_meta.mhl.run</code>; <code>run/&lt;bogus&gt;</code>
+          &rarr; <code>-32601</code> (sem regressão); stdio não anuncia <code>experimental</code>
+          (<a href="tests_mcp_targets/ITEM-11/ITEM-11-run-capability-discovery.md">tests_mcp_targets/ITEM-11</a>
+          &rarr; <b>MET</b>; testes <code>TestHTTPAdvertisesAsyncRunCapability</code> +
+          <code>TestServeInitializeListCall</code>; conformidade geral em
+          <a href="tests_mcp_pods/CENARIO-014/CENARIO-014-protocol-conformance.resultado.md">CENARIO-014</a>).</dd>
+        </dl>
+      </article>
+
+      <article class="p2">
+        <h3><span class="num">12</span> HITL gates have no approver authorization <span class="chip">P2</span> <span class="chip st-done">isolamento atendido</span> <span class="chip st-out">authz no mesh</span></h3>
+        <dl>
+          <dt>Today</dt><dd><code>run/resume</code> merges <code>arguments</code> over the
+          run's inputs with no check beyond run ownership; after a restart,
+          <code>reconstructRun</code> lets the first caller to name the (unguessable)
+          <code>runId</code> claim it.</dd>
+          <dt>Breaks here</dt><dd>&ldquo;Who may approve a doc for publication&rdquo; is a
+          core requirement the language cannot express; any owner can approve, and once
+          <code>runId</code>s appear in logs or traces the reclaim path widens.</dd>
+          <dt>Direction</dt><dd>Duas metades. <b>Isolamento (runtime):</b> ligar a run ao
+          principal para que só o dono a veja/retome &mdash; feito. <b>Authz de aprovador
+          (mesh):</b> "quem pode aprovar" é uma <code>AuthorizationPolicy</code> do Istio em
+          <code>POST /mcp/run/resume</code> (o wrapper <code>POST /mcp/&lt;method&gt;</code>
+          isola esse path). <code>approvers:</code> <b>não</b> vira propriedade da linguagem.</dd>
+          <dt>Verificado</dt><dd>Isolamento: com <code>--principal-header</code> o owner é a
+          identidade e é persistido (<code>CheckpointStore.WriteOwner</code>), então um
+          não-dono recebe <code>-32602</code> em <code>run/status</code>/<code>run/resume</code>,
+          inclusive pós-restart e entre réplicas
+          (<a href="tests_mcp_pods/CENARIO-006/CENARIO-006-principal-isolation.resultado.md">CENARIO-006</a> /
+          <a href="tests_mcp_pods/CENARIO-011/CENARIO-011-state-dir-restart.resultado.md">CENARIO-011</a> /
+          <a href="tests_mcp_targets/ITEM-02/ITEM-02-shared-sessions.md">ITEM-02</a>). O gap de
+          <code>approvers:</code> fica documentado, fora da lista de trabalho, em
+          <a href="tests_mcp_targets/_delegated/ITEM-12/ITEM-12-approver-authz.md">_delegated/ITEM-12</a>.</dd>
+        </dl>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick wins vs. bigger bets</h2>
+    <div class="split-wrap">
+      <table class="split">
+        <thead>
+          <tr><th>Quick win &mdash; contained change</th><th>Bigger bet &mdash; design work</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="pill done">feito</span> <code>GET /healthz</code> + <code>/readyz</code> on the mux; unready on <code>SIGTERM</code></td>
+            <td><span class="pill done">feito</span> <code>StateStore</code> / <code>CheckpointStore</code> / <code>SessionStore</code> seams + backends de produção: <b>S3</b> e <b>PostgreSQL</b> via <code>extension store</code> (CENARIO-013/016). Redis existe como kind <code>cache</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill done">feito</span> <code>--drain-timeout</code>; stop-accepting-then-drain instead of a 5&nbsp;s hard stop</td>
+            <td><span class="pill done">feito</span> <b>registro live</b> entre réplicas: <code>run-status</code> publicado por passo + flag <code>cancel</code> no store compartilhado (o cancel distribuído chega à goroutine da réplica dona). <b>Sessões compartilhadas</b> entre pods via <code>diskSessionStore</code> (<code>--state-dir</code>) / <code>extSessionStore</code> (ITEM-02)</td>
+          </tr>
+          <tr>
+            <td><span class="pill done">feito</span> Checkpoint on shutdown even without <code>strategy: "per_step"</code></td>
+            <td>&#9675; OpenTelemetry tracing + metrics, with per-team token and cost accounting</td>
+          </tr>
+          <tr>
+            <td><span class="pill done">feito</span> <code>--max-concurrent-runs</code> semaphore + a <code>queued</code> run state</td>
+            <td>&mdash; <b>delegado ao mesh</b>: JWT/JWKS no Istio ou no API Gateway; o runtime só consome <code>X-Mhl-Principal</code> (item 03)</td>
+          </tr>
+          <tr>
+            <td><span class="pill done">feito</span> <code>--principal-header</code> feeding <code>ownerKey</code> instead of the session hash</td>
+            <td>&mdash; <b>delegado ao mesh</b>: <code>AuthorizationPolicy</code> por path/principal; o isolamento por posse já é do runtime</td>
+          </tr>
+          <tr>
+            <td><span class="pill done">feito</span> JSON log lines carrying <code>runId</code> + principal</td>
+            <td>&#9675; Auto-promote a long <code>tools/call</code> to an async run</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose">
+      <p>The quick wins make a single-replica deployment behind API Gateway genuinely
+      usable and observable. The scenario as described &mdash; several teams, every day,
+      on an autoscaled Deployment &mdash; needs the left-hand column <em>and</em> a shared
+      store for run and session state: without it, more than one pod is unsafe.</p>
+      <p><b>Situação (2026-08-31):</b> a coluna esquerda inteira está entregue e verificada
+      (<a href="tests_mcp_pods/REGRESSION.md"><code>tests_mcp_pods/</code></a> 18/18). O
+      <b>store compartilhado saiu do papel</b>: <code>extension store</code> sobre S3
+      (<code>src/mhl-extensions/mhl-store-s3</code>) e PostgreSQL (<code>src/mhl-extensions/mhl-store-postgres</code>),
+      verificado ponta a ponta com <code>mhl serve</code> incluindo reclaim pós-restart
+      (<a href="../extensions/tests_ext/REGRESSION.md"><code>tests_ext/</code></a> 21/21,
+      CENARIO-013/016). Com o <code>--state-dir</code> compartilhado (ou um
+      <code>extension store</code>), o <b>multi-réplica</b> está fechado: sessões e registro
+      <i>live</i> de runs cruzam entre pods, e <code>run/cancel</code> alcança a réplica dona
+      (ITEM-01/02). Falta só observabilidade: tracing/custo (OTLP). Auth (JWT/JWKS) e authz de
+      aprovador (<code>approvers:</code>) ficam no service mesh.</p>
+    </div>
+  </section>
+
+  <p class="foot">Grounded in <code>internal/mcpserver/{server,http,runs}.go</code>,
+  <code>internal/execsvc/execsvc.go</code>, <code>internal/cli/{serve,storext}.go</code> and
+  <code>internal/extension/</code>. Diagrams show the mechanism, not a deployment manifest.
+  <br>Status (chips ✓ / ◐ / ○, seção &ldquo;Status&rdquo; e legendas dos diagramas) verificado
+  contra três regressivos em 2026-08-31, <code>mhl v1.1.0-alpha-7-g418d7dc</code>:
+  <a href="tests_mcp_pods/REGRESSION.md"><code>tests/cloud/tests_mcp_pods/</code></a> (18/18,
+  server single-pod; CENARIO-K8S-001 sob Docker Desktop),
+  <a href="tests_mcp_targets/REGRESSION.md"><code>tests/cloud/tests_mcp_targets/</code></a>
+  (3 MET / 0 PENDING &mdash; 01, 02 e 11 <span class="pill done">MET</span>; lista de distribuição fechada; 04/10/12 em <code>_delegated/</code>) e
+  <a href="../extensions/tests_ext/REGRESSION.md"><code>tests/extensions/tests_ext/</code></a>
+  (21/21, <code>extension store</code>/<code>sql</code>/<code>cache</code> pela linguagem e pelo
+  <code>mhl serve</code>). Empacotamento em <code>tests/cloud/Dockerfile</code> +
+  <code>tests/cloud/k8s/</code>; extensões oficiais em <code>src/mhl-extensions/mhl-store-s3</code>,
+  <code>src/mhl-extensions/mhl-store-postgres</code>, <code>src/mhl-extensions/mhl-sql-postgres</code>,
+  <code>src/mhl-extensions/mhl-cache-redis</code>.</p>
+
+</div>
+</body>
+</html>

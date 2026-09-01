@@ -1,0 +1,89 @@
+# Same as deployment.yaml but /state is a PersistentVolumeClaim (pvc.yaml), so
+# async run checkpoints outlive the pod. Apply pvc.yaml first. Only one of
+# deployment.yaml / deployment-durable.yaml should exist at a time (same name).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mhl-serve
+  namespace: mhl-serve
+  labels:
+    app.kubernetes.io/name: mhl-serve
+    variant: durable
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate                  # RWO volume: the old pod must release it first
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mhl-serve
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mhl-serve
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8711"
+        prometheus.io/path: /metrics
+    spec:
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mhl
+          image: mhl-serve:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8711
+          env:
+            - name: MHL_SERVE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mhl-serve-token
+                  key: token
+            - name: MHL_SERVE_PRINCIPAL_HEADER
+              value: X-Mhl-Principal
+            - name: MHL_SERVE_STATE_DIR
+              value: /state
+            - name: MHL_SERVE_DRAIN_TIMEOUT
+              value: "30s"
+            - name: MHL_SERVE_MAX_CONCURRENT_RUNS
+              value: "4"
+            - name: TMPDIR
+              value: /tmp
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 1
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: state, mountPath: /state }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: mhl-serve-state
+        - name: tmp
+          emptyDir: {}

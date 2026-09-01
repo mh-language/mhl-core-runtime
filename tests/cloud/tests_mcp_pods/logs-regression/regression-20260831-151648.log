@@ -1,0 +1,11 @@
+regressivo tests_mcp_pods — 20260831-151648
+binário: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/../mhl  (mhl v1.1.0-alpha-7-g418d7dc-dirty)
+opções: RUN_K8S=0 VERBOSE=0 TIMEOUT=300s RESIGN=1 ONLY='001' SKIP=''
+
+▶ 001 (conexao) — CENARIO-001/run.sh
+
+--------------------------------------------------------------
+total=1  PASS=1  FAIL=0  SKIP=1  (1s)
+log completo: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/logs-regression/regression-20260831-151648.log
+logs por cenário: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/logs-regression/
+resumo: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/REGRESSION.md

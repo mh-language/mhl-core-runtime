@@ -1,0 +1,109 @@
+# Relatório — Cenários da capacidade de extensões do mhl (`tests_ext`)
+
+Suíte que exercita `extension <kind> <Name> { ... }` na linguagem mhl, com foco
+no **StateStore** (kind `store`) e em **concorrência**. Sujeitos de teste:
+[`../store-probe/`](../store-probe/) — um `store` instrumentado (superset de
+[`../store-fs/`](../store-fs/)) — nos cenários 001–010; a extensão **oficial**
+[`../../../src/mhl-extensions/mhl-store-s3/`](../../../src/mhl-extensions/mhl-store-s3/) — `store` sobre Amazon
+S3 / MinIO — nos cenários 011–013; a extensão **oficial**
+[`../../../src/mhl-extensions/mhl-store-postgres/`](../../../src/mhl-extensions/mhl-store-postgres/) — `store`
+sobre PostgreSQL — nos cenários 014–016; e a extensão **oficial**
+[`../../../src/mhl-extensions/mhl-sql-postgres/`](../../../src/mhl-extensions/mhl-sql-postgres/) — kind `sql`,
+consultas livres (DQL) + DML/DDL — nos cenários 017–019; e a extensão
+**oficial** [`../../../src/mhl-extensions/mhl-cache-redis/`](../../../src/mhl-extensions/mhl-cache-redis/) —
+kind `cache`, TTL sobre Redis — nos cenários 020–021.
+
+| Item | Valor |
+|---|---|
+| Binário | `tests/extensions/mhl` (cópia de `tests/cloud/mhl`, `v1.1.0-alpha-7-g418d7dc`) |
+| Extensões | `dev.mhl.store-probe` · `dev.mhl.store-s3` · `dev.mhl.store-postgres` (`store`) · `dev.mhl.sql-postgres` (`sql`) · `dev.mhl.cache-redis` (`cache`) — todas 0.1.0 |
+| Data | 2026-08-31 |
+| Executados | 21 |
+| Aprovados | 21 |
+| Reprovados | 0 |
+
+## Cenários
+
+| Código | Descrição | Status | Cenário | Script |
+|---|---|---|---|---|
+| CENARIO-001 | Carregar a extensão de um `.mh` e chamar `put`/`get` (hit + miss→null); `mhl extension doctor`. | ✅ | [md](CENARIO-001/CENARIO-001-load-and-call.md) | [run.sh](CENARIO-001/run.sh) |
+| CENARIO-002 | As 4 operações do contrato `store` (get miss→null, delete ausente no-op, `list(prefix)`). | ✅ | [md](CENARIO-002/CENARIO-002-four-ops.md) | [run.sh](CENARIO-002/run.sh) |
+| CENARIO-003 | Allow-list do lock: fora do lock não carrega; drift de hash → recusa; `doctor` != 0. | ✅ | [md](CENARIO-003/CENARIO-003-lock-allowlist.md) | [run.sh](CENARIO-003/run.sh) |
+| CENARIO-004 | `env()` em propriedade da extensão (`dir: env(...)`) — resolve; unset → falha fechada. | ✅ | [md](CENARIO-004/CENARIO-004-env-props.md) | [run.sh](CENARIO-004/run.sh) |
+| CENARIO-005 | Ciclo de vida do processo: 1 `init`, N `call`, `shutdown`; um processo reusado. | ✅ | [md](CENARIO-005/CENARIO-005-process-lifecycle.md) | [run.sh](CENARIO-005/run.sh) |
+| CENARIO-006 | Crash no meio de um run: erro diagnóstico (extensão + exit status + stderr), sem deadlock, seq e parallel. `maxRestarts` é guarda de boot-loop (não alcançável de um `.mh` comum — ver observações do `.md`). | ✅ | [md](CENARIO-006/CENARIO-006-crash-restart.md) | [run.sh](CENARIO-006/run.sh) |
+| CENARIO-007 | **Concorrência**: `parallel` de 8 `put` + `list` → 8 chaves, sem perda; janelas sobrepostas (`overlapped=yes`); controle `serial` ~3× mais lento (`overlapped=no`). | ✅ | [md](CENARIO-007/CENARIO-007-parallel-puts.md) | [run.sh](CENARIO-007/run.sh) |
+| CENARIO-008 | **Concorrência**: read-modify-write concorrente → **lost update** (`store` v1 sem CAS/lease; final < N); sequencial = N. Limitação documentada. | ✅ | [md](CENARIO-008/CENARIO-008-lost-update.md) | [run.sh](CENARIO-008/run.sh) |
+| CENARIO-009 | **Concorrência**: 3 declarações do mesmo kind compartilham **um** processo (1 `init`); 12 puts interleaved sem perda. | ✅ | [md](CENARIO-009/CENARIO-009-shared-process.md) | [run.sh](CENARIO-009/run.sh) |
+| CENARIO-010 | `mhl serve mcp --http` com `extension store`: `run/*`+`session/*` na extensão; `run/resume`; **restart-reclaim** do store; múltiplas runs com chaves `run/<id>` disjuntas. | ✅ | [md](CENARIO-010/CENARIO-010-serve-statestore.md) | [run.sh](CENARIO-010/run.sh) |
+| CENARIO-011 | **store-s3**: carregar a extensão oficial de um `.mh`; get/put/delete/list round-trip contra o MinIO, verificado com `mc ls` no bucket; `extension doctor`. | ✅ | [md](CENARIO-011/CENARIO-011-store-s3-minio.md) | [run.sh](CENARIO-011/run.sh) |
+| CENARIO-012 | **store-s3 / Concorrência**: `parallel` de 8 puts → 8 objetos no bucket, sem perda; read-modify-write concorrente da mesma chave → **lost update** (par < 8, seq = 8). | ✅ | [md](CENARIO-012/CENARIO-012-store-s3-concurrency.md) | [run.sh](CENARIO-012/run.sh) |
+| CENARIO-013 | **store-s3 / `serve`**: `mhl serve mcp --http` com estado durável num **bucket S3**; `run/resume`; reclaim pós-restart lendo do bucket; `run/start` concorrentes com chaves `run/<id>` disjuntas. | ✅ | [md](CENARIO-013/CENARIO-013-store-s3-serve.md) | [run.sh](CENARIO-013/run.sh) |
+| CENARIO-014 | **store-postgres**: carregar de um `.mh`; `auto_migrate` (CREATE TABLE/INDEX) + get/put/delete/list + `put` upsert (`ON CONFLICT`), verificados com `psql`; `extension doctor`. | ✅ | [md](CENARIO-014/CENARIO-014-store-postgres.md) | [run.sh](CENARIO-014/run.sh) |
+| CENARIO-015 | **store-postgres / Concorrência**: `parallel` 8 puts → 8 linhas, sem perda; RMW concorrente da mesma chave → **lost update** (limite do contrato v1, não do Postgres); 8 puts cegos na mesma chave → **1 linha íntegra** (upsert atômico). | ✅ | [md](CENARIO-015/CENARIO-015-store-postgres-concurrency.md) | [run.sh](CENARIO-015/run.sh) |
+| CENARIO-016 | **store-postgres / `serve`**: `mhl serve mcp --http` com estado durável numa **tabela**; `run/resume`; reclaim pós-restart lendo da tabela; `run/start` concorrentes com chaves `run/<id>` disjuntas. | ✅ | [md](CENARIO-016/CENARIO-016-store-postgres-serve.md) | [run.sh](CENARIO-016/run.sh) |
+| CENARIO-017 | **sql-postgres**: kind `sql` carregado de um `.mh`; `query`/`queryRow`/`queryValue`, tipos `numeric`/`jsonb`, parâmetro `$1`; tabela intacta — verificado com `psql`; `extension doctor`. | ✅ | [md](CENARIO-017/CENARIO-017-sql-postgres-dql.md) | [run.sh](CENARIO-017/run.sh) |
+| CENARIO-018 | **sql-postgres / read-only**: `INSERT` via `query` recusado pelo Postgres (`SQLSTATE 25006`); `exec` desabilitado com mensagem clara; `;`-stacking recusado; `max_rows` atua; controle `read_only:false` permite `exec`; tabela intacta em A–D. | ✅ | [md](CENARIO-018/CENARIO-018-sql-postgres-readonly.md) | [run.sh](CENARIO-018/run.sh) |
+| CENARIO-019 | **sql-postgres / DDL**: `execScript` aplica um script DDL multi-statement (`CREATE TABLE` + `CREATE INDEX` + `INSERT`) numa **transação**; um statement inválido no meio faz **rollback total** (nada persiste); `execScript` bloqueado com `read_only:true`. | ✅ | [md](CENARIO-019/CENARIO-019-sql-postgres-ddl.md) | [run.sh](CENARIO-019/run.sh) |
+| CENARIO-020 | **cache-redis**: kind `cache` carregado de um `.mh`; `get`/`set`/`has`/`delete` + objeto JSON + `incr`/`incrBy`, verificado com `redis-cli`; `extension doctor`. | ✅ | [md](CENARIO-020/CENARIO-020-cache-redis.md) | [run.sh](CENARIO-020/run.sh) |
+| CENARIO-021 | **cache-redis / TTL + atômico**: `ttl` default vs explícito vs `expire`, expiração real (`has` → false); `parallel` de 8 `incr` → **8** (atômico, sem perda) vs read-modify-write concorrente → `< 8`. | ✅ | [md](CENARIO-021/CENARIO-021-cache-redis-ttl-atomic.md) | [run.sh](CENARIO-021/run.sh) |
+
+Regressivo: `./run-all.sh` → [REGRESSION.md](REGRESSION.md) (2026-08-31: **21 PASS / 0 FAIL**; 011–021 PULAM sem Docker).
+
+## Achados
+
+1. **`store-fs` (o `store` de referência) não funciona pelo caminho da linguagem.**
+   `S.put("k","v")` num `.mh` envia args **posicionais**; `store-fs` só lê `named_args`
+   (foi feito para o caminho `mhl serve`). `store-probe` trata os dois.
+2. **`extension store` v1 não tem CAS/lease** — read-modify-write concorrente na mesma
+   chave perde updates (CENARIO-008). O `mcpserver` contorna usando chaves `run/<id>/…`
+   disjuntas por run (confirmado no CENARIO-010); mutação concorrente da **mesma** chave
+   precisaria de CAS no protocolo (Phase 4, per `store-fs/README`).
+3. **`maxRestarts` / "keeps exiting" quase não é alcançável de um `.mh`**: o respawn só
+   ocorre numa nova chamada que encontra o processo morto, e a primeira chamada com
+   falha já aborta o run. É uma guarda de boot-loop, não um mecanismo de retry.
+4. **Uma extensão = um processo = uma config**: N declarações `extension store` do mesmo
+   kind compartilham o processo e a `store-probe` pina `dir`/`log` da **primeira** chamada
+   (CENARIO-009). O caminho `serve` recusa > 1 declaração `extension store`.
+5. **Shutdown gracioso é best-effort** — o host notifica `shutdown` e pode `SIGKILL` quase
+   em seguida; a extensão precisa gravar de forma síncrona (CENARIO-005).
+6. **A extensão oficial `mhl-store-s3` cobre o caminho `serve` de ponta a ponta**
+   (CENARIO-013): declarar `extension store S { bucket, endpoint, ... }` no dir de
+   workflows faz `mhl serve mcp --http` gravar sessões e checkpoints de `run/*` como
+   objetos S3 (`<prefix><key>.json`), com `run/resume` e reclaim pós-restart lendo do
+   bucket. Herda a limitação do Achado #2 (sem CAS): CENARIO-012/B mostra lost update
+   na **mesma** chave; o `mcpserver` contorna com chaves `run/<id>/…` disjuntas por run.
+7. **`env()` em propriedade de extensão vale para credenciais** (CENARIO-011/013/014/016):
+   `access_key_id`/`secret_access_key`/`bucket`/`endpoint` (S3) e `dsn`/`password` (Postgres)
+   vêm de `env(...)`, resolvidos host-side pelo runtime (e registrados para redação); o
+   processo da extensão não herda ambiente — `permissions.secrets` fica vazio.
+8. **Postgres fecha parcialmente o Achado #2** (CENARIO-015): `put` = `INSERT ... ON
+   CONFLICT DO UPDATE` é atômico por linha — 8 `put` concorrentes na mesma chave deixam
+   **1 linha íntegra** (Parte C). O lost-update de read-modify-write (Parte B) persiste
+   porque `get`+`put` são duas chamadas do contrato v1; um método CAS/atômico no `store`
+   v2 seria trivial no Postgres (e impossível no S3).
+9. **Kind livre viabiliza dois backends do mesmo banco ao mesmo tempo** (CENARIO-017/018):
+   `dev.mhl.sql-postgres` declara kind `sql` (não `store`), então convive com
+   `dev.mhl.store-postgres` no mesmo lock — kinds diferentes não colidem em
+   `Registry.TryRegister`. O `sql` não é especial no `mhl serve` (só `store` é); é
+   capacidade chamada de `step`/`tool`/hook. "DQL only" vem de 3 camadas independentes:
+   `default_transaction_read_only=on` (Postgres recusa escrita, `25006`), protocolo
+   estendido (sem `;`-stacking) e args sempre parametrizados — sem parsing de SQL como
+   defesa. Com `read_only:false`, `exec` (1 statement) e `execScript` (script multi-statement
+   numa transação, tudo-ou-nada) fazem DML **e DDL** — CENARIO-019 mostra a aplicação e o
+   rollback de uma migração.
+10. **`incr` do Redis é a primitiva atômica que o `store` v1 não tem** (CENARIO-021/B):
+    `parallel` de 8 `C.incr("k")` → `k == 8`, zero perda; o mesmo com read-modify-write
+    (`get` + `set`) → `k == 1`. `mhl-cache-redis` (kind `cache`, cliente RESP2 sem
+    dependências) convive com `store`/`sql`; não é wired no `mhl serve` — é capacidade de
+    `step`/`tool`/hook. `set` tem TTL (default por declaração ou por chamada), então
+    também serve de rate-limit / dedup / lock leve.
+
+## Observações
+
+- Nenhum código-fonte do runtime foi alterado. `store-probe` é uma extensão de
+  amostra nova (não é o runtime nem o servidor MCP).
+- Cada `run.sh` compila `store-probe` sob demanda, monta um projeto scratch
+  (`mktemp -d`), faz `mhl extension install`, e limpa ao fim.
+- macOS: binários recém-compilados/copiados são re-assinados ad-hoc
+  (`codesign --force --sign -`) para não levar `SIGKILL` do Gatekeeper.

@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mhl-serve
+  labels:
+    app.kubernetes.io/name: mhl-serve

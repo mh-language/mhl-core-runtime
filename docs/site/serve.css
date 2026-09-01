@@ -1,0 +1,333 @@
+/* Page-specific polish for the MCP and A2A server guide. */
+
+.servers-page .serve-content {
+  min-width:0;
+}
+
+.servers-page .serve-hero {
+  position:relative;
+  max-width:none;
+  margin-bottom:88px;
+  padding:36px 38px 34px;
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-top:3px solid var(--teal);
+  border-radius:14px;
+  background:
+    linear-gradient(135deg,color-mix(in srgb,var(--teal) 7%,var(--panel)),var(--panel) 48%),
+    var(--panel);
+  box-shadow:var(--shadow);
+}
+
+.servers-page .serve-hero::after {
+  content:'';
+  position:absolute;
+  top:-90px;
+  right:-70px;
+  width:250px;
+  height:250px;
+  border:1px solid color-mix(in srgb,var(--teal) 18%,transparent);
+  border-radius:50%;
+  box-shadow:
+    0 0 0 34px color-mix(in srgb,var(--teal) 4%,transparent),
+    0 0 0 68px color-mix(in srgb,var(--teal) 3%,transparent);
+  pointer-events:none;
+}
+
+.servers-page .serve-hero>* {
+  position:relative;
+  z-index:1;
+}
+
+.servers-page .serve-hero h1 {
+  max-width:720px;
+  font-size:clamp(41px,5vw,58px);
+}
+
+.servers-page .serve-hero .lead {
+  max-width:710px;
+  font-size:16px;
+}
+
+.servers-page .serve-hero .quick-index {
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  margin-top:32px;
+}
+
+.servers-page .serve-hero .quick-index a {
+  min-width:0;
+  min-height:78px;
+  justify-content:center;
+  border-top:2px solid color-mix(in srgb,var(--teal) 58%,var(--line));
+  transition:transform .18s,border-color .18s,background .18s;
+}
+
+.servers-page .serve-hero .quick-index a:hover {
+  transform:translateY(-2px);
+  border-color:var(--teal);
+  background:color-mix(in srgb,var(--teal) 5%,var(--panel));
+}
+
+.servers-page .serve-content .feature {
+  padding-top:66px;
+  padding-bottom:82px;
+}
+
+.servers-page .serve-content .feature-head {
+  padding-bottom:13px;
+  border-bottom:1px solid var(--line);
+}
+
+.servers-page .serve-content .feature-head h2 {
+  max-width:680px;
+  font-size:29px;
+  line-height:1.2;
+}
+
+.servers-page .serve-content .feature-head h2 code {
+  font-size:.72em;
+}
+
+.servers-page .serve-content .feature-lede {
+  max-width:760px;
+  margin-bottom:30px;
+  font-size:14px;
+  line-height:1.72;
+}
+
+.servers-page .serve-content #mcp-stdio,
+.servers-page .serve-content #mcp-http {
+  border-top-color:color-mix(in srgb,var(--teal) 50%,var(--line));
+}
+
+.servers-page .serve-content #async,
+.servers-page .serve-content #resume {
+  border-top-color:color-mix(in srgb,var(--accent) 55%,var(--line));
+}
+
+.servers-page .serve-content #a2a {
+  border-top-color:color-mix(in srgb,var(--teal) 70%,var(--line));
+}
+
+.servers-page #mcp-stdio .feature-num,
+.servers-page #mcp-http .feature-num,
+.servers-page #a2a .feature-num {
+  color:var(--teal);
+}
+
+.servers-page #async .feature-num,
+.servers-page #resume .feature-num {
+  color:var(--accent);
+}
+
+.servers-page .serve-content .reference-table {
+  max-width:100%;
+  overflow-x:auto;
+  border-radius:11px;
+}
+
+.servers-page .serve-content .table-row {
+  grid-template-columns:minmax(130px,.8fr) minmax(170px,1fr) minmax(280px,1.65fr);
+  min-width:720px;
+  padding:13px 15px;
+  line-height:1.52;
+}
+
+.servers-page .serve-content .table-head {
+  border-top:3px solid var(--teal);
+}
+
+.servers-page #async .table-head,
+.servers-page #resume .table-head {
+  border-top-color:var(--accent);
+}
+
+.servers-page .serve-content .code-wrap {
+  min-width:0;
+  max-width:100%;
+  margin-bottom:24px;
+}
+
+.servers-page .serve-content .code-block {
+  max-width:100%;
+  padding:22px 23px;
+  border:1px solid #27363d;
+  border-left:3px solid var(--teal);
+  border-radius:8px;
+  font-size:10.5px;
+  line-height:1.72;
+}
+
+.servers-page #async .code-block,
+.servers-page #resume .code-block {
+  border-left-color:var(--accent);
+}
+
+.servers-page .serve-content .block-label {
+  margin-top:30px;
+  margin-bottom:11px;
+  color:var(--teal);
+}
+
+.servers-page #async .block-label,
+.servers-page #resume .block-label {
+  color:var(--accent);
+}
+
+.servers-page #quickstart .code-block {
+  min-height:190px;
+  padding:26px;
+  font-size:12px;
+}
+
+.servers-page #overview .table-row {
+  grid-template-columns:minmax(125px,.75fr) minmax(210px,1.25fr) minmax(300px,1.75fr);
+}
+
+.servers-page #overview .table-row:not(.table-head)>span:first-child {
+  color:var(--teal);
+  font:600 11px 'DM Mono',ui-monospace,monospace;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.servers-page #quickstart .reference-table {
+  margin-top:24px;
+}
+
+.servers-page #mcp-http>.muted {
+  margin:10px 0;
+  padding:14px 16px;
+  border-left:2px solid var(--teal);
+  border-radius:0 7px 7px 0;
+  background:var(--soft);
+  line-height:1.62;
+}
+
+.servers-page #mcp-http>.block-label:first-of-type {
+  margin-top:28px;
+}
+
+.servers-page #mcp-http .code-wrap+.block-label,
+.servers-page #resume .code-wrap+.block-label,
+.servers-page #clients .code-wrap+.block-label {
+  margin-top:30px;
+}
+
+.servers-page #async .reference-table {
+  margin-top:28px;
+}
+
+.servers-page #resume .workflow-example .code-block {
+  font-size:11px;
+}
+
+.servers-page #resume .resume-example {
+  margin-bottom:24px;
+}
+
+.servers-page #clients .network-client-example .code-block {
+  min-height:92px;
+  display:flex;
+  align-items:center;
+}
+
+.servers-page #clients .stdio-client-example .code-block {
+  min-height:190px;
+}
+
+.servers-page .serve-content .tip-row {
+  margin-top:20px;
+  padding:14px 16px;
+  border-left-width:3px;
+}
+
+.servers-page #async>.tip-row,
+.servers-page #resume>.tip-row {
+  border-left-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 5%,var(--panel));
+}
+
+.servers-page .serve-content .security-banner {
+  margin-top:22px;
+  padding:18px;
+}
+
+@media (max-width:900px) {
+  .servers-page .serve-hero {
+    margin-bottom:72px;
+  }
+
+  .servers-page .serve-hero .quick-index {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+@media (max-width:700px) {
+  .servers-page .serve-hero {
+    padding:27px 23px;
+  }
+
+  .servers-page .serve-hero::after {
+    opacity:.55;
+  }
+
+  .servers-page .serve-content .feature {
+    padding-top:54px;
+    padding-bottom:68px;
+  }
+
+  .servers-page .serve-content .feature-head {
+    align-items:flex-start;
+  }
+
+  .servers-page .serve-content .feature-head h2 {
+    font-size:25px;
+  }
+
+  .servers-page .serve-content .code-block {
+    padding:18px 16px;
+    font-size:10px;
+  }
+}
+
+@media (max-width:520px) {
+  .servers-page .serve-hero {
+    padding:23px 18px;
+    border-radius:11px;
+  }
+
+  .servers-page .serve-hero h1 {
+    font-size:38px;
+  }
+
+  .servers-page .serve-hero .quick-index {
+    grid-template-columns:1fr;
+  }
+
+  .servers-page #quickstart .code-block {
+    min-height:0;
+    padding:19px 16px;
+    font-size:10px;
+  }
+
+  .servers-page .serve-content .table-row {
+    min-width:650px;
+  }
+}
+
+/* Readable type scale for the server guide. */
+.servers-page .serve-hero .lead { font-size:18px; }
+.servers-page .serve-content .feature-lede { font-size:16px; }
+.servers-page .serve-content .code-block { font-size:13px; }
+.servers-page #quickstart .code-block { font-size:14px; }
+.servers-page #overview .table-row:not(.table-head)>span:first-child { font-size:13px; }
+.servers-page #resume .workflow-example .code-block { font-size:13px; }
+
+@media (max-width:700px) {
+  .servers-page .serve-content .code-block { font-size:13px; }
+}
+
+@media (max-width:520px) {
+  .servers-page #quickstart .code-block { font-size:13px; }
+}
