@@ -1,1 +1,0 @@
-{"jsonrpc":"2.0","id":5,"result":{"reached":["Draft"],"resumable":true,"runId":"1950a74dc2a17b125181ff3a50f5b9dd","startedAt":"2026-08-31T18:17:38Z","state":"working","step":"Review","stepIndex":0,"stepTotal":3,"tool":"DocPipeline"}}

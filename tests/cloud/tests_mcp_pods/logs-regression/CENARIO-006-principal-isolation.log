@@ -1,0 +1,89 @@
+[09:36:54] iniciando: serve mcp --http --principal-header X-Mhl-Principal --token <gerado>
+[09:36:55] alice run/start -> HTTP 200 ; runId=43a24067a084468dd95e9ecd46340785
+[09:36:57] alice run/status:
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+        "_meta": {
+            "io.modelcontextprotocol/serverInfo": {
+                "name": "mhl",
+                "version": "v1.1.0-alpha-8-g274d040-dirty"
+            }
+        },
+        "error": "runtime: step \"Review\" failed: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/docs-workflow.mh:42:13: awaiting documentation review for iso-demo",
+        "reached": [
+            "Draft",
+            "Review"
+        ],
+        "resultType": "complete",
+        "resumable": true,
+        "runId": "43a24067a084468dd95e9ecd46340785",
+        "startedAt": "2026-09-01T12:36:55Z",
+        "state": "failed",
+        "step": "Review",
+        "stepIndex": 2,
+        "stepTotal": 3,
+        "tool": "DocPipeline"
+    }
+}
+[09:36:57] bob run/list:
+{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+        "_meta": {
+            "io.modelcontextprotocol/serverInfo": {
+                "name": "mhl",
+                "version": "v1.1.0-alpha-8-g274d040-dirty"
+            }
+        },
+        "resultType": "complete",
+        "runs": []
+    }
+}
+[09:36:57] bob run/status (runId de alice):
+{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "error": {
+        "code": -32602,
+        "message": "unknown runId \"43a24067a084468dd95e9ecd46340785\""
+    }
+}
+[09:36:57] alice run/list:
+{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "result": {
+        "_meta": {
+            "io.modelcontextprotocol/serverInfo": {
+                "name": "mhl",
+                "version": "v1.1.0-alpha-8-g274d040-dirty"
+            }
+        },
+        "resultType": "complete",
+        "runs": [
+            {
+                "error": "runtime: step \"Review\" failed: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/docs-workflow.mh:42:13: awaiting documentation review for iso-demo",
+                "reached": [
+                    "Draft",
+                    "Review"
+                ],
+                "resumable": true,
+                "runId": "43a24067a084468dd95e9ecd46340785",
+                "startedAt": "2026-09-01T12:36:55Z",
+                "state": "failed",
+                "step": "Review",
+                "stepIndex": 2,
+                "stepTotal": 3,
+                "tool": "DocPipeline"
+            }
+        ]
+    }
+}
+[09:36:57] controle: iniciar servidor com --principal-header e SEM --token (deve falhar)
+[09:36:58] processo sem --token ainda vivo? no (esperado: no)
+mhl: --principal-header needs --token / MHL_SERVE_TOKEN: without the shared gateway↔mhl secret the header is client-spoofable
+[09:36:58] RESULTADO: FUNCIONOU — isolamento por principal ok; --principal-header exige --token
+PASS

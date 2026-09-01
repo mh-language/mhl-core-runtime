@@ -16,6 +16,9 @@ const probeTimeout = 10 * time.Second
 // is not an error — an extension may simply not self-describe. Used by
 // `mhl extension package` to materialise the manifest's declarations sidecar.
 func Describe(m *Manifest) ([]extension.DeclarationSpec, error) {
+	if _, err := m.HostExecutableRel(); err != nil {
+		return nil, err
+	}
 	p, err := startProcess(m.ExecutablePath(), m.Args, m.launchEnv(), nil)
 	if err != nil {
 		return nil, err

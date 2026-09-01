@@ -1,0 +1,482 @@
+/*
+ * Formal publication treatment for the ECMA-style specification.
+ * All colors inherit the public site's palette from styles.css.
+ */
+
+.spec-page {
+  background:var(--bg);
+}
+
+.spec-page .topbar {
+  border-bottom-color:color-mix(in srgb,var(--line) 82%,var(--teal));
+}
+
+.spec-masthead {
+  color:var(--code-ink);
+  background:
+    linear-gradient(115deg,color-mix(in srgb,var(--teal) 19%,transparent),transparent 42%),
+    var(--code);
+  border-bottom:4px solid var(--accent);
+}
+
+.spec-masthead-inner {
+  width:min(1160px,calc(100% - 60px));
+  margin:0 auto;
+  padding:44px 0 38px;
+}
+
+.spec-kicker,
+.spec-label {
+  color:color-mix(in srgb,var(--teal) 72%,white);
+  font:600 10px/1.3 'DM Mono',ui-monospace,monospace;
+  letter-spacing:.15em;
+  text-transform:uppercase;
+}
+
+.spec-masthead h1 {
+  margin:8px 0 4px;
+  font:800 clamp(34px,5vw,56px)/1.04 Manrope,system-ui,sans-serif;
+  letter-spacing:-.05em;
+}
+
+.spec-masthead>div>p {
+  margin:0;
+  color:color-mix(in srgb,var(--code-ink) 78%,transparent);
+  font:17px/1.5 Georgia,'Times New Roman',serif;
+}
+
+.spec-meta {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 10px;
+  margin-top:24px;
+}
+
+.spec-meta span {
+  padding:6px 9px;
+  color:color-mix(in srgb,var(--code-ink) 76%,transparent);
+  border:1px solid color-mix(in srgb,var(--code-ink) 20%,transparent);
+  border-radius:3px;
+  font:10px/1.3 'DM Mono',ui-monospace,monospace;
+}
+
+.spec-meta b {
+  color:var(--code-ink);
+  font-weight:500;
+}
+
+.spec-page .layout {
+  grid-template-columns:260px minmax(0,1fr);
+  gap:0;
+  max-width:1280px;
+  margin:0 auto;
+  padding:0;
+  background:var(--panel);
+  border-right:1px solid var(--line);
+  border-left:1px solid var(--line);
+}
+
+.spec-page .sidebar {
+  top:101px;
+  height:calc(100vh - 122px);
+  padding:38px 22px 28px;
+  overflow:auto;
+  border-right:1px solid var(--line);
+  background:color-mix(in srgb,var(--soft) 76%,var(--panel));
+  scrollbar-width:thin;
+}
+
+.spec-page .sidebar>.eyebrow {
+  margin:0 10px 18px;
+  color:var(--teal);
+}
+
+.spec-page .sidebar nav {
+  gap:1px;
+}
+
+.spec-page .sidebar .nav-link {
+  padding:6px 10px;
+  border-left-width:3px;
+  border-radius:0;
+  font:11px/1.35 'DM Mono',ui-monospace,monospace;
+}
+
+.spec-page .sidebar .nav-link:hover,
+.spec-page .sidebar .nav-link.active {
+  color:var(--ink);
+  border-left-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 7%,var(--panel));
+}
+
+.spec-page .sidebar-note {
+  margin:28px 9px 0;
+  padding:16px 0 0;
+  line-height:1.45;
+}
+
+.spec-page .sidebar-note a {
+  color:var(--teal);
+  text-decoration:underline;
+  text-underline-offset:2px;
+}
+
+.spec-page .spec-content {
+  max-width:none;
+  padding:52px 64px 80px;
+  color:var(--ink);
+  font:15.5px/1.72 Georgia,'Times New Roman',serif;
+}
+
+.spec-page .spec-content p {
+  margin:8px 0 14px;
+}
+
+.spec-page .spec-content a {
+  color:var(--teal);
+  text-decoration:underline;
+  text-decoration-thickness:1px;
+  text-underline-offset:2px;
+}
+
+.spec-page .spec-content code {
+  padding:1px 4px;
+  border-radius:3px;
+  color:var(--teal);
+  background:var(--soft);
+  font-size:.84em;
+}
+
+.spec-abstract {
+  margin:0 0 46px;
+  padding:24px 26px;
+  border:1px solid var(--line);
+  border-left:5px solid var(--teal);
+  background:color-mix(in srgb,var(--soft) 68%,var(--panel));
+}
+
+.spec-abstract .spec-label {
+  margin:0 0 6px;
+  color:var(--teal);
+}
+
+.spec-abstract h2 {
+  margin:0 0 10px;
+  color:var(--ink);
+  font:700 21px/1.25 Manrope,system-ui,sans-serif;
+  letter-spacing:-.02em;
+}
+
+.spec-status-row {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);
+  gap:9px 12px;
+  align-items:center;
+  margin-top:20px;
+  color:var(--muted);
+  font:11px/1.45 Manrope,system-ui,sans-serif;
+}
+
+.spec-page .spec-content .feature {
+  margin:0;
+  padding:44px 0 50px;
+  border-top:2px solid var(--ink);
+}
+
+.spec-page .spec-content .feature h2 {
+  margin:0 0 16px;
+  color:var(--ink);
+  font:700 27px/1.22 Manrope,system-ui,sans-serif;
+  letter-spacing:-.025em;
+}
+
+.spec-page .spec-content h3 {
+  margin:30px 0 9px;
+  color:var(--teal);
+  font:700 18px/1.32 Manrope,system-ui,sans-serif;
+  letter-spacing:-.015em;
+}
+
+.spec-page .spec-content h4 {
+  margin:22px 0 6px;
+  color:var(--ink);
+  font:700 14px/1.4 Manrope,system-ui,sans-serif;
+}
+
+.spec-page .spec-content ul {
+  margin:9px 0 18px 22px;
+  padding:0;
+}
+
+.spec-page .spec-content li {
+  margin:4px 0;
+}
+
+.spec-page .spec-content table {
+  width:100%;
+  margin:16px 0 24px;
+  border-collapse:collapse;
+  border:1px solid var(--line);
+  font-size:13.5px;
+  line-height:1.5;
+}
+
+.spec-page .spec-content th,
+.spec-page .spec-content td {
+  padding:10px 11px;
+  text-align:left;
+  vertical-align:top;
+  border:1px solid var(--line);
+}
+
+.spec-page .spec-content th {
+  color:var(--code-ink);
+  background:color-mix(in srgb,var(--teal) 58%,var(--code));
+  font:700 11px/1.35 Manrope,system-ui,sans-serif;
+  letter-spacing:.025em;
+}
+
+.spec-page .spec-content tbody tr:nth-child(even) td {
+  background:color-mix(in srgb,var(--soft) 56%,var(--panel));
+}
+
+.spec-page .spec-content td.signature {
+  color:var(--teal);
+  font:600 12px/1.5 'DM Mono',ui-monospace,monospace;
+}
+
+.spec-page .code-block,
+.spec-page .grammar-block {
+  max-width:100%;
+  margin:16px 0 24px;
+  padding:18px 20px;
+  overflow:auto;
+  border:1px solid color-mix(in srgb,var(--teal) 30%,var(--code));
+  border-left:4px solid var(--teal);
+  border-radius:4px;
+  color:var(--code-ink);
+  background:var(--code);
+  box-shadow:none;
+  font:11.5px/1.65 'DM Mono',ui-monospace,monospace;
+}
+
+.spec-page .grammar-block {
+  color:#f1d79a;
+  border-left-color:var(--accent);
+  white-space:pre;
+}
+
+.spec-page .code-block code,
+.spec-page .grammar-block code {
+  padding:0;
+  color:inherit;
+  background:transparent;
+  font-size:inherit;
+}
+
+.spec-page .tip-row {
+  display:block;
+  margin:18px 0 22px;
+  padding:14px 17px;
+  border:1px solid var(--line);
+  border-left:4px solid var(--accent);
+  border-radius:0;
+  color:var(--muted);
+  background:color-mix(in srgb,var(--accent) 5%,var(--panel));
+  font:13px/1.58 Manrope,system-ui,sans-serif;
+}
+
+.spec-page .tip-row>strong,
+.spec-page .tip-row>span {
+  display:block;
+  margin:0 0 4px;
+  color:var(--accent);
+  font:700 10px/1.3 'DM Mono',ui-monospace,monospace;
+  letter-spacing:.09em;
+  text-transform:uppercase;
+}
+
+.spec-page .tip-row p {
+  margin:0;
+  color:var(--muted);
+  font:inherit;
+}
+
+.spec-page .site-footer {
+  margin-top:4px;
+  padding-top:24px;
+  align-items:flex-start;
+  color:var(--muted);
+  font:11px/1.5 Manrope,system-ui,sans-serif;
+}
+
+.spec-page .site-footer p {
+  max-width:620px;
+  margin:0;
+}
+
+@media (max-width:960px) {
+  .spec-masthead-inner {
+    width:min(100% - 40px,860px);
+  }
+
+  .spec-page .layout {
+    display:block;
+    border:0;
+  }
+
+  .spec-page .sidebar {
+    position:static;
+    height:auto;
+    padding:20px;
+    overflow:visible;
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .spec-page .sidebar>.eyebrow {
+    margin-left:0;
+  }
+
+  .spec-page .sidebar nav {
+    display:flex;
+    gap:4px;
+    overflow-x:auto;
+    padding-bottom:8px;
+  }
+
+  .spec-page .sidebar .nav-link {
+    flex:0 0 auto;
+    white-space:nowrap;
+  }
+
+  .spec-page .sidebar-note {
+    display:none;
+  }
+
+  .spec-page .spec-content {
+    padding:38px 34px 68px;
+  }
+}
+
+@media (max-width:640px) {
+  .spec-masthead-inner {
+    width:calc(100% - 34px);
+    padding:34px 0 30px;
+  }
+
+  .spec-meta {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+
+  .spec-page .spec-content {
+    padding:30px 17px 56px;
+    font-size:15px;
+  }
+
+  .spec-abstract {
+    padding:20px 18px;
+  }
+
+  .spec-status-row {
+    grid-template-columns:1fr;
+  }
+
+  .spec-page .spec-content .feature {
+    padding:36px 0 42px;
+  }
+
+  .spec-page .spec-content .feature h2 {
+    font-size:23px;
+  }
+
+  .spec-page .spec-content table {
+    display:block;
+    overflow-x:auto;
+    white-space:normal;
+  }
+
+  .spec-page .code-block,
+  .spec-page .grammar-block {
+    padding:16px 14px;
+    font-size:10px;
+  }
+}
+
+@media print {
+  .spec-page {
+    color:#000;
+    background:#fff;
+  }
+
+  .spec-page .topbar,
+  .spec-page .sidebar {
+    display:none;
+  }
+
+  .spec-masthead {
+    color:#000;
+    background:#fff;
+    border-bottom:3px solid #000;
+  }
+
+  .spec-masthead h1,
+  .spec-masthead>div>p,
+  .spec-meta span,
+  .spec-meta b,
+  .spec-kicker {
+    color:#000;
+    border-color:#777;
+  }
+
+  .spec-page .layout {
+    display:block;
+    border:0;
+  }
+
+  .spec-page .spec-content {
+    padding:30px 0;
+    font-size:10.5pt;
+  }
+
+  .spec-page .spec-content .feature {
+    break-inside:avoid;
+  }
+
+  .spec-page .code-block,
+  .spec-page .grammar-block {
+    color:#000;
+    background:#f2f2f2;
+    border-color:#999;
+    white-space:pre-wrap;
+  }
+}
+
+/* Screen legibility scale; print sizing remains governed by the rules above. */
+@media screen {
+  .spec-kicker,
+  .spec-label { font-size:12px; }
+  .spec-masthead>div>p { font-size:18px; }
+  .spec-meta span { font-size:12px; }
+  .spec-page .sidebar .nav-link { font-size:13px; line-height:1.45; }
+  .spec-page .spec-content { font-size:17px; line-height:1.75; }
+  .spec-page .spec-content code { font-size:.9em; }
+  .spec-status-row { font-size:13px; }
+  .spec-page .spec-content h4 { font-size:16px; }
+  .spec-page .spec-content table { font-size:15px; }
+  .spec-page .spec-content th { font-size:13px; }
+  .spec-page .spec-content td.signature { font-size:13.5px; }
+  .spec-page .code-block,
+  .spec-page .grammar-block { font-size:13px; line-height:1.7; }
+  .spec-page .tip-row { font-size:15px; }
+  .spec-page .tip-row>strong,
+  .spec-page .tip-row>span { font-size:12px; }
+  .spec-page .site-footer { font-size:13px; }
+}
+
+@media screen and (max-width:640px) {
+  .spec-page .spec-content { font-size:16px; }
+  .spec-page .code-block,
+  .spec-page .grammar-block { font-size:12.5px; }
+}

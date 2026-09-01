@@ -46,6 +46,50 @@ func TestMemSessionStoreSweep(t *testing.T) {
 	}
 }
 
+// TestDiskSessionStoreSharesAcrossInstances: a second store rooted at the same
+// dir resolves a session the first one wrote, sweeps an aged one, and reports
+// Delete presence exactly once — the cross-replica session seam ITEM-02 needs.
+func TestDiskSessionStoreSharesAcrossInstances(t *testing.T) {
+	root := t.TempDir()
+	a := newDiskSessionStore(root)
+	b := newDiskSessionStore(root)
+
+	a.Put(&session{id: "s1", principal: "alice", initialized: true, protocol: "2025-06-18"})
+	got, ok := b.Get("s1")
+	if !ok || got.principal != "alice" || !got.initialized || got.protocol != "2025-06-18" || got.id != "s1" {
+		t.Fatalf("b.Get(s1) = %+v ok=%v", got, ok)
+	}
+	if _, ok := b.Get("nope"); ok {
+		t.Error("Get of an unknown id should miss")
+	}
+	if b.Len() != 1 {
+		t.Errorf("Len = %d, want 1", b.Len())
+	}
+
+	// Age it past the window and sweep from the other instance.
+	sf := filepath.Join(root, runtime.StateDirName, "sessions", "s1.json")
+	raw, err := os.ReadFile(sf)
+	if err != nil {
+		t.Fatalf("session file not written where expected: %v", err)
+	}
+	var rec map[string]any
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	rec["last_used"] = time.Now().Add(-2 * time.Hour)
+	nb, _ := json.Marshal(rec)
+	_ = os.WriteFile(sf, nb, 0o600)
+	b.SweepIdle(time.Hour)
+	if _, ok := a.Get("s1"); ok {
+		t.Error("aged session survived SweepIdle")
+	}
+
+	a.Put(&session{id: "s2"})
+	if !b.Delete("s2") || b.Delete("s2") {
+		t.Error("Delete should report presence exactly once")
+	}
+}
+
 func TestMemRunRegistryList(t *testing.T) {
 	r := newMemRunRegistry()
 	r.Put(&asyncRun{id: "a"})
@@ -96,6 +140,66 @@ func TestDiskCheckpointStoreOwnership(t *testing.T) {
 	}
 	if _, err := os.Stat(given); err != nil {
 		t.Errorf("supplied --state-dir removed on Close: %v", err)
+	}
+}
+
+// TestDiskCheckpointStoreLiveStatusAndCancel: the status record and cancel flag
+// round-trip, do not trip Exists/Load, and Shared tracks who owns the dir.
+func TestDiskCheckpointStoreLiveStatusAndCancel(t *testing.T) {
+	d, err := newDiskCheckpointStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Shared() {
+		t.Error("a supplied --state-dir must report Shared() == true")
+	}
+	owned, _ := newDiskCheckpointStore("")
+	t.Cleanup(func() { _ = owned.Close() })
+	if owned.Shared() {
+		t.Error("an owned temp dir must report Shared() == false")
+	}
+
+	if _, ok := d.ReadStatus("r1"); ok {
+		t.Error("ReadStatus on an unknown run should be ok=false")
+	}
+	if d.CancelRequested("r1") {
+		t.Error("CancelRequested on an unknown run should be false")
+	}
+
+	rec := RunStatusRec{Tool: "Slow3", State: "working", Step: "B", StepIndex: 2, StepTotal: 3,
+		Reached: []string{"A", "B"}, StartedAt: time.Now(), UpdatedAt: time.Now()}
+	if err := d.WriteStatus("r1", rec); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := d.ReadStatus("r1")
+	if !ok || got.State != "working" || got.Step != "B" || len(got.Reached) != 2 {
+		t.Fatalf("ReadStatus = %+v ok=%v", got, ok)
+	}
+	// The status file must not look like a resumable checkpoint.
+	if d.Exists("r1") {
+		t.Error("a run-status file must not make Exists() true")
+	}
+	if _, ok := d.Load("r1"); ok {
+		t.Error("a run-status file must not be Load()-able as a checkpoint")
+	}
+
+	if err := d.RequestCancel("r1"); err != nil {
+		t.Fatal(err)
+	}
+	if !d.CancelRequested("r1") {
+		t.Fatal("CancelRequested should be true after RequestCancel")
+	}
+	if d.Exists("r1") {
+		t.Error("a cancel flag must not make Exists() true")
+	}
+	if err := d.Remove("r1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := d.ReadStatus("r1"); ok {
+		t.Error("Remove should drop the status record too")
+	}
+	if d.CancelRequested("r1") {
+		t.Error("Remove should drop the cancel flag too")
 	}
 }
 

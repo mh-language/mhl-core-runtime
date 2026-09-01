@@ -130,6 +130,9 @@ func (e *External) process(ctx context.Context) (*process, error) {
 		e.restarts++
 	}
 
+	if _, rerr := e.manifest.HostExecutableRel(); rerr != nil {
+		return nil, fmt.Errorf("starting extension %q: %w", e.manifest.ID, rerr)
+	}
 	p, err := startProcess(e.manifest.ExecutablePath(), e.manifest.Args, e.childEnv(), &hostBridge{
 		host:     e.host,
 		manifest: e.manifest,

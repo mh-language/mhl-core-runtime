@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="ECMA-style language specification for Meta-Harness Language (MHL)." />
+    <meta name="theme-color" content="#10161f" />
+    <link rel="icon" href="assets/mhl-logo-rebrand.png" />
+    <title>MHL Language Specification</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="specification.css" />
+  </head>
+  <body class="spec-page">
+    <header class="topbar">
+      <a class="brand" href="index.html" aria-label="MHL home"><img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" /><span><strong>MHL</strong><small>Meta-Harness Language</small></span></a>
+      <div class="top-actions">
+        <label class="search" for="site-search"><span aria-hidden="true">⌕</span><input id="site-search" type="search" placeholder="Search the specification" autocomplete="off" /><kbd>/</kbd></label>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
+        <a class="github-link" href="mhl-language-spec.html" aria-current="page">Specification</a>
+        <a class="github-link" href="extensions.html">Extensions</a>
+        <a class="github-link" href="serve.html">Servers</a>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </div>
+    </header>
+    <header class="spec-masthead" aria-labelledby="spec-title">
+      <div class="spec-masthead-inner">
+        <div class="spec-kicker">MHL · Language Specification · Draft</div>
+        <h1 id="spec-title">Meta-Harness Language</h1>
+        <p>Language and Standard Library Specification</p>
+        <div class="spec-meta" aria-label="Document metadata">
+          <span><b>Document</b> MHL-SPEC</span>
+          <span><b>Edition</b> Current runtime profile</span>
+          <span><b>Status</b> Evolving / alpha</span>
+          <span><b>Language</b> English</span>
+        </div>
+      </div>
+    </header>
+    <div class="layout" id="top">
+      <aside class="sidebar" aria-label="Specification navigation">
+        <p class="eyebrow">LANGUAGE SPECIFICATION</p>
+        <nav id="toc">
+          <a class="nav-link active" href="#status">Status and scope</a>
+          <a class="nav-link" href="#conformance">1. Conformance</a>
+          <a class="nav-link" href="#terms">2. Terms and notation</a>
+          <a class="nav-link" href="#lexical">3. Lexical grammar</a>
+          <a class="nav-link" href="#syntax">4. Syntactic grammar</a>
+          <a class="nav-link" href="#types">5. Values and types</a>
+          <a class="nav-link" href="#expressions">6. Expressions</a>
+          <a class="nav-link" href="#statements">7. Statements</a>
+          <a class="nav-link" href="#modules">8. Programs and modules</a>
+          <a class="nav-link" href="#declarations">9. Declarations</a>
+          <a class="nav-link" href="#stdlib">10. Standard library</a>
+          <a class="nav-link" href="#native">11. Native operations</a>
+          <a class="nav-link" href="#agents">12. Agents and traffic</a>
+          <a class="nav-link" href="#memory">13. Memory and state</a>
+          <a class="nav-link" href="#extensions">14. Extensions</a>
+          <a class="nav-link" href="#pipelines">15. Pipelines and workflows</a>
+          <a class="nav-link" href="#tests">16. Tests</a>
+          <a class="nav-link" href="#cli">17. CLI and serving</a>
+          <a class="nav-link" href="#security">18. Security</a>
+          <a class="nav-link" href="#annex-a">Annex A: grammar</a>
+          <a class="nav-link" href="#annex-b">Annex B: example</a>
+        </nav>
+        <div class="sidebar-note"><span class="status-dot"></span><span>Detailed reference<br /><small>the introductory path is on the <a href="index.html">overview</a></small></span></div>
+      </aside>
+      <main class="content reference-content spec-content">
+
+<section class="spec-abstract doc-section" id="status" data-title="status scope conformance normative terms specification">
+<p class="spec-label">Abstract</p>
+<h2>Status and scope</h2>
+<p>Meta-Harness Language (MHL) is a declarative language for defining controlled AI-assisted automation. A program declares agents, prompts, tools, memory stores, protocol extensions, and executable pipelines. The runtime owns sequencing, branching, retries, timeouts, persistence, concurrency, verification, and termination; an agent is a replaceable participant within that harness.</p>
+<p>This specification is intentionally ECMA-like: it separates lexical and syntactic grammar from runtime semantics, defines the standard callable surface, and uses normative terms. It is a self-contained reference, not a tutorial.</p>
+<div class="spec-status-row"><span class="status status-full">Current profile</span><span>Behavior implemented by the reference runtime</span><span class="status status-partial">Draft</span><span>May evolve before the language contract is frozen</span></div>
+<div class="tip-row"><span>READING PATH</span><p>For a guided introduction, return to the <a href="index.html">MHL overview</a>. For copyable examples, use the <a href="reference.html">practical reference</a>.</p></div>
+</section>
+
+<section class="feature doc-section" id="conformance">
+<h2>1. Conformance</h2>
+<p>A conforming implementation MUST parse valid source according to this specification, MUST reject malformed source, and MUST implement the observable semantics of expressions, statements, declarations, and standard-library operations. An implementation MAY provide additional extension kinds, CLI integrations, or host policies, but MUST NOT change the meaning of the core language in a conforming profile.</p>
+<p>The reference implementation is the <code>mhl</code> command-line runtime. The current profile is versioned independently from this document and can be queried with <code>mhl version</code>. The profile is evolving; unsupported configuration is rejected rather than silently ignored where the runtime can validate it.</p>
+<div class="tip-row"><strong>Conformance boundary</strong>The language core is deterministic for a given input and external-operation result. Agent responses, files, network services, clocks, and extension processes are host effects; their values are observable inputs to the program.</div>
+</section>
+
+<section class="feature doc-section" id="terms">
+<h2>2. Terms and notation</h2>
+<table><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>MUST / SHALL</td><td>Normative requirement for a conforming implementation or program contract.</td></tr>
+<tr><td>MAY</td><td>Permitted behavior that is not required.</td></tr>
+<tr><td>raises</td><td>Produces an execution error. Unless caught, it aborts the current step and run and results in a non-zero CLI status.</td></tr>
+<tr><td>expression</td><td>A construct that evaluates to a value.</td></tr>
+<tr><td>statement</td><td>A construct that performs an action or controls execution.</td></tr>
+<tr><td>declaration</td><td>A top-level named capability or executable unit.</td></tr>
+<tr><td>host effect</td><td>Process, filesystem, network, clock, memory, or extension interaction performed by the runtime.</td></tr>
+</tbody></table>
+<p>Grammar productions use <code>::=</code> for definition, square brackets for an optional item, braces for repetition, and quoted text for literal tokens. The notation <code>T[]</code> means an array whose elements have type <code>T</code>. A signature ending in <code>→ null</code> returns no useful value; <code>→ never</code> always raises.</p>
+</section>
+
+<section class="feature doc-section" id="lexical">
+<h2>3. Lexical grammar</h2>
+<p>Source files normally use the <code>.mh</code> extension. The lexer MUST ignore spaces, tabs, carriage returns, newlines, and comments beginning with <code>//</code> and continuing to the end of the line.</p>
+<table><thead><tr><th>Token</th><th>Form</th><th>Semantics</th></tr></thead><tbody>
+<tr><td>Identifier</td><td><code>[A-Za-z_][A-Za-z0-9_]*</code></td><td>Names declarations, variables, fields, methods, and enum variants. Keywords are recognized by position.</td></tr>
+<tr><td>String</td><td>Double quoted, with backslash escapes</td><td>One string value. A string is not re-tokenized when its content happens to be an operator.</td></tr>
+<tr><td>Multiline string</td><td><code>""" ... """</code></td><td>String value with the delimiters removed and surrounding whitespace trimmed.</td></tr>
+<tr><td>Number</td><td><code>[0-9]+</code> or <code>[0-9]+.[0-9]+</code></td><td>A number represented by the runtime as a floating-point value. Scientific notation is not part of the grammar.</td></tr>
+<tr><td>Duration</td><td><code>[0-9]+(ms|s|m|h|d)</code></td><td>A contextual duration literal, for example <code>250ms</code>, <code>30s</code>, <code>2h</code>, or <code>7d</code>. The numeric part is integral.</td></tr>
+<tr><td>Operators</td><td><code>== != &lt; &gt; &lt;= &gt;= + - * / % ! &amp;&amp; || ?? +=</code></td><td>Operator tokens. Multi-character operators take precedence over their prefixes.</td></tr>
+<tr><td>Punctuation</td><td><code>-> . ?. ?.[ ] ( ) { } : , .. ^ =</code></td><td>Separates grammar constructs and forms access, calls, slices, lambdas, and assignment.</td></tr>
+</tbody></table>
+<div class="tip-row"><strong>Malformed numeric text</strong>A digit run directly followed by letters that is not a duration, such as <code>10.0d</code>, <code>1e5</code>, or <code>5days</code>, MUST be rejected as a malformed number.</div>
+</section>
+
+<section class="feature doc-section" id="syntax">
+<h2>4. Syntactic grammar</h2>
+<p>The following is a compact grammar. The complete behavior of each production is specified in the subsequent clauses.</p>
+<pre class="grammar-block">program        ::= declaration*
+declaration    ::= ["export"] (use | agent | prompt | memory | tool | extension
+                    | pipeline | workflow | type | enum | test)
+use            ::= "use" "{" use-item ("," use-item)* "}" "from" String
+use-item       ::= Identifier ["as" Identifier]
+type-alias     ::= "type" Identifier "=" type
+type           ::= Identifier array-suffix* | object-shape array-suffix*
+object-shape   ::= "{" [shape-field (","? shape-field)* ","?] "}"
+shape-field    ::= Identifier ":" type
+expression     ::= coalesce
+coalesce       ::= or-expression ("??" or-expression)*
+or-expression  ::= and-expression ("||" and-expression)*
+and-expression ::= equality ("&amp;&amp;" equality)*
+equality       ::= comparison (("==" | "!=") comparison)*
+comparison     ::= additive (("&lt;" | "&gt;" | "&lt;=" | "&gt;=") additive)*
+additive       ::= multiplicative (("+" | "-") multiplicative)*
+multiplicative ::= unary (("*" | "/" | "%") unary)*
+unary          ::= ["!" | "-"] postfix
+postfix        ::= primary trailer*
+trailer        ::= "." Identifier | "?." Identifier | "?." "[" expression "]"
+                 | call | "[" expression "]" | slice
+call           ::= "(" [argument ("," argument)*] ")"
+argument       ::= [Identifier ":"] expression
+slice          ::= "[" [slice-bound] ".." [slice-bound] "]"
+slice-bound    ::= ["^"] expression
+lambda         ::= "(" [parameter ("," parameter)*] ")" "->" (expression | block)
+if-expression  ::= "if" "(" expression ")" expression "else" expression
+match          ::= "match" expression "{" match-arm+ "}"
+match-arm      ::= ("_" | expression) "->" expression
+block          ::= "{" statement* "}"</pre>
+<p>A declaration body is a sequence of properties and/or declaration-specific members. Object fields may be separated by commas, line breaks, or both. MHL does not require semicolons.</p>
+</section>
+
+<section class="feature doc-section" id="types">
+<h2>5. Values and types</h2>
+<h3>5.1 Runtime values</h3>
+<table><thead><tr><th>Kind</th><th>Literal / example</th><th>Rules</th></tr></thead><tbody>
+<tr><td><code>string</code></td><td><code>"hello"</code></td><td>Text. String methods operate on the runtime string representation.</td></tr>
+<tr><td><code>number</code></td><td><code>42</code>, <code>0.25</code></td><td>One numeric kind; arithmetic results are numbers.</td></tr>
+<tr><td><code>bool</code></td><td><code>true</code>, <code>false</code></td><td>Logical conditions MUST be boolean; MHL has no truthiness conversion.</td></tr>
+<tr><td><code>null</code></td><td><code>null</code></td><td>Absence value. It is accepted at typed boundaries and is observable with <code>is_null</code>.</td></tr>
+<tr><td><code>array</code></td><td><code>[1, "two", false]</code></td><td>Ordered, zero-based collection. Elements MAY have different runtime kinds.</td></tr>
+<tr><td><code>object</code></td><td><code>{name: "MHL", year: 2026}</code></td><td>String-keyed map. Keys may be identifiers or strings.</td></tr>
+<tr><td><code>enum</code></td><td><code>Status.Ready</code></td><td>Tagged value; it is not equal to the string <code>"Ready"</code>.</td></tr>
+<tr><td><code>function</code></td><td><code>(x) -&gt; x + 1</code></td><td>Closure created by a lambda expression.</td></tr>
+<tr><td><code>task</code></td><td>result of <code>spawn</code></td><td>Opaque asynchronous handle with the fields defined in §15.</td></tr>
+</tbody></table>
+<h3>5.2 Declared type expressions</h3>
+<p>Type annotations are accepted on pipeline inputs, prompt parameters, tool parameters, tool returns, and object-shape fields. The built-in vocabulary is <code>any</code>, <code>string</code>, <code>number</code>, <code>bool</code>, <code>array</code>, and <code>object</code>. The compatibility spellings <code>int</code>, <code>integer</code>, <code>float</code>, and <code>boolean</code> resolve to <code>number</code> or <code>bool</code>. Prompt parameters MAY use the pseudo-type <code>prompt</code>.</p>
+<pre class="code-block"><code class="language-mhl">type Slug = string
+type Issue = {code: string, severity: string}
+type IssueList = Issue[]
+
+tool Reports {
+    add(slug: Slug, issues: IssueList): string[] -&gt; issues.map((x) -&gt; x.code)
+}</code></pre>
+<p>An array suffix adds one nesting level: <code>string[][]</code>. An object shape requires the named fields and their types, but permits extra fields. Aliases are purely syntactic names, MAY reference other aliases, and MUST NOT be cyclic, duplicated, unknown, or shadow a reserved built-in name. A value of <code>null</code> is assignable to any declared type. Other values are checked by exact runtime kind; there is no implicit number/string conversion.</p>
+<div class="tip-row"><strong>Duration boundary</strong>Duration tokens are consumed by operations and configuration fields that explicitly expect a duration, including time arithmetic, retry delays, cache TTLs, wait/step/group timeouts, and HTTP or command timeouts. A duration is not a general-purpose declared value type in the current profile.</div>
+</section>
+
+<section class="feature doc-section" id="expressions">
+<h2>6. Expressions</h2>
+<h3>6.1 Evaluation and precedence</h3>
+<p>Expressions are evaluated from lowest to highest precedence in this order:</p>
+<p><code>??</code> → <code>||</code> → <code>&amp;&amp;</code> → <code>== !=</code> → <code>&lt; &gt; &lt;= &gt;=</code> → <code>+ -</code> → <code>* / %</code> → unary <code>! -</code> → member, optional member, call, index, and slice.</p>
+<table><thead><tr><th>Form</th><th>Semantics</th></tr></thead><tbody>
+<tr><td>Literal / identifier</td><td>Produces the literal or resolves a value in the current scope. Unresolved identifiers raise.</td></tr>
+<tr><td><code>a + b</code></td><td>Numeric addition, string concatenation, or array concatenation. Other combinations raise.</td></tr>
+<tr><td><code>a - b</code>, <code>a * b</code>, <code>a / b</code>, <code>a % b</code></td><td>Numeric arithmetic. Division by zero raises.</td></tr>
+<tr><td><code>a == b</code>, <code>a != b</code></td><td>Type-aware deep equality; arrays and objects are compared recursively and in order.</td></tr>
+<tr><td><code>a &lt; b</code> etc.</td><td>Numeric comparison. String ordering is provided by <code>time.compare</code>, not these operators.</td></tr>
+<tr><td><code>!x</code>, <code>-x</code></td><td>Boolean negation or numeric negation. The operand kind is checked.</td></tr>
+<tr><td><code>a &amp;&amp; b</code>, <code>a || b</code></td><td>Short-circuit boolean conjunction/disjunction. Both operands MUST be boolean when evaluated.</td></tr>
+<tr><td><code>a ?? b</code></td><td>Returns <code>a</code> unless it is <code>null</code>; evaluates <code>b</code> only for null.</td></tr>
+</tbody></table>
+<h3>6.2 Access, indexing, calls, and interpolation</h3>
+<pre class="code-block"><code class="language-mhl">var title = record.title
+var item = items[0]
+var last = items[^1..]
+var safe = record?.metadata?.owner ?? "unknown"
+var dynamic = record?.[field_name]
+var message = "${title}: ${items.size()} items"
+var next = Transform(value: 3)</code></pre>
+<p>Plain member access requires an object field and raises when absent. Plain array indexing is zero-based and raises outside the array. Object indexing requires a string key. Slices use an inclusive lower bound and exclusive upper bound; omitted bounds mean the beginning or end, and <code>^n</code> counts from the end. Slice results are new arrays.</p>
+<p>Optional member access (<code>?.name</code>) and optional dynamic indexing (<code>?.[expr]</code>) yield <code>null</code> for null, non-object receivers, missing object fields, or out-of-range array indexes; the remainder of the trailer chain is skipped. Calls accept positional or named arguments. A named argument has the form <code>name: expression</code>.</p>
+<p>String interpolation evaluates the expression between <code>${...}</code> in the current environment. It is available in ordinary strings, multiline strings, prompt bodies, agent argument values, log paths, and memory paths. Values are formatted as strings, with structured values represented as JSON-like text.</p>
+<h3>6.3 Conditionals, lambdas, and match</h3>
+<p>The expression form <code>if (condition) when_true else when_false</code> evaluates exactly one branch. A lambda has the form <code>(parameters) -&gt; expression</code> or <code>(parameters) -&gt; { statements }</code>. Tool methods and lambdas bind positional parameters left-to-right; defaulted parameters MUST be trailing for these callables.</p>
+<pre class="code-block"><code class="language-mhl">var even = values.filter((n) -&gt; n % 2 == 0)
+var label = if (ready) "ready" else "blocked"
+var decision = match status {
+    Status.Draft     -&gt; "hold"
+    Status.Published -&gt; "ship"
+    _                -&gt; "skip"
+}</code></pre>
+<p><code>match</code> evaluates its subject once, tries arms top-to-bottom, and selects the first pattern deeply equal to the subject. The underscore is a wildcard. For an enum or boolean subject, a match without a wildcard MUST be exhaustive under static analysis. A match with no matching arm raises at runtime.</p>
+</section>
+
+<section class="feature doc-section" id="statements">
+<h2>7. Statements</h2>
+<p>Statements occur in pipeline steps, tool method blocks, lambda blocks, and test descriptions. An inline statement is permitted where a braced block would otherwise occur.</p>
+<table><thead><tr><th>Statement</th><th>Form</th><th>Behavior</th></tr></thead><tbody>
+<tr><td>Variable</td><td><code>var x = expression</code></td><td>Creates or rebinds a step-local value.</td></tr>
+<tr><td>Constant</td><td><code>const x = expression</code></td><td>Creates a binding that cannot be the target of <code>=</code> or <code>+=</code>.</td></tr>
+<tr><td>Assignment</td><td><code>target = expression</code></td><td>Updates a variable, object field, or array element.</td></tr>
+<tr><td>Add-assignment</td><td><code>target += expression</code></td><td>Equivalent to <code>target = target + expression</code>.</td></tr>
+<tr><td>Conditional</td><td><code>if (condition) statement [else statement]</code></td><td>Executes the selected body.</td></tr>
+<tr><td>While</td><td><code>while (condition) statement</code></td><td>Repeats while true; the implementation caps interpreter iterations at 10,000.</td></tr>
+<tr><td>For-in</td><td><code>for (var item in array) statement</code></td><td>Evaluates an array and visits each element in order.</td></tr>
+<tr><td>Try</td><td><code>try { ... } catch (err) { ... } finally { ... }</code></td><td>Catches raised errors and executes <code>finally</code> when present.</td></tr>
+<tr><td>Return</td><td><code>return [expression]</code></td><td>Exits the current tool method or callable block. In a step it returns from the step.</td></tr>
+<tr><td>Break</td><td><code>break [expression]</code></td><td>Stops the current pipeline run and, for a loop pipeline, stops further iterations. It is not a nearest-while/for exit.</td></tr>
+<tr><td>Goto</td><td><code>goto StepName</code></td><td>Transfers to a named step. Legal only in a <code>workflow</code>.</td></tr>
+<tr><td>Expression</td><td><code>call(...)</code> or any expression</td><td>Evaluates for its side effect or discards its value.</td></tr>
+</tbody></table>
+<p><code>fail(...values)</code> raises an error whose message is the formatted, space-joined values. A non-zero process exit code, an HTTP non-2xx response, and a failed assertion are values or test outcomes according to their APIs; they do not automatically become language raises unless documented otherwise.</p>
+</section>
+
+<section class="feature doc-section" id="modules">
+<h2>8. Programs and modules</h2>
+<p>A program is a sequence of top-level declarations. There is no implicit namespace object. A declaration marked <code>export</code> is eligible for import by another file.</p>
+<pre class="code-block"><code class="language-mhl">// shared.mh
+export prompt Greeting(name: string) { "Hello, ${name}!" }
+export tool Text {
+    upper(value: string): string -&gt; value.to_upper()
+}
+
+// main.mh
+use {Greeting, Text as TextUtil} from "shared.mh"
+pipeline Welcome {
+    input name: string
+    step Say {
+        log(Greeting(name: name))
+        log(TextUtil.upper("ready"))
+    }
+}</code></pre>
+<p><code>use</code> imports an explicit list of exported names, optionally assigning a local alias. Imports are resolved transitively and flattened into the current program namespace; there is no namespace-qualified import syntax. Duplicate names, missing files, non-exported names, and alias collisions are static errors.</p>
+</section>
+
+<section class="feature doc-section" id="declarations">
+<h2>9. Declarations</h2>
+<p>The declaration keywords are <code>agent</code>, <code>prompt</code>, <code>memory</code>, <code>tool</code>, <code>extension</code>, <code>pipeline</code>, <code>workflow</code>, <code>type</code>, <code>enum</code>, and <code>test</code>. Names are unique within the flattened program namespace.</p>
+<h3>9.1 Type aliases and enumerations</h3>
+<pre class="code-block"><code class="language-mhl">type UserId = string
+type User = {id: UserId, active: bool}
+enum State { Draft, Ready, Complete }</code></pre>
+<p>An enum declares a closed set of no-payload variants. Values are constructed only through qualified access such as <code>State.Ready</code>. Enum values support equality, interpolation, JSON formatting, and exhaustive <code>match</code>.</p>
+<h3>9.2 Tool declarations</h3>
+<pre class="code-block"><code class="language-mhl">tool Files {
+    read(path: string): string -&gt; fs.read(path)
+    count(paths: string[]): number -&gt; {
+        var n = 0
+        for (var path in paths) { if (path.ends_with(".go")) n += 1 }
+        return n
+    }
+}</code></pre>
+<p>A tool is a named method namespace. A method has positional parameters, optional type annotations, optional defaults, and either an expression body or a statement block. A method invocation creates a fresh call environment containing its parameters and does not expose caller-local variables. A declared return type is checked after evaluation. A block without <code>return</code> yields <code>null</code>.</p>
+<h3>9.3 Prompt declarations</h3>
+<pre class="code-block"><code class="language-mhl">prompt Review(file: string, language: string = "English") {
+    "Review ${file}. Write the findings in ${language}."
+}
+prompt External(file: string) from "review.prompt.md"</code></pre>
+<p>A prompt is a named template. Prompt calls bind by parameter name, and missing parameters MUST have defaults or the call raises. Extra and unknown arguments raise. A default expression is evaluated in the caller scope for prompt calls; a prompt default MAY appear in any parameter position. An external Markdown body uses the same <code>${name}</code> interpolation syntax; write <code>\${name}</code> when a literal placeholder must remain.</p>
+<h3>9.4 Extension declarations</h3>
+<pre class="code-block"><code class="language-mhl">extension mcp Issues {
+    transport: "http"
+    url: "https://mcp.example.test"
+    headers: {"Authorization": "Bearer " + env("ISSUES_TOKEN")}
+}</code></pre>
+<p>The generic form is <code>extension kind Name { properties }</code>. The kind selects a built-in or installed adapter. Properties are evaluated and validated by the adapter, which also defines the callable methods.</p>
+</section>
+
+<section class="feature doc-section" id="stdlib">
+<h2>10. Standard library</h2>
+<p>The standard library is available without an import. It consists of global functions, methods on values, declared-capability methods, and the native namespaces in §11. The signatures below use <code>any</code> for unconstrained values and <code>...</code> for variadic arguments.</p>
+<h3>10.1 Global functions</h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">log(...values: any) → null</td><td>Writes one space-joined line to stdout. Strings are raw, numbers are formatted compactly, and structured values are rendered as JSON.</td></tr>
+<tr><td class="signature">fail(...values: any) → never</td><td>Raises with the same formatting used by <code>log</code>. Catchable with <code>try</code>.</td></tr>
+<tr><td class="signature">env(name: string) → string</td><td>Reads an operating-system environment variable. An unset variable returns the empty string. Sensitive names and values are registered for redaction.</td></tr>
+<tr><td class="signature">type_of(value: any) → string</td><td>Returns <code>string</code>, <code>number</code>, <code>bool</code>, <code>array</code>, <code>object</code>, <code>null</code>, <code>enum</code>, <code>function</code>, or <code>task</code>.</td></tr>
+<tr><td class="signature">is_string(value: any) → bool</td><td>True exactly for strings.</td></tr><tr><td class="signature">is_number(value: any) → bool</td><td>True exactly for numbers.</td></tr>
+<tr><td class="signature">is_bool(value: any) → bool</td><td>True exactly for booleans.</td></tr><tr><td class="signature">is_array(value: any) → bool</td><td>True exactly for arrays.</td></tr>
+<tr><td class="signature">is_object(value: any) → bool</td><td>True exactly for objects.</td></tr><tr><td class="signature">is_null(value: any) → bool</td><td>True exactly for null.</td></tr>
+<tr><td class="signature">is_enum(value: any) → bool</td><td>True exactly for enum values.</td></tr>
+</tbody></table>
+<h3>10.2 Common value methods</h3>
+<table><thead><tr><th>Receiver</th><th>Signature</th><th>Result</th></tr></thead><tbody>
+<tr><td>string, array, object</td><td class="signature">size() → number</td><td>String byte length, array element count, or object entry count.</td></tr>
+<tr><td>string, array, object</td><td class="signature">is_empty() → bool</td><td>Equivalent to <code>size() == 0</code>.</td></tr>
+<tr><td>any</td><td class="signature">equals(other: any) → bool</td><td>Type-aware deep equality. <code>deep_equal</code> is an alias.</td></tr>
+</tbody></table>
+<h3>10.3 String methods</h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">split(separator: string) → string[]</td><td>Splits at every occurrence. An empty separator splits into individual runtime string units.</td></tr><tr><td class="signature">replace(old: string, new: string) → string</td><td>Replaces all occurrences.</td></tr><tr><td class="signature">contains(sub: string) → bool</td><td>Tests substring presence.</td></tr><tr><td class="signature">starts_with(prefix: string) → bool</td><td>Tests prefix.</td></tr><tr><td class="signature">ends_with(suffix: string) → bool</td><td>Tests suffix.</td></tr><tr><td class="signature">trim() → string</td><td>Removes leading and trailing whitespace.</td></tr><tr><td class="signature">to_upper() → string</td><td>Returns an upper-case string.</td></tr><tr><td class="signature">to_lower() → string</td><td>Returns a lower-case string.</td></tr><tr><td class="signature">substring(start: number, end: number) → string</td><td>Returns the half-open byte range <code>[start,end)</code>; bounds MUST be integral and within <code>[0,size()]</code>.</td></tr>
+</tbody></table>
+<h3>10.4 Array methods</h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">get_index(index: number) → any</td><td>Returns a zero-based element; out of range raises.</td></tr><tr><td class="signature">index_of(value: any) → number</td><td>First deep-equal index, or <code>-1</code>.</td></tr><tr><td class="signature">contains(value: any) → bool</td><td>Deep-equal membership test.</td></tr><tr><td class="signature">filter(predicate: (item: any) → bool) → any[]</td><td>New array containing elements for which the predicate is true.</td></tr><tr><td class="signature">find(predicate: (item: any) → bool) → any</td><td>First matching element, or <code>null</code>.</td></tr><tr><td class="signature">sort_by(key: (item: any) → any) → any[]</td><td>New array sorted ascending by a number or string key.</td></tr><tr><td class="signature">map(transform: (item: any) → any) → any[]</td><td>New array containing the transform result for each element.</td></tr><tr><td class="signature">reduce(combine: (acc: any, item: any) → any, initial: any) → any</td><td>Left-to-right fold from a required initial value.</td></tr><tr><td class="signature">any(predicate: (item: any) → bool) → bool</td><td>True if at least one element matches; false for empty arrays.</td></tr><tr><td class="signature">all(predicate: (item: any) → bool) → bool</td><td>True if every element matches; true for empty arrays.</td></tr><tr><td class="signature">append(value: any) → any[]</td><td>New array with one value appended; receiver is not mutated.</td></tr><tr><td class="signature">join(separator: string) → string</td><td>Joins formatted elements using the separator.</td></tr><tr><td class="signature">unique() → any[]</td><td>New array with deep-equal duplicates removed, retaining first-occurrence order.</td></tr>
+</tbody></table>
+<h3>10.5 Object methods</h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">keys() → string[]</td><td>Returns keys in stable sorted order.</td></tr><tr><td class="signature">values() → any[]</td><td>Returns values in the same order as <code>keys()</code>.</td></tr><tr><td class="signature">get(key: string, default?: any) → any</td><td>Returns a field or default/null without raising for a missing key.</td></tr></tbody></table>
+<div class="tip-row"><strong>Immutability and mutation</strong>Collection transforms, concatenation, and slices return new arrays. Plain indexed assignment such as <code>items[0] = value</code> and object-field assignment mutate the addressed collection.</div>
+</section>
+
+<section class="feature doc-section" id="native">
+<h2>11. Native operations</h2>
+<p>Native namespaces are reserved and can be called from pipeline statements, tool methods, hooks, and other expression positions. They execute host effects and therefore MUST be treated as privileged operations.</p>
+<h3>11.1 Command execution: <code>cmd</code></h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">cmd.exec(command: string | string[], timeout?: duration) → {stdout: string, stderr: string, exit_code: number}</td><td>A string is split on whitespace without shell quoting or expansion. An argv array passes every element verbatim. Non-zero exit is returned as <code>exit_code</code>; launch failure or timeout raises.</td></tr>
+<tr><td class="signature">cmd.exec_all(commands: (string | string[])[], timeout?: duration) → object[]</td><td>Runs commands concurrently, applies timeout per command, and returns results in input order. A launch failure raises; non-zero exits remain values.</td></tr>
+</tbody></table>
+<h3>11.2 Filesystem: <code>fs</code></h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">fs.read(path: string) → string</td><td>Reads the entire file; unreadable paths raise.</td></tr><tr><td class="signature">fs.exists(path: string) → bool</td><td>False only for not-found; other stat errors raise.</td></tr><tr><td class="signature">fs.write(path: string, content: string) → bool</td><td>Creates parent directories, truncates, writes, and returns true.</td></tr><tr><td class="signature">fs.append(path: string, content: string) → bool</td><td>Creates parent directories and appends.</td></tr><tr><td class="signature">fs.delete(path: string) → bool</td><td>Removes a file or empty directory. Missing targets raise.</td></tr><tr><td class="signature">fs.join(...segments: string) → string</td><td>OS-appropriate cleaned path join. At least one segment is required.</td></tr><tr><td class="signature">fs.list(dir: string) → string[]</td><td>Lists immediate entries as joined paths; it is not recursive.</td></tr>
+</tbody></table>
+<h3>11.3 Git: <code>git</code></h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">git.diff(target?: string, dir?: string) → string</td><td>Runs <code>git [-C dir] diff [target]</code>. Non-zero exit raises.</td></tr><tr><td class="signature">git.add(paths: string[], dir?: string) → {stdout, stderr, exit_code}</td><td>Stages paths with <code>git add -A --</code>. At least one path is required; exit status is inspectable.</td></tr><tr><td class="signature">git.commit(message: string, paths?: string[], dir?: string) → {stdout, stderr, exit_code}</td><td>Passes the message as one argv element. A non-empty message is required.</td></tr><tr><td class="signature">git.status(paths?: string[], dir?: string) → {stdout, stderr, exit_code}</td><td>Runs short status. A non-zero exit is inspectable.</td></tr><tr><td class="signature">git.rev_parse(ref: string, dir?: string) → string</td><td>Returns a trimmed short ref; invalid refs raise.</td></tr><tr><td class="signature">git.log(n: number, dir?: string) → string</td><td>Returns <code>git log -n n --oneline</code>; <code>n</code> MUST be positive.</td></tr>
+</tbody></table>
+<h3>11.4 HTTP: <code>http</code></h3>
+<p>The operations <code>http.get</code>, <code>http.post</code>, <code>http.put</code>, <code>http.patch</code>, <code>http.delete</code>, <code>http.head</code>, and <code>http.options</code> share the following surface. The URL may be the first positional argument or the named <code>url:</code> argument; all other options are named.</p>
+<table><thead><tr><th>Signature / option</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">http.&lt;verb&gt;(url: string, ...) → {status: number, body: string, headers: {string: string}, ok: bool, json: any}</td><td>Returns the response. <code>ok</code> is true for status 200–299. A transport failure raises; non-2xx status is a value unless <code>raise_for_status: true</code>.</td></tr>
+<tr><td><code>headers: {string: string}</code></td><td>Request headers. An explicit <code>Authorization</code> wins over <code>auth:</code>; sensitive authorization/cookie values are redacted.</td></tr>
+<tr><td><code>query: {string: string}</code></td><td>URL-encodes and merges query parameters with the URL's existing query.</td></tr>
+<tr><td><code>body: any</code></td><td>JSON-encodes the value and sets <code>Content-Type: application/json</code>.</td></tr>
+<tr><td><code>text: string</code></td><td>Sends a raw body. It is mutually exclusive with <code>body</code> and <code>form</code>.</td></tr>
+<tr><td><code>form: {string: string}</code></td><td>Sends an <code>application/x-www-form-urlencoded</code> body.</td></tr>
+<tr><td><code>timeout: duration</code></td><td>Overrides the 30-second default request timeout.</td></tr>
+<tr><td><code>follow_redirects: bool</code></td><td>Defaults to true. False returns the redirect response.</td></tr>
+<tr><td><code>raise_for_status: bool</code></td><td>Defaults to false. True raises on a non-2xx response.</td></tr>
+<tr><td><code>auth: {bearer: string} | {basic: {user: string, password: string}}</code></td><td>Creates an Authorization header unless an explicit one already exists.</td></tr>
+<tr><td><code>tls: {cert: string, key: string, ca: string, insecure: bool}</code></td><td>Configures PEM client certificates, an extra CA bundle, or development-only server verification bypass.</td></tr>
+<tr><td><code>proxy: string</code></td><td>Uses an explicit HTTP, HTTPS, or SOCKS5 proxy; otherwise standard proxy environment variables are honored.</td></tr>
+<tr><td class="signature">http.download(url: string, path: string, ...) → {status: number, path: string, bytes: number, ok: bool, headers: {string: string}}</td><td>Streams a GET response to an atomic file. A non-2xx response writes no file unless raised by <code>raise_for_status</code>; it accepts the request options above except a request body.</td></tr>
+</tbody></table>
+<p>For JSON responses, <code>json</code> contains the parsed body when the response content type is JSON, otherwise null. Response headers with multiple values are joined with <code>", "</code>.</p>
+<h3>11.5 JSON: <code>json</code></h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">json.parse(text: string) → any</td><td>Parses one JSON document; invalid JSON raises.</td></tr><tr><td class="signature">json.parse_lines(text: string) → any[]</td><td>Parses one JSON value per non-empty line.</td></tr><tr><td class="signature">json.stringify(value: any) → string</td><td>Serializes a JSON-compatible value with stable object keys.</td></tr></tbody></table>
+<h3>11.6 Logging: <code>log</code></h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">log.info(...values: any) → null</td><td>Writes an <code>[INFO]</code> line.</td></tr><tr><td class="signature">log.warn(...values: any) → null</td><td>Writes a <code>[WARN]</code> line.</td></tr><tr><td class="signature">log.error(...values: any) → null</td><td>Writes an <code>[ERROR]</code> line; it does not raise or change exit status.</td></tr></tbody></table>
+<h3>11.7 Time: <code>time</code></h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">time.now() → string</td><td>Current instant as RFC3339 UTC.</td></tr><tr><td class="signature">time.parse(text: string, layout?: string) → string</td><td>Parses and normalizes to RFC3339 UTC; default input layout is RFC3339.</td></tr><tr><td class="signature">time.format(value: string, layout?: string) → string</td><td>Formats an RFC3339 value using a Go layout or tokens such as <code>dd/MM/yyyy</code>.</td></tr><tr><td class="signature">time.add(value: string, duration: duration) → string</td><td>Adds a duration and returns RFC3339 UTC.</td></tr><tr><td class="signature">time.diff(a: string, b: string) → number</td><td>Returns seconds in <code>a - b</code>.</td></tr><tr><td class="signature">time.compare(a: string, b: string) → number</td><td>Returns -1, 0, or 1 for temporal ordering.</td></tr></tbody></table>
+</section>
+
+<section class="feature doc-section" id="agents">
+<h2>12. Agents and traffic control</h2>
+<p>An agent declaration creates a callable single-shot backend. The call form is <code>Name.run(prompt: ...)</code>; the prompt MUST be non-empty. An optional <code>schema:</code> argument is a string and is passed to backends that support structured output.</p>
+<h3>12.1 CLI and Ollama profiles</h3>
+<pre class="code-block"><code class="language-mhl">agent Reviewer {
+    engine: "cli/claude-code"
+    command: "claude"
+    args: ["-p", "${prompt}", "--output-format", "json"]
+    log: "logs/reviewer.${context.session_id}.log"
+}
+agent LocalModel {
+    engine: "ollama/qwen2.5-coder"
+    endpoint: "http://localhost:11434"
+    temperature: 0.1
+}</code></pre>
+<p>If <code>engine</code> is absent or begins with <code>cli/</code>, the runtime uses <code>command</code> and optional <code>args</code>. Each array element is one process argument; <code>${prompt}</code> and <code>${schema}</code> placeholders are injected without shell splitting. If <code>engine</code> begins with <code>ollama/</code>, the suffix is the model name and <code>endpoint</code> is required.</p>
+<h3>12.2 Hooks, fallbacks, retry, cache, and rate limits</h3>
+<table><thead><tr><th>Property</th><th>Contract</th></tr></thead><tbody>
+<tr><td><code>before</code></td><td>A zero-parameter lambda. Its returned object contributes bindings to prompt and schema interpolation. It may call tools, extensions, agents, native operations, and memory.</td></tr>
+<tr><td><code>after</code></td><td>A zero-parameter lambda with the final response bound as <code>result</code>. A returned string replaces the response; no return passes it through.</td></tr>
+<tr><td><code>fallback</code></td><td>Array of declared agent names or inline agent objects. Each is tried after the previous leg fails; a successful fallback still invokes the primary agent's <code>after</code> hook.</td></tr>
+<tr><td><code>retry</code></td><td><code>{max_attempts, delay, retry_on, backoff}</code>. The only backoff value currently supported is <code>"exponential"</code>. Absent retry runs once.</td></tr>
+<tr><td><code>cache</code></td><td><code>{ttl, storage, strategy}</code>. Cache keys include engine, prompt, and schema. The only strategy currently supported is exact matching; <code>storage: "disk"</code> persists it.</td></tr>
+<tr><td><code>rate_limit</code></td><td><code>{requests_per_minute, concurrency, on_exceeded}</code>. Exceeded work queues; the supported value is <code>"queue"</code>.</td></tr>
+<tr><td><code>trace</code></td><td>When true, emits call/response trace lines. Sensitive values remain subject to redaction.</td></tr>
+</tbody></table>
+<p>Agent errors are eligible for retry according to <code>retry_on</code>, then fallbacks are attempted. A cache hit bypasses the external call and retry path. Agent log paths interpolate like strings and append raw CLI stdout; the log property is ignored for spawned calls, whose output is buffered and merged by the step.</p>
+</section>
+
+<section class="feature doc-section" id="memory">
+<h2>13. Memory and state</h2>
+<h3>13.1 Named memory declarations</h3>
+<pre class="code-block"><code class="language-mhl">memory Session { type: "json", path: ".mhl/session.json" }
+memory Audit { type: "append_log", path: ".mhl/audit.log" }
+memory Events { type: "jsonl", path: ".mhl/events.jsonl" }
+
+Session.set("attempt", 1)
+var attempt = Session.get("attempt", 0)
+Session.remove("attempt")
+Audit.append("pipeline started")
+Events.append({event: "started", at: time.now()})</code></pre>
+<table><thead><tr><th>Type</th><th>Required properties</th><th>Methods</th></tr></thead><tbody>
+<tr><td><code>kv</code></td><td><code>store: "memory"</code></td><td><code>set(key,value)</code>, <code>get(key,default?)</code>. Lives for one run.</td></tr>
+<tr><td><code>json</code></td><td><code>path: string</code></td><td><code>set(key,value)</code>, <code>set(object)</code>, <code>get(key,default?)</code>, <code>remove(key)</code>. Persists a JSON object.</td></tr>
+<tr><td><code>append_log</code></td><td><code>path: string</code></td><td><code>append(text)</code>; one text line per call.</td></tr>
+<tr><td><code>jsonl</code></td><td><code>path: string</code></td><td><code>append(value)</code>; writes <code>{value, ts}</code> as one JSON line.</td></tr>
+</tbody></table>
+<table><thead><tr><th>Memory signature</th><th>Returns and behavior</th></tr></thead><tbody>
+<tr><td class="signature">set(key: string, value: any) → any</td><td>Stores and returns <code>value</code>. JSON memory also accepts <code>set(values: object) → object</code> as a bulk form.</td></tr>
+<tr><td class="signature">get(key: string, default?: any) → any</td><td>Returns the value or the supplied default; absent values otherwise yield null. JSON and KV keys support <code>::</code> navigation.</td></tr>
+<tr><td class="signature">remove(key: string) → any</td><td>Supported by JSON memory; removes a top-level or nested key and reports whether it existed.</td></tr>
+<tr><td class="signature">append(text: string) → string</td><td>Append-log operation. Writes one line and returns the text.</td></tr>
+<tr><td class="signature">append(value: any) → any</td><td>JSONL operation. Writes <code>{value, ts}</code> and returns the original value.</td></tr>
+</tbody></table>
+<p>Memory methods are positional. JSON memory keys MAY navigate nested objects or arrays with <code>::</code>, for example <code>Session.get("config::retries", 3)</code>. A missing key returns the default when supplied, otherwise null. Path-backed memory interpolates its path, so use <code>context.session_id</code> to isolate concurrent runs.</p>
+<h3>13.2 Persistent pipeline variables</h3>
+<pre class="code-block"><code class="language-mhl">loop pipeline Poll {
+    mem attempts = 0
+    mem status = "pending"
+    repeat: { stop_when: status == "done", max_iterations: 10 }
+    step Check {
+        attempts = attempts + 1
+        status = if (attempts &gt;= 3) "done" else "pending"
+    }
+}</code></pre>
+<p><code>mem name = expression</code> is get-or-initialize. Its initializer runs only when no value exists. A mem variable survives loop iterations and is visible to <code>repeat.stop_when</code>. <code>name.reset()</code> deletes it. Pipeline-level <code>var</code> values are initialized once per ordinary run but reset between iterations of a loop pipeline.</p>
+</section>
+
+<section class="feature doc-section" id="extensions">
+<h2>14. Extensions</h2>
+<h3>14.1 MCP client</h3>
+<p><code>extension mcp Name { ... }</code> connects to a Model Context Protocol server over <code>stdio</code> or HTTP. The methods are:</p>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">Name.call(tool: string, arguments?: object) → any</td><td>Issues <code>tools/call</code> and returns the decoded result. An input-required response raises because this client cannot elicit and resubmit input.</td></tr>
+<tr><td class="signature">Name.list_tools() → any</td><td>Issues <code>tools/list</code>.</td></tr>
+<tr><td class="signature">Name.discover() → any</td><td>Issues <code>server/discover</code>, or returns initialize identity for handshake-only servers.</td></tr>
+</tbody></table>
+<p>The protocol property accepts <code>auto</code> (default), <code>2026-07-28</code> stateless, <code>2025-11-25</code>, or <code>2025-06-18</code> handshake mode. In auto mode the stateless attempt is tried first and protocol incompatibility may trigger handshake fallback. Stdio calls create a fresh process; HTTP calls are independent requests. Credentials in headers SHOULD be obtained through <code>env</code>.</p>
+<h3>14.2 A2A client</h3>
+<p><code>extension a2a Name { url, headers, poll_interval?, poll_timeout? }</code> connects to a remote Agent2Agent endpoint.</p>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">Name.send(message: string, context?: string) → object</td><td>Issues <code>message/send</code>. A non-terminal task is polled with <code>tasks/get</code>. Message results are normalized to <code>{kind, text, parts, message_id, context_id}</code>; tasks include id, state, artifacts, history, and status.</td></tr>
+<tr><td class="signature">Name.agent_card() → object</td><td>GETs <code>/.well-known/agent-card.json</code> from the endpoint origin.</td></tr>
+<tr><td class="signature">Name.get_task(id: string, history_length?: number) → object</td><td>Issues <code>tasks/get</code>.</td></tr>
+<tr><td class="signature">Name.cancel(id: string) → object</td><td>Issues <code>tasks/cancel</code>.</td></tr>
+</tbody></table>
+<p>Streaming, push notifications, and input-required task continuation are not implemented in the current client profile.</p>
+<h3>14.3 External adapters</h3>
+<p>An unknown extension kind resolves through an installed external adapter. The adapter is an executable described by <code>extension.json</code>, selected by a locked identifier and SHA-256 digest, and spoken to over newline-delimited JSON-RPC. The host sends <code>initialize</code>, <code>call</code>, and <code>shutdown</code>; the adapter MAY send <code>log</code> and <code>secret.resolve</code> requests. Protocol messages belong on stdout; diagnostics belong on stderr.</p>
+<pre class="code-block"><code class="language-json">{
+  "id": "com.acme.crm",
+  "api_version": "1",
+  "executable": "bin/crm",
+  "declarations": [{"kind": "crm", "methods": [{"name": "lookup"}]}]
+}</code></pre>
+<p>Use <code>mhl extension init</code>, <code>test</code>, <code>package</code>, <code>install</code>, <code>list</code>, and <code>doctor</code> to create, probe, lock, and inspect adapters.</p>
+</section>
+
+<section class="feature doc-section" id="pipelines">
+<h2>15. Pipelines and workflows</h2>
+<p>A pipeline is the executable unit. Inputs are supplied by the CLI or a server adapter and are validated against their declared types. Pipeline-level variables are shared across steps; step-local variables are not visible to later steps or <code>repeat.stop_when</code>.</p>
+<h3>15.1 Ordered execution and checkpoints</h3>
+<pre class="code-block"><code class="language-mhl">workflow Release {
+    input environment: string
+    var approved = false
+    description: "Validate and publish a release"
+    checkpoint: { enabled: true, strategy: "per_step", storage: "file", ttl: 7d }
+
+    step Validate timeout 2m {
+        var test = cmd.exec(["go", "test", "./..."], timeout: 90s)
+        if (test.exit_code != 0) fail(test.stderr)
+        approved = true
+    }
+    step Publish {
+        if (!approved) goto Validate
+        log.info("publishing to", environment)
+    }
+}</code></pre>
+<p>A plain <code>pipeline</code> runs steps in declaration order and rejects <code>goto</code>. A <code>workflow</code> has the same model but permits forward or backward jumps to its own named steps. A step timeout creates a deadline for blocking calls and fails the step when it expires. A checkpoint is saved after each completed step when per-step checkpointing is enabled; <code>mhl run ... --resume</code> re-enters after the last completed unit with a fresh timeout budget.</p>
+<h3>15.2 Loop pipelines</h3>
+<p>Prefix either form with <code>loop</code> and add <code>repeat: {stop_when, max_iterations}</code>. An iteration runs to completion before <code>stop_when</code> is evaluated. <code>break</code> wins over the stop condition and maximum. An error is not a soft stop: it aborts the run. A loop checkpoint records the next iteration and terminal reason (<code>stop_when</code>, <code>max_iterations</code>, or <code>break</code>).</p>
+<h3>15.3 Context</h3>
+<pre class="code-block"><code class="language-mhl">pipeline Build {
+    checkpoint: {enabled: true, strategy: "per_step"}
+    context: {source: "latest", require: false}
+    step Report {
+        log(context.session_id, context.resumed)
+        if (context.vars.keys().contains("build")) log(context.vars["build"])
+    }
+}</code></pre>
+<p>A declared <code>context</code> exposes the read-only object <code>{session_id, started_at, resumed, principal, vars}</code>. <code>vars</code> is the previous completed run's final variable state; <code>principal</code> is the verified server caller identity when available and is not an authorization mechanism. Context access is absent when the pipeline does not declare the block.</p>
+<h3>15.4 Parallel groups and spawned agents</h3>
+<pre class="code-block"><code class="language-mhl">pipeline Review {
+    input diff: string
+    spawn: {max_concurrency: 4}
+    step Analyze {
+        spawn code = Code.run(prompt: diff)
+        spawn security = Security.run(prompt: diff)
+        wait code, security timeout: 90s
+        log(code.result, security.result)
+    }
+    parallel Gather timeout 2m {
+        step Docs { docs = DocsAgent.run(prompt: diff) }
+        step Issues { issues = IssuesAgent.run(prompt: diff) }
+    }
+}</code></pre>
+<p><code>spawn</code> is valid directly inside a step and only accepts an <code>Agent.run(...)</code> call. It returns a task handle with <code>result</code>, <code>ok</code>, <code>error</code>, <code>status</code>, and <code>duration_ms</code>. <code>wait names</code> waits for all and fails fast; <code>wait any names</code> returns on the first success; <code>wait N of names</code> returns after N successes. The optional <code>timeout:</code> bounds the wait, and <code>on_error: "collect"</code> keeps errors inspectable rather than failing the step. Unjoined handles are drained at step end and cannot outlive a checkpoint.</p>
+<p>A named <code>parallel</code> group is a barrier: all branches run concurrently and the pipeline advances only after all complete. Each branch receives a copy of shared pipeline variables; conflicting writes fail. Output is merged in declaration order. A group timeout cancels unfinished branches. <code>goto</code> cannot target or appear within a group, and <code>break</code> is not permitted in one.</p>
+</section>
+
+<section class="feature doc-section" id="tests">
+<h2>16. Tests</h2>
+<p>A test declaration contains named <code>describe</code> blocks. Each description gets a fresh environment and supports the same statement grammar as a pipeline step. Assertion calls are recognized only inside descriptions.</p>
+<pre class="code-block"><code class="language-mhl">test TextExamples {
+    describe normalization {
+        are_equal(" Feature ".trim().to_lower(), "feature")
+        is_true([1, 2].contains(2))
+        is_false([1, 2].contains(3))
+    }
+    describe future_case {
+        incomplete("implementation pending")
+    }
+}</code></pre>
+<table><thead><tr><th>Assertion</th><th>Signature / pass condition</th></tr></thead><tbody>
+<tr><td><code>are_equal</code></td><td class="signature">are_equal(actual: any, expected: any)</td></tr><tr><td><code>are_not_equal</code> / <code>not_equal</code></td><td class="signature">are_not_equal(a: any, b: any)</td></tr><tr><td><code>is_true</code>, <code>is_false</code></td><td class="signature">(value: bool)</td></tr><tr><td><code>is_null</code>, <code>not_null</code></td><td class="signature">(value: any)</td></tr><tr><td><code>greater_than</code>, <code>less_than</code></td><td class="signature">(a: number, b: number)</td></tr><tr><td><code>greater_than_or_equal</code>, <code>less_than_or_equal</code></td><td class="signature">(a: number, b: number)</td></tr><tr><td><code>includes</code></td><td class="signature">includes(array: any[], value: any)</td></tr><tr><td><code>incomplete</code></td><td class="signature">incomplete(reason?: any)</td></tr>
+</tbody></table>
+<p>Equality is deep and structural. Wrong assertion arity or type is a hard error. A failed assertion marks the description as failed; <code>incomplete</code> marks it pending and does not count as a failure.</p>
+</section>
+
+<section class="feature doc-section" id="cli">
+<h2>17. CLI and serving</h2>
+<h3>17.1 Commands</h3>
+<table><thead><tr><th>Command</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>mhl init</code></td><td>Creates a starter program without overwriting existing files.</td></tr>
+<tr><td><code>mhl run file.mh [--input key=value] [--resume] [--session id]</code></td><td>Runs a pipeline/workflow with typed inputs and optional checkpoint resume.</td></tr>
+<tr><td><code>mhl test file.mh|directory</code></td><td>Runs test declarations and exits non-zero for failed assertions.</td></tr>
+<tr><td><code>mhl lint [directory|file]</code></td><td>Checks syntax, imports, names, configuration, types, parameters, and control-flow legality.</td></tr>
+<tr><td><code>mhl lsp</code></td><td>Starts the language server used by editor integrations.</td></tr>
+<tr><td><code>mhl serve mcp directory</code></td><td>Exposes workflows as MCP tools over stdio.</td></tr>
+<tr><td><code>mhl serve mcp --http directory</code></td><td>Exposes workflows over Streamable HTTP with synchronous tools and asynchronous <code>run/*</code>.</td></tr>
+<tr><td><code>mhl serve a2a directory</code></td><td>Exposes workflows as A2A skills over HTTP.</td></tr>
+<tr><td><code>mhl extension ...</code></td><td>Initializes, tests, packages, installs, lists, and diagnoses external adapters.</td></tr>
+<tr><td><code>mhl version</code>, <code>mhl --version</code>, <code>mhl -v</code></td><td>Prints the runtime version.</td></tr>
+</tbody></table>
+<p>For <code>--input</code>, strings remain strings; declared numbers and booleans are coerced from command-line text; arrays and objects are parsed as JSON. Inputs not declared by the selected pipeline are rejected by server adapters and diagnosed by the CLI profile.</p>
+<h3>17.2 Serving workflows</h3>
+<p><code>mhl serve mcp</code> publishes one MCP tool per pipeline/workflow. Stdio uses newline-delimited JSON-RPC 2.0. HTTP defaults to <code>127.0.0.1:8711</code> and accepts one JSON-RPC message per <code>POST /mcp</code>. The A2A server defaults to <code>127.0.0.1:8710</code> and publishes <code>/.well-known/agent-card.json</code>.</p>
+<table><thead><tr><th>Async method</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>run/start</code></td><td>Starts a long workflow and returns a run id immediately.</td></tr><tr><td><code>run/status</code></td><td>Returns state, current step, reached steps, final variables, errors, and resumability.</td></tr><tr><td><code>run/resume</code></td><td>Continues a failed checkpointed workflow, optionally merging new arguments such as an approval.</td></tr><tr><td><code>run/cancel</code></td><td>Cancels an active run.</td></tr><tr><td><code>run/list</code></td><td>Lists runs owned by the current session.</td></tr>
+</tbody></table>
+<p>HTTP serving supports <code>--token</code>, <code>--principal-header</code>, <code>--state-dir</code>, <code>--drain-timeout</code>, and <code>--max-concurrent-runs</code>. Operational endpoints include <code>/healthz</code>, <code>/readyz</code>, and <code>/metrics</code>.</p>
+</section>
+
+<section class="feature doc-section" id="security">
+<h2>18. Security and operational semantics</h2>
+<p>MHL programs can execute processes, modify files, access networks, call remote tools, and persist state. An implementation and operator SHOULD treat every <code>.mh</code> file as executable code.</p>
+<ul>
+<li>Credentials SHOULD be referenced with <code>env("NAME")</code> and MUST NOT be embedded in source, command arguments, or committed state.</li>
+<li>Arguments passed as argv arrays preserve boundaries and avoid accidental shell interpolation. Command strings SHOULD be reserved for deliberate shell-like behavior.</li>
+<li>Authorization, Cookie, bearer, basic-auth, and recognized secret values are registered and redacted as <code>[REDACTED]</code> in logs, diagnostics, and checkpoints.</li>
+<li>External adapters MUST be present in the extension lock and their executable digest MUST match before execution.</li>
+<li>Timeouts, retry limits, concurrency limits, and loop ceilings SHOULD be configured for every external or potentially unbounded operation.</li>
+<li>Checkpoint and memory paths SHOULD be scoped by session when concurrent runs must not share state.</li>
+<li>Server mode SHOULD bind to loopback unless a token and an appropriate network boundary are configured. A token is a shared trust-domain secret, not per-user authorization.</li>
+</ul>
+<div class="tip-row"><strong>Secrets and source control</strong>Do not commit API keys, tokens, resolved credentials, log files, cache contents, or checkpoint state. Review extension permissions and the capabilities available to a process before running untrusted automation.</div>
+</section>
+
+<section class="feature doc-section" id="annex-a">
+<h2>Annex A — Complete grammar summary</h2>
+<p>This annex collects the declaration and statement productions omitted from the compact expression grammar.</p>
+<pre class="grammar-block">agent          ::= "agent" Identifier "{" property* "}"
+prompt         ::= "prompt" Identifier "(" [parameter ("," parameter)*] ")"
+                   ("from" String | "{" expression "}")
+memory         ::= "memory" Identifier "{" property* "}"
+tool           ::= "tool" Identifier "{" tool-method* "}"
+tool-method    ::= Identifier "(" [parameter ("," parameter)*] ")"
+                   [":" type] "->" (expression | block)
+parameter      ::= Identifier [":" type] ["=" expression]
+extension      ::= "extension" Identifier Identifier "{" property* "}"
+pipeline       ::= ["loop"] ("pipeline" | "workflow") Identifier "{" pipeline-member* "}"
+pipeline-member ::= input | const-declaration | var-declaration | mem-declaration
+                   | parallel | step | property
+input          ::= "input" Identifier ":" type
+step           ::= "step" Identifier ["timeout" duration] block
+parallel       ::= "parallel" Identifier ["timeout" duration] "{" step+ "}"
+repeat         ::= "repeat" ":" object
+context        ::= "context" ":" object
+const-declaration ::= "const" Identifier "=" expression
+var-declaration ::= "var" Identifier "=" expression
+mem-declaration ::= "mem" Identifier "=" expression
+assignment     ::= lvalue ("=" | "+=") expression
+lvalue         ::= Identifier trailer*
+spawn          ::= "spawn" Identifier "=" expression
+wait           ::= "wait" ["any" | Number "of"] Identifier ("," Identifier)* wait-option*
+wait-option    ::= ("timeout" | "on_error") ":" expression
+try-statement  ::= "try" block "catch" ["(" Identifier ")"] block ["finally" block]
+return         ::= "return" [expression]
+break          ::= "break" [expression]
+goto           ::= "goto" Identifier
+test           ::= "test" Identifier "{" describe* "}"
+describe       ::= "describe" Identifier block</pre>
+<p>Implementations MAY expose richer diagnostic positions, syntax highlighting, completion, or generated schemas. Those facilities do not alter the source grammar.</p>
+</section>
+
+<section class="feature doc-section" id="annex-b">
+<h2>Annex B — Complete example</h2>
+<p>The following program demonstrates declarations, a prompt, typed input, persistent loop state, tools, an agent, native operations, and self-verification.</p>
+<pre class="code-block"><code class="language-mhl">enum Outcome { Pending, Passed, Failed }
+type Finding = {code: string, severity: string}
+
+agent Reviewer {
+    engine: "cli/reviewer"
+    command: "reviewer"
+    args: ["--prompt", "${prompt}"]
+    retry: {max_attempts: 2, delay: 1s, backoff: "exponential"}
+    rate_limit: {requests_per_minute: 10, concurrency: 2}
+}
+
+prompt Audit(repo: string, diff: string) {
+    "Review ${repo}. Return JSON findings for this diff:\n${diff}"
+}
+
+tool Project {
+    diff(dir: string = "."): string -&gt; git.diff(dir: dir)
+    verify(dir: string = ".") -&gt; cmd.exec(["go", "test", "./..."], timeout: 2m)
+}
+
+loop workflow AuditLoop {
+    input repo: string
+    mem status = Outcome.Pending
+    mem attempts = 0
+    repeat: {stop_when: status == Outcome.Passed, max_iterations: 3}
+
+    step Inspect {
+        attempts = attempts + 1
+        var diff = Project.diff(repo)
+        var result = Reviewer.run(prompt: Audit(repo, diff))
+        fs.write("audit.json", result)
+        status = Outcome.Passed
+    }
+}
+
+test AuditExamples {
+    describe values {
+        are_equal(type_of(Outcome.Passed), "enum")
+        is_true([1, 2, 3].contains(2))
+    }
+}</code></pre>
+<p>Run it with <code>mhl lint audit.mh</code>, <code>mhl test audit.mh</code>, and <code>mhl run audit.mh --input repo=.</code>. The external <code>reviewer</code> executable must be available in the host environment.</p>
+</section>
+
+<footer class="site-footer"><p>Meta-Harness Language Specification · current runtime profile · Draft. The canonical implementation and executable examples are maintained in the MHL repository.</p><p><a href="#status">Back to the beginning ↑</a></p></footer>
+
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

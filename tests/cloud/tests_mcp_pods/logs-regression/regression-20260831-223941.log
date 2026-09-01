@@ -1,0 +1,28 @@
+regressivo tests_mcp_pods — 20260831-223941
+binário: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/../mhl  (mhl v1.1.0-alpha-7-g418d7dc-dirty)
+opções: RUN_K8S=0 VERBOSE=0 TIMEOUT=150s RESIGN=1 ONLY='' SKIP=''
+
+▶ 001 (conexao) — CENARIO-001/run.sh
+▶ 002 (listar-tools) — CENARIO-002/run.sh
+▶ 002 (stateless) — CENARIO-002/run-stateless.sh
+▶ 003 (call) — CENARIO-003/run.sh
+▶ 003 (wrong-tool) — CENARIO-003/run-wrong-tool.sh
+▶ 004 (probes) — CENARIO-004/run.sh
+▶ 005 (auth-guards) — CENARIO-005/run.sh
+▶ 006 (principal-isolation) — CENARIO-006/run.sh
+▶ 007 (async-lifecycle) — CENARIO-007/run.sh
+▶ 008 (concurrency-queue) — CENARIO-008/run.sh
+▶ 009 (drain-shutdown) — CENARIO-009/run.sh
+▶ 010 (step-timeout) — CENARIO-010/run.sh
+▶ 011 (state-dir-restart) — CENARIO-011/run.sh
+▶ 012 (metrics) — CENARIO-012/run.sh
+▶ 013 (run-logs) — CENARIO-013/run.sh
+▶ 014 (protocol-conformance) — CENARIO-014/run.sh
+▶ 015 (inputschema-validation) — CENARIO-015/run.sh
+▶ 016 (cancel-inflight) — CENARIO-016/run.sh
+
+--------------------------------------------------------------
+total=18  PASS=18  FAIL=0  SKIP=1  (58s)
+log completo: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/logs-regression/regression-20260831-223941.log
+logs por cenário: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/logs-regression/
+resumo: /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/REGRESSION.md

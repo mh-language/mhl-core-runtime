@@ -1,0 +1,12 @@
+mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-010/../.. on http://127.0.0.1:8730/mcp
+{"time":"2026-09-01T09:37:19.852071-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"16cc1644d1be28ad232d81e376915d99","owner":"02708f8175d3cc9ce3f30f2d1a6c870b465966c71bd53d4ae986f90710dd056c","tool":"SlowBuild","resume":false}
+session: 16cc1644d1be28ad232d81e376915d99
+step: Compile
+step: Package
+step: Ship
+{"time":"2026-09-01T09:37:26.882965-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"16cc1644d1be28ad232d81e376915d99","owner":"02708f8175d3cc9ce3f30f2d1a6c870b465966c71bd53d4ae986f90710dd056c","tool":"SlowBuild","durationMs":7030,"steps":3}
+{"time":"2026-09-01T09:37:27.498023-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"16cc1644d1be28ad232d81e376915d99","owner":"02708f8175d3cc9ce3f30f2d1a6c870b465966c71bd53d4ae986f90710dd056c","tool":"SlowBuild","resume":true}
+session: 16cc1644d1be28ad232d81e376915d99
+step: Ship
+{"time":"2026-09-01T09:37:28.499703-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"16cc1644d1be28ad232d81e376915d99","owner":"02708f8175d3cc9ce3f30f2d1a6c870b465966c71bd53d4ae986f90710dd056c","tool":"SlowBuild","durationMs":1001,"steps":4}
+{"time":"2026-09-01T09:37:28.704221-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}

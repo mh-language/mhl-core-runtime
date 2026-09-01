@@ -15,8 +15,9 @@
     <link rel="icon" href="assets/mhl-logo-rebrand.png" />
     <title>Extending MHL — Runtime extension guide</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="extensions.css" />
   </head>
-  <body>
+  <body class="extensions-page">
     <header class="topbar">
       <a class="brand" href="index.html" aria-label="MHL home">
         <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
@@ -29,11 +30,9 @@
           <kbd>/</kbd>
         </label>
         <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
-        <a class="github-link" href="index.html">Overview</a>
-        <a class="github-link" href="how-it-works.html">How it works</a>
-        <a class="github-link" href="reference.html">Reference</a>
-        <a class="github-link" href="serve.html">Serving</a>
-        <a class="github-link" href="stdlib.html">Standard library</a>
+        <a class="github-link" href="mhl-language-spec.html">Specification</a>
+        <a class="github-link" href="extensions.html" aria-current="page">Extensions</a>
+        <a class="github-link" href="serve.html">Servers</a>
         <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
       </div>
     </header>
@@ -58,7 +57,7 @@
       </aside>
 
       <main class="content reference-content extension-content">
-        <section class="ref-hero doc-section" id="overview" data-title="extensions external runtime adapter executable developer guide overview">
+        <section class="ref-hero extension-hero doc-section" id="overview" data-title="extensions external runtime adapter executable developer guide overview">
           <p class="eyebrow accent">MHL · RUNTIME EXTENSIONS · API V1</p>
           <h1>Add capabilities without recompiling the runtime.</h1>
           <p class="lead">An external extension is a separate executable that MHL starts on demand and talks to over newline-delimited JSON-RPC. Build a CRM connector, database client, deployment tool, or any other capability in the language you prefer.</p>
@@ -78,18 +77,91 @@
         <section class="feature doc-section" id="model" data-title="extension model host process lifecycle start first use kept alive request id shutdown">
           <div class="feature-head"><h2><span class="feature-num">01</span>The extension model</h2><span class="status status-full">Stable shape</span></div>
           <p class="feature-lede">MHL owns orchestration and policy. Your executable owns the capability. The host starts one process on first use, reuses it for the run, multiplexes requests by id, and shuts it down at the end.</p>
-          <div class="architecture-flow" aria-label="Extension request flow">
+          <div class="architecture-flow extension-flow" aria-label="Extension request flow">
             <div class="active"><small>1 · PROGRAM</small><strong><code>extension crm Customer</code></strong><span>Properties and method arguments are evaluated by MHL.</span></div>
             <i>→</i>
             <div><small>2 · HOST</small><strong>validate · route · redact</strong><span>The runtime checks the manifest, lock, hash, and permissions.</span></div>
             <i>→</i>
             <div><small>3 · PROCESS</small><strong>stdin / stdout</strong><span>Your executable answers newline-delimited JSON-RPC messages.</span></div>
           </div>
-          <div class="card-grid three">
+          <div class="card-grid three extension-principles">
             <article class="info-card accent-card"><span class="card-icon">01</span><h3>One long-lived process</h3><p>The executable is not restarted for every method call. It remains alive for the current MHL run.</p></article>
             <article class="info-card"><span class="card-icon">02</span><h3>Request ids can interleave</h3><p>Replies may arrive out of order. Correlate every response with the unsigned request id assigned by the sender.</p></article>
             <article class="info-card"><span class="card-icon">03</span><h3>Policy stays in the host</h3><p>Locking, permissions, secret resolution, redaction, and lifecycle enforcement are runtime responsibilities.</p></article>
           </div>
+          <div class="extension-architecture-intro">
+            <p class="block-label">CORE / EXTENSION BOUNDARY</p>
+            <h3>A concrete storage extension architecture</h3>
+            <p>The same process contract lets infrastructure adapters evolve outside the runtime. In this deployment example, MHL keeps orchestration behind stable interfaces while pinned store extensions own the AWS integration.</p>
+          </div>
+          <figure class="extension-architecture">
+            <div class="extension-diagram-scroll">
+              <svg class="extension-diagram" viewBox="0 0 1040 500" role="img" aria-labelledby="extension-architecture-title extension-architecture-description">
+                <title id="extension-architecture-title">MHL core and external storage extension boundary</title>
+                <desc id="extension-architecture-description">The MHL runtime core contains storage, session, run registry, token verification, and metrics interfaces with built-in implementations. A host-side consumer connects these interfaces across an out-of-process JSON-RPC boundary to pinned DynamoDB and Redis extensions, which then reach AWS managed services under declared permissions.</desc>
+                <defs>
+                  <marker id="extension-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M0 0L10 5L0 10z" fill="currentColor" />
+                  </marker>
+                  <marker id="extension-arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M0 0L10 5L0 10z" fill="var(--teal)" />
+                  </marker>
+                </defs>
+
+                <rect class="d-box" x="20" y="40" width="470" height="420" rx="12" />
+                <text class="d-title" x="40" y="66">mhl runtime core — no infra dependencies</text>
+
+                <rect class="d-box-2" x="40" y="86" width="200" height="46" rx="6" />
+                <text class="d-sub" x="140" y="106" text-anchor="middle">engine/runtime</text>
+                <text class="d-sub" x="140" y="121" text-anchor="middle">checkpoints</text>
+                <rect class="d-box-2" x="252" y="86" width="218" height="46" rx="6" />
+                <text class="d-sub" x="361" y="106" text-anchor="middle">mcpserver</text>
+                <text class="d-sub" x="361" y="121" text-anchor="middle">sessions · run registry</text>
+                <rect class="d-box-2" x="40" y="142" width="430" height="40" rx="6" />
+                <text class="d-sub" x="255" y="166" text-anchor="middle">execsvc — reusable run core</text>
+
+                <rect class="d-new" x="40" y="210" width="430" height="70" rx="8" />
+                <text class="d-newtag" x="255" y="234" text-anchor="middle">HOST INTERFACES</text>
+                <text class="d-sub" x="255" y="252" text-anchor="middle">StateStore · SessionStore · RunRegistry</text>
+                <text class="d-sub" x="255" y="267" text-anchor="middle">KVStore · TokenVerifier · MetricsSink</text>
+
+                <rect class="d-box-2" x="40" y="300" width="430" height="60" rx="8" />
+                <text class="d-title" x="255" y="323" text-anchor="middle">built-in implementation</text>
+                <text class="d-sub" x="255" y="342" text-anchor="middle">disk + in-memory — single pod, zero config, default</text>
+
+                <rect class="d-new" x="40" y="386" width="430" height="56" rx="8" />
+                <text class="d-newtag" x="255" y="408" text-anchor="middle">HOST-SIDE EXTENSION CONSUMER</text>
+                <text class="d-sub" x="255" y="426" text-anchor="middle">cli/serve binds an extension.Instance at server start</text>
+
+                <line class="d-div" x1="520" y1="30" x2="520" y2="470" />
+                <text class="d-lab" x="520" y="20" text-anchor="middle">extension boundary — pinned, out-of-process, JSON-RPC/stdio</text>
+
+                <rect class="d-box" x="560" y="90" width="300" height="150" rx="10" />
+                <text class="d-title" x="578" y="114">external extensions</text>
+                <text class="d-sub" x="578" y="130">separate repos · .mhl/extensions.lock</text>
+                <rect class="d-new" x="578" y="144" width="264" height="38" rx="6" />
+                <text class="d-sub" x="710" y="167" text-anchor="middle">mhl-store-dynamodb (kind: store)</text>
+                <rect class="d-new" x="578" y="190" width="264" height="38" rx="6" />
+                <text class="d-sub" x="710" y="213" text-anchor="middle">mhl-store-redis (kind: store)</text>
+
+                <rect class="d-box-2" x="560" y="290" width="300" height="120" rx="10" />
+                <text class="d-title" x="710" y="322" text-anchor="middle">AWS managed</text>
+                <text class="d-sub" x="710" y="346" text-anchor="middle">DynamoDB · ElastiCache (Redis)</text>
+                <text class="d-sub" x="710" y="366" text-anchor="middle">credentials via secret.resolve</text>
+                <text class="d-sub" x="710" y="382" text-anchor="middle">hosts via permissions.network</text>
+
+                <path class="d-edge-new" d="M470 414 L520 414 L520 200 L556 200" marker-end="url(#extension-arrow-accent)" />
+                <text class="d-newtag" x="500" y="452" text-anchor="middle">bind at start</text>
+                <path class="d-edge" d="M710 240 L710 286" marker-end="url(#extension-arrow)" />
+
+                <rect class="d-new" x="600" y="440" width="28" height="15" rx="4" />
+                <text class="d-lab" x="636" y="452">extension path</text>
+                <rect class="d-box-2" x="748" y="440" width="28" height="15" rx="4" />
+                <text class="d-lab" x="784" y="452">runtime / infrastructure</text>
+              </svg>
+            </div>
+            <figcaption><strong>The runtime remains infrastructure-neutral.</strong> The host binds a pinned executable once, communicates over the existing JSON-RPC/stdio contract, and keeps credentials and network access under declared permissions.</figcaption>
+          </figure>
         </section>
 
         <section class="feature doc-section" id="layout" data-title="layout project mhl extensions lock extension json executable bin directory">
@@ -209,26 +281,43 @@
           <div class="security-banner"><span>!</span><div><strong>Assume extension code is privileged.</strong><p>Declare network hosts and secret references explicitly. Avoid logging tokens, validate all arguments, keep stdout protocol-only, and ship the executable with a reproducible hash.</p></div></div>
         </section>
 
-        <section class="feature doc-section" id="workflow" data-title="workflow cli init test package install list doctor lock sha256 build install extension">
+        <section class="feature doc-section" id="workflow" data-title="workflow cli init test package install list doctor lock sha256 build install extension git remote url subdir ref clone">
           <div class="feature-head"><h2><span class="feature-num">06</span>Build, test, and install</h2><span class="status status-full">CLI workflow</span></div>
-          <p class="feature-lede">The CLI scaffolds the shape, exercises the protocol, captures declarations, and installs a pinned copy into a project.</p>
+          <p class="feature-lede">The CLI scaffolds the shape, exercises the protocol, captures declarations, and installs a pinned copy into a project — from a local directory, a git remote, or a published archive.</p>
           <div class="cli-grid">
             <div class="cli-command"><code>mhl extension init ext/</code><span>scaffold manifest, sidecar, and README</span></div>
             <div class="cli-command"><code>mhl extension test ext/</code><span>handshake and probe declared methods</span></div>
             <div class="cli-command"><code>mhl extension package ext/</code><span>capture handshake declarations</span></div>
             <div class="cli-command"><code>mhl extension install ext/</code><span>copy, hash, and pin the adapter</span></div>
+            <div class="cli-command"><code>mhl extension install &lt;url&gt;[//subdir][#ref]</code><span>clone a git remote, then copy, hash, and pin</span></div>
+            <div class="cli-command"><code>mhl extension install &lt;url&gt;.tar.gz[#sha256=hex]</code><span>download an archive, verify, copy, hash, and pin</span></div>
             <div class="cli-command"><code>mhl extension list</code><span>show locked entries and resolution</span></div>
             <div class="cli-command"><code>mhl extension doctor</code><span>validate manifest, executable, API, and hash</span></div>
           </div>
+          <p class="block-label">INSTALL FROM A REMOTE</p>
+          <pre class="code-block"><code class="language-bash"># git — clone at a ref, optionally a subdirectory of a monorepo
+mhl extension install https://github.com/acme/mhl-crm.git#v1.2.0
+mhl extension install git@github.com:acme/monorepo.git//ext/crm#main
+
+# archive — a .tar.gz / .zip published to a release (what `make release` emits)
+mhl extension install https://github.com/acme/mhl-crm/releases/download/v1.2.0/mhl-crm.tar.gz
+mhl extension install https://.../mhl-crm.tar.gz#sha256=&lt;hex from SHA256SUMS&gt;</code></pre>
+          <p class="muted">A single string. For git: <code>//subdir</code> selects a directory inside the repo, <code>#ref</code> is a branch, tag, or commit; needs <code>git</code> on <code>PATH</code>. For an archive: the URL ends <code>.tar.gz</code> / <code>.tgz</code> / <code>.zip</code>, an optional <code>#sha256=&lt;hex&gt;</code> is checked against the download before anything is extracted, and the manifest is taken from the archive root or its single top-level directory. Both then follow the same copy → hash → pin path as a local install — the executable is never run.</p>
           <p class="block-label">LOCK ENTRY</p>
-          <pre class="grammar-block"><code class="language-json">{
+          <pre class="code-block lock-example"><code class="language-json">{
   "extensions": {
     "com.acme.crm": {
       "version": "1.2.0",
-      "sha256": "&lt;hex sha256 of bin/crm&gt;"
+      "sha256": "&lt;hex sha256 of bin/crm&gt;",
+      "source": "git@github.com:acme/monorepo.git//ext/crm#main",
+      "commit": "4a7d1ed414474e4033ac29ccb8653d9b1278fa8c"
     }
   }
 }</code></pre>
+          <p class="muted"><code>source</code> is set for any remote install (the git spec, or the archive URL including its <code>#sha256=</code>); <code>commit</code> only for git. A local-directory install writes just <code>version</code> and <code>sha256</code>, and an older lock without the extra fields still loads.</p>
+          <p class="block-label">MULTIPLE PLATFORMS</p>
+          <p>One package can carry every platform's binary. Alongside the plain <code>executable</code>, drop a file per platform named <code>&lt;executable&gt;-&lt;goos&gt;-&lt;goarch&gt;</code> (<code>…​-windows-amd64.exe</code> on Windows) in the same directory — the <code>extension.json</code> is unchanged, the plain name is just the stem. <code>mhl extension install</code> resolves the running host (the plain file if present, else the <code>-&lt;goos&gt;-&lt;goarch&gt;</code> one), <b>vendors only that binary</b>, and the lock pins its <code>sha256</code>; a host with no matching binary fails with the list of platforms the package does provide. The official extensions under <code>src/mhl-extensions/</code> keep <code>make dist</code> metadata-only (manifest + README, for lint / review); <code>make release</code> adds the five-platform <code>bin/</code> and produces a <code>.tar.gz</code> per extension plus <code>SHA256SUMS</code> — all pure-Go, <code>CGO_ENABLED=0</code>.</p>
+          <div class="security-banner"><span>!</span><div><strong>OS/architecture support is the extension vendor's responsibility.</strong><p>The runtime never cross-compiles, downloads, or substitutes a binary — it only resolves and pins the one that matches the host it runs on. If your users run on <code>linux/arm64</code>, <code>darwin/arm64</code>, Windows, or anything else, ship a binary for each: <code>mhl extension install</code> on a platform you did not build for fails outright. Publish the target list with the extension so consumers know before they try.</p></div></div>
           <div class="tip-row"><span>EVERY RUN</span><p>The host re-hashes the executable and refuses to run it if the digest differs from the lock. Treat the lock as the project’s explicit trust decision.</p></div>
         </section>
 
@@ -242,13 +331,14 @@
             <div><span>✓</span><p>Handle out-of-order responses and preserve request ids in every reply.</p></div>
             <div><span>✓</span><p>Test initialization, successful calls, structured errors, secret denial, and graceful shutdown.</p></div>
             <div><span>✓</span><p>Build a reproducible executable, run <code>mhl extension doctor</code>, and commit the lock entry.</p></div>
+            <div><span>✓</span><p>Build a binary for <em>every</em> OS/architecture your consumers run — the runtime will not cross-compile for them — and state the supported set in the extension's README.</p></div>
           </div>
-          <div class="tip-row"><span>FULL CONTRACT</span><p>For the exact message contract, see the <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/sample/extensions/extension-protocol.md" target="_blank" rel="noreferrer">external extension protocol ↗</a>. The source walkthrough and manifest examples are in <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/sample/extensions/README.md" target="_blank" rel="noreferrer"><code>sample/extensions/README.md</code> ↗</a>.</p></div>
+          <div class="tip-row"><span>FULL CONTRACT</span><p>For the exact message contract, see the <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/tests/extensions/extension-protocol.md" target="_blank" rel="noreferrer">external extension protocol ↗</a>. The source walkthrough and manifest examples are in <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/tests/extensions/README.md" target="_blank" rel="noreferrer"><code>tests/extensions/README.md</code> ↗</a>.</p></div>
         </section>
 
         <footer class="site-footer">
           <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="index.html">Overview</a> · <a href="reference.html">Language reference</a> · <a href="serve.html">Serving workflows</a> · <a href="stdlib.html">Standard library</a> · <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub</a></span>
+          <span><a href="mhl-language-spec.html">Specification</a> · <a href="extensions.html">Extensions</a> · <a href="serve.html">Servers</a> · <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a></span>
         </footer>
       </main>
     </div>

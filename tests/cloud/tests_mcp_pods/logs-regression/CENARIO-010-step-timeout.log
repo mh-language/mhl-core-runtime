@@ -1,0 +1,58 @@
+[09:37:19] iniciando servidor em 127.0.0.1:8730
+[09:37:19] run/start -> runId=16cc1644d1be28ad232d81e376915d99 state=working
+[09:37:19]   status1[1]: state=working step=Compile
+[09:37:21]   status1[2]: state=working step=Compile
+[09:37:22]   status1[3]: state=working step=Compile
+[09:37:23]   status1[4]: state=working step=Package
+[09:37:24]   status1[5]: state=working step=Package
+[09:37:25]   status1[6]: state=working step=Package
+[09:37:26]   status1[7]: state=working step=Ship
+[09:37:27]   status1[8]: state=failed step=Ship
+[09:37:27] run/status (tentativa 1):
+{
+    "jsonrpc": "2.0",
+    "id": 9,
+    "result": {
+        "error": "runtime: step \"Ship\" exceeded its timeout: step timeout exceeded",
+        "reached": [
+            "Compile",
+            "Package",
+            "Ship"
+        ],
+        "resumable": true,
+        "runId": "16cc1644d1be28ad232d81e376915d99",
+        "startedAt": "2026-09-01T12:37:19Z",
+        "state": "failed",
+        "step": "Ship",
+        "stepIndex": 3,
+        "stepTotal": 3,
+        "tool": "SlowBuild"
+    }
+}
+[09:37:27] run/resume -> state=working 
+[09:37:27]   status2[1]: state=working step=Ship
+[09:37:28]   status2[2]: state=failed step=Ship
+[09:37:28] run/status (tentativa 2):
+{
+    "jsonrpc": "2.0",
+    "id": 9,
+    "result": {
+        "error": "runtime: step \"Ship\" exceeded its timeout: step timeout exceeded",
+        "reached": [
+            "Compile",
+            "Package",
+            "Ship",
+            "Ship"
+        ],
+        "resumable": true,
+        "runId": "16cc1644d1be28ad232d81e376915d99",
+        "startedAt": "2026-09-01T12:37:19Z",
+        "state": "failed",
+        "step": "Ship",
+        "stepIndex": 1,
+        "stepTotal": 3,
+        "tool": "SlowBuild"
+    }
+}
+[09:37:28] RESULTADO: FUNCIONOU — Ship estoura o timeout, falha, e run/resume re-executa Ship com orçamento novo
+PASS

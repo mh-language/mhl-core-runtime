@@ -1,0 +1,31 @@
+# Local PostgreSQL for developing / testing the mhl-sql-postgres extension.
+# Seeded with a `people` table (initdb/seed.sql) for the smoke test and the
+# tests_ext CENARIO-017/018 scenarios.
+#
+#   docker compose up -d --wait     # Postgres 16 on host :5434 -> container 5432
+#   docker compose down -v          # stop and wipe the data volume
+#
+# Dev credentials (do NOT reuse anywhere real):
+#   dsn = postgres://mhl:mhl-secret-pw@localhost:5434/demo?sslmode=disable
+name: mhl-sql-postgres
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mhl
+      POSTGRES_PASSWORD: mhl-secret-pw
+      POSTGRES_DB: demo
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mhl -d demo"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  pgdata:

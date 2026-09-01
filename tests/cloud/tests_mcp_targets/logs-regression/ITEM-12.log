@@ -1,0 +1,7 @@
+[06:38:15] lint approvers:["carol"] rc=0 ; lint approvers:123 rc=0
+[06:38:15]   PENDING: mhl lint deve rejeitar 'approvers: 123' (tipo errado)
+[06:38:16] alice run/start -> e3bc7614d40f85f54f274d09874e5a18 (parada no gate: Review)
+[06:38:17] alice (não-approver) run/resume -> err='' ; run agora: 'completed'
+[06:38:17]   PENDING: run/resume por um principal FORA de approvers deve ser recusado (hoje: err='', run='completed')
+[06:38:17] RESULTADO: PENDING — 2 item(ns) a implementar (acima)
+PENDING

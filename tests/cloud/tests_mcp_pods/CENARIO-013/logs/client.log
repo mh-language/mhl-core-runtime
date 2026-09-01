@@ -1,0 +1,31 @@
+[09:37:37] iniciando servidor em 127.0.0.1:8734
+[09:37:37] sessão A=2b354250bcef2cc5e404b1b1f8839715  B=24bbc29303794bc6b92d019787af3a78
+[09:37:37] run/start -> runId=8cfa84e5ad40fe513144015e92665c10
+[09:37:37]   state=working
+[09:37:38]   state=completed
+[09:37:38] run/logs #1:
+{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+        "nextSince": 81,
+        "runId": "8cfa84e5ad40fe513144015e92665c10",
+        "text": "session: 8cfa84e5ad40fe513144015e92665c10\nstep: Draft\nstep: Review\nstep: Publish\n"
+    }
+}
+[09:37:38] run/logs #2 (since=81):
+{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "result": {
+        "nextSince": 81,
+        "runId": "8cfa84e5ad40fe513144015e92665c10",
+        "text": ""
+    }
+}
+[09:37:38] run/logs (não-dono):
+{"jsonrpc":"2.0","id":6,"error":{"code":-32602,"message":"unknown runId \"8cfa84e5ad40fe513144015e92665c10\""}}
+[09:37:38] eventos de ciclo de vida capturados:
+{"time":"2026-09-01T09:37:37.727267-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"8cfa84e5ad40fe513144015e92665c10","owner":"6845aa273022d39631bb6184982e86702aeb29ec407de666e2d2741b2cd4c641","tool":"DocPipeline","resume":false}
+{"time":"2026-09-01T09:37:38.740075-03:00","level":"INFO","msg":"run completed","component":"mcpserver","runId":"8cfa84e5ad40fe513144015e92665c10","owner":"6845aa273022d39631bb6184982e86702aeb29ec407de666e2d2741b2cd4c641","tool":"DocPipeline","durationMs":1012,"steps":3}
+[09:37:39] RESULTADO: FUNCIONOU — run/logs cursored e owner-scoped; eventos de ciclo de vida em JSON

@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":12,"result":{"capabilities":{"experimental":{"mhl.run":{"methods":["run/start","run/status","run/resume","run/cancel","run/list","run/logs"],"version":"1"}},"tools":{"listChanged":false}},"protocolVersion":"2025-06-18","serverInfo":{"name":"mhl","version":"v1.1.0-alpha-8-g274d040-dirty"}}}

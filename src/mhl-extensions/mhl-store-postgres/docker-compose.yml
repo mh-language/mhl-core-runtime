@@ -1,0 +1,31 @@
+# Local PostgreSQL for developing / testing the mhl-store-postgres extension.
+#
+#   docker compose up -d --wait     # Postgres 16 on :5433 (host) -> 5432 (container)
+#   docker compose down -v          # stop and wipe the data volume
+#
+# Dev credentials (do NOT reuse anywhere real):
+#   user     = mhl
+#   password = mhl-secret-pw
+#   dbname   = mhl_state
+#   dsn      = postgres://mhl:mhl-secret-pw@localhost:5433/mhl_state?sslmode=disable
+name: mhl-store-postgres
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mhl
+      POSTGRES_PASSWORD: mhl-secret-pw
+      POSTGRES_DB: mhl_state
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mhl -d mhl_state"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  pgdata:

@@ -73,9 +73,13 @@ engine can gate one method, body `method` still authoritative — JSON responses
 static token, or `--principal-header` trusted-header) yields a principal that keys run
 ownership via `httpServer.ownerOf`, else the Phase-0 session hash; loopback-`Origin` guard)
 both drive it. HTTP-only, in
-`runs.go`: `run/start`/`run/status`/`run/resume`/`run/cancel`/`run/list` — async execution
-(returns a `runId`, poll for current step / `reached` steps / final vars) for workflows too
-long to hold a `tools/call` open; backed by `execsvc.Request.OnStep`. `run/resume` continues
+`runs.go`: `run/start`/`run/status`/`run/resume`/`run/cancel`/`run/list`/`run/logs` — async
+execution (returns a `runId`, poll for current step / `reached` steps / final vars) for
+workflows too long to hold a `tools/call` open; backed by `execsvc.Request.OnStep`. Because
+this family is HTTP-only, the HTTP transport sets `server.asyncRuns`, so `initialize` /
+`server/discover` advertise it under `capabilities.experimental["mhl.run"]`
+(`{version, methods}`) and each `tools/list` entry gets `_meta.mhl.run`; stdio has neither.
+Adding/renaming a `run/*` method → update `asyncRunMethods` in `server.go`. `run/resume` continues
 a stopped run from its `checkpoint { strategy: "per_step" }` (the HITL pattern: a gate step
 `fail()`s until approved, then `run/resume {runId, arguments}` merges the decision in) via
 `execsvc.Request.{Session,Resume}`; `--state-dir` / `MHL_SERVE_STATE_DIR` makes that run
@@ -84,7 +88,15 @@ state outlive the process (else a per-process temp dir), or a single
 (sessions + `run/*` checkpoints/owner) through that extension instead — `cli/serve.go` binds
 it host-side (`storext.go`), `mcpserver`'s `ext*` adapters (`extstore.go`) wrap it as the
 `KVStore` the `SessionStore`/`CheckpointStore`/`runtime.StateStore` seams speak; the run
-*registry* stays in-memory per pod. Each run is owned by its caller (`httpServer.ownerOf` —
+*registry* stays in-memory per pod. A caller `--state-dir` also swaps the in-memory
+`SessionStore` for `diskSessionStore` (`store.go`: one JSON file per id under
+`<state-dir>/.mhl/state/sessions/`), so an `Mcp-Session-Id` minted on one replica resolves on
+any other without a forced re-`initialize`; no `--state-dir` keeps `memSessionStore`. When `h.cps.Shared()` (a caller `--state-dir` or an
+extension store), `execRun` publishes a `RunStatusRec` per `OnStep` and `reconstructRun`
+falls back to it (no checkpoint yet) so another replica's `run/status` sees a `working` run
+it never started (marked `remote`, re-read each poll); `run/cancel` for a `remote` run writes
+a `cancel` flag the owning replica polls (1s `watchRemoteCancel` + step boundary) →
+distributed cancel. Each run is owned by its caller (`httpServer.ownerOf` —
 the `--principal-header` principal hashed, else sha256 of the Mcp-Session-Id);
 `run/{status,resume,cancel,list,logs}` only act for that caller — a non-owner gets "unknown
 runId". A principal-owned run persists its owner (`CheckpointStore.WriteOwner`), so after a

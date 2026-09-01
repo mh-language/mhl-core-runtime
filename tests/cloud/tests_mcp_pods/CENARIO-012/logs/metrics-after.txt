@@ -1,0 +1,22 @@
+# HELP mhl_serve_runs_total Async run/* executions by terminal outcome.
+# TYPE mhl_serve_runs_total counter
+mhl_serve_runs_total{outcome="completed"} 1
+mhl_serve_runs_total{outcome="failed"} 0
+mhl_serve_runs_total{outcome="canceled"} 1
+# HELP mhl_serve_run_duration_seconds Cumulative run execution time (queue wait excluded).
+# TYPE mhl_serve_run_duration_seconds summary
+mhl_serve_run_duration_seconds_sum 2.071
+mhl_serve_run_duration_seconds_count 2
+# HELP mhl_serve_tool_calls_total Synchronous tools/call requests by outcome.
+# TYPE mhl_serve_tool_calls_total counter
+mhl_serve_tool_calls_total{outcome="ok"} 1
+mhl_serve_tool_calls_total{outcome="error"} 1
+# HELP mhl_serve_runs_active Runs currently executing.
+# TYPE mhl_serve_runs_active gauge
+mhl_serve_runs_active 0
+# HELP mhl_serve_runs_queued Runs waiting for a concurrency slot.
+# TYPE mhl_serve_runs_queued gauge
+mhl_serve_runs_queued 0
+# HELP mhl_serve_sessions_active Live MCP protocol sessions.
+# TYPE mhl_serve_sessions_active gauge
+mhl_serve_sessions_active 1

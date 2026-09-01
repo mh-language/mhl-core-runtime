@@ -18,10 +18,17 @@ type Lock struct {
 	Extensions map[string]LockEntry `json:"extensions"`
 }
 
-// LockEntry pins one extension.
+// LockEntry pins one extension. Version and SHA256 are always set. Source and
+// Commit are recorded only for an extension installed from a git remote
+// (`mhl extension install <url>[//<subdir>][#<ref>]`): Source is the spec as
+// given, Commit is the 40-hex commit it resolved to — together they make a
+// git install auditable and reproducible. A local-directory install leaves
+// both empty, and an older lock without them still loads unchanged.
 type LockEntry struct {
 	Version string `json:"version"`
 	SHA256  string `json:"sha256"`
+	Source  string `json:"source,omitempty"`
+	Commit  string `json:"commit,omitempty"`
 }
 
 // LoadLock reads path. A missing file is not an error — it means "this

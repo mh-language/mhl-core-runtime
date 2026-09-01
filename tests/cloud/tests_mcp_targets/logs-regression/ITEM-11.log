@@ -1,0 +1,4 @@
+[09:34:36] capabilities keys=['experimental', 'tools'] ; nomeia run/*? 1 ; com versão? 1 ; métodos citados=6/6
+[09:34:36] tools/list sinaliza long-running? yes (ponto extra, não bloqueia MET)
+[09:34:36] RESULTADO: MET — run/* é anunciado em initialize com versão e lista de métodos
+MET

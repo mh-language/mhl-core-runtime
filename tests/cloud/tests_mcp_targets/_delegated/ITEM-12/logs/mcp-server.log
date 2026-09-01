@@ -1,0 +1,33 @@
+mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud on http://127.0.0.1:8770/mcp
+{"time":"2026-08-31T22:35:39.40474-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"2dd6265d15cbd8491d713b702df91855","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","resume":false}
+session: 2dd6265d15cbd8491d713b702df91855
+step: Draft
+step: Review
+{"time":"2026-08-31T22:35:40.416571-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"2dd6265d15cbd8491d713b702df91855","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","durationMs":1011,"steps":2}
+{"time":"2026-08-31T22:35:40.544648-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"2dd6265d15cbd8491d713b702df91855","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","resume":true}
+session: 2dd6265d15cbd8491d713b702df91855
+step: Review
+step: Publish
+{"time":"2026-08-31T22:35:40.545459-03:00","level":"INFO","msg":"run completed","component":"mcpserver","runId":"2dd6265d15cbd8491d713b702df91855","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","durationMs":0,"steps":3}
+mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud on http://127.0.0.1:8770/mcp
+{"time":"2026-09-01T06:38:15.233806-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"e3bc7614d40f85f54f274d09874e5a18","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","resume":false}
+session: e3bc7614d40f85f54f274d09874e5a18
+step: Draft
+step: Review
+{"time":"2026-09-01T06:38:16.250219-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"e3bc7614d40f85f54f274d09874e5a18","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","durationMs":1016,"steps":2}
+{"time":"2026-09-01T06:38:16.384495-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"e3bc7614d40f85f54f274d09874e5a18","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","resume":true}
+session: e3bc7614d40f85f54f274d09874e5a18
+step: Review
+step: Publish
+{"time":"2026-09-01T06:38:16.385289-03:00","level":"INFO","msg":"run completed","component":"mcpserver","runId":"e3bc7614d40f85f54f274d09874e5a18","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","durationMs":0,"steps":3}
+mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud on http://127.0.0.1:8770/mcp
+{"time":"2026-09-01T06:51:00.983262-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"247e8bfd359d591b2bd709e91f68c994","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","resume":false}
+session: 247e8bfd359d591b2bd709e91f68c994
+step: Draft
+step: Review
+{"time":"2026-09-01T06:51:01.99189-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"247e8bfd359d591b2bd709e91f68c994","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","durationMs":1008,"steps":2}
+{"time":"2026-09-01T06:51:02.197911-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"247e8bfd359d591b2bd709e91f68c994","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","resume":true}
+session: 247e8bfd359d591b2bd709e91f68c994
+step: Review
+step: Publish
+{"time":"2026-09-01T06:51:02.198907-03:00","level":"INFO","msg":"run completed","component":"mcpserver","runId":"247e8bfd359d591b2bd709e91f68c994","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","durationMs":1,"steps":3}

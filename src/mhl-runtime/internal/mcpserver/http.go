@@ -217,6 +217,13 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 		cps, err = newExtCheckpointStore(cfg.Store)
 	} else {
 		cps, err = newDiskCheckpointStore(cfg.StateDir)
+		// A caller-supplied --state-dir also makes protocol sessions
+		// cross-replica: an Mcp-Session-Id minted on one pod resolves on any
+		// other pointed at the same dir (no forced re-initialize). A
+		// per-process temp dir (no --state-dir) keeps the in-memory behaviour.
+		if err == nil && cps.Shared() {
+			sessions = newDiskSessionStore(cps.BaseDir())
+		}
 	}
 	if err != nil {
 		return nil, nil, err
@@ -238,9 +245,10 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 		// mutex keeps lines from interleaving mid-write. slog does its own
 		// locking, so it takes the raw writer.
 		srv: &server{
-			tools: tools,
-			logw:  &syncWriter{w: logw},
-			log:   slog.New(slog.NewJSONHandler(logw, nil)).With("component", "mcpserver"),
+			tools:     tools,
+			logw:      &syncWriter{w: logw},
+			log:       slog.New(slog.NewJSONHandler(logw, nil)).With("component", "mcpserver"),
+			asyncRuns: true, // this transport routes run/* (runs.go)
 		},
 		verifier:     newVerifier(cfg),
 		baseCtx:      ctx,

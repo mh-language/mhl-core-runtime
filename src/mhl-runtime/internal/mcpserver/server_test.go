@@ -67,6 +67,11 @@ pipeline Greet {
 	if si := initRes["serverInfo"].(map[string]any); si["name"] != "mhl" {
 		t.Errorf("serverInfo.name = %v", si["name"])
 	}
+	// stdio does not route run/*, so it must not advertise the mhl.run
+	// capability (that is HTTP-only — see TestHTTPAdvertisesAsyncRunCapability).
+	if caps, _ := initRes["capabilities"].(map[string]any); caps["experimental"] != nil {
+		t.Errorf("stdio initialize advertised experimental capabilities: %v", caps["experimental"])
+	}
 
 	// tools/list
 	tools := msgs[1]["result"].(map[string]any)["tools"].([]any)

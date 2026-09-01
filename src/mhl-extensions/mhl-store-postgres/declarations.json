@@ -1,0 +1,27 @@
+[
+  {
+    "kind": "store",
+    "documentation": "Key/value backend for `mhl serve mcp --http` durable state (sessions + run checkpoints + owners), stored one row per key in a PostgreSQL table `(key text primary key, value jsonb, updated_at timestamptz)`. `put` is an atomic INSERT ... ON CONFLICT DO UPDATE.",
+    "properties": [
+      { "name": "dsn", "type": "string", "documentation": "Full connection string (URL `postgres://user:pass@host:port/db?sslmode=...` or libpq keyword/value). Wins over the discrete fields. Use env(\"DATABASE_URL\")." },
+      { "name": "host", "type": "string", "documentation": "Database host (used when `dsn` is not set)." },
+      { "name": "port", "type": "string", "documentation": "Database port. Default 5432." },
+      { "name": "dbname", "type": "string", "documentation": "Database name." },
+      { "name": "user", "type": "string", "documentation": "Role name." },
+      { "name": "password", "type": "string", "documentation": "Role password. Use env(\"PGPASSWORD\"); the host resolves and redacts it." },
+      { "name": "sslmode", "type": "string", "documentation": "libpq sslmode: disable | prefer (default) | require | verify-ca | verify-full." },
+      { "name": "table", "type": "string", "documentation": "Target table. Default \"mhl_store\". May be schema-qualified (\"schema.table\"). Identifier characters only." },
+      { "name": "prefix", "type": "string", "documentation": "Optional key namespace within the table (stored/stripped transparently). Default \"\" — the table already isolates state." },
+      { "name": "max_conns", "type": "number", "documentation": "Connection pool size. Default 8." },
+      { "name": "statement_timeout", "type": "string", "documentation": "Per-statement server-side timeout as a Go duration (\"10s\", \"500ms\"). Unset = server default." },
+      { "name": "auto_migrate", "type": "bool", "documentation": "Run CREATE TABLE / CREATE INDEX IF NOT EXISTS on first use. Default true. Set false when the schema is managed externally." },
+      { "name": "log", "type": "string", "documentation": "Optional path to append a JSON-lines wire trace (one line per handled message) for debugging." }
+    ],
+    "methods": [
+      { "name": "get",    "signature": "get(key: string) -> any",          "documentation": "The value at key, or null when no row." },
+      { "name": "put",    "signature": "put(key: string, value: any)",      "documentation": "Upsert value at key (INSERT ... ON CONFLICT DO UPDATE)." },
+      { "name": "delete", "signature": "delete(key: string)",              "documentation": "Delete the row. An absent key is not an error." },
+      { "name": "list",   "signature": "list(prefix: string) -> [string]", "documentation": "Every key with the given prefix (indexed key LIKE prefix || '%', ordered)." }
+    ]
+  }
+]

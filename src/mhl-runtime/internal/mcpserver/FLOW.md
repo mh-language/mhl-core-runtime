@@ -118,7 +118,7 @@ sequenceDiagram
     H->>H: read body (max 8 MiB) · unmarshal into rpcMsg  (error → -32700)
     H->>H: MCP-Protocol-Version header known? (lenient when absent)
     alt Mcp-Session-Id header present
-        H->>H: lookup(sid) → 404 if unknown/expired
+        H->>H: sessions.Get(sid) → 404 if unknown/expired  (diskSessionStore when --state-dir → any replica resolves it)
     else method == "initialize"
         H->>D: dispatch(r.Context(), session, msg)
         H->>H: mint Mcp-Session-Id · store(session) · sweep stale sessions/runs
@@ -142,11 +142,27 @@ sequenceDiagram
 
 `run/*` is routed in `handleMCP` **before** `dispatch` (it is HTTP-only — it
 needs the `h.runs` registry). It passes the same protocol-context gate as
-`tools/*`. The run lives in a goroutine whose context descends from
+`tools/*`. Because it is HTTP-only, the HTTP transport sets `server.asyncRuns`,
+so `initialize` / `server/discover` advertise the family under
+`capabilities.experimental["mhl.run"]` (`{version, methods:[run/start…]}`) and
+each `tools/list` entry carries `_meta.mhl.run` — a client discovers that a long
+pipeline must use `run/start` instead of a blocking `tools/call`. Over stdio,
+where `run/*` is not routed, neither is present. The run lives in a goroutine whose context descends from
 `h.runsCtx`, **not** from `r.Context()`. `runsCtx` is deliberately detached from
 the SIGINT/SIGTERM context (`context.WithoutCancel` in `buildHTTP`): a signal
 alone does not stop an async run — only `drain()` (`runsCancel`, gated by
 `--drain-timeout`) or a per-run `cancel()` (`run/cancel`, shutdown) does.
+
+**Across replicas** (`h.cps.Shared()` — a `--state-dir` on shared storage, or an
+extension store): `execRun` publishes a `RunStatusRec` (state + current step) to
+the store each `OnStep`, so another replica's `run/status` reconstructs a
+`working` run it never started and its `run/cancel` writes a `cancel` flag under
+`run/<id>/` that the owning replica observes (a 1 s `watchRemoteCancel` poll +
+each step boundary) and turns into a local `cancel()`. `reconstructRun` falls
+back to the status record when there is no checkpoint (a run without `per_step`
+still working elsewhere); such a run is marked `remote` and `run/status`
+re-reads the record on each poll. The `h.runs` registry itself stays
+process-local.
 
 ```mermaid
 sequenceDiagram
@@ -239,7 +255,7 @@ written to the server's stderr diagnostics sink.
 (the historical `Authorization: Bearer <--token>` check, principal `""`) or —
 with `--principal-header` — `trustedHeader`, which requires that bearer check to
 pass *and then* reads the principal from the named header (set by an upstream
-authorizer; see `sample/cloud/README.md`). serve.go refuses `--principal-header`
+authorizer; see `tests/cloud/README.md`). serve.go refuses `--principal-header`
 without `--token`.
 
 `rn.owner` = `httpServer.ownerOf(session)` — `sha256("principal:"+p)` when the
@@ -272,6 +288,14 @@ small JSON file (`tmp` + `rename`) per completed step, sized by the pipeline's
 variable state. `run/status` on a live run stays a pure in-memory read; disk
 is touched only on `run/resume` or a status poll after the registry entry is
 gone.
+
+A caller `--state-dir` also puts **protocol sessions** on shared storage:
+`diskSessionStore` (`store.go`) writes one JSON file per id under
+`<runsDir>/.mhl/state/sessions/`, so an `Mcp-Session-Id` minted by `initialize`
+on one replica is a resolvable session on any other pointed at the same dir —
+no forced re-`initialize`, and a `run/start` on pod A is visible to
+`run/status` on pod B using that same session (the owner check then runs as
+usual). No `--state-dir` keeps `memSessionStore` (process-local).
 
 **External store (Phase 3a).** When the workflow directory declares one
 `extension store <Name> { dir: ... }`, `mhl serve mcp --http` binds that

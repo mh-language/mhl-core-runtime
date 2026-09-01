@@ -1,7 +1,0 @@
-mhl serve mcp --http: note: no --state-dir/MHL_SERVE_STATE_DIR and no `extension store` — async run state is per-process and lost on restart
-mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/sample/cloud/tests_mcp_pods/CENARIO-011/../.. on http://127.0.0.1:8732/mcp
-{"time":"2026-08-31T15:17:40.33234-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"2df5752c88d620afde077b2214694f0d","owner":"c66916e219a864bdf01e26b5b6c21b1bcacffa93d32100d6bc34fc3b387e9b59","tool":"DocPipeline","resume":false}
-session: 2df5752c88d620afde077b2214694f0d
-step: Draft
-step: Review
-{"time":"2026-08-31T15:17:41.349759-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"2df5752c88d620afde077b2214694f0d","owner":"c66916e219a864bdf01e26b5b6c21b1bcacffa93d32100d6bc34fc3b387e9b59","tool":"DocPipeline","durationMs":1017,"steps":2}

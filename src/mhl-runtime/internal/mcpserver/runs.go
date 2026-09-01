@@ -53,6 +53,12 @@ type asyncRun struct {
 	// run/logs. A run reconstructed from disk after a restart has an empty one
 	// (its output happened in the previous process).
 	logs *ringLog
+	// remote is true for a run this replica did not start: it was rebuilt by
+	// reconstructRun from the shared store (a checkpoint, or a live status
+	// record published by the replica that is running it). run/status refreshes
+	// it from the store on each poll; run/cancel signals through the store
+	// instead of calling a local cancel func.
+	remote bool
 
 	mu        sync.Mutex
 	state     string // "queued" | "working" | "completed" | "failed" | "canceled"
@@ -121,6 +127,7 @@ func (h *httpServer) launch(ctx context.Context, rn *asyncRun, resume bool) {
 		rn.mu.Lock()
 		rn.state, rn.updated = "working", time.Now()
 		rn.mu.Unlock()
+		h.publishRunStatus(rn)
 		go func() {
 			defer release()
 			h.execRun(ctx, rn, resume)
@@ -130,6 +137,7 @@ func (h *httpServer) launch(ctx context.Context, rn *asyncRun, resume bool) {
 	rn.mu.Lock()
 	rn.state, rn.updated = "queued", time.Now()
 	rn.mu.Unlock()
+	h.publishRunStatus(rn)
 	h.srv.logEvent(slog.LevelInfo, "run queued",
 		"runId", rn.id, "owner", string(rn.owner), "tool", rn.tool.Name)
 	go h.waitAndRun(ctx, rn, resume)
@@ -158,8 +166,84 @@ func (h *httpServer) waitAndRun(ctx context.Context, rn *asyncRun, resume bool) 
 	}
 	rn.state, rn.updated = "working", time.Now()
 	rn.mu.Unlock()
+	h.publishRunStatus(rn)
 	defer release()
 	h.execRun(ctx, rn, resume)
+}
+
+// publishRunStatus writes rn's current status to the shared checkpoint store so
+// another replica's run/status can see progress it did not itself produce. A
+// no-op unless the store is shared between replicas.
+func (h *httpServer) publishRunStatus(rn *asyncRun) {
+	if !h.cps.Shared() {
+		return
+	}
+	rn.mu.Lock()
+	rec := RunStatusRec{
+		Tool: rn.tool.Name, State: rn.state, Step: rn.step,
+		StepIndex: rn.stepIndex, StepTotal: rn.stepTotal,
+		Reached:   append([]string(nil), rn.reached...),
+		Resumable: rn.resumable, Error: rn.errMsg,
+		StartedAt: rn.started, UpdatedAt: rn.updated,
+	}
+	rn.mu.Unlock()
+	_ = h.cps.WriteStatus(rn.id, rec)
+}
+
+// watchRemoteCancel polls the shared store for a distributed run/cancel while rn
+// executes on this replica, and cancels its context when it sees one — so a
+// cancel issued at another replica reaches this goroutine. Stops when stop is
+// closed. A no-op unless the store is shared.
+func (h *httpServer) watchRemoteCancel(rn *asyncRun, stop <-chan struct{}) {
+	if !h.cps.Shared() {
+		return
+	}
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			if !h.cps.CancelRequested(rn.id) {
+				continue
+			}
+			rn.mu.Lock()
+			if rn.state == "working" {
+				rn.state, rn.updated = "canceled", time.Now()
+			}
+			rn.mu.Unlock()
+			rn.cancel()
+			return
+		}
+	}
+}
+
+// refreshRemote re-reads a reconstructed run's published status so repeated
+// run/status polls reflect progress made on the owning replica. A local
+// run/cancel already recorded on this replica wins over a stale "working".
+func (h *httpServer) refreshRemote(rn *asyncRun) {
+	if rn == nil || !rn.remote {
+		return
+	}
+	rec, ok := h.cps.ReadStatus(rn.id)
+	if !ok {
+		return
+	}
+	rn.mu.Lock()
+	if rn.state != "canceled" {
+		rn.state = rec.State
+	}
+	rn.step, rn.stepIndex, rn.stepTotal = rec.Step, rec.StepIndex, rec.StepTotal
+	if len(rec.Reached) > 0 {
+		rn.reached = append([]string(nil), rec.Reached...)
+	}
+	rn.resumable = rec.Resumable
+	rn.errMsg = rec.Error
+	if !rec.UpdatedAt.IsZero() {
+		rn.updated = rec.UpdatedAt
+	}
+	rn.mu.Unlock()
 }
 
 // handleRun dispatches this server's run/* async-execution extension. The
@@ -293,10 +377,17 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	defer close(rn.done)
 	defer rn.cancel()
 
+	// A cancel issued at another replica lands as a flag in the shared store;
+	// this goroutine is what turns it into a ctx cancel here.
+	stopWatch := make(chan struct{})
+	defer close(stopWatch)
+	go h.watchRemoteCancel(rn, stopWatch)
+
 	start := time.Now()
 	w := rn.tool
 	h.srv.logEvent(slog.LevelInfo, "run started",
 		"runId", rn.id, "owner", string(rn.owner), "tool", w.Name, "resume", resume)
+	h.publishRunStatus(rn)
 
 	var stateStore runtime.StateStore
 	if h.store != nil {
@@ -322,6 +413,17 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 			rn.reached = append(rn.reached, step)
 			rn.updated = time.Now()
 			rn.mu.Unlock()
+			h.publishRunStatus(rn)
+			// Step boundary: honour a distributed cancel even if the 1s
+			// watcher tick has not landed yet.
+			if h.cps.Shared() && h.cps.CancelRequested(rn.id) {
+				rn.mu.Lock()
+				if rn.state == "working" {
+					rn.state, rn.updated = "canceled", time.Now()
+				}
+				rn.mu.Unlock()
+				rn.cancel()
+			}
 		},
 	})
 
@@ -356,8 +458,11 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		"runId", rn.id, "owner", string(rn.owner), "tool", w.Name,
 		"durationMs", dur.Milliseconds(), "steps", steps)
 
-	// A clean finish clears its own checkpoint (runtime does that); drop the
-	// now-empty state dir. A stopped run keeps it for run/resume.
+	// Publish the terminal state so another replica's run/status stops seeing
+	// "working". A clean finish then clears its own checkpoint (runtime does
+	// that) and we drop the now-empty state dir — which also removes the status
+	// / cancel markers. A stopped run keeps them for run/resume.
+	h.publishRunStatus(rn)
 	if terminal == "completed" {
 		_ = h.cps.Remove(rn.id)
 	}
@@ -369,6 +474,7 @@ func (h *httpServer) runStatus(sess *session, msg rpcMsg) *rpcMsg {
 	if rn == nil {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", id))
 	}
+	h.refreshRemote(rn) // a reconstructed run advances on the owning replica
 	return h.srv.replyResult(sess, msg.ID, h.runViewFor(rn))
 }
 
@@ -403,7 +509,14 @@ func (h *httpServer) runCancel(sess *session, msg rpcMsg) *rpcMsg {
 	if rn == nil {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", id))
 	}
-	rn.cancel() // wakes a queued run's waitAndRun, which finishes the cancel
+	if rn.remote {
+		// The goroutine runs on another replica — signal it through the shared
+		// store; watchRemoteCancel / the step boundary there stop it. (Still
+		// gated by ownership above; this is coordination, not a new grant.)
+		_ = h.cps.RequestCancel(rn.id)
+	} else {
+		rn.cancel() // wakes a queued run's waitAndRun, which finishes the cancel
+	}
 	rn.mu.Lock()
 	if rn.state == "working" || rn.state == "queued" {
 		rn.state, rn.updated = "canceled", time.Now()
@@ -453,13 +566,16 @@ func (h *httpServer) ownedRun(id string, sess *session) *asyncRun {
 	return rn
 }
 
-// reconstructRun rebuilds an asyncRun from on-disk checkpoint state for a run
-// that is no longer in the registry (swept, or a fresh process after a
-// restart). It returns nil when there is no resumable state, or when a
-// persisted owner (CheckpointStore.WriteOwner) does not match ownerK — a run
-// started by another principal is not reclaimable. When no owner was persisted
-// (a pre-Phase-2 run, or an anonymous "" owner) it is claimed for ownerK, the
-// historical behaviour.
+// reconstructRun rebuilds an asyncRun for a run that is not in this replica's
+// registry: it was swept, or a restart lost it, or it is executing on another
+// replica right now. It works from a resumable checkpoint, or — when there is
+// none yet (a run without per_step still working elsewhere) — from the live
+// status record the owning replica publishes each step boundary.
+//
+// It returns nil when there is nothing to rebuild from, or when a persisted
+// owner (CheckpointStore.WriteOwner) does not match ownerK. When no owner was
+// persisted (a session-hash owner, or an anonymous "" one) the run is claimed
+// for ownerK, the historical behaviour.
 func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 	if id == "" {
 		return nil
@@ -467,29 +583,56 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 	if persisted, ok := h.cps.ReadOwner(id); ok && persisted != ownerK {
 		return nil
 	}
-	cp, ok := h.cps.Load(id)
+
+	if cp, ok := h.cps.Load(id); ok {
+		w, ok := h.srv.tools[cp.Pipeline]
+		if !ok {
+			return nil
+		}
+		rn := &asyncRun{
+			id: id, owner: ownerK, tool: w, args: map[string]any{},
+			started: cp.SavedAt, updated: cp.SavedAt,
+			cancel: func() {}, done: make(chan struct{}),
+			logs:      newRingLog(), // empty: this run's output was in a prior process
+			remote:    true,
+			state:     "failed",
+			step:      cp.NextStep,
+			stepTotal: len(w.Pipeline.Steps),
+			reached:   append([]string(nil), cp.CompletedSteps...),
+			resumable: true,
+		}
+		// A newer live status (e.g. it is working again on another replica)
+		// overrides the checkpoint-derived snapshot.
+		h.runs.Put(rn)
+		h.refreshRemote(rn)
+		return rn
+	}
+
+	// No checkpoint — try the live status record.
+	rec, ok := h.cps.ReadStatus(id)
 	if !ok {
 		return nil
 	}
-	w, ok := h.srv.tools[cp.Pipeline]
+	w, ok := h.srv.tools[rec.Tool]
 	if !ok {
 		return nil
 	}
 	rn := &asyncRun{
-		id:        id,
-		owner:     ownerK,
-		tool:      w,
-		args:      map[string]any{},
-		started:   cp.SavedAt,
-		updated:   cp.SavedAt,
-		cancel:    func() {}, // replaced by runResume before any goroutine runs
-		done:      make(chan struct{}),
-		logs:      newRingLog(), // empty: this run's output was in a prior process
-		state:     "failed",
-		step:      cp.NextStep,
-		stepTotal: len(w.Pipeline.Steps),
-		reached:   append([]string(nil), cp.CompletedSteps...),
-		resumable: true,
+		id: id, owner: ownerK, tool: w, args: map[string]any{},
+		started: rec.StartedAt, updated: rec.UpdatedAt,
+		cancel: func() {}, done: make(chan struct{}),
+		logs:      newRingLog(),
+		remote:    true,
+		state:     rec.State,
+		step:      rec.Step,
+		stepIndex: rec.StepIndex,
+		stepTotal: rec.StepTotal,
+		reached:   append([]string(nil), rec.Reached...),
+		resumable: rec.Resumable,
+		errMsg:    rec.Error,
+	}
+	if rn.state == "" {
+		rn.state = "working"
 	}
 	h.runs.Put(rn)
 	return rn
