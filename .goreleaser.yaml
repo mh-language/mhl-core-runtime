@@ -32,6 +32,13 @@ archives:
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
+  # The VS Code extension is built in the workflow before this step runs
+  # (npm run compile && vsce package), not by a GoReleaser `build` — folding
+  # it in here is what gets it a checksums.txt entry at all. Without this,
+  # install.sh / install.ps1's `grep … checksums.txt` finds nothing and skip
+  # the extension even though the release does carry the .vsix.
+  extra_files:
+    - glob: ./vscode-mhl/*.vsix
 
 changelog:
   # Use GitHub's own "Generate release notes" API for the release body.
@@ -39,3 +46,9 @@ changelog:
 
 release:
   draft: false
+  # Upload the pre-built .vsix as a release asset in the same GoReleaser pass
+  # that writes checksums.txt (see checksum.extra_files above) — one atomic
+  # step instead of the workflow's separate `gh release upload` afterward,
+  # which attached the file but never recorded its checksum.
+  extra_files:
+    - glob: ./vscode-mhl/*.vsix

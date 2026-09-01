@@ -41,16 +41,14 @@ jobs:
           npx --yes @vscode/vsce package
 
       - name: Run GoReleaser
+        # Uploads the .vsix built above as a release asset AND folds its
+        # checksum into checksums.txt in this one pass (see
+        # .goreleaser.yaml's release.extra_files / checksum.extra_files) — no
+        # separate `gh release upload` step needed, and none that would leave
+        # the .vsix attached but unchecksummed.
         uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Attach VS Code extension to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          vsix=$(ls vscode-mhl/*.vsix | head -n1)
-          gh release upload "${GITHUB_REF_NAME}" "$vsix"
