@@ -70,6 +70,29 @@ pipeline P {
 	}
 }
 
+// The fan-out form lints clean: the `for item in ...` loop variable is in
+// scope for the prompt, and the handle-array name is a known `wait` target.
+func TestSpawnFanOutCleanPipeline(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer { command: "echo" args: ["ok"] }
+
+pipeline P {
+    spawn: { max_concurrency: 2 }
+    step S {
+        var angles = ["a", "b"]
+        spawn reviews = Reviewer.run(prompt: "on ${item}") for item in angles
+        wait reviews timeout: 30s
+        log(reviews.size())
+    }
+}
+`)
+	if findings := lint.File(main); len(findings) != 0 {
+		t.Fatalf("expected no findings, got %+v", findings)
+	}
+}
+
 func TestSpawnRejectedInToolMethod(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")

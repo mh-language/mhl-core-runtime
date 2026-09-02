@@ -10,6 +10,14 @@ Per-tag release notes are also generated automatically on the
 
 ## [1.2.0-alpha] — Unreleased
 
+### Breaking
+
+- **The module-import keyword is now `import`, not `use`.** The grammar is
+  `import { Name [as Alias], ... } from "file.mh"` — semantics, transitive
+  resolution, and `export` gating are unchanged. Existing `.mh` files must
+  rename `use { ... } from "..."` to `import { ... } from "..."`; `use` is no
+  longer recognised.
+
 ### Added
 
 - **`mhl serve mcp --http [--addr host:port] [--token t] [dir]`.** The MCP
@@ -49,6 +57,17 @@ Per-tag release notes are also generated automatically on the
   `MHL_SERVE_STATE_DIR` the run state is persistent, so `run/status` and
   `run/resume` work for a `runId` a **later process** never started;
   without it, run state is per-process and lost on restart.
+- **`spawn` fan-out: `spawn xs = Agent.run(...) for item in <array>`.** A
+  trailing `for <var> in <expr>` clause on a `spawn` starts one background
+  agent call per element of the array `<expr>`, with `<var>` bound to that
+  element while each call's arguments are built — so every call can carry a
+  distinct prompt. The bound name holds an array of task handles in element
+  order: it indexes (`xs[0].result`), iterates (`for (var h in xs) …`), and
+  reports `xs.size()` like any array, and `wait xs` / `wait any xs` /
+  `wait N of xs` expands it to its elements. A non-array iterable is a
+  runtime error; an empty array yields an empty handle array that a plain
+  `wait` no-ops on. The run-wide `spawn: { max_concurrency: N }` ceiling
+  still bounds how many calls are in flight.
 
 ## [1.1.0-alpha] — 2026-08-30
 

@@ -221,7 +221,11 @@ func (r *spawnRegistry) drainAtStepEnd(out io.Writer, cancelPending bool) {
 }
 
 // execSpawn runs a `spawn name = Agent.run(...)` statement: it validates the
-// context and target, starts the background call, and binds the handle.
+// context and target, starts the background call, and binds the handle. With
+// a trailing `for <var> in <expr>` clause it fans out — one background call
+// per element of the array <expr>, with <var> bound to that element while the
+// call's arguments are built — and binds name to an []any of the handles in
+// element order.
 func execSpawn(ctx *evalCtx, stmt *ast.SpawnStmt) error {
 	if ctx.spawns == nil {
 		return fmt.Errorf("spawn is only valid inside a pipeline step")
@@ -233,7 +237,36 @@ func execSpawn(ctx *evalCtx, stmt *ast.SpawnStmt) error {
 	if !ok {
 		return fmt.Errorf("spawn %q: right-hand side must be an <Agent>.run(...) call", stmt.Name)
 	}
-	ctx.env[stmt.Name] = ctx.spawns.spawn(ctx, name, agent, call, 0)
+
+	if stmt.Iterable == nil {
+		ctx.env[stmt.Name] = ctx.spawns.spawn(ctx, name, agent, call, 0)
+		return nil
+	}
+
+	iter, err := evalExpr(ctx, stmt.Iterable)
+	if err != nil {
+		return err
+	}
+	items, ok := iter.([]any)
+	if !ok {
+		return fmt.Errorf("spawn %q: `for %s in ...` needs an array, got %s", stmt.Name, stmt.EachVar, typeName(iter))
+	}
+
+	// Each spawn snapshots ctx.env synchronously (deepCopyEnv, before the
+	// goroutine starts), so binding EachVar in place per iteration and
+	// restoring it afterwards is enough to give every handle its own element.
+	prev, had := ctx.env[stmt.EachVar]
+	handles := make([]any, len(items))
+	for i, it := range items {
+		ctx.env[stmt.EachVar] = it
+		handles[i] = ctx.spawns.spawn(ctx, name, agent, call, 0)
+	}
+	if had {
+		ctx.env[stmt.EachVar] = prev
+	} else {
+		delete(ctx.env, stmt.EachVar)
+	}
+	ctx.env[stmt.Name] = handles
 	return nil
 }
 
@@ -265,22 +298,43 @@ func execWait(ctx *evalCtx, stmt *ast.WaitStmt) error {
 	}
 
 	handles := make([]*spawnHandle, 0, len(stmt.Names))
-	seen := make(map[string]bool, len(stmt.Names))
+	seenName := make(map[string]bool, len(stmt.Names))
+	seenHandle := make(map[*spawnHandle]bool, len(stmt.Names))
+	add := func(h *spawnHandle) {
+		if seenHandle[h] {
+			return
+		}
+		seenHandle[h] = true
+		handles = append(handles, h)
+	}
 	for _, n := range stmt.Names {
-		if seen[n] {
+		if seenName[n] {
 			return fmt.Errorf("wait: handle %q listed twice", n)
 		}
-		seen[n] = true
+		seenName[n] = true
 		v, ok := ctx.env[n]
 		if !ok {
 			return fmt.Errorf("wait: %q is not a spawned handle in this step", n)
 		}
-		h, ok := v.(*spawnHandle)
-		if !ok {
+		switch t := v.(type) {
+		case *spawnHandle:
+			add(t)
+		case []any:
+			// A fan-out `spawn xs = ... for i in ...` binds an array of handles.
+			for j, el := range t {
+				h, ok := el.(*spawnHandle)
+				if !ok {
+					return fmt.Errorf("wait: %q[%d] is a %s, not a spawned handle", n, j, typeName(el))
+				}
+				add(h)
+			}
+		default:
 			return fmt.Errorf("wait: %q is a %s, not a spawned handle", n, typeName(v))
 		}
-		handles = append(handles, h)
 	}
+	// An empty fan-out (`spawn xs = ... for x in []`) leaves nothing to join;
+	// waitHandles no-ops on an empty slice, so a plain `wait xs` succeeds. A
+	// `wait N of xs` still fails below on the quorum-vs-count check.
 
 	opts := waitOptions{mode: waitAll}
 	if stmt.Any {

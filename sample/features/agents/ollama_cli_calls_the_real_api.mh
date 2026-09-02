@@ -1,4 +1,4 @@
-use {OllamaCLI} from "fixtures/agents.mh"
+import {OllamaCLI} from "fixtures/agents.mh"
 
 test ollama_cli_calls_the_real_api {
     describe ollama_cli_calls_the_real_api {

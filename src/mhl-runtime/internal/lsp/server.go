@@ -112,7 +112,7 @@ func (s *server) publishDiagnostics(uri string) {
 }
 
 // uriToPath converts a "file://..." document URI into a plain filesystem
-// path. lint.Source only uses this path to resolve relative import/use
+// path. lint.Source only uses this path to resolve relative import
 // targets and to label findings, so a best-effort decode (falling back to
 // stripping the scheme verbatim on a malformed URI) is good enough — it
 // never needs to be a real file handle.

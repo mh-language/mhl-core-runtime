@@ -1,4 +1,4 @@
-use {Echo} from "fixtures/agents.mh"
+import {Echo} from "fixtures/agents.mh"
 
 test prompt_inline_interpolated_string {
     describe prompt_inline_interpolated_string {

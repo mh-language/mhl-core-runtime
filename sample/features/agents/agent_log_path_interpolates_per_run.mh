@@ -1,4 +1,4 @@
-use {MockLoggingCLI} from "fixtures/agents.mh"
+import {MockLoggingCLI} from "fixtures/agents.mh"
 
 // An agent's `log:` path is interpolated for "${...}" spans against the
 // calling scope, just like a `prompt:` string. Here `${run_tag}` resolves to

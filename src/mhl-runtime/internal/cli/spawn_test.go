@@ -231,6 +231,111 @@ pipeline P {
 	}
 }
 
+// `spawn xs = Agent.run(...) for item in <array>` fans out: one background
+// call per element, each with the loop variable bound so the prompt differs,
+// and xs bound to an array of handles that `wait` joins as a group and that
+// indexes / iterates like any array.
+func TestSpawnFanOverArray(t *testing.T) {
+	src := `
+agent Echo { command: "sh" args: ["-c", "printf 'r[%s]' \"$0\""] }
+
+pipeline P {
+    step S {
+        var angles = ["clarity", "risk", "cost"]
+        spawn reviews = Echo.run(prompt: "on ${item}") for item in angles
+        wait reviews timeout: 5s
+        log("count=${reviews.size()}")
+        for (var r in reviews) log("- ${r.result} (${r.status})")
+    }
+}
+`
+	out, err := runSpawn(t, src)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"count=3",
+		"- r[on clarity] (done)",
+		"- r[on risk] (done)",
+		"- r[on cost] (done)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in output:\n%s", want, out)
+		}
+	}
+}
+
+// A fan-out handle array works with `wait N of` and `wait any`, and each
+// element exposes the usual `.result` / `.status` fields.
+func TestSpawnFanQuorum(t *testing.T) {
+	src := `
+agent Slow { command: "sh" args: ["-c", "sleep 30; echo s"] }
+agent Fast { command: "sh" args: ["-c", "echo f"] }
+
+pipeline P {
+    step S {
+        var kinds = ["fast", "fast", "slow"]
+        spawn probes = Fast.run(prompt: "${item}") for item in kinds
+        wait 2 of probes timeout: 10s
+        log("done0=${probes[0].ok} done1=${probes[1].ok}")
+    }
+}
+`
+	start := time.Now()
+	out, err := runSpawn(t, src)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("quorum over a fan-out did not short-circuit")
+	}
+	if !strings.Contains(out, "done0=true done1=true") {
+		t.Fatalf("unexpected handle state:\n%s", out)
+	}
+}
+
+// A fan-out over a non-array value is a runtime error naming the loop var.
+func TestSpawnFanNonArray(t *testing.T) {
+	src := `
+agent A { command: "sh" args: ["-c", "echo a"] }
+
+pipeline P {
+    step S {
+        spawn xs = A.run(prompt: "${item}") for item in "not-an-array"
+        wait xs
+    }
+}
+`
+	_, err := runSpawn(t, src)
+	if err == nil || !strings.Contains(err.Error(), "needs an array") {
+		t.Fatalf("expected a non-array error, got: %v", err)
+	}
+}
+
+// A fan-out over an empty array binds an empty handle array; a plain `wait`
+// on it is a no-op success.
+func TestSpawnFanEmpty(t *testing.T) {
+	src := `
+agent A { command: "sh" args: ["-c", "echo a"] }
+
+pipeline P {
+    step S {
+        var none = []
+        spawn xs = A.run(prompt: "${item}") for item in none
+        wait xs
+        log("size=${xs.size()}")
+    }
+}
+`
+	out, err := runSpawn(t, src)
+	if err != nil {
+		t.Fatalf("empty fan-out wait should succeed: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "size=0") {
+		t.Fatalf("expected an empty handle array:\n%s", out)
+	}
+}
+
 // An unawaited spawn is still joined at step end, with a warning if it
 // failed — it never outlives the step.
 func TestSpawnUnawaitedDrainsAtStepEnd(t *testing.T) {

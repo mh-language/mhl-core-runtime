@@ -1,4 +1,4 @@
-use {Echo} from "fixtures/agents.mh"
+import {Echo} from "fixtures/agents.mh"
 
 prompt Greeting(name: string, lang: string = "en") {
     "hello ${name} (${lang})"

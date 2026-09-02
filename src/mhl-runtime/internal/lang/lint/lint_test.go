@@ -857,7 +857,7 @@ export memory Store {
 }
 `)
 	write(t, filepath.Join(dir, "tool.mh"), `
-use {Store} from "memory.mh"
+import {Store} from "memory.mh"
 
 export tool Counter {
     pending() -> {
@@ -867,7 +867,7 @@ export tool Counter {
 `)
 	main := filepath.Join(dir, "pipeline.mh")
 	write(t, main, `
-use {Counter} from "tool.mh"
+import {Counter} from "tool.mh"
 
 pipeline P {
     step S {
@@ -1635,7 +1635,7 @@ func TestUseMissingFile(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
-use { Foo } from "./missing.mh"
+import { Foo } from "./missing.mh"
 
 pipeline P {
     step S {
@@ -1716,7 +1716,7 @@ export agent Real {
 }
 `)
 	write(t, main, `
-use { Real, Ghost1, Ghost2 } from "./module.mh"
+import { Real, Ghost1, Ghost2 } from "./module.mh"
 
 pipeline P {
     step S {

@@ -41,13 +41,19 @@ pipeline ConcurrentReview {
         log("c => ${c.result}")
     }
 
-    // fan-out over the SAME agent, one spawn per item.
+    // fan-out over the SAME agent: `spawn xs = Agent.run(...) for item in <array>`
+    // starts one background call per element, binding `item` while each call's
+    // arguments are built (so every prompt differs), and binds `xs` to an
+    // array of handles that `wait` joins as a group and that indexes /
+    // iterates like any array.
     step SameAgentFanOut {
-        var items = ["readme", "changelog"]
-        spawn r0 = Fast.run(prompt: "check ${items[0]}")
-        spawn r1 = Fast.run(prompt: "check ${items[1]}")
-        wait r0, r1
-        log("r0.ok=${r0.ok} r1.ok=${r1.ok}")
+        var items = ["readme", "changelog", "license"]
+        spawn checks = Fast.run(prompt: "check ${item}") for item in items
+        wait checks timeout: 10s
+        log("checked ${checks.size()} file(s)")
+        for (var c in checks) {
+            log("- ${c.result} (${c.status})")
+        }
     }
 
     // `on_error: "collect"` keeps the step green and leaves the outcome on

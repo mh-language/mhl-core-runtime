@@ -167,6 +167,7 @@ func walkStmtMatchExprs(s *ast.Statement, fn func(*ast.MatchExpr)) {
 		walkMatchExprs(s.Expr.Expr, fn)
 	case s.Spawn != nil:
 		walkMatchExprs(s.Spawn.Call, fn)
+		walkMatchExprs(s.Spawn.Iterable, fn)
 	case s.If != nil:
 		walkMatchExprs(s.If.Cond, fn)
 		for _, b := range s.If.Then {

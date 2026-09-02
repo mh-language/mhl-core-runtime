@@ -1,5 +1,5 @@
-use {SecurityAuditPrompt} from "fixtures/prompts.mh"
-use {Echo} from "fixtures/agents.mh"
+import {SecurityAuditPrompt} from "fixtures/prompts.mh"
+import {Echo} from "fixtures/agents.mh"
 
 test prompt_renders_declared_template {
     describe prompt_renders_declared_template {

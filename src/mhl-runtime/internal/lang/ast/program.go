@@ -12,7 +12,7 @@ import "github.com/alecthomas/participle/v2/lexer"
 // top-level declarations.
 type Program struct {
 	Decls []*Declaration `parser:"@@*"`
-	// aliases is populated while `use { Name as Alias } from "..."` items are
+	// aliases is populated while `import { Name as Alias } from "..."` items are
 	// resolved. It is intentionally outside the source grammar: aliases are
 	// bindings for the flattened program namespace, not declarations in the
 	// source AST.
@@ -33,7 +33,7 @@ func (p *Program) AliasMap() map[string]string {
 // keyword may precede a declaration to mark it as exported from the module.
 type Declaration struct {
 	Export    bool       `parser:"@'export'?"`
-	Use       *Use       `parser:"( @@"`
+	Import    *Import    `parser:"( @@"`
 	Prompt    *Prompt    `parser:"| @@"`
 	Extension *Extension `parser:"| @@"`
 	Agent     *Agent     `parser:"| @@"`
@@ -81,25 +81,25 @@ type TypeAlias struct {
 	Type *TypeExpr `parser:"@@"`
 }
 
-// Use selectively imports named symbols from another module. Each imported
+// Import selectively imports named symbols from another module. Each imported
 // symbol may optionally receive a local alias:
 //
-//	use { SecurityAudit as audit } from "./prompts/seguranca.mh"
-type Use struct {
+//	import { SecurityAudit as audit } from "./prompts/seguranca.mh"
+type Import struct {
 	Pos   lexer.Position
-	Items []*UseItem `parser:"'use' '{' @@ ( ',' @@ )* '}'"`
-	Path  string     `parser:"'from' @String"`
+	Items []*ImportItem `parser:"'import' '{' @@ ( ',' @@ )* '}'"`
+	Path  string        `parser:"'from' @String"`
 }
 
-// UseItem is one selectively imported symbol and its optional local alias.
-type UseItem struct {
+// ImportItem is one selectively imported symbol and its optional local alias.
+type ImportItem struct {
 	Name  string `parser:"@Ident"`
 	Alias string `parser:"( 'as' @Ident )?"`
 }
 
-// Names returns the source names in a use clause. Keeping this helper avoids
+// Names returns the source names in an import clause. Keeping this helper avoids
 // making import diagnostics and resolution logic depend on the AST layout.
-func (u *Use) Names() []string {
+func (u *Import) Names() []string {
 	names := make([]string, 0, len(u.Items))
 	for _, item := range u.Items {
 		names = append(names, item.Name)

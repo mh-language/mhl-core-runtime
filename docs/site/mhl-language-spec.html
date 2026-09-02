@@ -242,7 +242,7 @@ export tool Text {
 }
 
 // main.mh
-use {Greeting, Text as TextUtil} from "shared.mh"
+import {Greeting, Text as TextUtil} from "shared.mh"
 pipeline Welcome {
     input name: string
     step Say {
@@ -250,7 +250,7 @@ pipeline Welcome {
         log(TextUtil.upper("ready"))
     }
 }</code></pre>
-<p><code>use</code> imports an explicit list of exported names, optionally assigning a local alias. Imports are resolved transitively and flattened into the current program namespace; there is no namespace-qualified import syntax. Duplicate names, missing files, non-exported names, and alias collisions are static errors.</p>
+<p><code>import</code> imports an explicit list of exported names, optionally assigning a local alias. Imports are resolved transitively and flattened into the current program namespace; there is no namespace-qualified import syntax. Duplicate names, missing files, non-exported names, and alias collisions are static errors.</p>
 </section>
 
 <section class="feature doc-section" id="declarations">
@@ -496,12 +496,17 @@ Events.append({event: "started", at: time.now()})</code></pre>
 <h3>15.4 Parallel groups and spawned agents</h3>
 <pre class="code-block"><code class="language-mhl">pipeline Review {
     input diff: string
+    input changed_files: string[]
     spawn: {max_concurrency: 4}
     step Analyze {
         spawn code = Code.run(prompt: diff)
         spawn security = Security.run(prompt: diff)
         wait code, security timeout: 90s
         log(code.result, security.result)
+
+        spawn reviews = Reviewer.run(prompt: "review ${file}") for file in changed_files
+        wait reviews timeout: 90s
+        for (var r in reviews) log(r.status, r.result)
     }
     parallel Gather timeout 2m {
         step Docs { docs = DocsAgent.run(prompt: diff) }
@@ -509,6 +514,7 @@ Events.append({event: "started", at: time.now()})</code></pre>
     }
 }</code></pre>
 <p><code>spawn</code> is valid directly inside a step and only accepts an <code>Agent.run(...)</code> call. It returns a task handle with <code>result</code>, <code>ok</code>, <code>error</code>, <code>status</code>, and <code>duration_ms</code>. <code>wait names</code> waits for all and fails fast; <code>wait any names</code> returns on the first success; <code>wait N of names</code> returns after N successes. The optional <code>timeout:</code> bounds the wait, and <code>on_error: "collect"</code> keeps errors inspectable rather than failing the step. Unjoined handles are drained at step end and cannot outlive a checkpoint.</p>
+<p>A trailing <code>for &lt;var&gt; in &lt;expr&gt;</code> clause makes <code>spawn</code> a fan-out: <code>&lt;expr&gt;</code> is evaluated once and must be an array; the <code>Agent.run(...)</code> call is started once per element with <code>&lt;var&gt;</code> bound to that element while its argument expressions are evaluated, so each call may carry a distinct prompt. The bound name then holds an array of task handles in element order. It indexes and iterates as an ordinary array (<code>xs[0].result</code>, <code>for (var h in xs) …</code>, <code>xs.size()</code>), and a <code>wait</code> naming it — <code>wait xs</code>, <code>wait any xs</code>, <code>wait N of xs</code> — expands it to its elements. A non-array <code>&lt;expr&gt;</code> is a runtime error; an empty array yields an empty handle array on which a plain <code>wait</code> is a no-op. <code>max_concurrency</code> continues to bound the number of concurrent calls.</p>
 <p>A named <code>parallel</code> group is a barrier: all branches run concurrently and the pipeline advances only after all complete. Each branch receives a copy of shared pipeline variables; conflicting writes fail. Output is merged in declaration order. A group timeout cancels unfinished branches. <code>goto</code> cannot target or appear within a group, and <code>break</code> is not permitted in one.</p>
 </section>
 
@@ -595,7 +601,7 @@ var-declaration ::= "var" Identifier "=" expression
 mem-declaration ::= "mem" Identifier "=" expression
 assignment     ::= lvalue ("=" | "+=") expression
 lvalue         ::= Identifier trailer*
-spawn          ::= "spawn" Identifier "=" expression
+spawn          ::= "spawn" Identifier "=" expression ["for" Identifier "in" expression]
 wait           ::= "wait" ["any" | Number "of"] Identifier ("," Identifier)* wait-option*
 wait-option    ::= ("timeout" | "on_error") ":" expression
 try-statement  ::= "try" block "catch" ["(" Identifier ")"] block ["finally" block]

@@ -148,7 +148,7 @@ pipeline P {
 }
 
 // TestRunWithDynamicPromptAcrossImport confirms an `export prompt` declared
-// in one module and pulled in via `use { Name } from "..."` is resolved and
+// in one module and pulled in via `import { Name } from "..."` is resolved and
 // rendered exactly like a locally declared prompt.
 func TestRunWithDynamicPromptAcrossImport(t *testing.T) {
 	dir := t.TempDir()
@@ -162,7 +162,7 @@ export prompt Greeting(name: string) {
 	}
 	main := filepath.Join(dir, "main.mh")
 	if err := os.WriteFile(main, []byte(`
-use { Greeting } from "./module.mh"
+import { Greeting } from "./module.mh"
 
 agent Echo {
     command: "echo"

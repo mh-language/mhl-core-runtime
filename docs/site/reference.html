@@ -80,9 +80,9 @@
           <div class="tip-row"><span>RELATED GUIDE</span><p>Need to add a capability that is not built in? Read <a href="extensions.html">Extending the runtime</a> for manifests, the process protocol, permissions, and installation.</p></div>
         </section>
 
-        <section class="feature doc-section" id="program" data-title="program modules use export alias files">
+        <section class="feature doc-section" id="program" data-title="program modules import export alias files">
           <div class="feature-head"><h2><span class="feature-num">01</span>Programs and modules</h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">A program is a sequence of top-level declarations. Mark a declaration <code>export</code> to publish it, and <code>use { ... } from "file.mh"</code> to bring named declarations in from another file, optionally under a local alias. <code>use</code> is the only cross-file mechanism.</p>
+          <p class="feature-lede">A program is a sequence of top-level declarations. Mark a declaration <code>export</code> to publish it, and <code>import { ... } from "file.mh"</code> to bring named declarations in from another file, optionally under a local alias. <code>import</code> is the only cross-file mechanism.</p>
 
           <p class="block-label">TWO-FILE EXAMPLE</p>
           <div class="file-example">
@@ -94,7 +94,7 @@
 export prompt Greeting(name: string) {
     "Hello, ${name}!"
 }</code></pre></div>
-            <div><span>main.mh</span><pre class="code-block"><code class="language-mhl">use {Echo, Greeting as Hello}
+            <div><span>main.mh</span><pre class="code-block"><code class="language-mhl">import {Echo, Greeting as Hello}
     from "shared.mh"
 
 pipeline Welcome {
@@ -109,10 +109,10 @@ pipeline Welcome {
           <div class="reference-table">
             <div class="table-row table-head"><span>Form</span><span>Syntax</span><span>When to use it</span></div>
             <div class="table-row"><span>Export</span><code>export prompt Name(...) { ... }</code><span>Make a declaration reusable.</span></div>
-            <div class="table-row"><span>Import names</span><code>use {A, B} from "file.mh"</code><span>Bring in explicit contracts only.</span></div>
-            <div class="table-row"><span>Local alias</span><code>use {LongName as Short} from "file.mh"</code><span>Avoid collisions and improve readability.</span></div>
+            <div class="table-row"><span>Import names</span><code>import {A, B} from "file.mh"</code><span>Bring in explicit contracts only.</span></div>
+            <div class="table-row"><span>Local alias</span><code>import {LongName as Short} from "file.mh"</code><span>Avoid collisions and improve readability.</span></div>
           </div>
-          <div class="tip-row"><span>NOTE</span><p><code>use</code> merges the target file's declarations into the program's flat namespace (transitively — a used file's own <code>use</code>s come along), so a name resolves the same however it arrived. There is no namespace-qualified import.</p></div>
+          <div class="tip-row"><span>NOTE</span><p><code>import</code> merges the target file's declarations into the program's flat namespace (transitively — an imported file's own <code>import</code>s come along), so a name resolves the same however it arrived. There is no namespace-qualified import.</p></div>
         </section>
 
         <section class="feature doc-section" id="syntax" data-title="syntax types string number bool null arrays objects duration comments input type alias">
@@ -640,7 +640,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
           <div class="tip-row"><span>STATELESS</span><p>Every method is one or more independent requests with no session between them; a blocking <code>.send</code> that polls keeps no state beyond the task id. A credential that fails to resolve aborts the call before any request. Streaming (<code>message/stream</code>) and push notifications are not implemented yet.</p></div>
         </section>
 
-        <section class="feature doc-section" id="pipeline" data-title="pipeline workflow input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in">
+        <section class="feature doc-section" id="pipeline" data-title="pipeline workflow input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in for item in each spawn over collection array of handles">
           <div class="feature-head"><h2><span class="feature-num">12</span><code>pipeline</code> and <code>workflow</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in declared order. <code>pipeline</code> keeps that order — <code>goto</code> is a lint error. <code>workflow</code> is the same in every other way but allows <code>goto &lt;step&gt;</code>, forward or backward, so its steps form an explicitly branching state machine. Either takes the <code>loop</code> prefix.</p>
 
@@ -725,6 +725,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
           <p class="block-label">CONCURRENT SUB-AGENTS IN A STEP</p>
           <pre class="code-block"><code class="language-mhl">pipeline Review {
     input diff: string
+    input changed_files: string[]
 
     spawn: { max_concurrency: 4 }   // run-wide ceiling; default 4
 
@@ -740,6 +741,15 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
 
         log(rev.result)
         if (!tests.ok) log("tests failed: ${tests.error}")
+    }
+
+    step FanOut {
+        // one spawn per element: `item` is bound while each call's arguments
+        // are built, so every prompt differs. `reviews` is an array of task
+        // handles — `wait` joins it as a group; it indexes and iterates.
+        spawn reviews = Reviewer.run(prompt: "review file ${item}") for item in changed_files
+        wait reviews timeout: 90s                // or `wait any reviews` / `wait 2 of reviews`
+        for (var r in reviews) log("${r.status}: ${r.result}")
     }
 }</code></pre>
           <p class="block-label">CONCURRENT STEPS (BARRIER)</p>
@@ -771,12 +781,12 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
             <div><b><code>goto</code></b><span>jump to another step (<code>workflow</code> only), forward or backward</span></div>
             <div><b><code>break</code></b><span>clean early stop with an optional reason; keeps the run's results (exit 0)</span></div>
             <div><b><code>pause</code></b><span>suspend for a human-in-the-loop resume; keeps the checkpoint, re-enters this step on <code>--resume</code></span></div>
-            <div><b><code>spawn</code></b><span>start an <code>Agent.run(...)</code> in the background; binds a <code>task</code> handle (<code>.result</code>, <code>.ok</code>, <code>.error</code>, <code>.status</code>, <code>.duration_ms</code>)</span></div>
-            <div><b><code>wait</code></b><span>join handles — all (fail-fast), <code>any</code> (first success), or <code>N of</code> (quorum); options <code>timeout:</code> and <code>on_error: "collect"</code></span></div>
+            <div><b><code>spawn</code></b><span>start an <code>Agent.run(...)</code> in the background; binds a <code>task</code> handle (<code>.result</code>, <code>.ok</code>, <code>.error</code>, <code>.status</code>, <code>.duration_ms</code>). A trailing <code>for &lt;item&gt; in &lt;array&gt;</code> fans out — one call per element, each with its own prompt — and binds an <em>array</em> of handles</span></div>
+            <div><b><code>wait</code></b><span>join handles — all (fail-fast), <code>any</code> (first success), or <code>N of</code> (quorum); a fan-out array name expands to its elements; options <code>timeout:</code> and <code>on_error: "collect"</code></span></div>
           </div>
           <div class="tip-row"><span>LIMITS</span><p>For loops, always prefer an observable <code>stop_when</code> plus <code>max_iterations</code> as a safety ceiling. Step-local variables are not visible to <code>stop_when</code>; use <code>mem</code> or <code>memory</code>.</p></div>
           <div class="tip-row"><span>TIMEOUT</span><p>A <code>step &lt;Name&gt; timeout &lt;duration&gt; { … }</code> clause caps how long that step may run — <code>step Build timeout 3m { … }</code>. The runtime wraps the step's context with that deadline, so every blocking call it makes (an agent, <code>http</code>, <code>cmd</code>, an extension) is aborted when it elapses; the step then fails exactly as an explicit <code>fail()</code> would, so a <code>checkpoint</code> block still lets <code>--resume</code> / <code>run/resume</code> re-enter the step — with a <em>fresh</em> budget (the duration is per attempt, never persisted). The same clause on a <code>parallel &lt;Name&gt; timeout &lt;duration&gt; { … }</code> group bounds the whole barrier and cancels every still-running branch; a branch may also carry its own <code>timeout</code>, and the earliest deadline wins. A purely non-blocking runaway (a spinning <code>while</code>) is still bounded by <code>max_iterations</code> / the interpreter's loop cap, not by this.</p></div>
-          <div class="tip-row"><span>SPAWN</span><p><code>spawn</code>/<code>wait</code> are step-scoped: any handle not joined by a <code>wait</code> is joined automatically when the step ends, so nothing runs across a checkpoint. If the process dies mid-step, <code>--resume</code> re-runs the whole step and re-issues every <code>spawn</code> — keep them idempotent (or give the agent a <code>cache</code>). A spawned agent cannot itself <code>spawn</code>, and an agent's <code>log:</code> file is ignored under <code>spawn</code> (its output goes to the step log instead).</p></div>
+          <div class="tip-row"><span>SPAWN</span><p><code>spawn</code>/<code>wait</code> are step-scoped: any handle not joined by a <code>wait</code> is joined automatically when the step ends, so nothing runs across a checkpoint. If the process dies mid-step, <code>--resume</code> re-runs the whole step and re-issues every <code>spawn</code> — keep them idempotent (or give the agent a <code>cache</code>). A spawned agent cannot itself <code>spawn</code>, and an agent's <code>log:</code> file is ignored under <code>spawn</code> (its output goes to the step log instead). The fan-out form <code>spawn xs = Agent.run(...) for item in &lt;array&gt;</code> starts one background call per element with <code>item</code> bound while that call's arguments are evaluated, and binds <code>xs</code> to an array of handles in element order — index it (<code>xs[0].result</code>), iterate it (<code>for (var h in xs) …</code>), take its <code>.size()</code>, and <code>wait xs</code> / <code>wait any xs</code> / <code>wait N of xs</code>. A non-array iterable is a runtime error; an empty array binds an empty handle array that a plain <code>wait</code> no-ops on. The run-wide <code>max_concurrency</code> still bounds how many are in flight, so fanning out over a large collection is safe.</p></div>
           <div class="tip-row"><span>PARALLEL</span><p>A <code>parallel &lt;Name&gt; { … }</code> group runs its steps concurrently and joins them all before the pipeline advances — the step-level counterpart of <code>spawn</code> (which parallelises agent calls <em>within</em> one step). Each branch gets its own copy of the pipeline vars; on join, the writes are merged back, and a var two branches set to <em>different</em> values fails the run — so the outcome is deterministic. Branch output is buffered and printed in declared order. The group is atomic for checkpointing: a crash re-runs the whole group on <code>--resume</code>, so branch steps must stay idempotent. <code>goto</code> may not target a grouped step or be used from within one, and <code>break</code> may not be used from within one.</p></div>
         </section>
 

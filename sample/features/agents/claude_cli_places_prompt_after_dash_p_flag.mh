@@ -1,4 +1,4 @@
-use {MockClaudeCLI} from "fixtures/agents.mh"
+import {MockClaudeCLI} from "fixtures/agents.mh"
 
 test claude_cli_places_prompt_after_dash_p_flag {
     describe claude_cli_places_prompt_after_dash_p_flag {

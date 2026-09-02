@@ -1,4 +1,4 @@
-use {MockGeminiStructuredAPI} from "fixtures/agents.mh"
+import {MockGeminiStructuredAPI} from "fixtures/agents.mh"
 
 test gemini_structured_api_splices_schema_as_a_json_object {
     describe gemini_structured_api_splices_schema_as_a_json_object {

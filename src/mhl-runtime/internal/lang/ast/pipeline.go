@@ -182,9 +182,23 @@ type BreakStmt struct {
 // (drainAtStepEnd). `spawn` is only meaningful directly inside a step body;
 // the interpreter errors if evaluated anywhere else (a tool method, a
 // `describe` block).
+//
+// A trailing `for <ident> in <expr>` clause turns it into a fan-out: the
+// right-hand `<Agent>.run(...)` call is started once per element of the
+// (array) <expr>, with EachVar bound to that element while its argument
+// expressions are evaluated — so each spawn can carry a distinct prompt
+// (`spawn reviews = R.run(prompt: "check ${item}") for item in items`). Name
+// is then bound to an *array* of handles, in element order, which a later
+// `wait reviews` / `wait any reviews` / `wait N of reviews` joins as a group
+// and which indexes and iterates like any array (`reviews[0].result`,
+// `for (var r in reviews) ...`, `reviews.size()`). `for` and `in` are
+// effectively reserved in this position. EachVar/Iterable are empty for a
+// plain single spawn.
 type SpawnStmt struct {
-	Name string `parser:"'spawn' @Ident '='"`
-	Call *Expr  `parser:"@@"`
+	Name     string `parser:"'spawn' @Ident '='"`
+	Call     *Expr  `parser:"@@"`
+	EachVar  string `parser:"( 'for' @Ident 'in'"`
+	Iterable *Expr  `parser:"@@ )?"`
 }
 
 // WaitStmt joins one or more spawned handles by name. `wait a, b` waits for

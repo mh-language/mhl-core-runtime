@@ -1,4 +1,4 @@
-use {SessionJsonMem} from "fixtures/memory.mh"
+import {SessionJsonMem} from "fixtures/memory.mh"
 
 // fs.append is the progress.txt use case: one line per completed feature,
 // added without reading the whole file back first -- each line here comes

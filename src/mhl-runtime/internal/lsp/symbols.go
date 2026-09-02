@@ -467,7 +467,7 @@ var nativeSymbols = []symbol{
 // working mid-edit), plus every declaration in sibling .mh files under the
 // same directory — a plain, import-oblivious "everything nearby is in
 // scope" approximation that's good enough for completion (lint.Source is
-// what actually enforces real import/use rules). Native symbols are listed
+// what actually enforces real import rules). Native symbols are listed
 // first so they win dedupeSymbols' "first occurrence wins" tie-break,
 // matching how the runtime itself always resolves e.g. "log" as the
 // built-in namespace regardless of what a .mh author declares (eval.go's

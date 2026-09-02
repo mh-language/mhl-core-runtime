@@ -1,4 +1,4 @@
-use {ClaudeCLI} from "fixtures/agents.mh"
+import {ClaudeCLI} from "fixtures/agents.mh"
 
 test claude_cli_calls_the_real_api {
     describe claude_cli_calls_the_real_api {

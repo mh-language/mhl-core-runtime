@@ -10,30 +10,30 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
-// ResolveImports processes the `use { Names [as Alias] } from "path"`
+// ResolveImports processes the `import { Names [as Alias] } from "path"`
 // declarations at the top level of prog. Each referenced path is resolved
 // relative to the directory of file and must exist and parse as a valid .mh
-// module; a `use` also requires every named symbol to be declared with
+// module; an `import` also requires every named symbol to be declared with
 // `export` in that module — including transitively, see below.
 //
-// Imports are transitive: the module a `use` loads has its own `use`/
-// `import` declarations resolved *first* (recursively, relative to *its
+// Imports are transitive: the module an `import` loads has its own `import`
+// declarations resolved *first* (recursively, relative to *its
 // own* directory, not file's, and before this file's requested names are
 // even checked against it), and the module's entire resolved declaration
 // set — not just the requested names — is merged into prog. This is what
 // lets a `tool`/`pipeline` depend on another declaration (e.g. a `memory`
 // block) from a third file without every importer of that tool needing to
-// know or separately `use` the dependency: a tool method body resolves a
+// know or separately `import` the dependency: a tool method body resolves a
 // name like `FeatureStoreMemory.get(...)` by a flat scan over prog.Decls at
 // run time (findMemory, memory_ops.go — the same flat-namespace lookup
 // findTool/findAgent/findPrompt all use), so it has to actually be *there*,
 // however it arrived. It's also what lets a file re-export something it
-// only itself `use`d, with no `export` of its own repeating the name: since
+// only itself `import`ed, with no `export` of its own repeating the name: since
 // the merged-in declaration is the original AST node from wherever it was
 // first declared, its Export bit still reads true, so a third file's own
-// `use {Name} from "that-file.mh"` finds it too — resolving that file's own
+// `import {Name} from "that-file.mh"` finds it too — resolving that file's own
 // imports before checking is what makes the name resolvable there at all.
-// `export` still gates what any file may request by name via `use {Name}`
+// `export` still gates what any file may request by name via `import {Name}`
 // — nothing bypasses that check, it's just no longer evaluated against an
 // only-partially-resolved module. A `test` block never rides along
 // (mergeableDecl below excludes it): merging one in would make `mhl test`
@@ -76,8 +76,8 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 				return fmt.Errorf("prompt %q from %q: %w", decl.Prompt.Name, decl.Prompt.Source, err)
 			}
 			decl.Prompt.Body = ast.NewMultilineStringExpr(text)
-		case decl.Use != nil:
-			modulePath := filepath.Join(dir, decl.Use.Path)
+		case decl.Import != nil:
+			modulePath := filepath.Join(dir, decl.Import.Path)
 			key := modulePath
 			if abs, err := filepath.Abs(modulePath); err == nil {
 				key = abs
@@ -86,26 +86,26 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 			module, ok := resolved[key]
 			if !ok {
 				var err error
-				module, err = loadModule(dir, decl.Use.Path)
+				module, err = loadModule(dir, decl.Import.Path)
 				if err != nil {
-					return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err)
+					return fmt.Errorf("import {%s} from %q: %w", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err)
 				}
 				resolved[key] = module
 				if err := resolveImports(modulePath, module, resolved); err != nil {
-					return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err)
+					return fmt.Errorf("import {%s} from %q: %w", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err)
 				}
 			}
 
 			if err := mergeAliases(prog, module.AliasMap()); err != nil {
-				return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err)
+				return fmt.Errorf("import {%s} from %q: %w", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err)
 			}
-			for _, item := range decl.Use.Items {
+			for _, item := range decl.Import.Items {
 				if _, ok := findExport(module, item.Name); !ok {
-					return fmt.Errorf("use {%s} from %q: %q is not exported", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, item.Name)
+					return fmt.Errorf("import {%s} from %q: %q is not exported", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, item.Name)
 				}
 				if item.Alias != "" {
 					if err := addAlias(prog, item.Alias, item.Name); err != nil {
-						return fmt.Errorf("use {%s} from %q: %w", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err)
+						return fmt.Errorf("import {%s} from %q: %w", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err)
 					}
 				}
 			}
@@ -169,7 +169,7 @@ func resolveName(prog *ast.Program, name string) string {
 
 // mergeableDecl reports whether decl is a kind that belongs in another
 // program's Decls once its module is used at all, plus a (kind, name) pair
-// stable enough to dedupe on. Use/Import wrappers carry nothing worth
+// stable enough to dedupe on. Import wrappers carry nothing worth
 // keeping once resolved, and Test blocks belong only to the file that
 // declared them — see ResolveImports' doc comment for why both are
 // excluded.
@@ -198,7 +198,7 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 
 // declPresent reports whether decls already has a mergeable declaration
 // with this exact (kind, name) — a diamond dependency (two different
-// `use`s eventually pulling in the same module) would otherwise append the
+// `import`s eventually pulling in the same module) would otherwise append the
 // same declaration twice; harmless for the flat-scan lookups that read it,
 // but pointless bloat.
 func declPresent(decls []*ast.Declaration, kind, name string) bool {

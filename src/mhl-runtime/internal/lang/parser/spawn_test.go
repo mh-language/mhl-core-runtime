@@ -61,6 +61,46 @@ func TestWaitStatementFormsParse(t *testing.T) {
 	}
 }
 
+// `spawn xs = Agent.run(...) for item in <expr>` parses into a SpawnStmt
+// with EachVar/Iterable set, and a following statement is not swallowed.
+func TestSpawnFanOutFormParses(t *testing.T) {
+	prog, err := Parse(`
+pipeline P {
+    step S {
+        spawn reviews = R.run(prompt: "on ${item}") for item in angles
+        wait reviews
+        log("done")
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	stmts := prog.Decls[0].Pipeline.Body[0].Step.Body
+	sp := stmts[0].Spawn
+	if sp == nil || sp.Name != "reviews" {
+		t.Fatalf("expected SpawnStmt binding reviews, got %+v", stmts[0])
+	}
+	if sp.EachVar != "item" || sp.Iterable == nil {
+		t.Fatalf("expected `for item in <expr>` clause, got EachVar=%q Iterable=%v", sp.EachVar, sp.Iterable)
+	}
+	if stmts[1].Wait == nil || stmts[2].Expr == nil {
+		t.Fatalf("statements after the fan-out spawn were swallowed: %+v", stmts)
+	}
+}
+
+// The plain `spawn x = Agent.run(...)` form still parses with no fan-out clause.
+func TestSpawnPlainFormHasNoFanOut(t *testing.T) {
+	prog, err := Parse(`pipeline P { step S { spawn a = A.run(prompt: "x") } }`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	sp := prog.Decls[0].Pipeline.Body[0].Step.Body[0].Spawn
+	if sp == nil || sp.EachVar != "" || sp.Iterable != nil {
+		t.Fatalf("plain spawn should have no fan-out clause, got %+v", sp)
+	}
+}
+
 // A step body that mutates a var after the new keywords still parses — the
 // keywords must not be greedy enough to swallow the following statement.
 func TestStatementAfterWaitParses(t *testing.T) {

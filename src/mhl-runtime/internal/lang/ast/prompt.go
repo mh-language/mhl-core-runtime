@@ -13,7 +13,7 @@ import "github.com/alecthomas/participle/v2/lexer"
 //	}
 //
 // The body may instead be sourced from an external Markdown file, resolved
-// relative to the declaring file's directory the same way `use`/`import`
+// relative to the declaring file's directory the same way `import`
 // paths are (internal/engine/interpreter/imports.go, internal/lang/lint/imports.go):
 //
 //	prompt SecurityAuditPrompt(file_path: string, code_content: string) from "./security-audit.prompt.md"

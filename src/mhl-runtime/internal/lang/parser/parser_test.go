@@ -51,17 +51,17 @@ func TestFixturesParse(t *testing.T) {
 	}
 }
 
-func TestUseParsesOptionalAliases(t *testing.T) {
-	prog, err := Parse(`use {FeatureStore as store, RunConfig as config, PlanReader as planner} from "modules/tools/feature.tool.mh"`)
+func TestImportParsesOptionalAliases(t *testing.T) {
+	prog, err := Parse(`import {FeatureStore as store, RunConfig as config, PlanReader as planner} from "modules/tools/feature.tool.mh"`)
 	if err != nil {
-		t.Fatalf("parse use aliases: %v", err)
+		t.Fatalf("parse import aliases: %v", err)
 	}
-	if got := len(prog.Decls); got != 1 || prog.Decls[0].Use == nil {
-		t.Fatalf("expected one use declaration, got %d", got)
+	if got := len(prog.Decls); got != 1 || prog.Decls[0].Import == nil {
+		t.Fatalf("expected one import declaration, got %d", got)
 	}
-	items := prog.Decls[0].Use.Items
+	items := prog.Decls[0].Import.Items
 	if len(items) != 3 {
-		t.Fatalf("use items = %d, want 3", len(items))
+		t.Fatalf("import items = %d, want 3", len(items))
 	}
 	want := [][2]string{{"FeatureStore", "store"}, {"RunConfig", "config"}, {"PlanReader", "planner"}}
 	for i, item := range items {
@@ -732,7 +732,7 @@ func TestPipelineKindParses(t *testing.T) {
 }
 
 // TestImportKeywordRemoved confirms `import "..." as x` no longer parses —
-// cross-file composition is `use { ... } from "..."` only.
+// cross-file composition is `import { ... } from "..."` only.
 func TestImportKeywordRemoved(t *testing.T) {
 	_, err := Parse(`import "./other.mh" as other`)
 	if err == nil {

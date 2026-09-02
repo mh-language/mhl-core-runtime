@@ -475,8 +475,15 @@ func collectVarNames(prog *ast.Program, statements []*ast.Statement, seed map[st
 			case s.Spawn != nil:
 				// A spawn binds a task handle — no static Type for it, but
 				// the name must count as declared so a later `wait s` /
-				// `s.result` isn't flagged "undefined".
+				// `s.result` isn't flagged "undefined". A fan-out
+				// (`spawn xs = ... for item in ...`) also introduces its loop
+				// variable; like ForIn above, its element type is Any.
 				known[s.Spawn.Name] = types.Any
+				if s.Spawn.Iterable != nil && s.Spawn.EachVar != "" {
+					if _, declared := known[s.Spawn.EachVar]; !declared {
+						known[s.Spawn.EachVar] = types.Any
+					}
+				}
 			case s.Assign != nil:
 				if name, ok := bareAssignName(s.Assign.Target); ok {
 					if _, declared := known[name]; declared {
@@ -571,7 +578,21 @@ func checkSpawnStmt(file string, prog *ast.Program, statement *ast.Statement, de
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("spawn %q: right-hand side must be an <Agent>.run(...) call", statement.Spawn.Name)}}
 	}
-	return checkExprCall(file, prog, pos, statement.Spawn.Call, declared, selfTool, aliases)
+	var findings []Finding
+	callScope := declared
+	if statement.Spawn.Iterable != nil {
+		// The fan-out `for <var> in <expr>` clause: check the iterable, and
+		// make <var> visible while the `<Agent>.run(...)` arguments are checked.
+		findings = append(findings, checkExprCall(file, prog, pos, statement.Spawn.Iterable, declared, selfTool, aliases)...)
+		if statement.Spawn.EachVar != "" {
+			callScope = make(map[string]types.Type, len(declared)+1)
+			for k, v := range declared {
+				callScope[k] = v
+			}
+			callScope[statement.Spawn.EachVar] = types.Any
+		}
+	}
+	return append(findings, checkExprCall(file, prog, pos, statement.Spawn.Call, callScope, selfTool, aliases)...)
 }
 
 // checkWaitStmt mirrors interpreter.execWait's static rules: `wait` is a

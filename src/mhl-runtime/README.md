@@ -80,7 +80,7 @@ what AST does it parse into, and is it well-formed? None of these packages execu
   is no separate "keywords" file: in a Participle-based parser the reserved words live next to
   the node they introduce, one per file (`agent.go`, `prompt.go`, `pipeline.go` for
   `pipeline`/`const`, `test.go` for `test`/`describe`, `program.go` for
-  `use`/`memory`/`tool`/`extension`/`enum`/`type`, `expr.go` for operators).
+  `import`/`memory`/`tool`/`extension`/`enum`/`type`, `expr.go` for operators).
 - **`parser`** — the lexer (`lexer.go`: token rules for strings, numbers, durations,
   identifiers, punctuation) and the compiled Participle parser (`parser.go`), exposing
   `Parse(source) (*ast.Program, error)` and `ParseExpr` (used for `${...}` interpolation).
@@ -88,7 +88,7 @@ what AST does it parse into, and is it well-formed? None of these packages execu
   `enum` kinds, primitive coercion. Depends only on `lang/ast`, so both `lang/lint` (static
   checking) and `engine/interpreter` (runtime enforcement) import it without breaking the
   layering order.
-- **`lint`** — static analysis over one or more `.mh` files: broken `use` targets,
+- **`lint`** — static analysis over one or more `.mh` files: broken `import` targets,
   calls to undeclared agents, misconfigured agents, syntax errors — everything that would
   otherwise only surface when `mhl run` happens to reach the offending line.
 
@@ -112,7 +112,7 @@ call into that single copy instead of each keeping their own.
   `memory_ops.go`, `prompt_ops.go` and `extension_ops.go` dispatch `Agent.run(...)`,
   `Memory.method(...)`, a `prompt:` argument and an `Extension.method(...)` call respectively;
   `contextview.go` exposes the read-only pipeline `context:`; `spawn.go` runs `parallel` step
-  blocks; `imports.go` resolves `use` declarations before a program runs; `test.go`'s
+  blocks; `imports.go` resolves `import` declarations before a program runs; `test.go`'s
   `RunTests` executes every
   `test { describe { ... } }` block against a fresh scope per `describe`, without touching a
   program's pipelines. A `describe` body reuses the exact same statement grammar a pipeline

@@ -1,4 +1,4 @@
-use {GeminiAPI} from "fixtures/agents.mh"
+import {GeminiAPI} from "fixtures/agents.mh"
 
 test gemini_api_calls_the_real_api {
     describe gemini_api_calls_the_real_api {

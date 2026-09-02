@@ -18,7 +18,7 @@ export memory Store {
 `
 
 const transitiveUseToolFile = `
-use {Store} from "memory.mh"
+import {Store} from "memory.mh"
 
 export tool Counter {
     pending() -> {
@@ -28,7 +28,7 @@ export tool Counter {
 `
 
 const transitiveUsePipelineFile = `
-use {Counter} from "tool.mh"
+import {Counter} from "tool.mh"
 
 pipeline P {
     step S {
@@ -83,8 +83,8 @@ func TestRunTransitiveUseDiamondDoesNotDuplicateDeclarations(t *testing.T) {
 		"memory.mh": transitiveUseMemoryFile,
 		"tool.mh":   transitiveUseToolFile,
 		"pipeline.mh": `
-use {Counter} from "tool.mh"
-use {Store} from "memory.mh"
+import {Counter} from "tool.mh"
+import {Store} from "memory.mh"
 
 pipeline P {
     step S {
@@ -125,14 +125,14 @@ export memory Store {
 }
 `,
 		"tool.mh": `
-use {Store as store} from "memory.mh"
+import {Store as store} from "memory.mh"
 
 export tool Counter {
     pending() -> store.get("n", 0)
 }
 `,
 		"pipeline.mh": `
-use {Counter as counter} from "tool.mh"
+import {Counter as counter} from "tool.mh"
 
 pipeline P {
     step S {
@@ -180,7 +180,7 @@ func TestRunPromptFromMarkdownFileRenders(t *testing.T) {
 export prompt Greeting(name: string) from "greeting.prompt.md"
 `,
 		"pipeline.mh": `
-use {Greeting} from "prompt.mh"
+import {Greeting} from "prompt.mh"
 
 pipeline P {
     step S {
@@ -220,7 +220,7 @@ func TestRunPromptFromMissingMarkdownFileFails(t *testing.T) {
 export prompt Greeting(name: string) from "missing.prompt.md"
 `,
 		"pipeline.mh": `
-use {Greeting} from "prompt.mh"
+import {Greeting} from "prompt.mh"
 
 pipeline P {
     step S {

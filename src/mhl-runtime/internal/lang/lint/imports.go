@@ -10,11 +10,11 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
-// mergeImports statically validates every `use { Names [as Alias] } from
+// mergeImports statically validates every `import { Names [as Alias] } from
 // "path"` declaration at the top level of prog (whose source file is file),
 // resolving each path relative to file's directory. It never aborts early:
-// every broken use is reported as a Finding, and
-// within a single `use {A, B, C}` every unresolved name is reported, not
+// every broken import is reported as a Finding, and
+// within a single `import {A, B, C}` every unresolved name is reported, not
 // just the first. It returns a copy of prog with imports merged in,
 // mirroring internal/engine/interpreter.ResolveImports (including its
 // transitivity — see resolveImportsInto below) so later checks
@@ -30,28 +30,28 @@ func mergeImports(file string, prog *ast.Program) (*ast.Program, []Finding) {
 		key = abs
 	}
 	// Seeding the cache with the entry file itself is what stops something
-	// it (transitively) uses from `use`-ing it right back and recursing
+	// it (transitively) uses from `import`-ing it right back and recursing
 	// forever — see resolveImportsInto's doc comment.
 	resolveImportsInto(file, prog, merged, map[string]*ast.Program{key: prog}, &findings)
 	return merged, findings
 }
 
-// resolveImportsInto walks prog's `use`/`import` declarations (whose source
+// resolveImportsInto walks prog's `import` declarations (whose source
 // file is file) and appends whatever they resolve to onto merged.Decls —
-// the caller's growing, flattened set, not prog's own. Every `use` is
+// the caller's growing, flattened set, not prog's own. Every `import` is
 // resolved transitively: the module it loads has its own imports resolved
 // *first* (recursively, relative to *its own* directory, and before this
 // file's requested names are even checked against it), and that module's
 // entire resolved declaration set — not just the requested names — is what
 // gets appended, mirroring internal/engine/interpreter.resolveImports
 // exactly, so lint sees the same name resolution the runtime does
-// (including a file re-exporting something it only itself `use`d, with no
+// (including a file re-exporting something it only itself `import`ed, with no
 // `export` of its own repeating the name — checking after resolving is
 // what makes that resolvable here too, not just at run time).
 //
 // resolved caches every module reached so far, keyed by absolute path — a
 // module is loaded and recursively resolved *once* per mergeImports call,
-// no matter how many different files `use` something from it (a diamond
+// no matter how many different files `import` something from it (a diamond
 // dependency), so every one of them sees the same, fully-merged
 // declaration set rather than some seeing a partial one depending on
 // resolution order. The cache entry is recorded before recursing into that
@@ -74,8 +74,8 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				continue
 			}
 			decl.Prompt.Body = ast.NewMultilineStringExpr(text)
-		case decl.Use != nil:
-			modulePath := filepath.Join(dir, decl.Use.Path)
+		case decl.Import != nil:
+			modulePath := filepath.Join(dir, decl.Import.Path)
 			key := modulePath
 			if abs, err := filepath.Abs(modulePath); err == nil {
 				key = abs
@@ -84,11 +84,11 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			module, ok := resolved[key]
 			if !ok {
 				var err error
-				module, err = loadModule(dir, decl.Use.Path)
+				module, err = loadModule(dir, decl.Import.Path)
 				if err != nil {
 					*findings = append(*findings, Finding{
-						File: file, Line: decl.Use.Pos.Line, Column: decl.Use.Pos.Column,
-						Message: fmt.Sprintf("use {%s} from %q: %s", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err),
+						File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
+						Message: fmt.Sprintf("import {%s} from %q: %s", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err),
 					})
 					continue
 				}
@@ -99,16 +99,16 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			missing := false
 			if err := mergeAliases(merged, module.AliasMap()); err != nil {
 				*findings = append(*findings, Finding{
-					File: file, Line: decl.Use.Pos.Line, Column: decl.Use.Pos.Column,
-					Message: fmt.Sprintf("use {%s} from %q: %s", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err),
+					File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
+					Message: fmt.Sprintf("import {%s} from %q: %s", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err),
 				})
 				missing = true
 			}
-			for _, item := range decl.Use.Items {
+			for _, item := range decl.Import.Items {
 				if _, found := findExport(module, item.Name); !found {
 					*findings = append(*findings, Finding{
-						File: file, Line: decl.Use.Pos.Line, Column: decl.Use.Pos.Column,
-						Message: fmt.Sprintf("use {%s} from %q: %q is not exported", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, item.Name),
+						File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
+						Message: fmt.Sprintf("import {%s} from %q: %q is not exported", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, item.Name),
 					})
 					missing = true
 					continue
@@ -116,8 +116,8 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				if item.Alias != "" {
 					if err := addAlias(merged, item.Alias, item.Name); err != nil {
 						*findings = append(*findings, Finding{
-							File: file, Line: decl.Use.Pos.Line, Column: decl.Use.Pos.Column,
-							Message: fmt.Sprintf("use {%s} from %q: %s", strings.Join(decl.Use.Names(), ", "), decl.Use.Path, err),
+							File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
+							Message: fmt.Sprintf("import {%s} from %q: %s", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err),
 						})
 						missing = true
 					}
@@ -181,7 +181,7 @@ func resolveName(prog *ast.Program, name string) string {
 // mergeableDecl reports whether decl is a kind that belongs in another
 // program's Decls once its module is used at all, plus a (kind, name) pair
 // stable enough to dedupe on — mirrors
-// internal/engine/interpreter.mergeableDecl exactly. Use/Import wrappers
+// internal/engine/interpreter.mergeableDecl exactly. Import wrappers
 // carry nothing worth keeping once resolved, and a `test` block belongs
 // only to the file that declared it, never to whatever imports something
 // else from that file.

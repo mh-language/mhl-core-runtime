@@ -1,4 +1,4 @@
-use {SessionJsonMem} from "fixtures/memory.mh"
+import {SessionJsonMem} from "fixtures/memory.mh"
 
 test memory_session_mem_with_nested_delete {
     describe memory_session_mem_with_nested_delete {

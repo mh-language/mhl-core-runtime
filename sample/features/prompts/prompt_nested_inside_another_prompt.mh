@@ -1,5 +1,5 @@
-use {SecurityExpertRole, SystemPrompt} from "fixtures/prompts.mh"
-use {Echo} from "fixtures/agents.mh"
+import {SecurityExpertRole, SystemPrompt} from "fixtures/prompts.mh"
+import {Echo} from "fixtures/agents.mh"
 
 test prompt_nested_inside_another_prompt {
     describe prompt_nested_inside_another_prompt {

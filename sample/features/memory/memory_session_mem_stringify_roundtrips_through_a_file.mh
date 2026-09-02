@@ -1,4 +1,4 @@
-use {SessionJsonMem} from "fixtures/memory.mh"
+import {SessionJsonMem} from "fixtures/memory.mh"
 
 // json.stringify is the inverse of json.parse: it turns a value built or read
 // from memory back into JSON text, so it can be handed to fs.write (or any

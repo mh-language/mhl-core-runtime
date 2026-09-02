@@ -1,4 +1,4 @@
-use {SessionJsonMem} from "fixtures/memory.mh"
+import {SessionJsonMem} from "fixtures/memory.mh"
 
 // cmd.exec's argv-array form passes each element straight to the process,
 // with no whitespace splitting -- a memory value containing spaces (e.g. a

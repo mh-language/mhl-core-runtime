@@ -1,4 +1,4 @@
-use {AuditLogMem} from "fixtures/memory.mh"
+import {AuditLogMem} from "fixtures/memory.mh"
 
 // append_log memory only ever exposes .append() (memory_ops.go's
 // executeMemoryOp rejects any other method with "append_log memory has no
