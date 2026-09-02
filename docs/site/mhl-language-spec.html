@@ -225,6 +225,7 @@ var decision = match status {
 <tr><td>Try</td><td><code>try { ... } catch (err) { ... } finally { ... }</code></td><td>Catches raised errors and executes <code>finally</code> when present.</td></tr>
 <tr><td>Return</td><td><code>return [expression]</code></td><td>Exits the current tool method or callable block. In a step it returns from the step.</td></tr>
 <tr><td>Break</td><td><code>break [expression]</code></td><td>Stops the current pipeline run and, for a loop pipeline, stops further iterations. It is not a nearest-while/for exit.</td></tr>
+<tr><td>Pause</td><td><code>pause([expression])</code></td><td>Suspends the run at this step for a human-in-the-loop hand-off — neither a failure nor a completion. The checkpoint is kept; <code>mhl run --resume</code> (or the server's <code>run/resume</code>) re-enters this step with any merged inputs. It is a control signal, so <code>try/catch</code> does not catch it, and it needs no checkpoint block.</td></tr>
 <tr><td>Goto</td><td><code>goto StepName</code></td><td>Transfers to a named step. Legal only in a <code>workflow</code>.</td></tr>
 <tr><td>Expression</td><td><code>call(...)</code> or any expression</td><td>Evaluates for its side effect or discards its value.</td></tr>
 </tbody></table>
@@ -292,6 +293,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
 <tr><td class="signature">log(...values: any) → null</td><td>Writes one space-joined line to stdout. Strings are raw, numbers are formatted compactly, and structured values are rendered as JSON.</td></tr>
 <tr><td class="signature">fail(...values: any) → never</td><td>Raises with the same formatting used by <code>log</code>. Catchable with <code>try</code>.</td></tr>
+<tr><td class="signature">pause(reason?: any) → never</td><td>Suspends the run at this step for a human-in-the-loop hand-off (state <code>paused</code>, resumable) rather than failing or completing. Not catchable with <code>try</code>; re-entered on <code>--resume</code> / <code>run/resume</code> with merged inputs.</td></tr>
 <tr><td class="signature">env(name: string) → string</td><td>Reads an operating-system environment variable. An unset variable returns the empty string. Sensitive names and values are registered for redaction.</td></tr>
 <tr><td class="signature">type_of(value: any) → string</td><td>Returns <code>string</code>, <code>number</code>, <code>bool</code>, <code>array</code>, <code>object</code>, <code>null</code>, <code>enum</code>, <code>function</code>, or <code>task</code>.</td></tr>
 <tr><td class="signature">is_string(value: any) → bool</td><td>True exactly for strings.</td></tr><tr><td class="signature">is_number(value: any) → bool</td><td>True exactly for numbers.</td></tr>
@@ -480,7 +482,7 @@ Events.append({event: "started", at: time.now()})</code></pre>
 }</code></pre>
 <p>A plain <code>pipeline</code> runs steps in declaration order and rejects <code>goto</code>. A <code>workflow</code> has the same model but permits forward or backward jumps to its own named steps. A step timeout creates a deadline for blocking calls and fails the step when it expires. A checkpoint is saved after each completed step when per-step checkpointing is enabled; <code>mhl run ... --resume</code> re-enters after the last completed unit with a fresh timeout budget.</p>
 <h3>15.2 Loop pipelines</h3>
-<p>Prefix either form with <code>loop</code> and add <code>repeat: {stop_when, max_iterations}</code>. An iteration runs to completion before <code>stop_when</code> is evaluated. <code>break</code> wins over the stop condition and maximum. An error is not a soft stop: it aborts the run. A loop checkpoint records the next iteration and terminal reason (<code>stop_when</code>, <code>max_iterations</code>, or <code>break</code>).</p>
+<p>Prefix either form with <code>loop</code> and add <code>repeat: {stop_when, max_iterations}</code>. An iteration runs to completion before <code>stop_when</code> is evaluated. <code>break</code> wins over the stop condition and maximum. An error is not a soft stop: it aborts the run. A loop checkpoint records the next iteration and terminal reason (<code>stop_when</code>, <code>max_iterations</code>, <code>break</code>, or <code>pause</code>); a <code>pause</code>d loop is re-entered by <code>--resume</code>, the others are not.</p>
 <h3>15.3 Context</h3>
 <pre class="code-block"><code class="language-mhl">pipeline Build {
     checkpoint: {enabled: true, strategy: "per_step"}

@@ -24,7 +24,7 @@
   }[char]));
 
   const keywords = new Set(
-    'import from use as export loop var mem if else while try catch finally return break goto for in self fail'.split(' ')
+    'import from use as export loop var mem if else while try catch finally return break goto for in self fail pause'.split(' ')
   );
   const declarations = new Set(
     'agent memory tool pipeline prompt extension parallel step input output test describe'.split(' ')
