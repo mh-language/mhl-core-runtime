@@ -1,5 +1,0 @@
-[06:38:06]   PENDING: o servidor deve aceitar uma flag de limiar (--tools-call-timeout / --promote-after) OU promover automaticamente
-[06:38:13] tools/call SlowBuild: 7s ; runId na resposta = '<nenhum>'
-[06:38:13]   PENDING: a resposta de tools/call promovido deve conter um runId recuperável (structuredContent/_meta/content)
-[06:38:13] RESULTADO: PENDING — 2 item(ns) a implementar (acima)
-PENDING

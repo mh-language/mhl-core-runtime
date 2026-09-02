@@ -169,7 +169,10 @@ const asyncRunCapabilityVersion = "1"
 // `tools` is always present; `experimental["mhl.run"]` only when this server
 // actually routes run/* (HTTP transport).
 func (s *server) capabilities() map[string]any {
-	caps := map[string]any{"tools": map[string]any{"listChanged": false}}
+	caps := map[string]any{
+		"tools":     map[string]any{"listChanged": false},
+		"resources": map[string]any{"subscribe": false, "listChanged": false},
+	}
 	if s.asyncRuns {
 		caps["experimental"] = map[string]any{
 			"mhl.run": map[string]any{
@@ -255,6 +258,21 @@ func (s *server) dispatch(ctx context.Context, sess *session, msg rpcMsg) *rpcMs
 			return e
 		}
 		return s.callTool(ctx, sess, msg.ID, msg.Params)
+	case "resources/list":
+		if e := s.requireProtocolContext(sess, msg); e != nil {
+			return e
+		}
+		if cur := listCursor(msg.Params); cur != "" {
+			return errMsg(msg.ID, -32602, "unknown cursor: this server returns the full resource list unpaginated")
+		}
+		// The HTTP transport appends per-run resources before replying (see
+		// serveMCP); over stdio the workflow resources are the whole list.
+		return s.replyResult(sess, msg.ID, map[string]any{"resources": workflowResourceList(s.tools)})
+	case "resources/read":
+		if e := s.requireProtocolContext(sess, msg); e != nil {
+			return e
+		}
+		return s.readResource(sess, msg)
 	default:
 		if notification {
 			return nil
@@ -386,13 +404,30 @@ func (s *server) toolList() []map[string]any {
 		}
 		if s.asyncRuns {
 			// A pipeline can run longer than a gateway's request timeout;
-			// tell the client it can also be driven async (see the
-			// experimental.mhl.run capability).
+			// tell the client it can also be driven async — via the raw
+			// run/* method, or the mhl_run_start control tool for a client
+			// that speaks only tools/call (see the experimental.mhl.run
+			// capability and runtools.go).
 			entry["_meta"] = map[string]any{
-				"mhl.run": map[string]any{"async": true, "via": "run/start"},
+				"mhl.run": map[string]any{"async": true, "via": "run/start", "tool": toolRunStart},
 			}
 		}
 		list = append(list, entry)
+	}
+	if s.asyncRuns {
+		taken := make(map[string]bool, len(names))
+		for _, n := range names {
+			taken[n] = true
+		}
+		for _, ct := range runControlTools(names) {
+			if taken[ct["name"].(string)] {
+				s.logEvent(slog.LevelWarn,
+					"async control tool shadowed by a workflow of the same name — skipping",
+					"tool", ct["name"])
+				continue
+			}
+			list = append(list, ct)
+		}
 	}
 	return list
 }
@@ -446,6 +481,31 @@ func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage
 	}
 	text, _ := json.MarshalIndent(vars, "", "  ")
 	return s.replyResult(sess, id, toolResult(string(text), vars, false))
+}
+
+// readResource serves a resources/read for a mhl://workflow/... URI. The HTTP
+// transport handles mhl://run/... itself (it needs the run registry) before
+// this is reached; any other URI is an unknown resource.
+func (s *server) readResource(sess *session, msg rpcMsg) *rpcMsg {
+	var p struct {
+		URI string `json:"uri"`
+	}
+	if len(msg.Params) > 0 {
+		if err := json.Unmarshal(msg.Params, &p); err != nil {
+			return errMsg(msg.ID, -32602, "invalid params: "+err.Error())
+		}
+	}
+	if p.URI == "" {
+		return errMsg(msg.ID, -32602, "resources/read requires a uri")
+	}
+	contents, err, ok := readWorkflowResource(s.tools, p.URI)
+	if !ok {
+		return errMsg(msg.ID, -32602, "unknown resource: "+p.URI)
+	}
+	if err != nil {
+		return errMsg(msg.ID, -32602, err.Error())
+	}
+	return s.replyResult(sess, msg.ID, map[string]any{"contents": contents})
 }
 
 // toolResult builds a CallToolResult body. structured, when non-nil, is

@@ -1,7 +1,0 @@
-mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-006/../.. on http://127.0.0.1:8724/mcp
-{"time":"2026-09-01T22:10:31.866854-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"6990ca447c313636feb673857d98b145","owner":"682471df80896a3870b5f888d2fd4cf439f9c598a3cd7905dfb33d949357bdca","tool":"DocPipeline","resume":false}
-session: 6990ca447c313636feb673857d98b145
-step: Draft
-step: Review
-{"time":"2026-09-01T22:10:32.880189-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"6990ca447c313636feb673857d98b145","owner":"682471df80896a3870b5f888d2fd4cf439f9c598a3cd7905dfb33d949357bdca","tool":"DocPipeline","durationMs":1013,"steps":2}
-{"time":"2026-09-01T22:10:35.110237-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}

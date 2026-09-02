@@ -187,9 +187,20 @@ func TestHTTPInitializeSessionListCall(t *testing.T) {
 	if _, ok := res["resultType"]; ok {
 		t.Errorf("session-mode tools/list should not carry resultType: %v", res)
 	}
+	// The workflow tool, plus the mhl_run_* control tools the HTTP transport
+	// adds so a tools/call-only client can drive async runs.
 	tools := res["tools"].([]any)
-	if len(tools) != 1 || tools[0].(map[string]any)["name"] != "Greet" {
-		t.Fatalf("tools/list = %v", tools)
+	names := map[string]bool{}
+	for _, tl := range tools {
+		names[tl.(map[string]any)["name"].(string)] = true
+	}
+	if !names["Greet"] {
+		t.Fatalf("tools/list missing the Greet workflow: %v", tools)
+	}
+	for _, want := range []string{"mhl_run_start", "mhl_run_status", "mhl_run_resume", "mhl_run_cancel", "mhl_run_list", "mhl_run_logs"} {
+		if !names[want] {
+			t.Errorf("tools/list missing control tool %q: %v", want, tools)
+		}
 	}
 
 	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "tools/call", map[string]any{
@@ -1046,5 +1057,296 @@ func TestHTTPRunStartEnforcesInputSchema(t *testing.T) {
 	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "run/list", nil), nil)
 	if runs := body["result"].(map[string]any)["runs"].([]any); len(runs) != 0 {
 		t.Errorf("a rejected run/start still registered %d run(s): %v", len(runs), runs)
+	}
+}
+
+// callTool sends a tools/call and returns the CallToolResult (result map).
+func callTool(t *testing.T, url, sid string, id int, name string, args map[string]any) map[string]any {
+	t.Helper()
+	_, body := postMCP(t, url, sid, rpcMap(id, "tools/call", map[string]any{
+		"name": name, "arguments": args,
+	}), nil)
+	res, ok := body["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("tools/call %s returned no result: %v", name, body)
+	}
+	return res
+}
+
+// structured pulls the structuredContent object off a CallToolResult.
+func structured(t *testing.T, res map[string]any) map[string]any {
+	t.Helper()
+	sc, ok := res["structuredContent"].(map[string]any)
+	if !ok {
+		t.Fatalf("tool result carried no structuredContent: %v", res)
+	}
+	return sc
+}
+
+// pollRunTool polls mhl_run_status (the control tool) until terminal.
+func pollRunTool(t *testing.T, url, sid, runID string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		sc := structured(t, callTool(t, url, sid, 91, "mhl_run_status", map[string]any{"runId": runID}))
+		switch sc["state"] {
+		case "completed", "failed", "canceled":
+			return sc
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("run %s did not finish: %v", runID, sc)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// A plain MCP client that only speaks tools/call drives an async run through
+// the mhl_run_* control tools: start → poll status → final vars, no raw run/*.
+func TestHTTPRunControlToolLifecycle(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	start := structured(t, callTool(t, ts.URL, sid, 2, "mhl_run_start", map[string]any{
+		"workflow":  "Greet",
+		"arguments": map[string]any{"name": "ana"},
+	}))
+	runID, _ := start["runId"].(string)
+	if runID == "" {
+		t.Fatalf("mhl_run_start returned no runId: %v", start)
+	}
+	if start["state"] != "working" && start["state"] != "completed" {
+		t.Errorf("mhl_run_start state = %v", start["state"])
+	}
+
+	final := pollRunTool(t, ts.URL, sid, runID)
+	if final["state"] != "completed" {
+		t.Fatalf("final state = %v (%v)", final["state"], final)
+	}
+	if final["vars"].(map[string]any)["greeting"] != "hello ana" {
+		t.Errorf("vars.greeting = %v", final["vars"])
+	}
+
+	// mhl_run_list shows the caller's run.
+	list := structured(t, callTool(t, ts.URL, sid, 5, "mhl_run_list", map[string]any{}))
+	runs, _ := list["runs"].([]any)
+	if len(runs) != 1 || runs[0].(map[string]any)["runId"] != runID {
+		t.Errorf("mhl_run_list = %v, want the one run", runs)
+	}
+
+	// mhl_run_logs returns the retained step output.
+	logs := structured(t, callTool(t, ts.URL, sid, 6, "mhl_run_logs", map[string]any{"runId": runID}))
+	if _, ok := logs["nextSince"]; !ok {
+		t.Errorf("mhl_run_logs carried no nextSince: %v", logs)
+	}
+}
+
+// mhl_run_cancel over tools/call stops a run mid-flight.
+func TestHTTPRunControlToolCancel(t *testing.T) {
+	ts := newHTTPServer(t, "", map[string]string{"slow.mh": httpSlowWF})
+	sid := initHTTPSession(t, ts.URL)
+
+	start := structured(t, callTool(t, ts.URL, sid, 2, "mhl_run_start", map[string]any{"workflow": "Slow"}))
+	runID := start["runId"].(string)
+
+	cancel := structured(t, callTool(t, ts.URL, sid, 3, "mhl_run_cancel", map[string]any{"runId": runID}))
+	if cancel["state"] != "canceled" {
+		t.Errorf("mhl_run_cancel state = %v, want canceled", cancel["state"])
+	}
+	if pollRunTool(t, ts.URL, sid, runID)["state"] != "canceled" {
+		t.Errorf("run did not settle canceled")
+	}
+}
+
+// The HITL pattern entirely over tools/call: mhl_run_start stops at the gate
+// (failed), mhl_run_resume with the approval merges it in and completes.
+func TestHTTPRunControlToolResume(t *testing.T) {
+	ts := newHTTPServer(t, "", map[string]string{"gate.mh": httpGateWF})
+	sid := initHTTPSession(t, ts.URL)
+
+	start := structured(t, callTool(t, ts.URL, sid, 2, "mhl_run_start", map[string]any{
+		"workflow":  "Approval",
+		"arguments": map[string]any{"approved": "no"},
+	}))
+	runID := start["runId"].(string)
+	if s := pollRunTool(t, ts.URL, sid, runID); s["state"] != "failed" || s["resumable"] != true {
+		t.Fatalf("gate run = %v, want failed+resumable", s)
+	}
+
+	resumed := structured(t, callTool(t, ts.URL, sid, 4, "mhl_run_resume", map[string]any{
+		"runId":     runID,
+		"arguments": map[string]any{"approved": "yes"},
+	}))
+	if resumed["state"] != "working" && resumed["state"] != "completed" {
+		t.Fatalf("mhl_run_resume state = %v", resumed["state"])
+	}
+	if pollRunTool(t, ts.URL, sid, runID)["state"] != "completed" {
+		t.Errorf("resumed gate run did not complete")
+	}
+}
+
+// A malformed control-tool call surfaces as a JSON-RPC error (spec keeps
+// protocol errors out of band), not an isError CallToolResult.
+func TestHTTPRunControlToolBadParams(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	// Unknown workflow name.
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "tools/call", map[string]any{
+		"name": "mhl_run_start", "arguments": map[string]any{"workflow": "Nope"},
+	}), nil)
+	if body["result"] != nil {
+		t.Fatalf("bad mhl_run_start returned a result: %v", body["result"])
+	}
+	if body["error"].(map[string]any)["code"].(float64) != -32602 {
+		t.Errorf("code = %v, want -32602", body["error"])
+	}
+
+	// Unknown runId.
+	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "tools/call", map[string]any{
+		"name": "mhl_run_status", "arguments": map[string]any{"runId": "no-such-run"},
+	}), nil)
+	if body["error"] == nil || body["error"].(map[string]any)["code"].(float64) != -32602 {
+		t.Errorf("unknown runId: want -32602, got %v", body)
+	}
+}
+
+// The bridge preserves params._meta, so a stateless 2026-07-28 client (no
+// session) can drive the control tools too.
+func TestHTTPRunControlToolStateless(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	meta := map[string]any{
+		"io.modelcontextprotocol/protocolVersion":    "2026-07-28",
+		"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+	}
+	_, body := postMCP(t, ts.URL, "", rpcMap(2, "tools/call", map[string]any{
+		"name":      "mhl_run_start",
+		"arguments": map[string]any{"workflow": "Greet", "arguments": map[string]any{"name": "sam"}},
+		"_meta":     meta,
+	}), nil)
+	res, ok := body["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("stateless mhl_run_start failed: %v", body)
+	}
+	if res["structuredContent"].(map[string]any)["runId"] == "" {
+		t.Errorf("no runId: %v", res)
+	}
+
+	// Same call without _meta and no session → the -32602 protocol gate.
+	_, body = postMCP(t, ts.URL, "", rpcMap(3, "tools/call", map[string]any{
+		"name":      "mhl_run_start",
+		"arguments": map[string]any{"workflow": "Greet", "arguments": map[string]any{"name": "sam"}},
+	}), nil)
+	if body["error"] == nil || body["error"].(map[string]any)["code"].(float64) != -32602 {
+		t.Errorf("missing _meta: want -32602, got %v", body)
+	}
+}
+
+// Over HTTP, resources/list splices per-run resources onto the workflow ones,
+// and resources/read serves a run's logs and result — owner-gated like
+// run/status.
+func TestHTTPRunResources(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	// A workflow resource is reachable over HTTP too (falls to the shared dispatch).
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "resources/read", map[string]any{
+		"uri": "mhl://workflow/Greet",
+	}), nil)
+	if body["result"].(map[string]any)["contents"] == nil {
+		t.Fatalf("workflow resource unreadable over HTTP: %v", body)
+	}
+
+	start := structured(t, callTool(t, ts.URL, sid, 3, "mhl_run_start", map[string]any{
+		"workflow": "Greet", "arguments": map[string]any{"name": "ana"},
+	}))
+	runID := start["runId"].(string)
+	pollRunTool(t, ts.URL, sid, runID)
+
+	logsURI := "mhl://run/" + runID + "/logs"
+	resultURI := "mhl://run/" + runID + "/result"
+
+	// resources/list now contains this run's two resources.
+	_, body = postMCP(t, ts.URL, sid, rpcMap(4, "resources/list", nil), nil)
+	got := map[string]bool{}
+	for _, r := range body["result"].(map[string]any)["resources"].([]any) {
+		got[r.(map[string]any)["uri"].(string)] = true
+	}
+	if !got["mhl://workflow/Greet"] || !got[logsURI] || !got[resultURI] {
+		t.Errorf("resources/list = %v", body["result"])
+	}
+
+	// resources/read result → the run's status JSON.
+	_, body = postMCP(t, ts.URL, sid, rpcMap(5, "resources/read", map[string]any{"uri": resultURI}), nil)
+	c := body["result"].(map[string]any)["contents"].([]any)[0].(map[string]any)
+	var view map[string]any
+	if err := json.Unmarshal([]byte(c["text"].(string)), &view); err != nil {
+		t.Fatalf("result resource is not JSON: %v", err)
+	}
+	if view["state"] != "completed" {
+		t.Errorf("result resource state = %v", view["state"])
+	}
+
+	// resources/read logs → text contents.
+	_, body = postMCP(t, ts.URL, sid, rpcMap(6, "resources/read", map[string]any{"uri": logsURI}), nil)
+	if body["result"].(map[string]any)["contents"].([]any)[0].(map[string]any)["mimeType"] != "text/plain" {
+		t.Errorf("logs resource = %v", body["result"])
+	}
+
+	// A different session cannot read another caller's run resource.
+	other := initHTTPSession(t, ts.URL)
+	_, body = postMCP(t, ts.URL, other, rpcMap(7, "resources/read", map[string]any{"uri": resultURI}), nil)
+	if body["error"] == nil || body["error"].(map[string]any)["code"].(float64) != -32602 {
+		t.Errorf("cross-session run resource: want -32602, got %v", body)
+	}
+	// …and it is absent from that session's resources/list.
+	_, body = postMCP(t, ts.URL, other, rpcMap(8, "resources/list", nil), nil)
+	for _, r := range body["result"].(map[string]any)["resources"].([]any) {
+		if u := r.(map[string]any)["uri"].(string); u == logsURI || u == resultURI {
+			t.Errorf("another caller's run resource leaked into resources/list: %v", u)
+		}
+	}
+}
+
+// A workflow whose name collides with a control tool is NOT bridged: a plain
+// tools/call runs it synchronously, as any other workflow.
+func TestHTTPControlToolNameShadowedByWorkflow(t *testing.T) {
+	ts := newHTTPServer(t, "", map[string]string{
+		"wf.mh": "pipeline mhl_run_start {\n  var ok = \"\"\n  step S { ok = \"ran\" }\n}\n",
+	})
+	sid := initHTTPSession(t, ts.URL)
+
+	res := callTool(t, ts.URL, sid, 2, "mhl_run_start", map[string]any{})
+	if res["isError"] != false {
+		t.Fatalf("shadowed workflow tools/call errored: %v", res)
+	}
+	sc, _ := res["structuredContent"].(map[string]any)
+	if sc["ok"] != "ran" {
+		t.Errorf("workflow did not run synchronously: %v", res)
+	}
+	if _, isRun := sc["runId"]; isRun {
+		t.Errorf("tools/call was bridged to an async run: %v", sc)
+	}
+}
+
+// mhl_run_start's CallToolResult carries resource_link items pointing at the
+// run's logs and result resources.
+func TestHTTPRunStartResourceLink(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	res := callTool(t, ts.URL, sid, 2, "mhl_run_start", map[string]any{
+		"workflow": "Greet", "arguments": map[string]any{"name": "ana"},
+	})
+	runID := res["structuredContent"].(map[string]any)["runId"].(string)
+
+	links := map[string]bool{}
+	for _, c := range res["content"].([]any) {
+		m := c.(map[string]any)
+		if m["type"] == "resource_link" {
+			links[m["uri"].(string)] = true
+		}
+	}
+	if !links["mhl://run/"+runID+"/logs"] || !links["mhl://run/"+runID+"/result"] {
+		t.Errorf("mhl_run_start content carried no run resource_link: %v", res["content"])
 	}
 }

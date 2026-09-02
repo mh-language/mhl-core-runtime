@@ -1,7 +1,0 @@
-POST /mcp  sem Authorization               -> HTTP 401
-POST /mcp  bearer ERRADO                   -> HTTP 401
-POST /mcp  bearer CORRETO                  -> HTTP 200
-GET  /healthz  sem Authorization           -> HTTP 200
-GET  /metrics  sem Authorization           -> HTTP 200
-POST /mcp  Origin: http://evil.example     -> HTTP 403
-POST /mcp  Origin: http://localhost        -> HTTP 200

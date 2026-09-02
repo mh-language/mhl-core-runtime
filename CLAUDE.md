@@ -79,7 +79,19 @@ workflows too long to hold a `tools/call` open; backed by `execsvc.Request.OnSte
 this family is HTTP-only, the HTTP transport sets `server.asyncRuns`, so `initialize` /
 `server/discover` advertise it under `capabilities.experimental["mhl.run"]`
 (`{version, methods}`) and each `tools/list` entry gets `_meta.mhl.run`; stdio has neither.
-Adding/renaming a `run/*` method → update `asyncRunMethods` in `server.go`. `run/resume` continues
+Because a stock MCP client (VS Code, Claude Desktop) can only call `tools/call`, the HTTP
+`tools/list` also carries six `mhl_run_*` **control tools** (`runtools.go`): `serveMCP`
+rewrites a `tools/call` on one of those names to the matching `run/*` method
+(`bridgeRunToolParams` maps params + carries `_meta` across) before the drain/slot/routing
+logic, then `asToolResult` re-frames the reply as a `CallToolResult` (status object →
+`structuredContent`). Adding/renaming a `run/*` method → update `asyncRunMethods` **and**
+`runToolMethod` in `runtools.go`. Read-only detail is exposed as MCP **resources**
+(`resources.go`, `resources` capability, both transports): `resources/list` +
+`resources/read` for `mhl://workflow/<name>` (a manifest projected from
+`runtime.Pipeline` — steps, inputs, checkpoint, declared deps — so it can't drift),
+`mhl://workflow/<name>/source`, and HTTP-only `mhl://run/<id>/{logs,result}` (owner-gated
+like `run/status`); `dispatch` serves the `workflow` URIs, `serveMCP` splices in the `run`
+ones and `asToolResult` adds `resource_link`s to a bridged reply. `run/resume` continues
 a stopped run from its `checkpoint { strategy: "per_step" }` (the HITL pattern: a gate step
 `fail()`s until approved, then `run/resume {runId, arguments}` merges the decision in) via
 `execsvc.Request.{Session,Resume}`; `--state-dir` / `MHL_SERVE_STATE_DIR` makes that run

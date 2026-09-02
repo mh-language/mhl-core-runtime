@@ -1,6 +1,0 @@
-[22:06:29] Fase 1: Pod A=6008 (127.0.0.1:8763) Pod B=6023 (127.0.0.1:8764) --state-dir=/var/folders/x0/113y39ld2sz4xqvc814d7k280000gn/T/tmp.m4Tzc3RuFn
-[22:06:29] sidA (cunhado no Pod A) = 6e16786fb9a107390bf5b7ae0c232ec2
-[22:06:29]   tools/list no Pod B com sidA -> HTTP 200
-[22:06:30]   run/start no A + run/status no B (mesma sessão 6e16786fb9a107390bf5b7ae0c232ec2): state='failed' err=''
-[22:06:31]   --principal-header: bob no Pod B -> err='-32602' ; alice no Pod B -> state='failed'
-[22:06:31] RESULTADO: MET — sessão reconhecida nos dois pods; isolamento por principal preservado entre réplicas

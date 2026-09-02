@@ -1,2 +1,0 @@
-mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-004/../.. on http://127.0.0.1:8721/mcp
-{"time":"2026-09-01T22:10:29.660286-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}

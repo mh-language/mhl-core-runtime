@@ -1,6 +1,0 @@
-mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud on http://127.0.0.1:8763/mcp
-{"time":"2026-09-01T22:06:29.076775-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"59afb2a505aecdac0fb2a61f10780515","owner":"20098f2749ef06ea605cf04d1065466b3cec779cdf3d725864ba91c61e6bb503","tool":"DocPipeline","resume":false}
-session: 59afb2a505aecdac0fb2a61f10780515
-step: Draft
-step: Review
-{"time":"2026-09-01T22:06:30.08495-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"59afb2a505aecdac0fb2a61f10780515","owner":"20098f2749ef06ea605cf04d1065466b3cec779cdf3d725864ba91c61e6bb503","tool":"DocPipeline","durationMs":1008,"steps":2}

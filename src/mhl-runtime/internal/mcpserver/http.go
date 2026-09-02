@@ -349,6 +349,32 @@ func (h *httpServer) serveMCP(w http.ResponseWriter, r *http.Request, pathMethod
 		return
 	}
 
+	// A `tools/call` naming one of the mhl_run_* control tools is rewritten to
+	// the matching run/* method here, before the drain / slot / routing logic
+	// acts on msg.Method — so a client that speaks only tools/call drives the
+	// async family exactly as a native run/* caller would. The reply is
+	// re-framed as a CallToolResult where run/* is dispatched below.
+	bridgedRunTool := false
+	if h.srv.asyncRuns && msg.Method == "tools/call" {
+		var call struct {
+			Name      string          `json:"name"`
+			Arguments json.RawMessage `json:"arguments"`
+		}
+		if len(msg.Params) > 0 {
+			_ = json.Unmarshal(msg.Params, &call)
+		}
+		// A real workflow of the same name wins (toolList also skips the
+		// shadowed control tool), so a plain synchronous tools/call is never
+		// silently turned into an async run.
+		if _, shadowed := h.srv.tools[call.Name]; !shadowed {
+			if runMethod, ok := runToolMethod(call.Name); ok {
+				msg.Params = bridgeRunToolParams(call.Name, call.Arguments, msg.Params)
+				msg.Method = runMethod
+				bridgedRunTool = true
+			}
+		}
+	}
+
 	// A draining server finishes what it has but accepts no new work.
 	if h.draining.Load() && (msg.Method == "run/start" || msg.Method == "tools/call") {
 		writeRPC(w, http.StatusServiceUnavailable, errMsg(msg.ID, -32000, "server is draining — not accepting new runs"))
@@ -411,7 +437,33 @@ func (h *httpServer) serveMCP(w http.ResponseWriter, r *http.Request, pathMethod
 			h.finish(w, e)
 			return
 		}
-		h.finish(w, h.handleRun(sess, msg))
+		reply := h.handleRun(sess, msg)
+		if bridgedRunTool {
+			reply = asToolResult(h.srv, sess, reply)
+			h.metrics.ObserveToolCall(toolCallOutcome(reply))
+		}
+		h.finish(w, reply)
+		return
+	}
+
+	// resources/* — workflow resources come from the shared dispatch; the
+	// per-run resources (mhl://run/<id>/...) need the registry, so this
+	// transport serves them and splices them into resources/list.
+	switch {
+	case msg.Method == "resources/list":
+		if e := h.srv.requireProtocolContext(sess, msg); e != nil {
+			h.finish(w, e)
+			return
+		}
+		list := append(workflowResourceList(h.srv.tools), h.runResourceList(sess)...)
+		h.finish(w, h.srv.replyResult(sess, msg.ID, map[string]any{"resources": list}))
+		return
+	case msg.Method == "resources/read" && isRunResourceURI(msg.Params):
+		if e := h.srv.requireProtocolContext(sess, msg); e != nil {
+			h.finish(w, e)
+			return
+		}
+		h.finish(w, h.readRunResource(sess, msg))
 		return
 	}
 

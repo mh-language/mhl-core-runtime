@@ -1,8 +1,0 @@
-mhl serve mcp --http: 2 tool(s) from /workflows on http://[::]:8711/mcp
-{"time":"2026-08-31T14:48:21.31561188Z","level":"INFO","msg":"run started","component":"mcpserver","runId":"65cedb51a00124ace86991522d098c67","owner":"d69e49454b3e5c20d549b65dec721bf7894b731cb3320dd4ebecbe505477e064","tool":"SlowBuild","resume":false}
-session: 65cedb51a00124ace86991522d098c67
-step: Compile
-{"time":"2026-08-31T14:48:23.69040534Z","level":"INFO","msg":"draining","component":"mcpserver","timeout":"30s","working":1}
-step: Package
-step: Ship
-{"time":"2026-08-31T14:48:28.322939217Z","level":"INFO","msg":"run failed","component":"mcpserver","runId":"65cedb51a00124ace86991522d098c67","owner":"d69e49454b3e5c20d549b65dec721bf7894b731cb3320dd4ebecbe505477e064","tool":"SlowBuild","durationMs":7007,"steps":3}

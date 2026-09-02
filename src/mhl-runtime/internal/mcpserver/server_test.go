@@ -308,3 +308,84 @@ func TestServeNoWorkflows(t *testing.T) {
 		t.Fatal("expected an error when the directory declares no pipeline/workflow")
 	}
 }
+
+// Workflow resources are transport-shared: over stdio, resources/list enumerates
+// a manifest + source per workflow and resources/read returns each.
+func TestServeResources(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(`
+agent Writer { engine: "cli/echo" }
+pipeline Greet {
+    description: "Greets someone by name."
+    input name: string
+    checkpoint: { enabled: true, strategy: "per_step", ttl: 7d }
+    var greeting = ""
+    step Build { greeting = "hello " + name }
+    step Emit { log(greeting) }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	in := strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"resources/list"}`,
+		`{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"mhl://workflow/Greet"}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"mhl://workflow/Greet/source"}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"mhl://workflow/Nope"}}`,
+	}, "\n") + "\n")
+
+	var out bytes.Buffer
+	if err := mcpserver.Serve(context.Background(), dir, in, &out, io.Discard); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	msgs := decodeLines(t, out.String())
+
+	// initialize advertises the resources capability.
+	caps := msgs[0]["result"].(map[string]any)["capabilities"].(map[string]any)
+	if _, ok := caps["resources"].(map[string]any); !ok {
+		t.Errorf("initialize did not advertise resources capability: %v", caps)
+	}
+
+	// resources/list: manifest + source for Greet.
+	res := msgs[1]["result"].(map[string]any)["resources"].([]any)
+	uris := map[string]string{}
+	for _, r := range res {
+		m := r.(map[string]any)
+		uris[m["uri"].(string)] = m["mimeType"].(string)
+	}
+	if uris["mhl://workflow/Greet"] != "application/json" || uris["mhl://workflow/Greet/source"] != "text/x-mhl" {
+		t.Errorf("resources/list = %v", res)
+	}
+
+	// resources/read manifest — derived detail a tools/list entry omits.
+	man := msgs[2]["result"].(map[string]any)["contents"].([]any)[0].(map[string]any)
+	var manifest map[string]any
+	if err := json.Unmarshal([]byte(man["text"].(string)), &manifest); err != nil {
+		t.Fatalf("manifest is not JSON: %v", err)
+	}
+	steps := manifest["steps"].([]any)
+	if len(steps) != 2 || steps[0] != "Build" || steps[1] != "Emit" {
+		t.Errorf("manifest steps = %v", steps)
+	}
+	if manifest["resumable"] != true {
+		t.Errorf("manifest omitted resumable despite a per_step checkpoint: %v", manifest)
+	}
+	if cp, _ := manifest["checkpoint"].(map[string]any); cp["strategy"] != "per_step" {
+		t.Errorf("manifest checkpoint = %v", manifest["checkpoint"])
+	}
+	if decl, _ := manifest["declared"].(map[string]any); decl == nil || len(decl["agents"].([]any)) != 1 {
+		t.Errorf("manifest declared block = %v", manifest["declared"])
+	}
+
+	// resources/read source — the .mh text.
+	src := msgs[3]["result"].(map[string]any)["contents"].([]any)[0].(map[string]any)
+	if !strings.Contains(src["text"].(string), "pipeline Greet") {
+		t.Errorf("source resource text = %q", src["text"])
+	}
+
+	// Unknown workflow → -32602.
+	if code := msgs[4]["error"].(map[string]any)["code"].(float64); code != -32602 {
+		t.Errorf("unknown resource code = %v, want -32602", code)
+	}
+}

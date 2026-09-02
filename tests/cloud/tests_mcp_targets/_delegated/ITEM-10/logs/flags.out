@@ -1,3 +1,0 @@
-mhl: unexpected argument "/var/folders/x0/113y39ld2sz4xqvc814d7k280000gn/T/tmp.n6bAEXUbes/tokens.json"
-mhl: unexpected argument "http://127.0.0.1:1/jwks.json"
-(nenhuma menção a token-file/jwks/scopes no verifier/serve)

@@ -8,6 +8,7 @@ differs is the transport and **who waits for the run to finish**.
 | 1. stdio | one JSON-RPC line on stdin/stdout | yes (one message at a time) | no |
 | 2. HTTP synchronous (`tools/call`) | `POST /mcp` | yes, for the whole run | no |
 | 3. HTTP asynchronous (`run/*`) | `POST /mcp` | no — returns a `runId` | yes, via `run/status` |
+| 3b. HTTP async via control tools (`mhl_run_*`) | `POST /mcp` → `tools/call` | no — returns a `runId` | yes, via `mhl_run_status` |
 
 HTTP server config: default bind `127.0.0.1:8711`; `--token` /
 `MHL_SERVE_TOKEN` turns on `Authorization: Bearer`; `--principal-header` /
@@ -147,7 +148,26 @@ so `initialize` / `server/discover` advertise the family under
 `capabilities.experimental["mhl.run"]` (`{version, methods:[run/start…]}`) and
 each `tools/list` entry carries `_meta.mhl.run` — a client discovers that a long
 pipeline must use `run/start` instead of a blocking `tools/call`. Over stdio,
-where `run/*` is not routed, neither is present. The run lives in a goroutine whose context descends from
+where `run/*` is not routed, neither is present.
+
+**Control tools (Flow 3b).** A stock MCP client (VS Code, Claude Desktop) can
+only send `tools/call`, never a custom `run/*` method — so the HTTP `tools/list`
+also carries six synthetic tools, `mhl_run_start` / `mhl_run_status` /
+`mhl_run_resume` / `mhl_run_cancel` / `mhl_run_list` / `mhl_run_logs`
+(`runtools.go`). In `serveMCP`, right after the body is parsed, a `tools/call`
+whose name is one of these is rewritten in place: `msg.Method` becomes the
+matching `run/*`, `msg.Params` becomes `bridgeRunToolParams(...)` (for
+`mhl_run_start`, `{workflow}` → `{name}`; for the rest the arguments object is
+already the `run/*` params; the original `params._meta` is carried across so the
+protocol-context gate still sees it). It then flows through the ordinary `run/*`
+routing below, and `asToolResult` re-frames the reply as a `CallToolResult`
+(`structuredContent` = the run-status object, plus a pretty-printed text block); a
+`-32602` stays a JSON-RPC error. The rewrite happens before the drain / slot
+checks, so `mhl_run_start` is refused while draining exactly like `run/start` and
+never takes the synchronous `tools/call` slot. `runToolMethod` /
+`asyncRunMethods` are the two lists to extend when adding a `run/*` method.
+
+The run lives in a goroutine whose context descends from
 `h.runsCtx`, **not** from `r.Context()`. `runsCtx` is deliberately detached from
 the SIGINT/SIGTERM context (`context.WithoutCancel` in `buildHTTP`): a signal
 alone does not stop an async run — only `drain()` (`runsCancel`, gated by
@@ -248,6 +268,30 @@ byte offset (poll with the previous `nextSince`). Owner-gated like
 `run/status`. A run reconstructed from disk after a restart has an empty
 buffer (its output happened in the previous process). The same output is also
 written to the server's stderr diagnostics sink.
+
+### Resources (`resources.go`)
+
+Read-only detail, addressed by `mhl://` URI, behind the `resources` capability
+(advertised on both transports):
+
+- `mhl://workflow/<name>` — a JSON manifest projected from the loaded
+  `execsvc.Workflow` / `runtime.Pipeline` (`workflowManifest`): ordered steps,
+  typed inputs, `inputSchema`, checkpoint config, parallel groups, step
+  timeouts, loop config, and the program's `declared` agents/tools/memory/…
+- `mhl://workflow/<name>/source` — the declaration's `.mh` text.
+- `mhl://run/<id>/logs` and `.../result` — an async run's `ringLog` output and
+  `runView` JSON. **HTTP-only** (need the registry) and owner-gated exactly
+  like `run/status`.
+
+`resources/list` + `resources/read` are cases in the shared `server.dispatch`
+(gated by `requireProtocolContext`); `dispatch`'s `readResource` only serves
+`mhl://workflow/*`. `serveMCP` intercepts first: `resources/list` there returns
+`workflowResourceList(...)` ++ `h.runResourceList(sess)`, and a `resources/read`
+whose `uri` is `mhl://run/*` (`isRunResourceURI`) goes to `h.readRunResource`
+before `dispatch` sees it. `asToolResult` also appends `resource_link` items
+(logs + result) to any bridged `mhl_run_*` reply that carries a `runId`. Adding
+a resource kind → `workflowResourceList` / `readWorkflowResource` (or the run
+pair) plus the URI constants.
 
 ### Identity & ownership
 

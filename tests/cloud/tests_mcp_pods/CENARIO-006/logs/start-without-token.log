@@ -1,1 +1,0 @@
-mhl: --principal-header needs --token / MHL_SERVE_TOKEN: without the shared gateway↔mhl secret the header is client-spoofable
