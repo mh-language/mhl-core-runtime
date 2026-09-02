@@ -1,7 +1,7 @@
 mhl serve mcp --http: note: no --state-dir/MHL_SERVE_STATE_DIR and no `extension store` — async run state is per-process and lost on restart
 mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-011/../.. on http://127.0.0.1:8732/mcp
-{"time":"2026-09-01T09:37:31.450032-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"8fb17d14fe2a670e5e46684d4c5dc816","owner":"683115d306ee569372adb1294ea645d6ed732bfdac3c7eff700addd84674916a","tool":"DocPipeline","resume":false}
-session: 8fb17d14fe2a670e5e46684d4c5dc816
+{"time":"2026-09-01T22:11:08.541289-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"a901de56def37b8a344a3e566d3f2e8c","owner":"e6db98c52acd8c860e4749444b60a8893e3ebc8fedd7ccdd8777f39d4b113878","tool":"DocPipeline","resume":false}
+session: a901de56def37b8a344a3e566d3f2e8c
 step: Draft
 step: Review
-{"time":"2026-09-01T09:37:32.462963-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"8fb17d14fe2a670e5e46684d4c5dc816","owner":"683115d306ee569372adb1294ea645d6ed732bfdac3c7eff700addd84674916a","tool":"DocPipeline","durationMs":1012,"steps":2}
+{"time":"2026-09-01T22:11:09.554791-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"a901de56def37b8a344a3e566d3f2e8c","owner":"e6db98c52acd8c860e4749444b60a8893e3ebc8fedd7ccdd8777f39d4b113878","tool":"DocPipeline","durationMs":1013,"steps":2}

@@ -1,11 +1,11 @@
-[09:36:47] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-001/mhl serve mcp --http --addr 127.0.0.1:8711 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud)
-[09:36:47] servidor PID=1494
-[09:36:48] healthz respondeu 200 (tentativa 2)
-[09:36:48] POST /mcp initialize -> HTTP 200
-[09:36:48] Mcp-Session-Id: d0d896f306abedb5b0d740ffc34b8559
-[09:36:48] corpo da resposta:
-{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"experimental":{"mhl.run":{"methods":["run/start","run/status","run/resume","run/cancel","run/list","run/logs"],"version":"1"}},"tools":{"listChanged":false}},"protocolVersion":"2025-06-18","serverInfo":{"name":"mhl","version":"v1.1.0-alpha-8-g274d040-dirty"}}}
+[22:10:22] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-001/mhl serve mcp --http --addr 127.0.0.1:8711 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud)
+[22:10:22] servidor PID=14793
+[22:10:23] healthz respondeu 200 (tentativa 3)
+[22:10:23] POST /mcp initialize -> HTTP 200
+[22:10:23] Mcp-Session-Id: 9622ddeed9a3605d1b3f19f32927be2d
+[22:10:23] corpo da resposta:
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"experimental":{"mhl.run":{"methods":["run/start","run/status","run/resume","run/cancel","run/list","run/logs"],"version":"1"}},"tools":{"listChanged":false}},"protocolVersion":"2025-06-18","serverInfo":{"name":"mhl","version":"v1.2.1-beta.1-dirty"}}}
 
-[09:36:48] controle negativo (sem token) -> HTTP 401 (esperado 401)
-[09:36:48] RESULTADO: FUNCIONOU — conexão MCP estabelecida (initialize OK, sessão d0d896f306abedb5b0d740ffc34b8559)
+[22:10:23] controle negativo (sem token) -> HTTP 401 (esperado 401)
+[22:10:23] RESULTADO: FUNCIONOU — conexão MCP estabelecida (initialize OK, sessão 9622ddeed9a3605d1b3f19f32927be2d)
 PASS

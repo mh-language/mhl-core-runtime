@@ -1,10 +1,10 @@
-[09:34:26] Pod A=97733 (127.0.0.1:8761) Pod B=97745 (127.0.0.1:8762) --state-dir compartilhado=/var/folders/x0/113y39ld2sz4xqvc814d7k280000gn/T/tmp.eHUiGRrCwi
-[09:34:26] Pod A run/start SlowBuild -> 00bb9bf6fbf25feb194c2b1e100283ab
-[09:34:27]   B run/status #1: state='working' step='Compile' err=''
-[09:34:28]   B run/status #2: state='working' step='Compile' err=''
-[09:34:29]   B run/status #3: state='working' step='Package' err=''
-[09:34:30]   B run/status #4: state='working' step='Package' err=''
-[09:34:31]   B run/status #5: state='working' step='Package' err=''
-[09:34:32]   B run/cancel: error='' result.state='canceled'
-[09:34:33]   A run/status pós-cancel-do-B: 'canceled'
-[09:34:33] RESULTADO: MET — registro live entre pods + cancel distribuído funcionam
+[22:06:20] Pod A=5594 (127.0.0.1:8761) Pod B=5641 (127.0.0.1:8762) --state-dir compartilhado=/var/folders/x0/113y39ld2sz4xqvc814d7k280000gn/T/tmp.1u9OslYMtu
+[22:06:20] Pod A run/start SlowBuild -> d5b802fe366cba15a8a41f2550b88542
+[22:06:21]   B run/status #1: state='working' step='Compile' err=''
+[22:06:22]   B run/status #2: state='working' step='Compile' err=''
+[22:06:23]   B run/status #3: state='working' step='Package' err=''
+[22:06:24]   B run/status #4: state='working' step='Package' err=''
+[22:06:26]   B run/status #5: state='working' step='Package' err=''
+[22:06:27]   B run/cancel: error='' result.state='canceled'
+[22:06:28]   A run/status pós-cancel-do-B: 'canceled'
+[22:06:28] RESULTADO: MET — registro live entre pods + cancel distribuído funcionam

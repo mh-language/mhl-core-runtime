@@ -1,9 +1,9 @@
-[09:36:48] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-002/mhl serve mcp --http --addr 127.0.0.1:8712 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud)
-[09:36:48] servidor PID=1572
-[09:36:48] healthz respondeu 200 (tentativa 2)
-[09:36:48] POST /mcp initialize -> HTTP 200 ; Mcp-Session-Id: 52be92fbde36cca43c326671b5a2536c
-[09:36:48] POST /mcp tools/list -> HTTP 200
-[09:36:48] corpo da resposta:
+[22:10:23] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-002/mhl serve mcp --http --addr 127.0.0.1:8712 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud)
+[22:10:23] servidor PID=14911
+[22:10:23] healthz respondeu 200 (tentativa 3)
+[22:10:23] POST /mcp initialize -> HTTP 200 ; Mcp-Session-Id: a35c8582d637e26282379bd7b24cc743
+[22:10:23] POST /mcp tools/list -> HTTP 200
+[22:10:23] corpo da resposta:
 {
     "jsonrpc": "2.0",
     "id": 2,
@@ -61,6 +61,6 @@
     }
 }
 
-[09:36:48] tools retornadas: count=2 names=[DocPipeline,SlowBuild] com_descricao=2 com_inputSchema=2
-[09:36:48] servidor anunciou no startup: 2 tool(s)
-[09:36:48] RESULTADO: FUNCIONOU — 2 tools listadas (DocPipeline,SlowBuild), todas com description e inputSchema
+[22:10:23] tools retornadas: count=2 names=[DocPipeline,SlowBuild] com_descricao=2 com_inputSchema=2
+[22:10:23] servidor anunciou no startup: 2 tool(s)
+[22:10:23] RESULTADO: FUNCIONOU — 2 tools listadas (DocPipeline,SlowBuild), todas com description e inputSchema

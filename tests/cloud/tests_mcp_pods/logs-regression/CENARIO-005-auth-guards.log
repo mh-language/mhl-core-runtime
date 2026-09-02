@@ -1,5 +1,5 @@
-[09:36:53] iniciando servidor COM --token em 127.0.0.1:8722
-[09:36:53] matriz:
+[22:10:29] iniciando servidor COM --token em 127.0.0.1:8722
+[22:10:30] matriz:
 POST /mcp  sem Authorization               -> HTTP 401
 POST /mcp  bearer ERRADO                   -> HTTP 401
 POST /mcp  bearer CORRETO                  -> HTTP 200
@@ -7,8 +7,8 @@ GET  /healthz  sem Authorization           -> HTTP 200
 GET  /metrics  sem Authorization           -> HTTP 200
 POST /mcp  Origin: http://evil.example     -> HTTP 403
 POST /mcp  Origin: http://localhost        -> HTTP 200
-[09:36:53] iniciando 2º servidor SEM --token em 0.0.0.0:8723 (espera aviso no stderr)
-[09:36:54] aviso 'endpoint is unauthenticated' no stderr do 2º servidor? yes
+[22:10:30] iniciando 2º servidor SEM --token em 0.0.0.0:8723 (espera aviso no stderr)
+[22:10:31] aviso 'endpoint is unauthenticated' no stderr do 2º servidor? yes
 mhl serve mcp --http: warning: binding 0.0.0.0:8723 with no --token/MHL_SERVE_TOKEN — the endpoint is unauthenticated
-[09:36:54] RESULTADO: FUNCIONOU — bearer exigido no /mcp, probes livres, Origin cross-site 403, aviso sem token
+[22:10:31] RESULTADO: FUNCIONOU — bearer exigido no /mcp, probes livres, Origin cross-site 403, aviso sem token
 PASS

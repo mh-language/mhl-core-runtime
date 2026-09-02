@@ -1,1 +1,1 @@
-{"jsonrpc":"2.0","id":3,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"mhl","version":"v1.1.0-alpha-8-g274d040-dirty"}},"resultType":"complete","runs":[]}}
+{"jsonrpc":"2.0","id":3,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"mhl","version":"v1.2.1-beta.1-dirty"}},"resultType":"complete","runs":[]}}

@@ -1,14 +1,14 @@
-[09:37:02] iniciando: serve mcp --http --max-concurrent-runs 1
-[09:37:02] sessão=85c9ed7a891b39df11646b0aeda71fa5
-[09:37:03] run/start #1 -> state=working queuePosition=<n/a> runId=4c0a72d77fcd4fb53aac1ee49bc84319
-[09:37:03] run/start #2 -> state=queued queuePosition=0 runId=470794caf9c6a51f0567d3b8fe27a614
-[09:37:03] run/start #3 -> state=queued queuePosition=1 runId=d9819883ac4ee5cbdd4e751f26ea1e52
-[09:37:03] /metrics durante a fila: runs_active=1 runs_queued=2
-[09:37:03] tools/call SlowBuild com pool cheio (espera ~5s)...
-[09:37:08] tools/call @capacity -> HTTP 503 ; error.code=-32000 ; msg="server at capacity — retry, or use run/start"
-[09:37:08] run/cancel #3 -> state=canceled
-[09:37:08]   run #2 status[1]: state=queued
-[09:37:09]   run #2 status[2]: state=queued
-[09:37:10]   run #2 status[3]: state=working
-[09:37:10] RESULTADO: FUNCIONOU — limite=1 respeitado, fila com queuePosition, shed de carga e drain da fila
+[22:10:39] iniciando: serve mcp --http --max-concurrent-runs 1
+[22:10:39] sessão=1daff914e79e32eb39ac8ecb6ec216a4
+[22:10:39] run/start #1 -> state=working queuePosition=<n/a> runId=c45c970a27ce195c8ddab82f91026248
+[22:10:39] run/start #2 -> state=queued queuePosition=0 runId=1e590a7d84d517eac41cc7c208f468bd
+[22:10:39] run/start #3 -> state=queued queuePosition=1 runId=a1e73774d87d8fe4bec1efc8859b3869
+[22:10:39] /metrics durante a fila: runs_active=1 runs_queued=2
+[22:10:39] tools/call SlowBuild com pool cheio (espera ~5s)...
+[22:10:44] tools/call @capacity -> HTTP 503 ; error.code=-32000 ; msg="server at capacity — retry, or use run/start"
+[22:10:44] run/cancel #3 -> state=canceled
+[22:10:45]   run #2 status[1]: state=queued
+[22:10:46]   run #2 status[2]: state=queued
+[22:10:47]   run #2 status[3]: state=working
+[22:10:47] RESULTADO: FUNCIONOU — limite=1 respeitado, fila com queuePosition, shed de carga e drain da fila
 PASS

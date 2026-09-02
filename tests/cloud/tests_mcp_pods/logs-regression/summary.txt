@@ -2,11 +2,11 @@ CÓDIGO        VARIANTE             STATUS    TEMPO
 --------------------------------------------------------------
 001            conexao              PASS         1s
 002            listar-tools         PASS         0s
-002            stateless            PASS         0s
-003            call                 PASS         2s
-003            wrong-tool           PASS         1s
+002            stateless            PASS         1s
+003            call                 PASS         3s
+003            wrong-tool           PASS         2s
 004            probes               PASS         0s
-005            auth-guards          PASS         1s
+005            auth-guards          PASS         2s
 006            principal-isolation  PASS         4s
 007            async-lifecycle      PASS         4s
 008            concurrency-queue    PASS         8s
@@ -15,7 +15,7 @@ CÓDIGO        VARIANTE             STATUS    TEMPO
 011            state-dir-restart    PASS         5s
 012            metrics              PASS         4s
 013            run-logs             PASS         2s
-014            protocol-conformance PASS         0s
+014            protocol-conformance PASS         1s
 015            inputschema-validation PASS         1s
-016            cancel-inflight      PASS         6s
+016            cancel-inflight      PASS         5s
 K8S-001        pod-lifecycle        SKIP        —

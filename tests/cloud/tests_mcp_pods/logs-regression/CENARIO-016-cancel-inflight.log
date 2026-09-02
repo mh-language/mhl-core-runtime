@@ -1,23 +1,23 @@
-[09:37:40] iniciando servidor em 127.0.0.1:8737
-[09:37:40] run/start SlowBuild -> runId=3f3705cf54e03898f41d505f19271b9c state=working
-[09:37:41] run/cancel...
-[09:37:42] run/cancel -> state=canceled (t+1.05s do start)
-[09:37:42] run/status imediato -> state=canceled reached=['Compile']
-[09:37:42] observando 4s se a run avança para Package...
-[09:37:46] run/logs (t+~5s):
+[22:11:18] iniciando servidor em 127.0.0.1:8737
+[22:11:18] run/start SlowBuild -> runId=06dec86704db43bb04fddd83283ac9d4 state=working
+[22:11:19] run/cancel...
+[22:11:19] run/cancel -> state=canceled (t+1.07s do start)
+[22:11:19] run/status imediato -> state=canceled reached=['Compile']
+[22:11:19] observando 4s se a run avança para Package...
+[22:11:23] run/logs (t+~5s):
 {
     "jsonrpc": "2.0",
     "id": 5,
     "result": {
         "nextSince": 56,
-        "runId": "3f3705cf54e03898f41d505f19271b9c",
-        "text": "session: 3f3705cf54e03898f41d505f19271b9c\nstep: Compile\n"
+        "runId": "06dec86704db43bb04fddd83283ac9d4",
+        "text": "session: 06dec86704db43bb04fddd83283ac9d4\nstep: Compile\n"
     }
 }
-[09:37:46] run/status (t+~5s) -> state=canceled reached=['Compile']
-[09:37:46] ----- stderr do servidor -----
-{"time":"2026-09-01T09:37:40.919307-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"3f3705cf54e03898f41d505f19271b9c","owner":"3ef852fe2b7a5b3aeb00a2f4538b29091dc35d3b902e7c095e63b50d11c313c6","tool":"SlowBuild","resume":false}
+[22:11:23] run/status (t+~5s) -> state=canceled reached=['Compile']
+[22:11:23] ----- stderr do servidor -----
+{"time":"2026-09-01T22:11:18.71588-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"06dec86704db43bb04fddd83283ac9d4","owner":"cc09f5cb3761a4166202b77471b17a7b455e18a354d2b21a94c3a798923c1f2c","tool":"SlowBuild","resume":false}
 step: Compile
-{"time":"2026-09-01T09:37:41.983572-03:00","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"3f3705cf54e03898f41d505f19271b9c","owner":"3ef852fe2b7a5b3aeb00a2f4538b29091dc35d3b902e7c095e63b50d11c313c6","tool":"SlowBuild","durationMs":1064,"steps":1}
-[09:37:46] RESULTADO: FUNCIONOU — run/cancel abortou o subprocesso do Compile; a run não avançou para Package
+{"time":"2026-09-01T22:11:19.79526-03:00","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"06dec86704db43bb04fddd83283ac9d4","owner":"cc09f5cb3761a4166202b77471b17a7b455e18a354d2b21a94c3a798923c1f2c","tool":"SlowBuild","durationMs":1079,"steps":1}
+[22:11:23] RESULTADO: FUNCIONOU — run/cancel abortou o subprocesso do Compile; a run não avançou para Package
 PASS

@@ -185,22 +185,27 @@ func Run(req Request) (*Result, error) {
 		fmt.Fprintf(out, "session: %s\n", sessionID)
 	}
 
-	var contextView *interpreter.ContextView
+	// `context` is always visible to steps as this run's own metadata
+	// (session_id / started_at / resumed / principal). A `context:` block is
+	// only needed to also populate `context.vars` from a prior run — without
+	// one, priorVars stays nil and contextSnapshot exposes `context.vars` as {}.
+	var priorVars map[string]any
 	if pipeline.Context != nil {
-		priorVars, err := runtime.PriorVars(baseStore, pipeline.Name, pipeline.Context.Source)
+		pv, err := runtime.PriorVars(baseStore, pipeline.Name, pipeline.Context.Source)
 		if err != nil {
 			return nil, err
 		}
-		if pipeline.Context.Require && len(priorVars) == 0 {
+		if pipeline.Context.Require && len(pv) == 0 {
 			return nil, fmt.Errorf("context: source %q resolved to no stored state for pipeline %q", pipeline.Context.Source, pipeline.Name)
 		}
-		contextView = &interpreter.ContextView{
-			SessionID: sessionID,
-			StartedAt: time.Now().UTC().Format(time.RFC3339),
-			Resumed:   req.Resume,
-			Principal: req.Principal,
-			Vars:      priorVars,
-		}
+		priorVars = pv
+	}
+	contextView := &interpreter.ContextView{
+		SessionID: sessionID,
+		StartedAt: time.Now().UTC().Format(time.RFC3339),
+		Resumed:   req.Resume,
+		Principal: req.Principal,
+		Vars:      priorVars,
 	}
 
 	declaredInputs := map[string]types.Type{}

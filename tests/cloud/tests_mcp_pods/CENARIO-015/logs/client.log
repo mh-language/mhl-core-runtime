@@ -1,5 +1,5 @@
-[09:37:39] iniciando servidor em 127.0.0.1:8736
-[09:37:40] inputSchema de DocPipeline:
+[22:11:17] iniciando servidor em 127.0.0.1:8736
+[22:11:17] inputSchema de DocPipeline:
 {
   "additionalProperties": false,
   "properties": {
@@ -16,7 +16,7 @@
   ],
   "type": "object"
 }
-[09:37:40] caso 1 (tools/call sem repo) -> HTTP 200
+[22:11:17] caso 1 (tools/call sem repo) -> HTTP 200
 {
     "jsonrpc": "2.0",
     "id": 2,
@@ -25,7 +25,7 @@
         "message": "invalid inputs for \"DocPipeline\": missing required input \"repo\" (declared: \"approved\", \"repo\")"
     }
 }
-[09:37:40] caso 2 (tools/call campo extra) -> HTTP 200
+[22:11:18] caso 2 (tools/call campo extra) -> HTTP 200
 {
     "jsonrpc": "2.0",
     "id": 3,
@@ -34,7 +34,7 @@
         "message": "invalid inputs for \"DocPipeline\": undeclared input \"campoExtra\" (declared: \"approved\", \"repo\")"
     }
 }
-[09:37:40] caso 3 (run/start sem repo) -> HTTP 200
+[22:11:18] caso 3 (run/start sem repo) -> HTTP 200
 {
     "jsonrpc": "2.0",
     "id": 4,
@@ -43,4 +43,4 @@
         "message": "invalid inputs for \"DocPipeline\": missing required input \"repo\" (declared: \"approved\", \"repo\")"
     }
 }
-[09:37:40] RESULTADO: FUNCIONOU — o servidor faz cumprir o inputSchema anunciado (rejeita nos parâmetros)
+[22:11:18] RESULTADO: FUNCIONOU — o servidor faz cumprir o inputSchema anunciado (rejeita nos parâmetros)

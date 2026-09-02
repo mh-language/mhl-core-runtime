@@ -1,16 +1,16 @@
 mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-012/../.. on http://127.0.0.1:8733/mcp
-{"time":"2026-09-01T09:37:34.043493-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"f277b659576ac96e645c85d49b298188","owner":"aac5e562d86f464009da20b4269d53ff9c7ea2e0023d8c43185201ebcc3fd1d0","tool":"DocPipeline","resume":false}
-session: f277b659576ac96e645c85d49b298188
+{"time":"2026-09-01T22:11:11.313049-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"22e3f0b58c1e37ba786c8822c0da49de","owner":"12837c04763ec774765be68a7fb01d629b2df57eb70764024f432564bdc94ba6","tool":"DocPipeline","resume":false}
+session: 22e3f0b58c1e37ba786c8822c0da49de
 step: Draft
 step: Review
 step: Publish
-{"time":"2026-09-01T09:37:35.057802-03:00","level":"INFO","msg":"run completed","component":"mcpserver","runId":"f277b659576ac96e645c85d49b298188","owner":"aac5e562d86f464009da20b4269d53ff9c7ea2e0023d8c43185201ebcc3fd1d0","tool":"DocPipeline","durationMs":1014,"steps":3}
-{"time":"2026-09-01T09:37:35.134588-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"4934849323742fcaaf0cc9dc56bddeee","owner":"aac5e562d86f464009da20b4269d53ff9c7ea2e0023d8c43185201ebcc3fd1d0","tool":"SlowBuild","resume":false}
-session: 4934849323742fcaaf0cc9dc56bddeee
+{"time":"2026-09-01T22:11:12.327825-03:00","level":"INFO","msg":"run completed","component":"mcpserver","runId":"22e3f0b58c1e37ba786c8822c0da49de","owner":"12837c04763ec774765be68a7fb01d629b2df57eb70764024f432564bdc94ba6","tool":"DocPipeline","durationMs":1014,"steps":3}
+{"time":"2026-09-01T22:11:12.414674-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"0672eeccc1082a632c9b1bf9d3a4e742","owner":"12837c04763ec774765be68a7fb01d629b2df57eb70764024f432564bdc94ba6","tool":"SlowBuild","resume":false}
+session: 0672eeccc1082a632c9b1bf9d3a4e742
 step: Compile
-{"time":"2026-09-01T09:37:36.191913-03:00","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"4934849323742fcaaf0cc9dc56bddeee","owner":"aac5e562d86f464009da20b4269d53ff9c7ea2e0023d8c43185201ebcc3fd1d0","tool":"SlowBuild","durationMs":1057,"steps":1}
-session: 14bf65c9c5c82cf2ca903b94a55a5792
+{"time":"2026-09-01T22:11:13.453221-03:00","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"0672eeccc1082a632c9b1bf9d3a4e742","owner":"12837c04763ec774765be68a7fb01d629b2df57eb70764024f432564bdc94ba6","tool":"SlowBuild","durationMs":1038,"steps":1}
+session: 31de25b0561be310c372308e53e54971
 step: Draft
 step: Review
 step: Publish
-{"time":"2026-09-01T09:37:37.349682-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}
+{"time":"2026-09-01T22:11:14.666504-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}

@@ -1,8 +1,8 @@
-[09:36:49] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-003/mhl serve mcp --http --addr 127.0.0.1:8714 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud)
-[09:36:49] servidor PID=1761
-[09:36:49] healthz 200 (tentativa 2)
-[09:36:49] controle (sem bearer) tools/call -> HTTP 401 (esperado 401)
-[09:36:49] request stateless (tools/call DocPipeline repo=demo-api approved=yes):
+[22:10:24] iniciando: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-003/mhl serve mcp --http --addr 127.0.0.1:8714 (workflows: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud)
+[22:10:24] servidor PID=15083
+[22:10:25] healthz 200 (tentativa 3)
+[22:10:25] controle (sem bearer) tools/call -> HTTP 401 (esperado 401)
+[22:10:25] request stateless (tools/call DocPipeline repo=demo-api approved=yes):
 {
     "jsonrpc": "2.0",
     "id": 1,
@@ -19,9 +19,9 @@
         }
     }
 }
-[09:36:50] POST /mcp tools/call (stateless) -> HTTP 200
-[09:36:50] header Mcp-Session-Id na resposta: <ausente, como esperado no stateless>
-[09:36:50] corpo da resposta:
+[22:10:26] POST /mcp tools/call (stateless) -> HTTP 200
+[22:10:26] header Mcp-Session-Id na resposta: <ausente, como esperado no stateless>
+[22:10:26] corpo da resposta:
 {
     "jsonrpc": "2.0",
     "id": 1,
@@ -29,7 +29,7 @@
         "_meta": {
             "io.modelcontextprotocol/serverInfo": {
                 "name": "mhl",
-                "version": "v1.1.0-alpha-8-g274d040-dirty"
+                "version": "v1.2.1-beta.1-dirty"
             }
         },
         "content": [
@@ -50,7 +50,7 @@
     }
 }
 
-[09:36:51] controle (approved=no) -> isError=True texto="runtime: step "Review" failed: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/docs-workflow.mh:42:13: awaiting documentation review for demo-api"
-[09:36:51] resposta: isError=False resultType=complete serverInfo=mhl/v1.1.0-alpha-8-g274d040-dirty content.text=yes published='published docs for demo-api (reviewed)' review='reviewed'
-[09:36:51] RESULTADO: FUNCIONOU — DocPipeline executada via stateless; published="published docs for demo-api (reviewed)"; isError=false
+[22:10:27] controle (approved=no) -> isError=True texto="runtime: step "Review" failed: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/docs-workflow.mh:42:13: awaiting documentation review for demo-api"
+[22:10:27] resposta: isError=False resultType=complete serverInfo=mhl/v1.2.1-beta.1-dirty content.text=yes published='published docs for demo-api (reviewed)' review='reviewed'
+[22:10:27] RESULTADO: FUNCIONOU — DocPipeline executada via stateless; published="published docs for demo-api (reviewed)"; isError=false
 PASS

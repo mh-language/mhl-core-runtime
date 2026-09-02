@@ -1,0 +1,12 @@
+cenários-alvo tests_mcp_targets — 20260901-220619
+binário: mhl v1.2.1-beta.1-dirty
+
+ITEM       STATUS      TEMPO  detalhe
+------------------------------------------------------------
+01         MET            9s  —
+02         MET            3s  —
+11         MET            1s  —
+
+------------------------------------------------------------
+MET=3  PENDING=0  FAIL=0  (13s)
+resumo: /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_targets/REGRESSION.md

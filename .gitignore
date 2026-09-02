@@ -15,6 +15,7 @@ dotnet/
 /output/
 /dist/
 /out/
+**/logs/**
 
 # build artifacts (built by release.yml on tag push, not committed)
 *.vsix

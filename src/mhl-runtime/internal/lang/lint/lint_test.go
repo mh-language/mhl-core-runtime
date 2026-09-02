@@ -1883,6 +1883,21 @@ pipeline MainPipeline {
 	}
 }
 
+func TestCheckPipelineContextReferenceWithoutBlockIsClean(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+pipeline MainPipeline {
+    step Step1 {
+        log(context.session_id)
+    }
+}
+`)
+	if findings := lint.File(main); len(findings) != 0 {
+		t.Fatalf("expected no findings for context.session_id without a context: block, got: %+v", findings)
+	}
+}
+
 func TestCheckLoopStopWhenReferencesPipelineVar(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")

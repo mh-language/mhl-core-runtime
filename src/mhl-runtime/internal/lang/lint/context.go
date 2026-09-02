@@ -71,15 +71,3 @@ func validContextSource(s string) bool {
 	}
 	return strings.HasPrefix(s, "session:") && strings.TrimSpace(s[len("session:"):]) != ""
 }
-
-// pipelineHasContextProp reports whether p declares a `context:` block —
-// which makes the identifier `context` a valid read inside every step of
-// that pipeline (see checkAgentCalls's seed and interpreter.isContextRef).
-func pipelineHasContextProp(p *ast.Pipeline) bool {
-	for _, member := range p.Body {
-		if member.Prop != nil && member.Prop.Name == "context" {
-			return true
-		}
-	}
-	return false
-}

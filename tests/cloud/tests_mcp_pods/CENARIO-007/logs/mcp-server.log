@@ -1,16 +1,16 @@
 mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud/tests_mcp_pods/CENARIO-007/../.. on http://127.0.0.1:8726/mcp
-{"time":"2026-09-01T09:36:58.922226-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"7203051b893722d993c000739d7ef09a","owner":"776b626ab9b5d7cb1949fba88f7763e005cd0d1f90c596c19d1718ce0480b13f","tool":"DocPipeline","resume":false}
-session: 7203051b893722d993c000739d7ef09a
+{"time":"2026-09-01T22:10:35.689196-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"ba7e0cfdae5dca2b56cdd1826b93b73d","owner":"ea66787886d8fd76efbbc710a41c4cb41ddd89f7decae8bcb0883168a402704d","tool":"DocPipeline","resume":false}
+session: ba7e0cfdae5dca2b56cdd1826b93b73d
 step: Draft
 step: Review
-{"time":"2026-09-01T09:36:59.934577-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"7203051b893722d993c000739d7ef09a","owner":"776b626ab9b5d7cb1949fba88f7763e005cd0d1f90c596c19d1718ce0480b13f","tool":"DocPipeline","durationMs":1012,"steps":2}
-{"time":"2026-09-01T09:37:00.11918-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"7203051b893722d993c000739d7ef09a","owner":"776b626ab9b5d7cb1949fba88f7763e005cd0d1f90c596c19d1718ce0480b13f","tool":"DocPipeline","resume":true}
-session: 7203051b893722d993c000739d7ef09a
+{"time":"2026-09-01T22:10:36.701545-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"ba7e0cfdae5dca2b56cdd1826b93b73d","owner":"ea66787886d8fd76efbbc710a41c4cb41ddd89f7decae8bcb0883168a402704d","tool":"DocPipeline","durationMs":1012,"steps":2}
+{"time":"2026-09-01T22:10:36.869078-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"ba7e0cfdae5dca2b56cdd1826b93b73d","owner":"ea66787886d8fd76efbbc710a41c4cb41ddd89f7decae8bcb0883168a402704d","tool":"DocPipeline","resume":true}
+session: ba7e0cfdae5dca2b56cdd1826b93b73d
 step: Review
 step: Publish
-{"time":"2026-09-01T09:37:00.120497-03:00","level":"INFO","msg":"run completed","component":"mcpserver","runId":"7203051b893722d993c000739d7ef09a","owner":"776b626ab9b5d7cb1949fba88f7763e005cd0d1f90c596c19d1718ce0480b13f","tool":"DocPipeline","durationMs":1,"steps":3}
-{"time":"2026-09-01T09:37:00.463784-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"33b4b850b88f24477c08d4f7840c5ad4","owner":"776b626ab9b5d7cb1949fba88f7763e005cd0d1f90c596c19d1718ce0480b13f","tool":"SlowBuild","resume":false}
-session: 33b4b850b88f24477c08d4f7840c5ad4
+{"time":"2026-09-01T22:10:36.87026-03:00","level":"INFO","msg":"run completed","component":"mcpserver","runId":"ba7e0cfdae5dca2b56cdd1826b93b73d","owner":"ea66787886d8fd76efbbc710a41c4cb41ddd89f7decae8bcb0883168a402704d","tool":"DocPipeline","durationMs":1,"steps":3}
+{"time":"2026-09-01T22:10:36.999008-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"96890103060101032355ea1ae90d300e","owner":"ea66787886d8fd76efbbc710a41c4cb41ddd89f7decae8bcb0883168a402704d","tool":"SlowBuild","resume":false}
+session: 96890103060101032355ea1ae90d300e
 step: Compile
-{"time":"2026-09-01T09:37:01.528602-03:00","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"33b4b850b88f24477c08d4f7840c5ad4","owner":"776b626ab9b5d7cb1949fba88f7763e005cd0d1f90c596c19d1718ce0480b13f","tool":"SlowBuild","durationMs":1064,"steps":1}
-{"time":"2026-09-01T09:37:02.629509-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}
+{"time":"2026-09-01T22:10:38.063547-03:00","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"96890103060101032355ea1ae90d300e","owner":"ea66787886d8fd76efbbc710a41c4cb41ddd89f7decae8bcb0883168a402704d","tool":"SlowBuild","durationMs":1064,"steps":1}
+{"time":"2026-09-01T22:10:39.155136-03:00","level":"INFO","msg":"draining","component":"mcpserver","timeout":"0s","cancelImmediately":true}

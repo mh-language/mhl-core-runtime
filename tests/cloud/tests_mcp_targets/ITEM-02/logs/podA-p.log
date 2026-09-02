@@ -1,6 +1,6 @@
 mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud on http://127.0.0.1:8765/mcp
-{"time":"2026-09-01T09:34:35.372207-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"a518a7c18a7cefd58db1f7336a702848","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","resume":false}
-session: a518a7c18a7cefd58db1f7336a702848
+{"time":"2026-09-01T22:06:30.294532-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"e6170797c0705b3f02274c729e78a96f","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","resume":false}
+session: e6170797c0705b3f02274c729e78a96f
 step: Draft
 step: Review
-{"time":"2026-09-01T09:34:36.379346-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"a518a7c18a7cefd58db1f7336a702848","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","durationMs":1007,"steps":2}
+{"time":"2026-09-01T22:06:31.308144-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"e6170797c0705b3f02274c729e78a96f","owner":"299894496724d1c79a495a5bfdd943c10f3daecbcf187c94d5d1c54907d55e5c","tool":"DocPipeline","durationMs":1013,"steps":2}

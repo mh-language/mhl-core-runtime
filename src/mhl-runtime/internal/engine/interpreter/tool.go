@@ -61,7 +61,7 @@ func evalToolCall(ctx *evalCtx, tool *ast.Tool, method string, call *ast.Call, d
 	// from its default — evaluated in the callee's own scope, built up left
 	// to right so a later default may read an earlier parameter.
 	childEnv := Env{}
-	childCtx := &evalCtx{prog: ctx.prog, store: ctx.store, jsonStore: ctx.jsonStore, out: ctx.out, env: childEnv, file: ctx.file, selfTool: tool, aliasTypes: ctx.aliasTypes, registry: ctx.registry}
+	childCtx := &evalCtx{prog: ctx.prog, store: ctx.store, jsonStore: ctx.jsonStore, out: ctx.out, env: childEnv, file: ctx.file, selfTool: tool, cctx: ctx.cctx, aliasTypes: ctx.aliasTypes, registry: ctx.registry}
 	bound := make([]any, len(m.Params))
 	for i, p := range m.Params {
 		var v any

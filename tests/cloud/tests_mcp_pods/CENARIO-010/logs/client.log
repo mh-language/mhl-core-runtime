@@ -1,14 +1,14 @@
-[09:37:19] iniciando servidor em 127.0.0.1:8730
-[09:37:19] run/start -> runId=16cc1644d1be28ad232d81e376915d99 state=working
-[09:37:19]   status1[1]: state=working step=Compile
-[09:37:21]   status1[2]: state=working step=Compile
-[09:37:22]   status1[3]: state=working step=Compile
-[09:37:23]   status1[4]: state=working step=Package
-[09:37:24]   status1[5]: state=working step=Package
-[09:37:25]   status1[6]: state=working step=Package
-[09:37:26]   status1[7]: state=working step=Ship
-[09:37:27]   status1[8]: state=failed step=Ship
-[09:37:27] run/status (tentativa 1):
+[22:10:56] iniciando servidor em 127.0.0.1:8730
+[22:10:56] run/start -> runId=a07895e0171bcbfca8e473b386befe5a state=working
+[22:10:56]   status1[1]: state=working step=Compile
+[22:10:57]   status1[2]: state=working step=Compile
+[22:10:58]   status1[3]: state=working step=Compile
+[22:11:00]   status1[4]: state=working step=Package
+[22:11:01]   status1[5]: state=working step=Package
+[22:11:02]   status1[6]: state=working step=Package
+[22:11:03]   status1[7]: state=working step=Ship
+[22:11:04]   status1[8]: state=failed step=Ship
+[22:11:04] run/status (tentativa 1):
 {
     "jsonrpc": "2.0",
     "id": 9,
@@ -20,8 +20,8 @@
             "Ship"
         ],
         "resumable": true,
-        "runId": "16cc1644d1be28ad232d81e376915d99",
-        "startedAt": "2026-09-01T12:37:19Z",
+        "runId": "a07895e0171bcbfca8e473b386befe5a",
+        "startedAt": "2026-09-02T01:10:56Z",
         "state": "failed",
         "step": "Ship",
         "stepIndex": 3,
@@ -29,10 +29,10 @@
         "tool": "SlowBuild"
     }
 }
-[09:37:27] run/resume -> state=working 
-[09:37:27]   status2[1]: state=working step=Ship
-[09:37:28]   status2[2]: state=failed step=Ship
-[09:37:28] run/status (tentativa 2):
+[22:11:04] run/resume -> state=working 
+[22:11:04]   status2[1]: state=working step=Ship
+[22:11:05]   status2[2]: state=failed step=Ship
+[22:11:05] run/status (tentativa 2):
 {
     "jsonrpc": "2.0",
     "id": 9,
@@ -45,8 +45,8 @@
             "Ship"
         ],
         "resumable": true,
-        "runId": "16cc1644d1be28ad232d81e376915d99",
-        "startedAt": "2026-09-01T12:37:19Z",
+        "runId": "a07895e0171bcbfca8e473b386befe5a",
+        "startedAt": "2026-09-02T01:10:56Z",
         "state": "failed",
         "step": "Ship",
         "stepIndex": 1,
@@ -54,4 +54,4 @@
         "tool": "SlowBuild"
     }
 }
-[09:37:28] RESULTADO: FUNCIONOU — Ship estoura o timeout, falha, e run/resume re-executa Ship com orçamento novo
+[22:11:05] RESULTADO: FUNCIONOU — Ship estoura o timeout, falha, e run/resume re-executa Ship com orçamento novo

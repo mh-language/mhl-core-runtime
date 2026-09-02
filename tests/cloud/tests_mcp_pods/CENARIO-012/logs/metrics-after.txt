@@ -5,7 +5,7 @@ mhl_serve_runs_total{outcome="failed"} 0
 mhl_serve_runs_total{outcome="canceled"} 1
 # HELP mhl_serve_run_duration_seconds Cumulative run execution time (queue wait excluded).
 # TYPE mhl_serve_run_duration_seconds summary
-mhl_serve_run_duration_seconds_sum 2.071
+mhl_serve_run_duration_seconds_sum 2.052
 mhl_serve_run_duration_seconds_count 2
 # HELP mhl_serve_tool_calls_total Synchronous tools/call requests by outcome.
 # TYPE mhl_serve_tool_calls_total counter

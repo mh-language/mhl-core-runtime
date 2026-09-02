@@ -1,11 +1,11 @@
 mhl serve mcp --http: 2 tool(s) from /Users/yanjustino/Documents/mhl.lang.nosync/tests/cloud on http://127.0.0.1:8761/mcp
-{"time":"2026-09-01T09:34:26.107793-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"00bb9bf6fbf25feb194c2b1e100283ab","owner":"0fb1cf337910c65489226dd58d74b4ad71e11c0e4bd627c9ca16c4ee40d020a8","tool":"SlowBuild","resume":false}
-session: 00bb9bf6fbf25feb194c2b1e100283ab
+{"time":"2026-09-01T22:06:20.618707-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"d5b802fe366cba15a8a41f2550b88542","owner":"d2bc5d425bc415060b8731ab5fe222a7e49b8e3101404952f22916506a7f2528","tool":"SlowBuild","resume":false}
+session: d5b802fe366cba15a8a41f2550b88542
 step: Compile
 step: Package
-{"time":"2026-09-01T09:34:31.614131-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"773c3ae5bd1080e90c80ed1900f09ed4","owner":"0fb1cf337910c65489226dd58d74b4ad71e11c0e4bd627c9ca16c4ee40d020a8","tool":"SlowBuild","resume":false}
-session: 773c3ae5bd1080e90c80ed1900f09ed4
+{"time":"2026-09-01T22:06:26.065878-03:00","level":"INFO","msg":"run started","component":"mcpserver","runId":"858e330fc91d34d11f39dca2e8b4284f","owner":"d2bc5d425bc415060b8731ab5fe222a7e49b8e3101404952f22916506a7f2528","tool":"SlowBuild","resume":false}
+session: 858e330fc91d34d11f39dca2e8b4284f
 step: Compile
 step: Ship
-{"time":"2026-09-01T09:34:33.137965-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"00bb9bf6fbf25feb194c2b1e100283ab","owner":"0fb1cf337910c65489226dd58d74b4ad71e11c0e4bd627c9ca16c4ee40d020a8","tool":"SlowBuild","durationMs":7030,"steps":3}
-{"time":"2026-09-01T09:34:33.616978-03:00","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"773c3ae5bd1080e90c80ed1900f09ed4","owner":"0fb1cf337910c65489226dd58d74b4ad71e11c0e4bd627c9ca16c4ee40d020a8","tool":"SlowBuild","durationMs":2002,"steps":1}
+{"time":"2026-09-01T22:06:27.656224-03:00","level":"INFO","msg":"run failed","component":"mcpserver","runId":"d5b802fe366cba15a8a41f2550b88542","owner":"d2bc5d425bc415060b8731ab5fe222a7e49b8e3101404952f22916506a7f2528","tool":"SlowBuild","durationMs":7037,"steps":3}
+{"time":"2026-09-01T22:06:28.069057-03:00","level":"INFO","msg":"run canceled","component":"mcpserver","runId":"858e330fc91d34d11f39dca2e8b4284f","owner":"d2bc5d425bc415060b8731ab5fe222a7e49b8e3101404952f22916506a7f2528","tool":"SlowBuild","durationMs":2003,"steps":1}

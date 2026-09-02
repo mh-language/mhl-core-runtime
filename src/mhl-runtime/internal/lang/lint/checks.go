@@ -59,11 +59,10 @@ func checkAgentCalls(file string, prog *ast.Program, aliases map[string]types.Ty
 				for name, t := range pipelineMemVars {
 					seed[name] = t
 				}
-				// A `context:` block makes the read-only identifier `context`
-				// resolve to an object inside every step (interpreter.isContextRef).
-				if pipelineHasContextProp(decl.Pipeline) {
-					seed["context"] = types.Object
-				}
+				// The read-only identifier `context` resolves to an object inside
+				// every step (this run's session metadata); a `context:` block only
+				// adds `context.vars` on top. See interpreter.isContextRef.
+				seed["context"] = types.Object
 				declared := collectVarNames(prog, step.Body, seed, nil)
 				findings = append(findings, checkStatements(file, prog, step.Body, declared, nil, aliases)...)
 			}

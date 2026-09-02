@@ -59,6 +59,29 @@ func TestRunContextExposesSessionMetadata(t *testing.T) {
 	}
 }
 
+const contextNoBlockPipeline = `
+pipeline Demo {
+    step One {
+        log("ctx session: " + context.session_id)
+    }
+}
+`
+
+// `context` and its run-metadata fields (session_id / started_at / resumed /
+// principal) are available in every step with no `context:` block — the block
+// is only needed to also populate context.vars from a prior run.
+func TestRunContextSessionIdWithoutBlock(t *testing.T) {
+	run := runInDir(t, t.TempDir(), contextNoBlockPipeline)
+	out, err := run()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	id := sessionIDFromOutput(t, out)
+	if !strings.Contains(out, "ctx session: "+id) {
+		t.Errorf("context.session_id (%q) not echoed in output:\n%s", id, out)
+	}
+}
+
 const contextCarryoverPipeline = `
 pipeline Demo {
     checkpoint: {
