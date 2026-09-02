@@ -13,8 +13,10 @@ import (
 // wrapped pipeline's own per-step Checkpoint, which a LoopRunner resets
 // fresh every iteration. This tracks which iteration is next and, once the
 // loop has stopped, why: "stop_when" (the condition was satisfied),
-// "max_iterations" (the ceiling was hit), or "break" (a step explicitly
-// aborted). A LoopCheckpoint with an empty TerminalReason means the loop is
+// "max_iterations" (the ceiling was hit), "break" (a step explicitly
+// aborted), or "pause" (a step called pause(...) for a human-in-the-loop
+// hand-off). An empty TerminalReason — and "pause" — mean --resume continues
+// the loop (a paused loop re-runs the iteration it paused in); the loop is
 // still in progress — that's the one --resume treats as resumable;
 // anything else already ran to a stop and needs a fresh `start`-equivalent
 // (a plain, non-resumed run) to go again.
@@ -139,14 +141,17 @@ func (s *LoopStore) Load(loop string) (*LoopCheckpoint, bool, error) {
 }
 
 // LoopResult reports how a loop run ended: how many iterations it completed
-// and which of the three stop conditions fired. FinalVars is the last
-// completed iteration's accumulated variable state (RunResult.FinalVars),
-// nil when no iteration completed — cli.go persists it as the session's
-// result.json for a `context:` element, exactly as for a plain pipeline.
+// and which of the three stop conditions fired. FinalVars is the accumulated
+// variable state (RunResult.FinalVars) of the last completed iteration for
+// "stop_when" / "max_iterations", or of the iteration a "break" fired in
+// (its state up to the break point) — nil only when nothing ran at all.
+// cli.go persists it as the session's result.json for a `context:` element,
+// exactly as for a plain pipeline.
 type LoopResult struct {
 	Iterations     int
-	TerminalReason string // "stop_when", "max_iterations", or "break"
+	TerminalReason string // "stop_when", "max_iterations", "break", or "pause"
 	BreakReason    any
+	PauseReason    any
 	Resumed        bool
 	FinalVars      map[string]any
 }
@@ -238,7 +243,7 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 		if err != nil {
 			return nil, err
 		}
-		if ok && cp.TerminalReason == "" {
+		if ok && (cp.TerminalReason == "" || cp.TerminalReason == "pause") {
 			iteration = cp.NextIteration
 			instanceID = cp.InstanceID
 			resumed = true
@@ -268,7 +273,16 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "break", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
-			return &LoopResult{Iterations: iteration + 1, TerminalReason: "break", BreakReason: result.BreakReason, Resumed: resumed, FinalVars: finalVars}, nil
+			// A break keeps the state built up in the iteration it fired in —
+			// Runner.Run now returns it — rather than the last full iteration's.
+			return &LoopResult{Iterations: iteration + 1, TerminalReason: "break", BreakReason: result.BreakReason, Resumed: resumed, FinalVars: result.FinalVars}, nil
+		}
+		if result.Paused {
+			// Suspend the loop at this iteration; a later --resume re-runs it.
+			if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "pause", InstanceID: instanceID}); err != nil {
+				return nil, err
+			}
+			return &LoopResult{Iterations: iteration + 1, TerminalReason: "pause", PauseReason: result.PauseReason, Resumed: resumed, FinalVars: result.FinalVars}, nil
 		}
 		finalVars = result.FinalVars
 

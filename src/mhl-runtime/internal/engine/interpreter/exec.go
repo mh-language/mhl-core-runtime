@@ -200,15 +200,27 @@ type gotoSignal struct{ target string }
 
 func (g *gotoSignal) Error() string { return "goto " + g.target }
 
-// isControlSignal reports whether err is one of the three not-a-real-error
-// control-flow signals (return/break/goto) rather than a genuine failure —
-// the shared check execStatement (skip the positionedError wrap) and
-// execTry (skip Catch, still run Finally) both need.
+// pauseSignal is the control signal a `pause(...)` builtin call raises: it
+// unwinds out of RunStep exactly like breakSignal (never swallowed by
+// try/catch), but cli.go's exec closure translates it into a
+// runtime.PauseSignal, which suspends the run — not a failure, not a
+// completion — leaving its checkpoint in place so a `run/resume` (or
+// `mhl run --resume`) re-enters the step that paused. The reason value is
+// carried into the run's status for the caller / human operator.
+type pauseSignal struct{ reason any }
+
+func (p *pauseSignal) Error() string { return "pause" }
+
+// isControlSignal reports whether err is one of the not-a-real-error
+// control-flow signals (return/break/goto/pause) rather than a genuine
+// failure — the shared check execStatement (skip the positionedError wrap)
+// and execTry (skip Catch, still run Finally) both need.
 func isControlSignal(err error) bool {
 	var retSig *returnSignal
 	var brkSig *breakSignal
 	var gtSig *gotoSignal
-	return errors.As(err, &retSig) || errors.As(err, &brkSig) || errors.As(err, &gtSig)
+	var pauseSig *pauseSignal
+	return errors.As(err, &retSig) || errors.As(err, &brkSig) || errors.As(err, &gtSig) || errors.As(err, &pauseSig)
 }
 
 // IsBreak reports whether err (as returned by RunStep) came from a `break`
@@ -230,6 +242,17 @@ func IsGoto(err error) (target string, ok bool) {
 		return sig.target, true
 	}
 	return "", false
+}
+
+// IsPause reports whether err (as returned by RunStep) came from a
+// `pause(...)` builtin call, and the value its optional reason argument
+// evaluated to (nil when it carried none).
+func IsPause(err error) (reason any, ok bool) {
+	var sig *pauseSignal
+	if errors.As(err, &sig) {
+		return sig.reason, true
+	}
+	return nil, false
 }
 
 // maxLoopIterations caps how many times a `while` loop's body may run, so a

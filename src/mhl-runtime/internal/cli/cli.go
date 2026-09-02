@@ -155,6 +155,9 @@ func runPipeline(args []string, out io.Writer) error {
 		if res.Broke {
 			printBreakReason(out, res.PipelineName, res.BreakReason)
 		}
+		if res.Paused {
+			printPauseReason(out, res.PipelineName, res.PauseReason)
+		}
 		return nil
 	}
 
@@ -165,6 +168,9 @@ func runPipeline(args []string, out io.Writer) error {
 	if res.TerminalReason == "break" {
 		printBreakReason(out, res.PipelineName, res.BreakReason)
 	}
+	if res.TerminalReason == "pause" {
+		printPauseReason(out, res.PipelineName, res.PauseReason)
+	}
 	return nil
 }
 
@@ -173,6 +179,14 @@ func printBreakReason(out io.Writer, name string, reason any) {
 		fmt.Fprintf(out, "%q stopped by break: %v\n", name, reason)
 	} else {
 		fmt.Fprintf(out, "%q stopped by break\n", name)
+	}
+}
+
+func printPauseReason(out io.Writer, name string, reason any) {
+	if reason != nil {
+		fmt.Fprintf(out, "%q paused (resume with --resume): %v\n", name, reason)
+	} else {
+		fmt.Fprintf(out, "%q paused (resume with --resume)\n", name)
 	}
 }
 

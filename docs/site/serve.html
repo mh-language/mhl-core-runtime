@@ -45,8 +45,8 @@
           <a class="nav-link" href="#quickstart">Try it with the sample</a>
           <a class="nav-link" href="#mcp-stdio">MCP over stdio</a>
           <a class="nav-link" href="#mcp-http">MCP over Streamable HTTP</a>
-          <a class="nav-link" href="#async">Long runs: <code>run/*</code></a>
-          <a class="nav-link" href="#resume">Human-in-the-loop: <code>run/resume</code></a>
+          <a class="nav-link" href="#async">Long runs: <code>mhl_run_*</code></a>
+          <a class="nav-link" href="#resume">Human-in-the-loop: <code>mhl_run_resume</code></a>
           <a class="nav-link" href="#resources">Resources: <code>mhl://</code></a>
           <a class="nav-link" href="#a2a">A2A skills</a>
           <a class="nav-link" href="#clients">Wiring a client</a>
@@ -65,7 +65,7 @@
           <div class="quick-index">
             <a href="#mcp-stdio"><code>mcp</code> stdio<span>spawned subprocess</span></a>
             <a href="#mcp-http"><code>mcp --http</code><span>networked client</span></a>
-            <a href="#async"><code>run/*</code><span>long runs, step by step</span></a>
+            <a href="#async"><code>mhl_run_*</code><span>long runs, step by step</span></a>
             <a href="#a2a"><code>a2a</code><span>Agent2Agent skills</span></a>
           </div>
         </section>
@@ -79,7 +79,7 @@
             <div class="table-row"><span>Streamable HTTP</span><span><code>mhl serve mcp --http &lt;dir&gt;</code></span><span>one JSON-RPC message per <code>POST /mcp</code>, JSON responses only (no SSE) — the form a networked MCP client uses</span></div>
             <div class="table-row"><span>A2A</span><span><code>mhl serve a2a &lt;dir&gt;</code></span><span>JSON-RPC 2.0 over HTTP with an Agent Card at <code>/.well-known/agent-card.json</code></span></div>
           </div>
-          <div class="tip-row"><span>ISOLATION</span><p>A synchronous <code>tools/call</code> runs in its own throwaway state directory — no checkpoint or <code>context.vars</code> carry-over between calls. The async <code>run/*</code> path (below) keeps state so a run can be resumed.</p></div>
+          <div class="tip-row"><span>ISOLATION</span><p>A synchronous <code>tools/call</code> runs in its own throwaway state directory — no checkpoint or <code>context.vars</code> carry-over between calls. The async path (<code>mhl_run_*</code> tools, below) keeps state so a run can be resumed.</p></div>
         </section>
 
         <section class="feature doc-section" id="quickstart" data-title="quickstart sample serve directory summarize triage report approval clone try example workflows">
@@ -98,8 +98,8 @@ mhl serve a2a sample/serve          # http://127.0.0.1:8710/</code></pre>
             <div class="table-row table-head"><span>Workflow</span><span>Signature</span><span>Shows</span></div>
             <div class="table-row"><span><code>Summarize</code></span><span><code>Summarize(topic, max_words)</code></span><span>a <code>before</code>-free agent step (uses <code>echo</code>, so no real LLM)</span></div>
             <div class="table-row"><span><code>Triage</code></span><span><code>Triage(title, body)</code></span><span>pure string logic, no agent</span></div>
-            <div class="table-row"><span><code>Report</code></span><span><code>Report(topic)</code></span><span>four ~1s steps — watch <code>run/status</code> advance step by step</span></div>
-            <div class="table-row"><span><code>Approval</code></span><span><code>Approval(request, approved)</code></span><span>a <code>per_step</code> checkpoint plus a <code>fail()</code> gate — the <code>run/resume</code> loop</span></div>
+            <div class="table-row"><span><code>Report</code></span><span><code>Report(topic)</code></span><span>four ~1s steps — watch <code>mhl_run_status</code> advance step by step</span></div>
+            <div class="table-row"><span><code>Approval</code></span><span><code>Approval(request, approved)</code></span><span>a <code>pause()</code> gate — the paused / <code>mhl_run_resume</code> loop</span></div>
           </div>
         </section>
 
@@ -128,7 +128,7 @@ mhl serve a2a sample/serve          # http://127.0.0.1:8710/</code></pre>
             <div class="table-row"><span><code>--principal-header</code> · <code>MHL_SERVE_PRINCIPAL_HEADER</code></span><span>(unset)</span><span>header an authenticated upstream sets the caller identity in; run ownership keys on it (needs <code>--token</code>). Also reaches a workflow as read-only <code>context.principal</code></span></div>
             <div class="table-row"><span><code>--state-dir</code> · <code>MHL_SERVE_STATE_DIR</code></span><span>per-process temp dir</span><span>where async <code>run/*</code> state is kept — a real path makes runs survive a restart</span></div>
             <div class="table-row"><span><code>--drain-timeout</code> · <code>MHL_SERVE_DRAIN_TIMEOUT</code></span><span><code>0</code></span><span>on SIGTERM, how long in-flight async runs get to finish before they are cancelled</span></div>
-            <div class="table-row"><span><code>--max-concurrent-runs</code> · <code>MHL_SERVE_MAX_CONCURRENT_RUNS</code></span><span><code>0</code> (unlimited)</span><span>ceiling on executing runs; extra <code>run/start</code>s report <code>state: "queued"</code> with a <code>queuePosition</code></span></div>
+            <div class="table-row"><span><code>--max-concurrent-runs</code> · <code>MHL_SERVE_MAX_CONCURRENT_RUNS</code></span><span><code>0</code> (unlimited)</span><span>ceiling on executing runs; an extra <code>mhl_run_start</code> reports <code>state: "queued"</code> with a <code>queuePosition</code></span></div>
           </div>
           <p class="muted">Operational endpoints, unauthenticated: <code>GET /healthz</code> (liveness), <code>GET /readyz</code> (503 while draining), <code>GET /metrics</code> (Prometheus text). <code>POST /mcp/&lt;method&gt;</code> (e.g. <code>/mcp/run/resume</code>) mirrors <code>POST /mcp</code> so a policy engine can gate one method. A single <code>extension store &lt;Name&gt; { dir: ... }</code> declaration in the workflow directory routes all durable state (sessions + <code>run/*</code> checkpoints) through that extension instead of <code>.mhl/state</code> — see <a href="extensions.html">extensions</a>.</p>
           <p class="muted">Guards: the <code>Origin</code> header, when present, must be loopback (DNS-rebinding). <code>GET /mcp</code> is <code>405</code> (no server-to-client stream). <code>DELETE /mcp</code> with an <code>Mcp-Session-Id</code> ends that session (<code>204</code>, or <code>404</code> if unknown).</p>
@@ -160,55 +160,52 @@ curl -s -X DELETE localhost:8711/mcp -H "Mcp-Session-Id: $sid"   # 204 — end t
           </div>
         </section>
 
-        <section class="feature doc-section" id="async" data-title="async run start run status run cancel run list long running poll step progress reached vars stepIndex stepTotal ownership session owner unknown runId">
-          <div class="feature-head"><h2><span class="feature-num">05</span>Long runs: <code>run/start</code>, <code>run/status</code>, <code>run/cancel</code></h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede"><code>tools/call</code> blocks until the workflow finishes. For a long one, <code>run/start</code> takes the same <code>{name, arguments}</code> and returns a <code>runId</code> immediately; you poll <code>run/status</code> for the current step, the steps reached so far, and the final <code>vars</code>. <code>run/cancel</code> stops one and <code>run/list</code> enumerates your runs. All are gated by the same protocol context as <code>tools/*</code> (a session, or <code>params._meta</code>).</p>
-          <p class="block-label">Start, poll, and cancel</p>
+        <section class="feature doc-section" id="async" data-title="async mhl_run_start mhl_run_status mhl_run_cancel mhl_run_list mhl_run_logs control tools tools/call run start run status run cancel run list long running poll step progress reached vars stepIndex stepTotal structuredContent ownership session owner unknown runId">
+          <div class="feature-head"><h2><span class="feature-num">05</span>Long runs: <code>mhl_run_start</code>, <code>mhl_run_status</code>, <code>mhl_run_cancel</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A plain <code>tools/call</code> blocks until the workflow finishes. For a long one, call <code>mhl_run_start</code> instead — same workflow, but it returns a <code>runId</code> right away; then poll <code>mhl_run_status</code> for the current step, the steps reached so far, and the final <code>vars</code>. <code>mhl_run_cancel</code> stops a run and <code>mhl_run_list</code> enumerates yours. These are ordinary tools, so <strong>any MCP client</strong> drives them — each is a <code>tools/call</code> like any other, and its status object comes back as <code>structuredContent</code>.</p>
+          <p class="block-label">Start, poll, and cancel — all through <code>tools/call</code></p>
           <div class="code-wrap">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code>rid=$(curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
-  -d '{"jsonrpc":"2.0","id":4,"method":"run/start","params":{"name":"Report","arguments":{"topic":"caching"}}}' \
-  | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["runId"])')
+  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"mhl_run_start",
+       "arguments":{"workflow":"Report","arguments":{"topic":"caching"}}}}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["structuredContent"]["runId"])')
 
 curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"run/status\",\"params\":{\"runId\":\"$rid\"}}"
-# -&gt; {"state":"working","step":"Gather","stepIndex":1,"stepTotal":4,"reached":["Gather"], ...}
-# -&gt; {"state":"working","step":"Summarize","stepIndex":3,"stepTotal":4,"reached":["Gather","Analyze","Summarize"], ...}
-# -&gt; {"state":"completed","reached":["Gather","Analyze","Summarize","Publish"],"vars":{ ... }}
+  -d "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"mhl_run_status\",\"arguments\":{\"runId\":\"$rid\"}}}"
+# structuredContent -&gt; {"state":"working","step":"Gather","stepIndex":1,"stepTotal":4,"reached":["Gather"], ...}
+# structuredContent -&gt; {"state":"working","step":"Summarize","stepIndex":3,"stepTotal":4,"reached":["Gather","Analyze","Summarize"], ...}
+# structuredContent -&gt; {"state":"completed","reached":["Gather","Analyze","Summarize","Publish"],"vars":{ ... }}
 
 curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"run/cancel\",\"params\":{\"runId\":\"$rid\"}}"
-# -&gt; {"state":"canceled", ...}</code></pre>
+  -d "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"mhl_run_cancel\",\"arguments\":{\"runId\":\"$rid\"}}}"
+# structuredContent -&gt; {"state":"canceled", ...}</code></pre>
           </div>
+          <p class="block-label">The status object — returned as <code>structuredContent</code>, and mirrored in the result's text block</p>
           <div class="reference-table">
             <div class="table-row table-head"><span>Field</span><span>When</span><span>Meaning</span></div>
-            <div class="table-row"><span><code>state</code></span><span>always</span><span><code>working</code> · <code>completed</code> · <code>failed</code> · <code>canceled</code></span></div>
+            <div class="table-row"><span><code>state</code></span><span>always</span><span><code>working</code> · <code>completed</code> · <code>failed</code> · <code>canceled</code> · <code>paused</code></span></div>
             <div class="table-row"><span><code>step</code> · <code>stepIndex</code> · <code>stepTotal</code></span><span>once a step has started</span><span>the step the run is on, its 1-based position, and the declared step count</span></div>
             <div class="table-row"><span><code>reached</code></span><span>always</span><span>ordered steps that started; on completion it becomes the authoritative executed list</span></div>
             <div class="table-row"><span><code>vars</code></span><span><code>completed</code></span><span>the run's final variable state</span></div>
-            <div class="table-row"><span><code>error</code> · <code>resumable</code></span><span><code>failed</code> / <code>canceled</code></span><span>the failure message, and whether <code>run/resume</code> can continue it</span></div>
+            <div class="table-row"><span><code>error</code> · <code>resumable</code></span><span><code>failed</code> / <code>canceled</code></span><span>the failure message, and whether <code>mhl_run_resume</code> can continue it</span></div>
+            <div class="table-row"><span><code>reason</code></span><span><code>paused</code></span><span>the <code>pause(...)</code> value — a human-in-the-loop hand-off; <code>vars</code> and <code>resumable</code> are also set</span></div>
           </div>
-          <div class="tip-row"><span>OWNERSHIP</span><p>Each run is owned by the session (<code>Mcp-Session-Id</code>) that started it. <code>run/status</code>, <code>run/resume</code>, <code>run/cancel</code> and <code>run/list</code> only act for that caller — any other sees <code>unknown runId</code> (the same answer as a genuinely unknown id, so it is not an existence oracle). Stateless callers have no session and share one anonymous owner, so stateless mode has no per-caller isolation. Terminal runs stay pollable for an hour; a server shutdown cancels any still running.</p></div>
-          <div class="tip-row"><span>PLAIN CLIENTS</span><p>Most MCP hosts (VS Code, Claude Desktop, …) can only issue <code>tools/call</code>, not a custom <code>run/*</code> method. Over HTTP the server therefore also lists six <strong>control tools</strong> — <code>mhl_run_start</code>, <code>mhl_run_status</code>, <code>mhl_run_resume</code>, <code>mhl_run_cancel</code>, <code>mhl_run_list</code>, <code>mhl_run_logs</code> — that bridge to the matching <code>run/*</code> method and return its status object as <code>structuredContent</code>. <code>mhl_run_start</code> takes <code>{workflow, arguments}</code> (its <code>workflow</code> field enumerates the loaded workflows); the rest take the same params as their <code>run/*</code> method. Each per-workflow tool also carries <code>_meta.mhl.run.tool: "mhl_run_start"</code> as a hint. The raw <code>run/*</code> methods stay available for a policy gateway that matches on method name.</p></div>
+          <div class="tip-row"><span>OWNERSHIP</span><p>Each run is owned by the session (<code>Mcp-Session-Id</code>) that started it. <code>mhl_run_status</code>, <code>mhl_run_resume</code>, <code>mhl_run_cancel</code> and <code>mhl_run_list</code> only act for that caller — any other sees <code>unknown runId</code> (the same answer as a genuinely unknown id, so it is not an existence oracle). Stateless callers have no session and share one anonymous owner, so stateless mode has no per-caller isolation. Terminal runs stay pollable for an hour; a server shutdown cancels any still running.</p></div>
+          <div class="tip-row"><span>RAW METHODS</span><p>Each <code>mhl_run_*</code> tool is a thin bridge over a same-named custom JSON-RPC method — <code>run/start</code>, <code>run/status</code>, <code>run/resume</code>, <code>run/cancel</code>, <code>run/list</code>, <code>run/logs</code> — that takes <code>{name, arguments}</code> / <code>{runId}</code> directly and returns the bare status object with no <code>tools/call</code> envelope. Reach for those only when a policy gateway must match one method by name (<code>POST /mcp/run/resume</code>); from an ordinary MCP client, use the tools. Every per-workflow <code>tools/list</code> entry carries <code>_meta.mhl.run.tool: "mhl_run_start"</code> as a hint that it can also be driven async.</p></div>
         </section>
 
-        <section class="feature doc-section" id="resume" data-title="run resume human in the loop hitl approval gate fail checkpoint per_step strategy state-dir restart survive merge arguments decision">
-          <div class="feature-head"><h2><span class="feature-num">06</span>Human-in-the-loop: <code>run/resume</code></h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">A workflow that declares <code>checkpoint { strategy: "per_step" }</code> and stops at a <strong>failing step</strong> keeps its checkpoint. <code>run/resume {runId, arguments?}</code> continues it from that step, merging <code>arguments</code> over the originals — that is where an approval decision goes. The gate is an ordinary step that calls <code>fail("...")</code> until it is approved.</p>
+        <section class="feature doc-section" id="resume" data-title="mhl_run_resume mhl_run_start tools/call run resume pause human in the loop hitl approval gate fail suspend paused checkpoint per_step strategy state-dir restart survive merge arguments decision">
+          <div class="feature-head"><h2><span class="feature-num">06</span>Human-in-the-loop: <code>pause()</code> + <code>mhl_run_resume</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">A gate step calls <code>pause("...")</code> to hand off to a human: the run parks in <code>state: "paused"</code> — not failed, not completed — <code>resumable</code>, with the reason and the vars-so-far in its status, and its state kept (unlike a completed run). <code>mhl_run_resume</code> with <code>{runId, arguments}</code> re-enters that same step, merging <code>arguments</code> over the originals — that is where the approval decision goes. <code>pause()</code> writes its own checkpoint, so no <code>checkpoint {}</code> block is required; a step that calls <code>fail("...")</code> instead lands in <code>state: "failed"</code> and needs <code>checkpoint { strategy: "per_step" }</code> to be resumable.</p>
           <p class="block-label">Approval workflow</p>
           <div class="code-wrap workflow-example">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
-            <pre class="code-block"><code class="language-mhl">pipeline Approval {
+            <pre class="code-block"><code class="language-mhl">workflow Approval {
     description: "Prepare, wait for human approval, then finish."
 
     input request: string
-    input approved: string   // "no" on run/start, "yes" on run/resume
-
-    checkpoint: {
-        enabled: true
-        strategy: "per_step"
-        ttl: 7d
-    }
+    input approved: string   // "no" on mhl_run_start, "yes" on mhl_run_resume
 
     var summary = ""
 
@@ -216,30 +213,31 @@ curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-S
 
     step Gate {
         if (approved != "yes") {
-            fail("awaiting approval for: " + request)
+            pause("awaiting approval for: " + request)
         }
     }
 
     step Act { summary = "acted on: " + request }
 }</code></pre>
           </div>
-          <p class="block-label">Start, inspect, and resume</p>
+          <p class="block-label">Start, inspect, and resume — all through <code>tools/call</code></p>
           <div class="code-wrap resume-example">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code>rid=$(curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
-  -d '{"jsonrpc":"2.0","id":7,"method":"run/start","params":{"name":"Approval","arguments":{"request":"ship it","approved":"no"}}}' \
-  | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["runId"])')
+  -d '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"mhl_run_start",
+       "arguments":{"workflow":"Approval","arguments":{"request":"ship it","approved":"no"}}}}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["structuredContent"]["runId"])')
 
 curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"run/status\",\"params\":{\"runId\":\"$rid\"}}"
-# -&gt; {"state":"failed","step":"Gate","reached":["Prepare","Gate"],"resumable":true,"error":"...awaiting approval..."}
+  -d "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"mhl_run_status\",\"arguments\":{\"runId\":\"$rid\"}}}"
+# structuredContent -&gt; {"state":"paused","step":"Gate","reached":["Prepare","Gate"],"resumable":true,"reason":"awaiting approval for: ship it"}
 
 # a human approves
 curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-Session-Id: $sid" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"run/resume\",\"params\":{\"runId\":\"$rid\",\"arguments\":{\"approved\":\"yes\"}}}"
-# -&gt; {"state":"working", ...}   then run/status -&gt; {"state":"completed","vars":{ ... }}</code></pre>
+  -d "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"mhl_run_resume\",\"arguments\":{\"runId\":\"$rid\",\"arguments\":{\"approved\":\"yes\"}}}}"
+# structuredContent -&gt; {"state":"working", ...}   then mhl_run_status -&gt; {"state":"completed","vars":{ ... }}</code></pre>
           </div>
-          <div class="tip-row"><span>ACROSS A RESTART</span><p>Start the server with <code>--state-dir &lt;dir&gt;</code> (or <code>MHL_SERVE_STATE_DIR</code>) and a later process pointed at the same directory can <code>run/status</code> / <code>run/resume</code> a <code>runId</code> it never started — the first caller to name the (unguessable) id reclaims it. Without it, run state is per-process and lost on restart. Checkpoints are one small JSON file per completed step, sized by the pipeline's variable state; <code>run/status</code> on a live run stays a pure in-memory read.</p></div>
+          <div class="tip-row"><span>ACROSS A RESTART</span><p>Start the server with <code>--state-dir &lt;dir&gt;</code> (or <code>MHL_SERVE_STATE_DIR</code>) and a later process pointed at the same directory can <code>mhl_run_status</code> / <code>mhl_run_resume</code> a <code>runId</code> it never started — the first caller to name the (unguessable) id reclaims it. Without it, run state is per-process and lost on restart. Checkpoints are one small JSON file per completed step, sized by the pipeline's variable state; <code>mhl_run_status</code> on a live run stays a pure in-memory read.</p></div>
         </section>
 
         <section class="feature doc-section" id="resources" data-title="mcp resources resources list resources read mhl uri workflow manifest source steps inputs checkpoint declared agents tools memory run logs result resource_link introspection detail">
@@ -262,7 +260,7 @@ curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-S
   -d '{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"mhl://workflow/Report"}}'
 # -&gt; { "contents": [ { "uri": "...", "mimeType": "application/json", "text": "{ \"steps\": [...], ... }" } ] }</code></pre>
           </div>
-          <div class="tip-row"><span>DERIVED</span><p>The manifest is projected from the loaded pipeline, so it never drifts from what runs. The workflow resources are available over <strong>stdio and HTTP</strong>; the <code>mhl://run/*</code> ones need the run registry, so they are HTTP-only and owner-gated exactly like <code>run/status</code> (a non-owner sees <code>unknown resource</code>). <code>mhl_run_start</code>'s result also carries <code>resource_link</code> items pointing at the new run's <code>logs</code> and <code>result</code>.</p></div>
+          <div class="tip-row"><span>DERIVED</span><p>The manifest is projected from the loaded pipeline, so it never drifts from what runs. The workflow resources are available over <strong>stdio and HTTP</strong>; the <code>mhl://run/*</code> ones need the run registry, so they are HTTP-only and owner-gated exactly like <code>mhl_run_status</code> (a non-owner sees <code>unknown resource</code>). <code>mhl_run_start</code>'s result also carries <code>resource_link</code> items pointing at the new run's <code>logs</code> and <code>result</code>.</p></div>
         </section>
 
         <section class="feature doc-section" id="a2a" data-title="a2a agent2agent skills http json-rpc agent card message send tasks get tasks cancel task state submitted working completed metadata skill input">
@@ -283,7 +281,7 @@ curl -s -X POST localhost:8710/ -d '{"jsonrpc":"2.0","id":1,"method":"message/se
 curl -s -X POST localhost:8710/ -d '{"jsonrpc":"2.0","id":2,"method":"tasks/get","params":{"id":"&lt;task-id&gt;"}}'
 # -&gt; status.state "completed", artifacts[0].parts[0].text = the run's result JSON</code></pre>
           </div>
-          <div class="tip-row"><span>NOTE</span><p>A2A reports the task's <em>lifecycle</em> state (<code>submitted</code> / <code>working</code> / <code>completed</code> / <code>failed</code> / <code>canceled</code>), not the current step. For step-by-step progress or a resumable gate, use the MCP HTTP <code>run/*</code> methods above.</p></div>
+          <div class="tip-row"><span>NOTE</span><p>A2A reports the task's <em>lifecycle</em> state (<code>submitted</code> / <code>working</code> / <code>completed</code> / <code>failed</code> / <code>canceled</code>), not the current step. For step-by-step progress or a resumable gate, use the MCP HTTP <code>mhl_run_*</code> tools above.</p></div>
         </section>
 
         <section class="feature doc-section" id="clients" data-title="wiring client claude mcp add transport http claude desktop config mcpServers command args method reference flags security token shared">
@@ -307,18 +305,17 @@ claude mcp add --transport http mhl-local http://127.0.0.1:8711/mcp</code></pre>
   }
 }</code></pre>
           </div>
-          <p class="block-label">HTTP method surface</p>
+          <p class="block-label">HTTP surface — drive it all with <code>tools/call</code>; the bracketed <code>run/*</code> is the raw JSON-RPC method a policy gateway can match by name</p>
           <div class="reference-table">
-            <div class="table-row table-head"><span>Method</span><span>Params</span><span>Returns</span></div>
-            <div class="table-row"><span><code>tools/list</code></span><span>—</span><span>one entry per workflow, with its <code>inputSchema</code></span></div>
-            <div class="table-row"><span><code>tools/call</code></span><span><code>{name, arguments}</code></span><span>blocks; the final variable state (<code>isError</code> on failure)</span></div>
-            <div class="table-row"><span><code>run/start</code></span><span><code>{name, arguments}</code></span><span><code>{runId, state:"working"}</code> immediately</span></div>
-            <div class="table-row"><span><code>run/status</code></span><span><code>{runId}</code></span><span><code>{state, step, reached, vars?, error?, resumable?}</code></span></div>
-            <div class="table-row"><span><code>run/resume</code></span><span><code>{runId, arguments?}</code></span><span>relaunch from the checkpointed step; <code>arguments</code> merged over the originals</span></div>
-            <div class="table-row"><span><code>run/cancel</code></span><span><code>{runId}</code></span><span>stop the run; its status</span></div>
-            <div class="table-row"><span><code>run/list</code></span><span>—</span><span>the calling session's own runs</span></div>
-            <div class="table-row"><span><code>run/logs</code></span><span><code>{runId, since?}</code></span><span><code>{text, nextSince, dropped?}</code> — the run's retained step/<code>log()</code> output</span></div>
-            <div class="table-row"><span><code>mhl_run_*</code> (via <code>tools/call</code>)</span><span>as the <code>run/*</code> method</span><span>control tools that bridge to <code>run/*</code> for a <code>tools/call</code>-only client — status object as <code>structuredContent</code></span></div>
+            <div class="table-row table-head"><span>Call</span><span>arguments</span><span>Returns</span></div>
+            <div class="table-row"><span><code>tools/list</code></span><span>—</span><span>one entry per workflow (+ the <code>mhl_run_*</code> tools), each with its <code>inputSchema</code></span></div>
+            <div class="table-row"><span><code>tools/call &lt;workflow&gt;</code></span><span><code>{…workflow inputs}</code></span><span>blocks; the final variable state (<code>isError</code> on failure)</span></div>
+            <div class="table-row"><span><code>tools/call mhl_run_start</code> <i>(raw: <code>run/start</code>)</i></span><span><code>{workflow, arguments}</code></span><span><code>{runId, state:"working"}</code> at once; text + <code>resource_link</code>s to the run's logs/result</span></div>
+            <div class="table-row"><span><code>tools/call mhl_run_status</code> <i>(raw: <code>run/status</code>)</i></span><span><code>{runId}</code></span><span><code>{state, step, reached, vars?, error?, resumable?}</code> as <code>structuredContent</code></span></div>
+            <div class="table-row"><span><code>tools/call mhl_run_resume</code> <i>(raw: <code>run/resume</code>)</i></span><span><code>{runId, arguments?}</code></span><span>relaunch from the checkpointed step; <code>arguments</code> merged over the originals</span></div>
+            <div class="table-row"><span><code>tools/call mhl_run_cancel</code> <i>(raw: <code>run/cancel</code>)</i></span><span><code>{runId}</code></span><span>stop the run; its status</span></div>
+            <div class="table-row"><span><code>tools/call mhl_run_list</code> <i>(raw: <code>run/list</code>)</i></span><span><code>{}</code></span><span>the calling session's own runs</span></div>
+            <div class="table-row"><span><code>tools/call mhl_run_logs</code> <i>(raw: <code>run/logs</code>)</i></span><span><code>{runId, since?}</code></span><span><code>{text, nextSince, dropped?}</code> — the run's retained step/<code>log()</code> output</span></div>
             <div class="table-row"><span><code>resources/list</code></span><span>—</span><span>workflow manifest+source entries, plus a logs+result pair per async run you own</span></div>
             <div class="table-row"><span><code>resources/read</code></span><span><code>{uri}</code></span><span><code>{contents:[{uri, mimeType, text}]}</code> for a <code>mhl://workflow/…</code> or <code>mhl://run/…</code> URI</span></div>
           </div>

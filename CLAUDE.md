@@ -92,8 +92,14 @@ logic, then `asToolResult` re-frames the reply as a `CallToolResult` (status obj
 `mhl://workflow/<name>/source`, and HTTP-only `mhl://run/<id>/{logs,result}` (owner-gated
 like `run/status`); `dispatch` serves the `workflow` URIs, `serveMCP` splices in the `run`
 ones and `asToolResult` adds `resource_link`s to a bridged reply. `run/resume` continues
-a stopped run from its `checkpoint { strategy: "per_step" }` (the HITL pattern: a gate step
-`fail()`s until approved, then `run/resume {runId, arguments}` merges the decision in) via
+a stopped run from its `checkpoint { strategy: "per_step" }`, or a run suspended by the
+`pause(reason?)` builtin (the HITL primitive — a gate step calls `pause("awaiting …")`, the
+run parks in `state: "paused"` / `resumable: true` with its subtree kept, then
+`run/resume {runId, arguments}` re-enters that step with the decision merged in; `pause`
+writes its own checkpoint so no `checkpoint {}` block is needed, and it is a control signal
+like `break`, not a catchable error like `fail()`). Signal path: `interpreter.pauseSignal`
+→ `IsPause` → `runtime.PauseSignal` → `RunResult.Paused` / `LoopResult.TerminalReason
+"pause"` → `execsvc.Result.Paused` → `mcpserver` `state: "paused"`. Via
 `execsvc.Request.{Session,Resume}`; `--state-dir` / `MHL_SERVE_STATE_DIR` makes that run
 state outlive the process (else a per-process temp dir), or a single
 `extension store <Name> { dir: ... }` declaration in the serve dir routes all durable state

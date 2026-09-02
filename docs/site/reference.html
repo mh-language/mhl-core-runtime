@@ -275,7 +275,8 @@ var next = ready.find((f) -> f.id == 20)</code></pre>
             <div class="table-row"><span>Error handling</span><code>try { ... } catch (err) { ... } finally { ... }</code><span>Handles recoverable failures.</span></div>
             <div class="table-row"><span>Return</span><code>return value</code><span>Exits a method or step.</span></div>
             <div class="table-row"><span>Transition</span><code>goto StepName</code><span>Jumps to another step, forward or backward. Only inside a <code>workflow</code> (not a plain <code>pipeline</code>); the target must be a step of that <code>workflow</code>.</span></div>
-            <div class="table-row"><span>Stop</span><code>break "reason"</code><span>Stops the current pipeline or loop.</span></div>
+            <div class="table-row"><span>Stop</span><code>break "reason"</code><span>Ends the current pipeline or loop early — a clean stop (exit 0, not a failure) that keeps the run's variable state as its result.</span></div>
+            <div class="table-row"><span>Pause</span><code>pause("reason")</code><span>Suspends the run at this step for a human-in-the-loop hand-off — not a failure, not a completion. Keeps the checkpoint; <code>mhl run --resume</code> / <code>run/resume {runId, arguments}</code> re-enters this step with the merged decision.</span></div>
           </div>
           <pre class="code-block"><code class="language-mhl">tool Summary {
     count_valid(items: {valid: bool}[]): number -> {
@@ -768,7 +769,8 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
             <div><b><code>step</code></b><span>ordered, named, resumable unit; optional <code>timeout &lt;duration&gt;</code> header clause</span></div>
             <div><b><code>parallel</code></b><span>named group whose steps run concurrently; a barrier before the next step; takes the same <code>timeout</code> clause</span></div>
             <div><b><code>goto</code></b><span>jump to another step (<code>workflow</code> only), forward or backward</span></div>
-            <div><b><code>break</code></b><span>immediate stop with an optional reason</span></div>
+            <div><b><code>break</code></b><span>clean early stop with an optional reason; keeps the run's results (exit 0)</span></div>
+            <div><b><code>pause</code></b><span>suspend for a human-in-the-loop resume; keeps the checkpoint, re-enters this step on <code>--resume</code></span></div>
             <div><b><code>spawn</code></b><span>start an <code>Agent.run(...)</code> in the background; binds a <code>task</code> handle (<code>.result</code>, <code>.ok</code>, <code>.error</code>, <code>.status</code>, <code>.duration_ms</code>)</span></div>
             <div><b><code>wait</code></b><span>join handles — all (fail-fast), <code>any</code> (first success), or <code>N of</code> (quorum); options <code>timeout:</code> and <code>on_error: "collect"</code></span></div>
           </div>

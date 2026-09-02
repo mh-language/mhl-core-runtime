@@ -111,9 +111,17 @@ type Result struct {
 	Resumed      bool
 	Broke        bool
 	BreakReason  any
+	// Paused is true when a step called pause(...): the run is suspended for a
+	// human-in-the-loop hand-off, not finished — its checkpoint is kept and a
+	// --resume / run/resume re-enters the pausing step. PauseReason carries the
+	// pause argument.
+	Paused      bool
+	PauseReason any
 	// Vars is the run's final variable state — the same map persisted as
-	// result.json for a later run's `context:` to read. nil when the run
-	// broke or failed.
+	// result.json for a later run's `context:` to read. Populated on a normal
+	// completion and on `break` (a clean early exit keeps its output); on a
+	// `pause` it is the state as of the pause point. nil only when the run
+	// failed with an error.
 	Vars map[string]any
 
 	// Loop is true when the pipeline carried the `loop` prefix; Iterations
@@ -257,6 +265,9 @@ func Run(req Request) (*Result, error) {
 		if reason, ok := interpreter.IsBreak(err); ok {
 			return &runtime.BreakSignal{Reason: reason}
 		}
+		if reason, ok := interpreter.IsPause(err); ok {
+			return &runtime.PauseSignal{Reason: reason}
+		}
 		if target, ok := interpreter.IsGoto(err); ok {
 			return &runtime.GotoSignal{Target: target}
 		}
@@ -277,8 +288,12 @@ func Run(req Request) (*Result, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := persistContextResult(resultSink, pipeline, res.FinalVars); err != nil {
-			return nil, err
+		// A paused run is suspended, not finished — don't overwrite the
+		// session's "last completed run" result.json for a `context:` reader.
+		if !res.Paused {
+			if err := persistContextResult(resultSink, pipeline, res.FinalVars); err != nil {
+				return nil, err
+			}
 		}
 		return &Result{
 			PipelineName: pipeline.Name,
@@ -288,6 +303,8 @@ func Run(req Request) (*Result, error) {
 			Resumed:      res.Resumed,
 			Broke:        res.Broke,
 			BreakReason:  res.BreakReason,
+			Paused:       res.Paused,
+			PauseReason:  res.PauseReason,
 			Vars:         publicVars(res.FinalVars),
 		}, nil
 	}
@@ -313,8 +330,11 @@ func Run(req Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := persistContextResult(loopResultSink, pipeline, res.FinalVars); err != nil {
-		return nil, err
+	paused := res.TerminalReason == "pause"
+	if !paused {
+		if err := persistContextResult(loopResultSink, pipeline, res.FinalVars); err != nil {
+			return nil, err
+		}
 	}
 	return &Result{
 		PipelineName:   pipeline.Name,
@@ -322,6 +342,8 @@ func Run(req Request) (*Result, error) {
 		Resumed:        res.Resumed,
 		Broke:          res.TerminalReason == "break",
 		BreakReason:    res.BreakReason,
+		Paused:         paused,
+		PauseReason:    res.PauseReason,
 		Vars:           publicVars(res.FinalVars),
 		Loop:           true,
 		Iterations:     res.Iterations,
@@ -363,10 +385,11 @@ func publicVars(vars map[string]any) map[string]any {
 	return clean
 }
 
-// persistContextResult writes a completed run's final variable state as this
-// session's result.json (and refreshes the .latest pointer), but only when
-// the pipeline declared a `context:` block. A nil finalVars (broke/failed)
-// writes nothing.
+// persistContextResult writes a run's final variable state as this session's
+// result.json (and refreshes the .latest pointer), but only when the
+// pipeline declared a `context:` block. A `break` counts as a completed run
+// here (it carries its FinalVars); a nil finalVars — the run failed — writes
+// nothing.
 func persistContextResult(store runtime.StateStore, pipeline runtime.Pipeline, finalVars map[string]any) error {
 	if pipeline.Context == nil || finalVars == nil {
 		return nil

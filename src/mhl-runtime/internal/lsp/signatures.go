@@ -197,6 +197,7 @@ var agentMethodSigs = map[string]sig{
 var globalSigs = map[string]sig{
 	"log":       {Label: "log(...values: any) -> null", Params: []string{"values"}, Doc: "Writes one space-joined line to stdout."},
 	"fail":      {Label: "fail(...values: any) -> never", Params: []string{"values"}, Doc: "Raises an error whose message is the joined values. Catchable with `try/catch`; uncaught, it makes `mhl run` exit non-zero."},
+	"pause":     {Label: "pause(reason?: any) -> never", Params: []string{"reason"}, Doc: "Suspends the run at this step for a human-in-the-loop hand-off — not a failure, not a completion. The checkpoint is kept; `mhl run --resume` / `run/resume {runId, arguments}` re-enters this step with the merged decision. `reason` rides in the run status."},
 	"env":       {Label: "env(name: string) -> string", Params: []string{"name"}, Doc: "Reads an OS environment variable. Returns `\"\"` when unset."},
 	"type_of":   {Label: "type_of(value: any) -> string", Params: []string{"value"}, Doc: "The value's kind: `\"string\"`, `\"number\"`, `\"bool\"`, `\"array\"`, `\"object\"`, `\"null\"`, `\"enum\"`, `\"function\"`, or `\"task\"`."},
 	"is_string": {Label: "is_string(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"string\"`."},

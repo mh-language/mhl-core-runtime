@@ -94,7 +94,7 @@
           <p class="sig-note">A "raises" outcome unwinds like any evaluation error: it aborts the step/run unless a <code>try { … } catch (e) { … }</code> around the call catches it. A non-zero process <code>exit_code</code> is <em>not</em> a raise — it is a field on the returned value for you to inspect.</p>
         </section>
 
-        <section class="feature doc-section" id="globals" data-title="global functions log fail env builtin print environment variable error type_of is_string is_number is_bool is_array is_object is_null is_enum runtime type introspection kind">
+        <section class="feature doc-section" id="globals" data-title="global functions log fail pause env builtin print environment variable error suspend human-in-the-loop hitl resume type_of is_string is_number is_bool is_array is_object is_null is_enum runtime type introspection kind">
           <div class="feature-head"><h2><span class="feature-num">01</span>Global functions</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Available in any expression position — a step body, a <code>describe</code> block, a <code>tool</code> method, a condition.</p>
           <div class="reference-table sig-table">
@@ -110,6 +110,12 @@
               <span><span class="p"><code>values</code> — same formatting as <code>log</code></span></span>
               <span><em>raises</em></span>
               <span>Raises an error whose message is the joined values. An uncaught <code>fail</code> makes <code>mhl run</code> exit non-zero. Catchable with <code>try/catch</code>.</span>
+            </div>
+            <div class="table-row">
+              <code>pause(reason?: any) -&gt; never</code>
+              <span><span class="p"><code>reason</code> — an optional value carried into the run status</span></span>
+              <span><em>suspends</em></span>
+              <span>Suspends the run at this step for a human-in-the-loop hand-off — neither a failure nor a completion. The checkpoint is kept; <code>mhl run --resume</code> (or <code>run/resume {runId, arguments}</code> under <code>mhl serve</code>) re-enters this step with the merged decision. Unlike <code>fail</code>, it is a control signal — <code>try/catch</code> does not catch it — and it needs no <code>checkpoint {}</code> block.</span>
             </div>
             <div class="table-row">
               <code>env(name: string) -&gt; string</code>

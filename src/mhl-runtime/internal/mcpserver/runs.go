@@ -61,7 +61,7 @@ type asyncRun struct {
 	remote bool
 
 	mu        sync.Mutex
-	state     string // "queued" | "working" | "completed" | "failed" | "canceled"
+	state     string // "queued" | "working" | "completed" | "failed" | "canceled" | "paused"
 	step      string // last step reached
 	stepIndex int    // 1-based position of step
 	stepTotal int    // pipeline's declared step count
@@ -337,7 +337,12 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	if rn == nil {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", p.RunID))
 	}
-	if !rn.tool.Pipeline.Checkpoint.Enabled {
+	// A run suspended by pause(...) is always resumable — it wrote its own
+	// checkpoint. Otherwise the workflow must declare checkpoint { per_step }.
+	rn.mu.Lock()
+	paused := rn.state == "paused"
+	rn.mu.Unlock()
+	if !paused && !rn.tool.Pipeline.Checkpoint.Enabled {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q's workflow declares no checkpoint { strategy: \"per_step\" } — nothing to resume", p.RunID))
 	}
 	if !h.cps.Exists(rn.id) {
@@ -435,6 +440,17 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 			rn.state, rn.errMsg = "canceled", runErr.Error()
 		case runErr != nil:
 			rn.state, rn.errMsg = "failed", runErr.Error()
+		case res != nil && res.Paused:
+			// A step called pause(...): the run is suspended for a
+			// human-in-the-loop hand-off. Not completed (its checkpoint and
+			// state must survive for run/resume), not failed. The reason rides
+			// in errMsg the same way a failure message does.
+			rn.state = "paused"
+			rn.errMsg = pauseReasonText(res.PauseReason)
+			rn.vars = res.Vars
+			if all := append(append([]string{}, res.Skipped...), res.Executed...); len(all) > 0 {
+				rn.reached = all
+			}
 		default:
 			rn.state = "completed"
 			if res != nil {
@@ -447,7 +463,14 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 			}
 		}
 	}
-	rn.resumable = rn.state != "completed" && w.Pipeline.Checkpoint.Enabled && h.cps.Exists(rn.id)
+	// A paused run is always resumable — pause(...) writes a checkpoint
+	// unconditionally, no `checkpoint {}` block required. Otherwise a run is
+	// resumable only with a per-step checkpoint on disk.
+	if rn.state == "paused" {
+		rn.resumable = h.cps.Exists(rn.id)
+	} else {
+		rn.resumable = rn.state != "completed" && w.Pipeline.Checkpoint.Enabled && h.cps.Exists(rn.id)
+	}
 	terminal := rn.state
 	steps := len(rn.reached)
 	rn.mu.Unlock()
@@ -659,11 +682,15 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 	if rn.resumable {
 		v["resumable"] = true
 	}
-	if rn.state == "completed" && rn.vars != nil {
+	if (rn.state == "completed" || rn.state == "paused") && rn.vars != nil {
 		v["vars"] = rn.vars
 	}
 	if rn.errMsg != "" {
-		v["error"] = rn.errMsg
+		if rn.state == "paused" {
+			v["reason"] = rn.errMsg
+		} else {
+			v["error"] = rn.errMsg
+		}
 	}
 	return v
 }
@@ -729,6 +756,22 @@ func (h *httpServer) cleanupRuns() {
 		h.runs.Delete(rn.id)
 	}
 	_ = h.cps.Close()
+}
+
+// pauseReasonText renders a pause(...) reason value for the run status —
+// a bare string as-is, anything else as compact JSON, nil as "paused".
+func pauseReasonText(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return "paused"
+	case string:
+		return t
+	default:
+		if b, err := json.Marshal(v); err == nil {
+			return string(b)
+		}
+		return "paused"
+	}
 }
 
 func runIDParam(params json.RawMessage) string {

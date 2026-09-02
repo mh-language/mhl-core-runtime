@@ -61,6 +61,18 @@ pipeline Approval {
 }
 `
 
+// httpPauseWF is the same HITL gate expressed with pause() instead of fail():
+// no checkpoint block, and the run parks in state "paused" rather than "failed".
+const httpPauseWF = `
+workflow Approval {
+    input approved: string
+    var prepared = ""
+    step Prepare { prepared = "ready" }
+    step Gate { if (approved != "yes") { pause("awaiting human approval") } }
+    step Finish { prepared = "done" }
+}
+`
+
 // initHTTPSession runs the legacy handshake and returns the session id.
 func initHTTPSession(t *testing.T, url string) string {
 	t.Helper()
@@ -86,7 +98,7 @@ func pollRun(t *testing.T, url, sid, runID string) map[string]any {
 			t.Fatalf("run/status returned no result: %v", body)
 		}
 		switch res["state"] {
-		case "completed", "failed", "canceled":
+		case "completed", "failed", "canceled", "paused":
 			return res
 		}
 		if time.Now().After(deadline) {
@@ -719,6 +731,57 @@ func TestHTTPRunResume(t *testing.T) {
 	}
 }
 
+// pause() parks an async run in state "paused" (not failed, not completed),
+// resumable with no checkpoint block, and run/resume continues it — the run's
+// state subtree is NOT wiped the way a completed/broke run's is.
+func TestHTTPRunPauseThenResume(t *testing.T) {
+	ts := newHTTPServer(t, "", map[string]string{"pause.mh": httpPauseWF})
+	sid := initHTTPSession(t, ts.URL)
+
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "run/start", map[string]any{
+		"name": "Approval", "arguments": map[string]any{"approved": "no"},
+	}), nil)
+	runID := body["result"].(map[string]any)["runId"].(string)
+
+	paused := pollRun(t, ts.URL, sid, runID)
+	if paused["state"] != "paused" {
+		t.Fatalf("state = %v, want paused (%v)", paused["state"], paused)
+	}
+	if paused["resumable"] != true {
+		t.Errorf("paused run should be resumable without a checkpoint block: %v", paused)
+	}
+	if paused["reason"] != "awaiting human approval" {
+		t.Errorf("reason = %v", paused["reason"])
+	}
+	if paused["step"] != "Gate" {
+		t.Errorf("paused at step %v, want Gate", paused["step"])
+	}
+	if _, isErr := paused["error"]; isErr {
+		t.Errorf("a paused run must not carry an `error` field: %v", paused)
+	}
+
+	// A second status poll still resolves — the subtree was not removed.
+	again := pollRun(t, ts.URL, sid, runID)
+	if again["state"] != "paused" {
+		t.Fatalf("second poll state = %v, want paused", again["state"])
+	}
+
+	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "run/resume", map[string]any{
+		"runId": runID, "arguments": map[string]any{"approved": "yes"},
+	}), nil)
+	if body["result"] == nil {
+		t.Fatalf("run/resume failed: %v", body)
+	}
+
+	final := pollRun(t, ts.URL, sid, runID)
+	if final["state"] != "completed" {
+		t.Fatalf("resumed run state = %v (%v)", final["state"], final)
+	}
+	if final["vars"].(map[string]any)["prepared"] != "done" {
+		t.Errorf("resumed vars = %v", final["vars"])
+	}
+}
+
 // TestHTTPRunLiveStatusAndCancelAcrossReplicas: two servers on the same
 // --state-dir, both running. A run started on A is visible as "working" with an
 // advancing step from B (from the published live status, not a checkpoint —
@@ -943,7 +1006,7 @@ func pollRun2(t *testing.T, url, sid, runID string, hdr map[string]string) map[s
 		_, body := postMCP(t, url, sid, rpcMap(9, "run/status", map[string]any{"runId": runID}), hdr)
 		res := body["result"].(map[string]any)
 		switch res["state"] {
-		case "completed", "failed", "canceled":
+		case "completed", "failed", "canceled", "paused":
 			return res
 		}
 		if time.Now().After(deadline) {
@@ -1090,7 +1153,7 @@ func pollRunTool(t *testing.T, url, sid, runID string) map[string]any {
 	for {
 		sc := structured(t, callTool(t, url, sid, 91, "mhl_run_status", map[string]any{"runId": runID}))
 		switch sc["state"] {
-		case "completed", "failed", "canceled":
+		case "completed", "failed", "canceled", "paused":
 			return sc
 		}
 		if time.Now().After(deadline) {

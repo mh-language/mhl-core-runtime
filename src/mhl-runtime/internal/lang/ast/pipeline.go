@@ -158,16 +158,17 @@ type ReturnStmt struct {
 	Value *Expr `parser:"'return' @@?"`
 }
 
-// BreakStmt aborts the enclosing loop explicitly: it unwinds out of the
-// current step, skips any remaining steps in this pipeline run, and signals
-// the enclosing `loop` (loop.go) to stop outright rather than run another
-// iteration. It never means "exit the nearest while/for-in" — mhl has no
+// BreakStmt ends the enclosing loop early — a clean stop, exit 0, not a
+// failure: it leaves the current step, skips the remaining steps of this
+// run, and tells the enclosing `loop` (loop.go) to stop instead of running
+// another iteration. The variable state built up so far is kept as the
+// run's result (result.json / context.vars), the same as a normal
+// completion. It never means "exit the nearest while/for-in" — mhl has no
 // ordinary loop-exit statement, and reusing `break` for that too would give
 // it two different meanings depending on where it's written; that stays a
-// separate, later concern. Used in a pipeline that isn't wrapped by any
-// `loop`, it still aborts that pipeline run — there's just no outer loop
-// left to also stop. Reason is an optional expression carried into the
-// run's terminal status (see runtime.BreakSignal).
+// separate, later concern. In a pipeline that isn't wrapped by any `loop`,
+// it just ends that run early the same way. Reason is an optional expression
+// carried into the run's terminal status (see runtime.BreakSignal).
 type BreakStmt struct {
 	Reason *Expr `parser:"'break' @@?"`
 }

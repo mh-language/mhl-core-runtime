@@ -67,18 +67,24 @@ type InitFunc func(ctx *RunContext) error
 
 // RunResult reports which steps actually executed and which were skipped by
 // a resume, plus how the run ended when that wasn't by simply completing:
-// Broke is true when a step's `break` stopped the run outright, with
-// BreakReason carrying whatever value (if any) it evaluated. FinalVars is
-// the accumulated variable state as it stood when the run finished — set on
-// normal completion (before the checkpoint is cleared) so cli.go can persist
-// it as this session's result.json for a later run's `context:` to read;
-// nil when the run broke or failed.
+// Broke is true when a step's `break` ended the run early, with BreakReason
+// carrying whatever value (if any) it evaluated. Paused is true when a step
+// called `pause(...)` — the run is suspended, not finished: its checkpoint is
+// left in place so a --resume / run/resume re-enters the pausing step, with
+// PauseReason carrying the pause argument. FinalVars is the accumulated
+// variable state as it stood when the run finished — set on normal completion
+// and on `break` / `pause` alike (each keeps its output), captured before the
+// checkpoint is cleared so cli.go can persist it as this session's
+// result.json for a later run's `context:` to read; nil only when the run
+// failed with an error.
 type RunResult struct {
 	Executed    []string
 	Skipped     []string
 	Resumed     bool
 	Broke       bool
 	BreakReason any
+	Paused      bool
+	PauseReason any
 	FinalVars   map[string]any
 }
 
@@ -162,7 +168,8 @@ func (r *Runner) checkpoints() StateStore {
 // Run executes the pipeline, starting at its first declared step and then
 // following each step's outcome: normal completion advances to the next
 // declared step (Pipeline.stepAfter); a *GotoSignal redirects to any named
-// step, forward or backward; a *BreakSignal stops the run outright. When
+// step, forward or backward; a *BreakSignal ends the run early (a clean stop
+// that still returns RunResult.FinalVars). When
 // resume is true and a valid checkpoint exists, execution starts at the
 // checkpoint's NextStep instead of the first step, and the
 // already-completed steps are neither re-executed nor reported as executed
@@ -254,7 +261,29 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 
 		var brk *BreakSignal
 		var gt *GotoSignal
+		var pause *PauseSignal
 		switch {
+		case errors.As(err, &pause):
+			// Suspend: write a checkpoint whose NextStep is *this* step, so a
+			// --resume / run/resume re-enters it (with any merged arguments) —
+			// the human-in-the-loop landing point. Always write it, even
+			// without per_step, so the run is always resumable from a pause.
+			completedBefore := result.Executed[:len(result.Executed)-len(stage.Steps)]
+			cp := &Checkpoint{
+				Pipeline:       p.Name,
+				LastStep:       current,
+				NextStep:       current,
+				CompletedSteps: append([]string{}, completedBefore...),
+				Variables:      copyVars(ctx.Vars),
+				TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
+			}
+			if saveErr := r.checkpoints().Save(cp); saveErr != nil {
+				return result, saveErr
+			}
+			result.Paused, result.PauseReason = true, pause.Reason
+			result.FinalVars = copyVars(ctx.Vars)
+			return result, nil
+
 		case errors.As(err, &brk):
 			if perStep {
 				cp := &Checkpoint{
@@ -270,6 +299,10 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 				}
 			}
 			result.Broke, result.BreakReason = true, brk.Reason
+			// A break is a clean early exit, not a discard: hand back the
+			// variable state built up so far as the run's result, exactly as
+			// a normal completion does below.
+			result.FinalVars = copyVars(ctx.Vars)
 			return result, nil
 
 		case errors.As(err, &gt):

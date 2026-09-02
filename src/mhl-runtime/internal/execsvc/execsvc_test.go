@@ -290,6 +290,136 @@ pipeline P {
 	}
 }
 
+// A `break` is a clean early exit: it still hands back the variable state
+// built up so far (Result.Vars), rather than discarding it like a failure.
+func TestRunBreakKeepsVars(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline P {
+    var stage = "start"
+    var finished = false
+    step Work {
+        stage = "working"
+        break "enough"
+    }
+    step Never { finished = true }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{Source: src, BaseDir: dir})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.Broke || res.BreakReason != "enough" {
+		t.Fatalf("Broke=%v BreakReason=%v, want true/\"enough\"", res.Broke, res.BreakReason)
+	}
+	if res.Vars == nil {
+		t.Fatal("break discarded the run's vars (Result.Vars == nil)")
+	}
+	if res.Vars["stage"] != "working" {
+		t.Errorf("Vars[stage] = %v, want the value set before break", res.Vars["stage"])
+	}
+	if res.Vars["finished"] != false {
+		t.Errorf("Vars[finished] = %v, want false (Never must not run)", res.Vars["finished"])
+	}
+}
+
+// The same for a `loop pipeline`: break returns the state of the iteration it
+// fired in.
+func TestRunLoopBreakKeepsIterationVars(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+loop pipeline P {
+    mem n = 0
+    var mark = -1
+    repeat: { max_iterations: 10 }
+    step Tick {
+        n = n + 1
+        mark = n
+        if (n == 2) break "stop at 2"
+    }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{Source: src, BaseDir: dir})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if res.TerminalReason != "break" {
+		t.Fatalf("TerminalReason = %q, want break", res.TerminalReason)
+	}
+	if res.Vars == nil || res.Vars["mark"] != float64(2) {
+		t.Errorf("Vars[mark] = %v, want 2 (the breaking iteration's state)", res.Vars)
+	}
+}
+
+// pause(...) suspends the run (Result.Paused) and a Resume re-enters the
+// pausing step, this time with the merged input taking it past the gate.
+func TestRunPauseThenResume(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline Gate {
+    input approved: string
+    checkpoint: { enabled: true, strategy: "per_step" }
+    var prepared = false
+    var done = false
+    step Prepare { prepared = true }
+    step Gate {
+        if (approved != "yes") { pause("awaiting approval") }
+    }
+    step Finish { done = true }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{
+		Source: src, Inputs: map[string]any{"approved": "no"}, BaseDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !res.Paused || res.PauseReason != "awaiting approval" {
+		t.Fatalf("Paused=%v PauseReason=%v, want true/\"awaiting approval\"", res.Paused, res.PauseReason)
+	}
+	if res.Vars["prepared"] != true || res.Vars["done"] != false {
+		t.Errorf("Vars = %v, want prepared=true done=false at the pause point", res.Vars)
+	}
+
+	res2, err := execsvc.Run(execsvc.Request{
+		Source: src, Inputs: map[string]any{"approved": "yes"}, BaseDir: dir, Resume: true,
+	})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if res2.Paused {
+		t.Fatalf("resumed run is still paused: %+v", res2)
+	}
+	if res2.Vars["done"] != true {
+		t.Errorf("Vars[done] = %v, want true (Finish ran after resume)", res2.Vars)
+	}
+}
+
+// pause() is a control signal, not a catchable error: try/catch around it
+// does not swallow it — the run still suspends.
+func TestRunPauseNotCaughtByTry(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline P {
+    checkpoint: { enabled: true, strategy: "per_step" }
+    var caught = false
+    step S {
+        try { pause("hold") } catch (e) { caught = true }
+    }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{Source: src, BaseDir: dir})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !res.Paused {
+		t.Fatal("try/catch swallowed the pause — run did not suspend")
+	}
+	if res.Vars["caught"] == true {
+		t.Error("catch block ran; pause() must bypass try/catch like break")
+	}
+}
+
 func slicesEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

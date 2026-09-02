@@ -476,6 +476,9 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	if p.Primary.Ident == "fail" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalFailCall(ctx, p.Ops[0].Call.Args, depth)
 	}
+	if p.Primary.Ident == "pause" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
+		return evalPauseCall(ctx, p.Ops[0].Call.Args, depth)
+	}
 	if p.Primary.Ident == "env" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalEnvCall(ctx, p.Ops[0].Call.Args, depth)
 	}
@@ -680,6 +683,30 @@ func evalFailCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 		return nil, err
 	}
 	return nil, errors.New(joinValues(values))
+}
+
+// evalPauseCall implements the pause(...) builtin: it raises a pauseSignal —
+// a control-flow signal like break/return/goto, not a plain error — so it
+// unwinds cleanly out of the step (never caught by try/catch) and reaches
+// cli.go's exec closure, which turns it into a runtime.PauseSignal. That
+// suspends the run: not failed, not completed, its checkpoint kept, so a
+// `run/resume` / `mhl run --resume` re-enters the step that paused. It is
+// the primitive for a human-in-the-loop delegation — the step pauses, an
+// operator resumes with `run/resume {runId, arguments}` merging the
+// decision in. The single optional argument is the reason carried into the
+// run's status. `pause` is only meaningful inside a pipeline/workflow step.
+func evalPauseCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
+	if len(args) == 0 {
+		return nil, &pauseSignal{}
+	}
+	values, err := evalLogArgs(ctx, args, depth)
+	if err != nil {
+		return nil, err
+	}
+	if len(values) == 1 {
+		return nil, &pauseSignal{reason: values[0]}
+	}
+	return nil, &pauseSignal{reason: joinValues(values)}
 }
 
 // evalEnvCall implements the env(name) builtin: it reads the OS environment

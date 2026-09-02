@@ -393,6 +393,93 @@ func TestBreakStopsRunAndPreservesReason(t *testing.T) {
 	}
 }
 
+// A break is a clean early exit, so RunResult.FinalVars still carries the
+// variable state as it stood at the break — it is not discarded like a
+// failure.
+func TestBreakKeepsFinalVars(t *testing.T) {
+	root := t.TempDir()
+	p := threeStepPipeline()
+	runner := runtime.NewRunner(root)
+
+	res, err := runner.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
+		ctx.Vars["reached_"+step] = true
+		if step == "B" {
+			return &runtime.BreakSignal{Reason: "stop"}
+		}
+		return nil
+	}, false)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if res.FinalVars == nil {
+		t.Fatal("break left FinalVars nil — the run's state was discarded")
+	}
+	if res.FinalVars["reached_A"] != true || res.FinalVars["reached_B"] != true {
+		t.Errorf("FinalVars = %v, want the writes from A and B kept", res.FinalVars)
+	}
+	if _, ran := res.FinalVars["reached_C"]; ran {
+		t.Errorf("FinalVars has reached_C — step C ran past the break")
+	}
+}
+
+// pause(...) suspends the run: RunResult.Paused is set, its state is kept
+// (FinalVars + a checkpoint whose NextStep is the pausing step), and a
+// resume re-enters that step — not the next one.
+func TestPauseSuspendsAndResumesSameStep(t *testing.T) {
+	root := t.TempDir()
+	p := threeStepPipeline()
+
+	// Leg 1: pause at B.
+	var leg1 []string
+	res, err := runtime.NewRunner(root).Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
+		leg1 = append(leg1, step)
+		ctx.Vars["seen_"+step] = true
+		if step == "B" {
+			return &runtime.PauseSignal{Reason: "awaiting approval"}
+		}
+		return nil
+	}, false)
+	if err != nil {
+		t.Fatalf("leg1: %v", err)
+	}
+	if !res.Paused || res.PauseReason != "awaiting approval" {
+		t.Fatalf("Paused=%v PauseReason=%v", res.Paused, res.PauseReason)
+	}
+	if res.Broke {
+		t.Error("a pause must not also report Broke")
+	}
+	if res.FinalVars["seen_B"] != true {
+		t.Errorf("FinalVars did not keep the pause-point state: %v", res.FinalVars)
+	}
+	if leg1[len(leg1)-1] != "B" {
+		t.Fatalf("leg1 = %v, want it to end at B", leg1)
+	}
+
+	cp, ok, _ := runtime.NewStore(root).Load(p.Name)
+	if !ok {
+		t.Fatal("pause wrote no checkpoint")
+	}
+	if cp.NextStep != "B" {
+		t.Errorf("checkpoint NextStep = %q, want B (re-enter the pausing step)", cp.NextStep)
+	}
+
+	// Leg 2: resume — must land on B again, then run C.
+	var leg2 []string
+	res2, err := runtime.NewRunner(root).Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
+		leg2 = append(leg2, step)
+		return nil
+	}, true)
+	if err != nil {
+		t.Fatalf("leg2: %v", err)
+	}
+	if len(leg2) != 2 || leg2[0] != "B" || leg2[1] != "C" {
+		t.Fatalf("resume ran %v, want [B C]", leg2)
+	}
+	if res2.Paused {
+		t.Error("resumed run should not still be paused")
+	}
+}
+
 // The correctness case NextStep exists for: step A jumps to C via goto: the
 // checkpoint saved when A finishes must already record NextStep="C", so a
 // crash "before" C runs and a resume afterward lands on C — never on B,

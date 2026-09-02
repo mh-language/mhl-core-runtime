@@ -106,6 +106,50 @@ func TestLoopPropagatesGenuineErrors(t *testing.T) {
 	}
 }
 
+// A pause() inside an iteration ends the loop with TerminalReason "pause" —
+// and unlike "break"/"stop_when"/"max_iterations", a --resume re-runs that
+// iteration rather than starting a fresh loop.
+func TestLoopPauseIsResumable(t *testing.T) {
+	root := t.TempDir()
+
+	// Leg 1: iterations 1 and 2 complete; iteration 3 pauses.
+	calls := 0
+	res, err := runtime.NewLoopRunner(root).Run(context.Background(), oneStepPipeline(), nil,
+		func(_ context.Context, step string, ctx *runtime.RunContext) error {
+			calls++
+			if calls == 3 {
+				return &runtime.PauseSignal{Reason: "hold"}
+			}
+			return nil
+		},
+		func(string) (bool, error) { return false, nil }, false)
+	if err != nil {
+		t.Fatalf("leg1: %v", err)
+	}
+	if res.TerminalReason != "pause" || res.PauseReason != "hold" {
+		t.Fatalf("TerminalReason=%q PauseReason=%v", res.TerminalReason, res.PauseReason)
+	}
+
+	// Leg 2: resume — the loop continues (Resumed) and the exec closure runs
+	// again, i.e. it did NOT treat "pause" as a terminal stop.
+	ran := 0
+	res2, err := runtime.NewLoopRunner(root).Run(context.Background(), oneStepPipeline(), nil,
+		func(_ context.Context, step string, ctx *runtime.RunContext) error {
+			ran++
+			return nil
+		},
+		func(string) (bool, error) { return true, nil }, true) // stop after one resumed iteration
+	if err != nil {
+		t.Fatalf("leg2: %v", err)
+	}
+	if !res2.Resumed {
+		t.Error("resumed loop after pause should report Resumed = true")
+	}
+	if ran == 0 {
+		t.Error("resumed loop after pause never ran the iteration again")
+	}
+}
+
 // --resume continues at the iteration after the last one that completed
 // successfully — not iteration 0 — when a prior run was interrupted by a
 // genuine error mid-loop.

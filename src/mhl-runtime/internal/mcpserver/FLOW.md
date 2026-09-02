@@ -207,8 +207,8 @@ sequenceDiagram
         X->>Reg: cb → rn.step / rn.stepIndex / rn.stepTotal / rn.reached / rn.updated  (under rn.mu)
     end
     X-->>G: Result{Skipped, Executed, Vars}  |  runErr
-    G->>Reg: rn.state = completed / failed / canceled · rn.resumable = checkpoint on disk · close(rn.done)
-    Note over G: completed → remove runsDir/.mhl/state/runId · failed/canceled → keep it for run/resume
+    G->>Reg: rn.state = completed / failed / canceled / paused · rn.resumable = checkpoint on disk (always, for paused) · close(rn.done)
+    Note over G: completed → remove runsDir/.mhl/state/runId · failed/canceled/paused → keep it for run/resume
 
     C->>H: POST /mcp  run/status { runId }
     H->>Reg: ownedRun = lookupRun · else reconstructRun (claims it) · reject if owner != caller
@@ -222,13 +222,13 @@ sequenceDiagram
         Note over G,X: runCtx.Err() at the next step boundary ends the run (in-flight step finishes · execRun does not overwrite "canceled")
     end
 
-    opt resume (workflow declares checkpoint { strategy: "per_step" })
+    opt resume (a `failed` run needs checkpoint { strategy: "per_step" }; a `paused` run always qualifies)
         C->>H: POST /mcp  run/resume { runId, arguments? }
         H->>Reg: lookupRun · else reconstructRun · reject if working or no checkpoint
         H->>Reg: merge arguments over rn.args · fresh ctx,cancel,done · rn.state = "working"
         H->>G: go execRun(ctx, rn, resume=true)
         H-->>C: 200 + { state:"working" }
-        Note over G,X: execsvc.Run(Session: runId, Resume: true) → Runner loads the checkpoint,<br/>restores vars, restarts at NextStep (the failed step) · inputs re-applied shadow checkpoint vars
+        Note over G,X: execsvc.Run(Session: runId, Resume: true) → Runner loads the checkpoint,<br/>restores vars, restarts at NextStep (the failed / pausing step) · inputs re-applied shadow checkpoint vars
     end
 
     Note over Reg: run/list returns only the caller's runs · initialize sweeps completed runs older than 1 h (removes the dir) · a resumable run is kept in the registry for the process lifetime so its owner binding holds · on-disk state is GC'd by runtime.PruneExpired · shutdown cancels all and, only for a temp runsDir, deletes it
@@ -244,9 +244,13 @@ working ──▶ completed         (run finished with no error — state dir re
         ├─▶ failed            (runErr != nil and ctx not cancelled — resumable if a checkpoint is on disk;
         │                      a step's `timeout <dur>` clause elapsing lands here, `error` wraps
         │                      runtime.ErrStepTimeout, and a resume re-enters the step with a fresh budget)
+        ├─▶ paused            (a step called `pause(...)` — a human-in-the-loop hand-off, not a failure;
+        │                      `reason` carries the pause value, `vars` the state at the pause point,
+        │                      always `resumable` (pause writes its own checkpoint, no `checkpoint {}` block
+        │                      required), and the state subtree is kept — not removed like `completed`)
         └─▶ canceled          (run/cancel, or runErr with ctx cancelled)
 
-failed / canceled ──▶ queued|working   (run/resume, when the workflow has a per_step checkpoint)
+failed / canceled / paused ──▶ queued|working   (run/resume — re-enters the failing / pausing step)
 ```
 
 A run starts `working` immediately unless `--max-concurrent-runs` is set and
@@ -258,9 +262,9 @@ runs or returns `-32000` "server at capacity".
 `reached` is the ordered list of steps that **started** (fed by `OnStep`);
 on completion it becomes `Result.Skipped ++ Result.Executed` (authoritative,
 and across a resume it includes the steps the resume skipped over). `vars`
-appears only in `completed`; `error` only in `failed` / `canceled`;
-`resumable` only when `run/resume` can continue the run; `queuePosition` only
-while `queued`.
+appears in `completed` and `paused`; `error` only in `failed` / `canceled`;
+`reason` only in `paused`; `resumable` whenever `run/resume` can continue the
+run; `queuePosition` only while `queued`.
 
 `run/logs { runId, since? }` returns `{ text, nextSince, dropped? }` — this
 run's own ~64 KiB rolling copy of its `step:` / `log()` output, cursored by
