@@ -367,8 +367,8 @@ step Escalate {
           <h2 data-pt="Leia um arquivo MHL de cima a baixo."
             style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:24ch">
             Read one MHL file, top to bottom.</h2>
-          <p data-pt="Um revisor de pull request de verdade, em 39 linhas. Percorra os passos — o arquivo destaca a parte que está sendo explicada."
-            style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">A real pull-request reviewer in 39
+          <p data-pt="Um revisor de pull request de verdade, em 42 linhas. Percorra os passos — o arquivo destaca a parte que está sendo explicada."
+            style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">A real pull-request reviewer in 42
             lines. Walk the steps — the file highlights the part being explained.</p>
 
           <div id="tour-grid"
@@ -384,14 +384,13 @@ step Escalate {
                 <button type="button" data-copy
                   style="margin-left:auto;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:4px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
               </div>
-              <pre style="margin:0;padding:18px 0;overflow:auto;max-height:560px"><code data-mhl-tour style="display:block;color:var(--code-ink);font:14.5px/1.85 'DM Mono',monospace">import "std/http" as http
+              <pre style="margin:0;padding:18px 0;overflow:auto;max-height:560px"><code data-mhl-tour style="display:block;color:var(--code-ink);font:14.5px/1.85 'DM Mono',monospace">import { Diff } from "./review-types.mh"
 
 agent Reviewer {
     command: "claude"
     args: ["-p", "${prompt}"]
-    timeout: 45s
-    retry: 2
-    cache: true
+    retry: { max_attempts: 2 }
+    cache: { ttl: 1h, storage: "disk" }
 }
 
 prompt Triage(diff: string) {
@@ -404,22 +403,27 @@ prompt Triage(diff: string) {
 }
 
 memory Audit {
-    kind: "append"
+    type: "jsonl"
     path: ".mhl/audit.jsonl"
 }
 
 pipeline ReviewPullRequest {
-    input diff: string
-    output risk: string
+    input diff: Diff
+    var risk = ""
 
-    step Classify {
-        var risk = Reviewer.run(prompt: Triage(diff: diff))
-        Audit.append({ risk: risk, at: now() })
+    step Classify timeout 45s {
+        risk = Reviewer.run(prompt: Triage(diff: diff))
+        Audit.append({ risk: risk, at: time.now() })
+    }
+
+    step FanOut {
+        spawn a = Reviewer.run(prompt: "Review ${x}") for x in []
+        wait a
     }
 
     step Escalate {
-        if risk == "high" {
-            http.post("https://hooks.example.com/review", { risk: risk })
+        if (risk == "high") {
+            http.post("https://hooks.example.com/review", body: { risk: risk })
         }
     }
 }</code></pre>
@@ -427,28 +431,28 @@ pipeline ReviewPullRequest {
 
             <div id="tour-steps" style="display:grid;gap:8px;align-content:start">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
-                <p data-pt="7 partes"
+                <p data-pt="8 partes"
                   style="margin:0;color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase">
-                  7 parts</p>
+                  8 parts</p>
                 <button id="tour-play" type="button" data-pt="Pausar"
                   style="border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:5px 10px;cursor:pointer;font:12.5px 'DM Mono',monospace">Pause</button>
               </div>
               <button type="button" data-tour-step="1" data-lines="1-1"
                 style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
                 <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">import</b>
-                <span data-pt="Traz a biblioteca padrão e ferramentas externas para dentro do arquivo, com nome."
-                  style="color:var(--muted);font-size:15px;line-height:1.5">Pulls the standard library and external
-                  tools into the file, under a name.</span>
+                <span data-pt="Importa um tipo compartilhado de outro arquivo MHL."
+                  style="color:var(--muted);font-size:15px;line-height:1.5">Imports a shared type from another MHL
+                  file.</span>
               </button>
-              <button type="button" data-tour-step="2" data-lines="3-9"
+              <button type="button" data-tour-step="2" data-lines="3-8"
                 style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
                 <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">agent</b>
                 <span
-                  data-pt="O que pode ser chamado, e sob quais limites: comando, timeout, retry e cache ficam visíveis."
+                  data-pt="O que pode ser chamado, e sob quais limites: comando, retry e cache ficam visíveis; o timeout é definido no step."
                   style="color:var(--muted);font-size:15px;line-height:1.5">What can be called, and under which limits:
-                  command, timeout, retry and cache all in the open.</span>
+                  command, retry and cache are explicit; timeout is defined on the step.</span>
               </button>
-              <button type="button" data-tour-step="3" data-lines="11-18"
+              <button type="button" data-tour-step="3" data-lines="10-17"
                 style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
                 <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">prompt</b>
                 <span
@@ -456,28 +460,35 @@ pipeline ReviewPullRequest {
                   style="color:var(--muted);font-size:15px;line-height:1.5">A typed, reusable template. The instruction
                   is source code, not a hidden string.</span>
               </button>
-              <button type="button" data-tour-step="4" data-lines="20-23"
+              <button type="button" data-tour-step="4" data-lines="19-22"
                 style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
                 <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">memory</b>
                 <span data-pt="Estado com nome e forma: efêmero, JSON persistente ou log append-only para auditoria."
                   style="color:var(--muted);font-size:15px;line-height:1.5">State with a name and a shape: ephemeral,
                   persistent JSON, or an append-only audit log.</span>
               </button>
-              <button type="button" data-tour-step="5" data-lines="25-27"
+              <button type="button" data-tour-step="5" data-lines="24-26"
                 style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
                 <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">pipeline</b>
-                <span data-pt="O contrato: quais entradas o fluxo exige e qual saída ele promete."
+                <span data-pt="O contrato: quais entradas o fluxo exige e quais variáveis ele mantém."
                   style="color:var(--muted);font-size:15px;line-height:1.5">The contract: which inputs the flow
-                  requires, and which output it promises.</span>
+                  requires, and which variables it keeps.</span>
               </button>
-              <button type="button" data-tour-step="6" data-lines="29-32"
+              <button type="button" data-tour-step="6" data-lines="28-31"
                 style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
                 <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">step</b>
                 <span data-pt="Uma unidade de execução: chama a capacidade, guarda o valor e registra o que aconteceu."
                   style="color:var(--muted);font-size:15px;line-height:1.5">One unit of execution: call the capability,
                   keep the value, record what happened.</span>
               </button>
-              <button type="button" data-tour-step="7" data-lines="34-38"
+              <button type="button" data-tour-step="7" data-lines="33-36"
+                style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
+                <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">spawn · fan-out</b>
+                <span data-pt="Dispara uma chamada por item; com um array vazio, cria zero handles e o wait termina sem trabalho."
+                  style="color:var(--muted);font-size:15px;line-height:1.5">Starts one call per item; with an empty array,
+                  it creates zero handles and wait completes without work.</span>
+              </button>
+              <button type="button" data-tour-step="8" data-lines="38-42"
                 style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
                 <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">if · integrations</b>
                 <span
@@ -878,7 +889,7 @@ class Component extends DCLogic {
     this.applyLang(this.lang);
     this.bind();
     this.applyStep(1);
-    this.timer = setInterval(() => { if (this.playing) this.applyStep(this.step % 7 + 1); }, 3800);
+    this.timer = setInterval(() => { if (this.playing) this.applyStep(this.step % 8 + 1); }, 3800);
   }
 
   componentWillUnmount() { clearInterval(this.timer); }

@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MHL no Banco Itaú — Deck Executivo & Infográfico Estratégico</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js para simulações financeiras -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            itau: {
+              orange: '#EC7000',
+              deepOrange: '#C94E00',
+              lightOrange: '#FFF3E8',
+              blue: '#002855',
+              darkNavy: '#071526',
+              surface: '#0E1F36',
+              slate: '#1E293B',
+              muted: '#64748B',
+              cardBorder: '#E2E8F0',
+              accentYellow: '#FBBF24'
+            }
+          },
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .font-mono-code { font-family: 'JetBrains Mono', monospace; }
+    .slide-active { display: flex !important; animation: slideFade 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+    @keyframes slideFade {
+      from { opacity: 0; transform: translateY(8px) scale(0.995); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.03); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.25); border-radius: 999px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(236,112,0,0.5); }
+    .glass-navy {
+      background: rgba(7, 21, 38, 0.96);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 h-full flex flex-col antialiased select-none">
+
+  <header class="bg-itau-darkNavy text-white border-b border-white/10 px-6 py-3 shrink-0 flex items-center justify-between z-30 shadow-md">
+    <div class="flex items-center gap-3">
+      <!-- Itaú MHL Brand Icon -->
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-itau-orange to-itau-deepOrange flex items-center justify-center font-black text-white text-xl tracking-tighter shadow-lg ring-2 ring-orange-500/30">
+        mhl
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="font-extrabold text-base tracking-tight text-white">MHL · Meta-Harness Language</span>
+          <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-itau-orange/20 text-orange-300 border border-orange-500/30">
+            Itaú Engenharia de IA
+          </span>
+        </div>
+        <p class="text-xs text-slate-400 font-medium">Proposta de Padrão Corporativo para Orquestração Determinística de Agentes</p>
+      </div>
+    </div>
+
+    <!-- Navigation Pills -->
+    <nav class="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10 text-xs font-semibold">
+      <button onclick="switchView('deck')" id="tab-deck" class="px-4 py-2 rounded-lg flex items-center gap-2 transition-all bg-itau-orange text-white shadow-md">
+        <i data-lucide="presentation" class="w-4 h-4"></i>
+        <span>Apresentação Executiva</span>
+      </button>
+      <button onclick="switchView('infographic')" id="tab-infographic" class="px-4 py-2 rounded-lg flex items-center gap-2 text-slate-300 hover:text-white hover:bg-white/5 transition-all">
+        <i data-lucide="network" class="w-4 h-4"></i>
+        <span>Infográfico de Arquitetura</span>
+      </button>
+      <button onclick="switchView('roi')" id="tab-roi" class="px-4 py-2 rounded-lg flex items-center gap-2 text-slate-300 hover:text-white hover:bg-white/5 transition-all">
+        <i data-lucide="calculator" class="w-4 h-4"></i>
+        <span>Simulador FinOps & ROI</span>
+      </button>
+      <button onclick="switchView('poc')" id="tab-poc" class="px-4 py-2 rounded-lg flex items-center gap-2 text-slate-300 hover:text-white hover:bg-white/5 transition-all">
+        <i data-lucide="calendar-check-2" class="w-4 h-4"></i>
+        <span>Roteiro da PoC (4 Semanas)</span>
+      </button>
+    </nav>
+  </header>
+
+  <!-- MAIN APPLICATION VIEWPORT -->
+  <main class="flex-1 overflow-hidden relative">
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 1: APRESENTAÇÃO EXECUTIVA (SLIDE DECK PARA DIRETORIA)               -->
+    <!-- ========================================================================= -->
+    <section id="view-deck" class="h-full flex flex-col p-6 max-w-7xl mx-auto w-full">
+      <div class="flex-1 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col relative">
+
+        <!-- SLIDE 1: Capa & Contexto Estratégico -->
+        <div class="slide slide-active flex-1 p-12 flex flex-col justify-between" id="slide-1">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-5">
+            <div class="flex items-center gap-3">
+              <span class="w-3 h-3 rounded-full bg-itau-orange animate-pulse"></span>
+              <span class="text-xs font-bold uppercase tracking-widest text-slate-400 font-mono-code">Diretoria Executiva de Engenharia e Arquitetura de IA</span>
+            </div>
+            <span class="text-xs font-bold text-itau-blue bg-blue-50 border border-blue-200 px-3 py-1 rounded-full">
+              Padrões Tecnológicos 2026
+            </span>
+          </div>
+
+          <div class="max-w-4xl my-auto space-y-6">
+            <div class="inline-flex items-center gap-2 bg-orange-50 text-itau-deepOrange text-xs font-bold px-3.5 py-1.5 rounded-lg border border-orange-200">
+              <i data-lucide="crown" class="w-4 h-4 text-itau-orange"></i>
+              <span>Consolidando a Liderança do Itaú em Inteligência Artificial</span>
+            </div>
+            <h1 class="text-4xl sm:text-5xl lg:text-6xl font-black text-itau-darkNavy tracking-tight leading-[1.1]">
+              Orquestração de Agentes com <span class="text-itau-orange">Controle Rigoroso</span>, Auditoria e Eficiência FinOps.
+            </h1>
+            <p class="text-lg text-slate-600 leading-relaxed max-w-3xl font-normal">
+              A proposta técnica e o caso de negócio da <strong>Meta-Harness Language (MHL)</strong> para padronizar o desenvolvimento de sistemas autônomos no banco, reduzindo em até <strong>35% os custos de inferência</strong> e garantindo <strong>100% de conformidade regulatória</strong> com o Bacen.
+            </p>
+            <div class="flex items-center gap-6 pt-2 text-xs text-slate-500 font-medium">
+              <div>Apresentador: <span class="text-slate-800 font-bold">Especialista em Engenharia de Software</span></div>
+              <span class="text-slate-300">•</span>
+              <div>Objetivo: <span class="text-itau-deepOrange font-bold">Aprovação para PoC de 4 Semanas (Risco Zero)</span></div>
+            </div>
+          </div>
+
+          <!-- Bottom Value Highlight Strip -->
+          <div class="grid grid-cols-3 gap-6 pt-6 border-t border-slate-100 bg-slate-50/70 -mx-12 -mb-12 p-8 px-12">
+            <div class="flex items-center gap-3.5">
+              <div class="w-11 h-11 rounded-xl bg-orange-100 text-itau-orange flex items-center justify-center shrink-0">
+                <i data-lucide="shield-check" class="w-6 h-6"></i>
+              </div>
+              <div>
+                <h4 class="text-sm font-bold text-slate-900">Auditoria Determinística</h4>
+                <p class="text-xs text-slate-500">Conformidade total Resolução Bacen 85 / CMN 4.893</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3.5">
+              <div class="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <i data-lucide="trending-down" class="w-6 h-6"></i>
+              </div>
+              <div>
+                <h4 class="text-sm font-bold text-slate-900">-35% em Custos de Tokens</h4>
+                <p class="text-xs text-slate-500">Cache nativo em disco e fallback para Ollama local</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3.5">
+              <div class="w-11 h-11 rounded-xl bg-blue-100 text-itau-blue flex items-center justify-center shrink-0">
+                <i data-lucide="plug-zap" class="w-6 h-6"></i>
+              </div>
+              <div>
+                <h4 class="text-sm font-bold text-slate-900">Padrão MCP & A2A</h4>
+                <p class="text-xs text-slate-500">Zero lock-in com fornecedores de LLM</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SLIDE 2: O Problema - O Risco do "Prompt Glue" -->
+        <div class="slide hidden flex-1 p-12 flex-col justify-between" id="slide-2">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div class="flex items-center gap-2 text-xs font-bold text-itau-orange font-mono-code uppercase">
+              <span>01 · Diagnóstico Atual</span>
+              <span class="text-slate-300">•</span>
+              <span class="text-slate-500">A Fragilidade do Modelo Imperativo</span>
+            </div>
+            <span class="text-xs font-mono-code text-slate-400">Slide 2 / 7</span>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 my-auto items-center">
+            <div class="space-y-4">
+              <div class="inline-flex items-center gap-2 bg-red-50 text-red-700 text-xs font-bold px-3 py-1 rounded-lg border border-red-200">
+                <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
+                <span>Gargalo Crítico de Escala</span>
+              </div>
+              <h2 class="text-3xl sm:text-4xl font-black text-itau-darkNavy leading-tight">
+                "Prompt Glue": Por que scripts e frameworks ad-hoc não escalam no banco.
+              </h2>
+              <p class="text-slate-600 text-sm leading-relaxed">
+                Hoje, squads desenvolvem integrações com IA utilizando scripts Python imperativos dispersos (LangChain, orquestradores caseiros). No ambiente bancário, essa abordagem gera três graves passivos:
+              </p>
+
+              <div class="space-y-3 pt-2">
+                <div class="p-3 bg-red-50/80 border border-red-200 rounded-xl flex gap-3 items-start">
+                  <i data-lucide="file-warning" class="w-5 h-5 text-red-600 shrink-0 mt-0.5"></i>
+                  <div>
+                    <h4 class="text-xs font-bold text-red-950">Opacidade Regulatória (Risco Bacen)</h4>
+                    <p class="text-xs text-red-800">Decisões tomadas em caixas-pretas estocásticas sem rastreabilidade determinística de passos e prompts.</p>
+                  </div>
+                </div>
+
+                <div class="p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex gap-3 items-start">
+                  <i data-lucide="badge-dollar-sign" class="w-5 h-5 text-amber-700 shrink-0 mt-0.5"></i>
+                  <div>
+                    <h4 class="text-xs font-bold text-amber-950">Dispersão de Custos e Loops Descontrolados</h4>
+                    <p class="text-xs text-amber-800">Sem políticas formais de cache exato e teto de iterações (`max_iterations`), squads sofrem com estouro de quotas e retries cegos.</p>
+                  </div>
+                </div>
+
+                <div class="p-3 bg-slate-100 border border-slate-300 rounded-xl flex gap-3 items-start">
+                  <i data-lucide="lock" class="w-5 h-5 text-slate-700 shrink-0 mt-0.5"></i>
+                  <div>
+                    <h4 class="text-xs font-bold text-slate-900">Vazamento de Segredos e Lock-in de Fornecedor</h4>
+                    <p class="text-xs text-slate-600">Tokens expostos em strings e acoplamento severo a APIs proprietárias de um único provedor.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Código Imperativo Problemático -->
+            <div class="bg-slate-950 rounded-2xl p-6 text-slate-200 shadow-xl border border-slate-800 font-mono-code text-xs">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-800 text-[11px] text-slate-400">
+                <span class="text-red-400 font-bold flex items-center gap-1.5">
+                  <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+                  Cenário Atual (Python Imperativo)
+                </span>
+                <span class="text-red-300 bg-red-950/60 px-2 py-0.5 rounded border border-red-800">Alto Risco</span>
+              </div>
+              <pre class="py-4 text-slate-400 leading-relaxed overflow-x-auto"><code># Sem governança centralizada nem teto
+def run_agent_workflow(diff):
+    while True: # RISCO: Loop infinito se modelo falhar
+        try:
+            # Chave e retry misturados na lógica
+            res = client.chat(prompt=f"Review: {diff}")
+            if "aprovado" in res.content.lower(): # Parsing frágil
+                deploy_producao() # Sem gate humano auditável!
+                break
+        except Exception as e:
+            # Estado perdido no vácuo; token já pago!
+            pass</code></pre>
+              <div class="pt-3 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                <span class="text-slate-400">Avaliação de Auditoria Interna:</span>
+                <span class="text-red-400 font-bold">Reprovado na Resolução Bacen 85</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-400 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span>Diagnóstico de Engenharia Corporativa</span>
+            <span class="font-semibold text-slate-700">A solução exige desacoplar controle de fluxo de inteligência probabilística.</span>
+          </div>
+        </div>
+
+        <!-- SLIDE 3: O que é a MHL e Arquitetura Declarativa -->
+        <div class="slide hidden flex-1 p-12 flex-col justify-between" id="slide-3">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div class="flex items-center gap-2 text-xs font-bold text-itau-orange font-mono-code uppercase">
+              <span>02 · A Solução Técnica</span>
+              <span class="text-slate-300">•</span>
+              <span class="text-slate-500">MHL (Meta-Harness Language)</span>
+            </div>
+            <span class="text-xs font-mono-code text-slate-400">Slide 3 / 7</span>
+          </div>
+
+          <div class="my-auto space-y-6">
+            <div>
+              <h2 class="text-3xl sm:text-4xl font-black text-itau-darkNavy">
+                O programa detém o controle; a IA provê o julgamento.
+              </h2>
+              <p class="text-slate-600 text-sm mt-1 max-w-3xl">
+                A MHL é uma DSL declarativa construída especificamente para orquestrar agentes com garantias estritas de engenharia de software:
+              </p>
+            </div>
+
+            <div class="grid grid-cols-4 gap-4">
+              <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div class="w-8 h-8 rounded-lg bg-orange-100 text-itau-orange flex items-center justify-center font-bold text-xs font-mono-code">
+                  01
+                </div>
+                <h4 class="text-sm font-bold text-slate-900">Passos Determinísticos</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Blocos `step`, grupos `parallel` com barreira e laços com `max_iterations` obrigatório. O modelo nunca dita o fluxo.
+                </p>
+              </div>
+
+              <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div class="w-8 h-8 rounded-lg bg-blue-100 text-itau-blue flex items-center justify-center font-bold text-xs font-mono-code">
+                  02
+                </div>
+                <h4 class="text-sm font-bold text-slate-900">Human-in-the-Loop</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Primitiva nativa `pause()` suspende o processo de forma limpa e aguarda decisão humana com `run/resume` sem perder estado.
+                </p>
+              </div>
+
+              <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs font-mono-code">
+                  03
+                </div>
+                <h4 class="text-sm font-bold text-slate-900">Checkpoints & Resume</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Persistência automática `per_step`. Se a rede ou LLM falhar, a esteira retoma com `mhl run --resume` exatamente de onde parou.
+                </p>
+              </div>
+
+              <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs font-mono-code">
+                  04
+                </div>
+                <h4 class="text-sm font-bold text-slate-900">Segurança & Vault</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Resolução de credenciais via `env()` com ofuscação `[REDACTED]` automática em logs e execução pura via argv isolado.
+                </p>
+              </div>
+            </div>
+
+            <!-- Código MHL Limpo e Auditável -->
+            <div class="bg-itau-darkNavy p-5 rounded-2xl text-white font-mono-code text-xs border border-slate-800 shadow-xl">
+              <div class="flex items-center justify-between pb-3 border-b border-white/10 text-[11px] text-slate-400">
+                <span class="text-orange-400 font-bold flex items-center gap-1.5">
+                  <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400"></i>
+                  review_pipeline.mh (Declarativo MHL)
+                </span>
+                <span class="text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">Auditável & Resiliente</span>
+              </div>
+              <pre class="pt-3 text-slate-300 leading-relaxed"><code>agent Reviewer { command: "claude", cache: { ttl: 1h }, retry: { max_attempts: 2 } }
+
+workflow ValidacaoDeploy {
+    input diff: string
+    step Analisar { var risco = Reviewer.run(prompt: Classifica(diff: diff)) }
+    step GateSeguranca {
+        if (risco == "alto") { pause("Aguardando alçada do Tech Lead") }
+    }
+}</code></pre>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-400 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span>Multi-Model: Suporta CLI, APIs de Nuvem e Inferência Local On-Prem (Ollama)</span>
+            <span>Zero licenças proprietárias: 100% open-source com controle interno</span>
+          </div>
+        </div>
+
+        <!-- SLIDE 4: Interoperabilidade da Indústria: MCP & A2A -->
+        <div class="slide hidden flex-1 p-12 flex-col justify-between" id="slide-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div class="flex items-center gap-2 text-xs font-bold text-itau-orange font-mono-code uppercase">
+              <span>03 · Padrões Globais</span>
+              <span class="text-slate-300">•</span>
+              <span class="text-slate-500">Interoperabilidade Corporativa</span>
+            </div>
+            <span class="text-xs font-mono-code text-slate-400">Slide 4 / 7</span>
+          </div>
+
+          <div class="my-auto space-y-6">
+            <h2 class="text-3xl sm:text-4xl font-black text-itau-darkNavy">
+              Pronto para os padrões abertos que lideram o mercado.
+            </h2>
+            <p class="text-slate-600 text-sm max-w-3xl">
+              A MHL opera nativamente nos dois protocolos abertos mais relevantes da indústria de IA corporativa, atuando tanto como <strong>cliente</strong> quanto como <strong>servidor</strong>:
+            </p>
+
+            <div class="grid grid-cols-2 gap-8">
+              <!-- Anthropic MCP -->
+              <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-orange-100 text-itau-orange flex items-center justify-center font-bold text-sm">
+                      MCP
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-base text-slate-900">Model Context Protocol</h3>
+                      <p class="text-xs text-slate-500">Padrão Anthropic adotado pela indústria</p>
+                    </div>
+                  </div>
+                  <span class="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono-code">stdio + HTTP</span>
+                </div>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Conecte qualquer base de dados ou API interna do Itaú via MCP (`extension mcp`). Ou exponha pastas de workflows MHL inteiras como ferramentas MCP para Claude Desktop, Cursor ou agentes corporativos com um único comando:
+                </p>
+                <div class="p-3 bg-slate-900 rounded-xl text-orange-400 font-mono-code text-xs">
+                  $ mhl serve mcp --http esteiras/
+                </div>
+              </div>
+
+              <!-- Google A2A -->
+              <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-blue-100 text-itau-blue flex items-center justify-center font-bold text-sm">
+                      A2A
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-base text-slate-900">Agent2Agent Protocol</h3>
+                      <p class="text-xs text-slate-500">Padrão Google para colaboração entre agentes</p>
+                    </div>
+                  </div>
+                  <span class="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono-code">JSON-RPC HTTP</span>
+                </div>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Permite que diferentes agentes especializados colaborem sem atrito. O runtime publica automaticamente o `agent-card.json` e gerencia tarefas longas, cancelamentos e ciclo de vida:
+                </p>
+                <div class="p-3 bg-slate-900 rounded-xl text-blue-300 font-mono-code text-xs">
+                  $ mhl serve a2a --addr 0.0.0.0:8710 esteiras/
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <i data-lucide="shield-check" class="w-5 h-5 text-emerald-600 shrink-0"></i>
+                <span class="text-xs font-bold text-emerald-900">
+                  Benefício para o Itaú: Workflows construídos hoje podem ser reaproveitados amanhã por qualquer novo agente ou modelo sem reescrever código.
+                </span>
+              </div>
+              <span class="text-xs font-bold text-emerald-700 uppercase tracking-wider font-mono-code">Futuro Garantido</span>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-400 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span>Total aderência aos padrões de interoperabilidade de microsserviços do Itaú</span>
+            <span>Evita a proliferação de APIs REST manuais</span>
+          </div>
+        </div>
+
+        <!-- SLIDE 5: Business Case FinOps e Retorno do Investimento -->
+        <div class="slide hidden flex-1 p-12 flex-col justify-between" id="slide-5">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div class="flex items-center gap-2 text-xs font-bold text-itau-orange font-mono-code uppercase">
+              <span>04 · FinOps & Negócio</span>
+              <span class="text-slate-300">•</span>
+              <span class="text-slate-500">Retorno Financeiro Mensurável</span>
+            </div>
+            <span class="text-xs font-mono-code text-slate-400">Slide 5 / 7</span>
+          </div>
+
+          <div class="my-auto space-y-6">
+            <h2 class="text-3xl sm:text-4xl font-black text-itau-darkNavy">
+              Eficiência financeira e redução tangível de desperdício.
+            </h2>
+            <p class="text-slate-600 text-sm max-w-3xl">
+              Projeção para um piloto com <strong>20 squads</strong> utilizando automações de IA em seu ciclo de engenharia e sustentação:
+            </p>
+
+            <div class="grid grid-cols-3 gap-6">
+              <!-- Card 1: Tokens -->
+              <div class="p-6 bg-orange-50/80 border border-orange-200 rounded-2xl space-y-2">
+                <span class="text-xs font-bold uppercase tracking-wider text-itau-deepOrange font-mono-code">Economia Direta de Tokens</span>
+                <p class="text-4xl font-black text-itau-darkNavy">R$ 540k<span class="text-base font-semibold text-slate-500">/ano</span></p>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Obtida via cache em disco exato para prompts repetitivos de CI/CD e desvio de tarefas simples para clusters locais com Ollama.
+                </p>
+              </div>
+
+              <!-- Card 2: Horas Engenharia -->
+              <div class="p-6 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2">
+                <span class="text-xs font-bold uppercase tracking-wider text-itau-blue font-mono-code">Produtividade Desbloqueada</span>
+                <p class="text-4xl font-black text-itau-darkNavy">1.200h<span class="text-base font-semibold text-slate-500">/mês</span></p>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Eliminação de retrabalho com retries manuais, pipelines instáveis e criação de filas customizadas de aprovação humana.
+                </p>
+              </div>
+
+              <!-- Card 3: Licenciamento -->
+              <div class="p-6 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-2">
+                <span class="text-xs font-bold uppercase tracking-wider text-emerald-800 font-mono-code">Custo de Licenciamento</span>
+                <p class="text-4xl font-black text-emerald-600">R$ 0,00</p>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Tecnologia open-source de padrão aberto com total soberania e governança interna pela engenharia do próprio banco.
+                </p>
+              </div>
+            </div>
+
+            <div class="p-5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+              <div class="space-y-1">
+                <h4 class="text-sm font-bold text-slate-900">Evitação de Multas e Apontamentos Regulatórios</h4>
+                <p class="text-xs text-slate-500 max-w-2xl">
+                  A presença de memória append-only e checkpoints nativos atende expressamente aos requisitos de rastreabilidade do Banco Central (Res. CMN 4.893), eliminando riscos de sanções por opacidade em IA.
+                </p>
+              </div>
+              <div class="text-right">
+                <span class="text-xs font-mono-code font-bold bg-emerald-100 text-emerald-800 px-3.5 py-1.5 rounded-full border border-emerald-300">
+                  Payback Imediato
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-400 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span>Simule valores customizados na aba "Simulador FinOps & ROI"</span>
+            <span>Premissas financeiras conservadoras validadas com mercado</span>
+          </div>
+        </div>
+
+        <!-- SLIDE 6: Proposta de PoC em 4 Semanas -->
+        <div class="slide hidden flex-1 p-12 flex-col justify-between" id="slide-6">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div class="flex items-center gap-2 text-xs font-bold text-itau-orange font-mono-code uppercase">
+              <span>05 · Plano de Ação</span>
+              <span class="text-slate-300">•</span>
+              <span class="text-slate-500">Validação Controlada</span>
+            </div>
+            <span class="text-xs font-mono-code text-slate-400">Slide 6 / 7</span>
+          </div>
+
+          <div class="my-auto space-y-6">
+            <div>
+              <h2 class="text-3xl sm:text-4xl font-black text-itau-darkNavy">
+                PoC de 4 Semanas: Risco zero e critérios objetivos.
+              </h2>
+              <p class="text-slate-600 text-sm mt-1">
+                Execução em ambiente de homologação em esteira real de engenharia (análise inteligente de Pull Requests com gate de Tech Lead):
+              </p>
+            </div>
+
+            <div class="grid grid-cols-4 gap-4">
+              <div class="border border-slate-200 rounded-xl p-4 bg-white relative overflow-hidden space-y-2">
+                <div class="w-full h-1 bg-itau-orange absolute top-0 left-0"></div>
+                <span class="text-xs font-mono-code font-bold text-itau-deepOrange">SEMANA 1</span>
+                <h4 class="font-bold text-sm text-slate-900">Setup & Segurança</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Disponibilização do runtime `mhl` nos runners de CI de homologação, integração com Vault corporativo e validação com SecOps.
+                </p>
+              </div>
+
+              <div class="border border-slate-200 rounded-xl p-4 bg-white relative overflow-hidden space-y-2">
+                <div class="w-full h-1 bg-itau-blue absolute top-0 left-0"></div>
+                <span class="text-xs font-mono-code font-bold text-itau-blue">SEMANA 2</span>
+                <h4 class="font-bold text-sm text-slate-900">Workflow & Gate</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Codificação do fluxo declarativo com `pause()` para intervenção humana e testes automatizados com `mhl test`.
+                </p>
+              </div>
+
+              <div class="border border-slate-200 rounded-xl p-4 bg-white relative overflow-hidden space-y-2">
+                <div class="w-full h-1 bg-emerald-600 absolute top-0 left-0"></div>
+                <span class="text-xs font-mono-code font-bold text-emerald-700">SEMANA 3</span>
+                <h4 class="font-bold text-sm text-slate-900">Shadow Run</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Execução silenciosa em paralelo a 200 PRs reais para comparar acurácia, latência e economia real de tokens com cache.
+                </p>
+              </div>
+
+              <div class="border border-slate-200 rounded-xl p-4 bg-white relative overflow-hidden space-y-2">
+                <div class="w-full h-1 bg-purple-600 absolute top-0 left-0"></div>
+                <span class="text-xs font-mono-code font-bold text-purple-700">SEMANA 4</span>
+                <h4 class="font-bold text-sm text-slate-900">Go / No-Go</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Auditoria dos logs append-only com o time de Compliance e apresentação final dos números para a diretoria.
+                </p>
+              </div>
+            </div>
+
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <i data-lucide="target" class="w-6 h-6 text-amber-600 shrink-0"></i>
+                <div>
+                  <p class="text-xs font-bold text-amber-950">Metas de Sucesso da PoC:</p>
+                  <p class="text-xs text-amber-800">100% de rastreabilidade de auditoria, &gt;30% de economia de tokens e 0 interrupções não tratadas.</p>
+                </div>
+              </div>
+              <span class="text-xs font-bold bg-white text-itau-darkNavy px-3.5 py-1.5 rounded-lg border border-amber-300">
+                Critério Binário
+              </span>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-400 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span>Sem impacto em esteiras produtivas durante todo o período</span>
+            <span>Alocação necessária: 1 especialista interno + apoio pontual de SecOps</span>
+          </div>
+        </div>
+
+        <!-- SLIDE 7: A Decisão Executiva (The Ask) -->
+        <div class="slide hidden flex-1 p-12 flex-col justify-between" id="slide-7">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div class="flex items-center gap-2 text-xs font-bold text-itau-orange font-mono-code uppercase">
+              <span>06 · Decisão</span>
+              <span class="text-slate-300">•</span>
+              <span class="text-slate-500">Próximos Passos</span>
+            </div>
+            <span class="text-xs font-mono-code text-slate-400">Slide 7 / 7</span>
+          </div>
+
+          <div class="my-auto max-w-3xl space-y-6">
+            <h2 class="text-4xl sm:text-5xl font-black text-itau-darkNavy leading-tight">
+              O que precisamos para iniciar a PoC na próxima semana:
+            </h2>
+
+            <div class="space-y-3.5">
+              <div class="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <div class="w-8 h-8 rounded-full bg-itau-orange text-white flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
+                  1
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold text-slate-900">Homologação Técnica do Binário</h4>
+                  <p class="text-xs text-slate-600 mt-0.5">Autorização da equipe de Plataforma para disponibilizar o binário `mhl` nos runners de CI/CD de teste.</p>
+                </div>
+              </div>
+
+              <div class="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <div class="w-8 h-8 rounded-full bg-itau-blue text-white flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
+                  2
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold text-slate-900">Designação do Squad Piloto</h4>
+                  <p class="text-xs text-slate-600 mt-0.5">Indicação de 1 squad voluntário para acompanhar o pipeline de validação de Pull Requests.</p>
+                </div>
+              </div>
+
+              <div class="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <div class="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
+                  3
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold text-slate-900">Agendamento do Checkpoint de Resultados</h4>
+                  <p class="text-xs text-slate-600 mt-0.5">Sessão de 30 minutos na pauta da diretoria ao fim de 4 semanas para deliberação de escala.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-2 flex items-center gap-4">
+              <button onclick="switchView('infographic')" class="bg-itau-orange hover:bg-itau-deepOrange text-white font-bold text-xs px-6 py-3.5 rounded-xl shadow-lg transition-all flex items-center gap-2">
+                <i data-lucide="network" class="w-4 h-4"></i>
+                <span>Explorar Infográfico de Arquitetura</span>
+              </button>
+              <button onclick="switchView('roi')" class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs px-6 py-3.5 rounded-xl transition-all flex items-center gap-2">
+                <i data-lucide="calculator" class="w-4 h-4"></i>
+                <span>Abrir Calculadora de ROI</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-400 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span>Banco Itaú Unibanco · Liderança Responsável em IA</span>
+            <span>Obrigado! Aberto a discussões.</span>
+          </div>
+        </div>
+
+        <!-- Barra Inferior de Controles dos Slides -->
+        <div class="h-16 bg-slate-50 border-t border-slate-200 px-8 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <span>Atalhos:</span>
+            <kbd class="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono-code text-[11px]">←</kbd>
+            <kbd class="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono-code text-[11px]">→</kbd>
+            <span class="text-slate-400">ou clique nos botões</span>
+          </div>
+
+          <!-- Dots de navegação -->
+          <div class="flex items-center gap-2">
+            <button onclick="goToSlide(1)" class="w-2.5 h-2.5 rounded-full bg-itau-orange transition-all dot-nav" id="dot-1"></button>
+            <button onclick="goToSlide(2)" class="w-2.5 h-2.5 rounded-full bg-slate-300 transition-all dot-nav" id="dot-2"></button>
+            <button onclick="goToSlide(3)" class="w-2.5 h-2.5 rounded-full bg-slate-300 transition-all dot-nav" id="dot-3"></button>
+            <button onclick="goToSlide(4)" class="w-2.5 h-2.5 rounded-full bg-slate-300 transition-all dot-nav" id="dot-4"></button>
+            <button onclick="goToSlide(5)" class="w-2.5 h-2.5 rounded-full bg-slate-300 transition-all dot-nav" id="dot-5"></button>
+            <button onclick="goToSlide(6)" class="w-2.5 h-2.5 rounded-full bg-slate-300 transition-all dot-nav" id="dot-6"></button>
+            <button onclick="goToSlide(7)" class="w-2.5 h-2.5 rounded-full bg-slate-300 transition-all dot-nav" id="dot-7"></button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button onclick="prevSlide()" class="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1">
+              <i data-lucide="chevron-left" class="w-4 h-4"></i>
+              <span>Anterior</span>
+            </button>
+            <button onclick="nextSlide()" class="px-4 py-1.5 rounded-lg bg-itau-darkNavy hover:bg-itau-blue text-white text-xs font-bold flex items-center gap-1 shadow-sm">
+              <span>Próximo</span>
+              <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 2: INFOGRÁFICO INTERATIVO DE ARQUITETURA CORPORATIVA                 -->
+    <!-- ========================================================================= -->
+    <section id="view-infographic" class="hidden h-full overflow-y-auto p-6 max-w-7xl mx-auto w-full space-y-6 custom-scrollbar">
+
+      <!-- Header do Infográfico com Seletor de Diagramas -->
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-2xl font-black text-itau-darkNavy tracking-tight">Arquitetura Alvo MHL no EKS (Itaú Unibanco)</h2>
+            <span class="text-xs bg-orange-100 text-itau-deepOrange font-bold px-2.5 py-0.5 rounded-full font-mono-code">Target Cloud Architecture</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">Diagrama de engenharia validado: alta disponibilidade multi-pod, isolamento por tenant e persistência via IRSA</p>
+        </div>
+        
+        <!-- Abas de visualização do diagrama -->
+        <div class="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200 shrink-0 text-xs font-semibold">
+          <button onclick="switchDiagramView('topology')" id="diag-btn-topology" class="px-3.5 py-2 rounded-lg bg-itau-darkNavy text-white shadow-sm flex items-center gap-1.5 transition-all">
+            <i data-lucide="network" class="w-3.5 h-3.5 text-itau-orange"></i>
+            <span>Topologia EKS</span>
+          </button>
+          <button onclick="switchDiagramView('sequence')" id="diag-btn-sequence" class="px-3.5 py-2 rounded-lg text-slate-600 hover:text-slate-900 transition-all flex items-center gap-1.5">
+            <i data-lucide="git-merge" class="w-3.5 h-3.5"></i>
+            <span>Sequência Multi-Pod (HITL)</span>
+          </button>
+          <button onclick="switchDiagramView('matrix')" id="diag-btn-matrix" class="px-3.5 py-2 rounded-lg text-slate-600 hover:text-slate-900 transition-all flex items-center gap-1.5">
+            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+            <span>Componentes & Matriz</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- ABA 1: DIAGRAMA VISUAL DE TOPOLOGIA EKS & AWS                             -->
+      <!-- ========================================================================= -->
+      <div id="diag-view-topology" class="space-y-4">
+        <div class="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden relative">
+          <div class="flex items-center justify-between pb-4 border-b border-slate-800 text-xs">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span class="font-bold text-white font-mono-code uppercase tracking-wider">Topologia de Rede e Execução: API Gateway → ALB → EKS → Storage & LLMs</span>
+            </div>
+            <div class="flex items-center gap-3 font-mono-code text-[11px] text-slate-400">
+              <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> 18/18 Pod Tests PASS</span>
+              <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-itau-orange"></span> 21/21 Extensions PASS</span>
+            </div>
+          </div>
+
+          <!-- SVG Visual do Diagrama de Topologia EKS -->
+          <div class="overflow-x-auto py-4">
+            <svg class="w-full h-auto min-w-[980px]" viewBox="0 0 1040 540" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Definição de Marcadores de Seta e Gradientes -->
+              <defs>
+                <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0 1L9 5L0 9z" fill="#EC7000" />
+                </marker>
+                <marker id="arrowhead-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0 1L9 5L0 9z" fill="#10B981" />
+                </marker>
+                <marker id="arrowhead-slate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0 1L9 5L0 9z" fill="#64748B" />
+                </marker>
+                <linearGradient id="eksGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#0F172A" />
+                  <stop offset="100%" stop-color="#1E293B" />
+                </linearGradient>
+              </defs>
+
+              <!-- ============================================== -->
+              <!-- BLOCO 1: SQUADS & CLIENTES ITAÚ                -->
+              <!-- ============================================== -->
+              <rect x="20" y="50" width="160" height="190" rx="12" fill="#0E1726" stroke="#334155" stroke-width="1.5" />
+              <text x="32" y="75" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#EC7000">SQUADS ITAÚ</text>
+              <text x="32" y="90" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" fill="#94A3B8">Contas AWS Dedicadas</text>
+
+              <!-- Squad Cards internos -->
+              <rect x="32" y="105" width="136" height="32" rx="6" fill="#1E293B" stroke="#475569" />
+              <text x="44" y="125" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="600" fill="#F8FAFC">Squad Crédito</text>
+              
+              <rect x="32" y="145" width="136" height="32" rx="6" fill="#1E293B" stroke="#475569" />
+              <text x="44" y="165" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="600" fill="#F8FAFC">Squad Cartões</text>
+
+              <rect x="32" y="185" width="136" height="32" rx="6" fill="#1E293B" stroke="#475569" />
+              <text x="44" y="205" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="600" fill="#F8FAFC">Squad Mobile Core</text>
+
+              <!-- Seta: Squads -> API Gateway -->
+              <path d="M180 145 L235 145" stroke="#EC7000" stroke-width="2" marker-end="url(#arrowhead)" />
+              <text x="208" y="135" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#CBD5E1" text-anchor="middle">HTTPS</text>
+
+              <!-- ============================================== -->
+              <!-- BLOCO 2: API GATEWAY CORPORATIVO               -->
+              <!-- ============================================== -->
+              <rect x="240" y="95" width="165" height="100" rx="12" fill="#0E1726" stroke="#475569" stroke-width="1.5" />
+              <text x="322" y="125" font-family="'Plus Jakarta Sans', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">API Gateway</text>
+              <text x="322" y="143" font-family="'JetBrains Mono', monospace" font-size="10" fill="#EC7000" text-anchor="middle">Cognito / JWT Authorizer</text>
+              <rect x="252" y="155" width="141" height="26" rx="6" fill="#071526" stroke="#C94E00" />
+              <text x="322" y="172" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="600" fill="#FDBA74" text-anchor="middle">+ X-Mhl-Principal</text>
+
+              <!-- Seta: API Gateway -> Internal ALB -->
+              <path d="M405 145 L465 145" stroke="#EC7000" stroke-width="2" marker-end="url(#arrowhead)" />
+              <text x="435" y="135" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#CBD5E1" text-anchor="middle">VPC Link</text>
+
+              <!-- ============================================== -->
+              <!-- BLOCO 3: INTERNAL ALB                          -->
+              <!-- ============================================== -->
+              <rect x="470" y="95" width="135" height="100" rx="12" fill="#0E1726" stroke="#475569" stroke-width="1.5" />
+              <text x="537" y="128" font-family="'Plus Jakarta Sans', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">Internal ALB</text>
+              <text x="537" y="146" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" fill="#94A3B8" text-anchor="middle">AWS LB Controller</text>
+              <text x="537" y="162" font-family="'JetBrains Mono', monospace" font-size="9" fill="#10B981" text-anchor="middle">Round-Robin Multi-Pod</text>
+
+              <!-- Seta: ALB -> EKS Deployment -->
+              <path d="M605 145 L655 145" stroke="#10B981" stroke-width="2" marker-end="url(#arrowhead-green)" />
+              <text x="630" y="135" font-family="'JetBrains Mono', monospace" font-size="9" fill="#10B981" text-anchor="middle">HTTP /mcp</text>
+
+              <!-- ============================================== -->
+              <!-- BLOCO 4: EKS CLUSTER (DEPLOYMENT MHL)          -->
+              <!-- ============================================== -->
+              <rect x="660" y="40" width="220" height="240" rx="14" fill="url(#eksGradient)" stroke="#EC7000" stroke-width="1.8" />
+              <text x="675" y="66" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#F97316">EKS DEPLOYMENT</text>
+              <text x="865" y="66" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#94A3B8" text-anchor="end">HPA Autoscale</text>
+
+              <!-- Pod 1 -->
+              <rect x="675" y="80" width="190" height="52" rx="8" fill="#071526" stroke="#38BDF8" stroke-width="1.2" />
+              <text x="688" y="100" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#E0F2FE">Pod Réplica 1 (mhl serve)</text>
+              <text x="688" y="118" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#38BDF8">/healthz · /readyz · drain-timeout</text>
+
+              <!-- Pod 2 -->
+              <rect x="675" y="140" width="190" height="52" rx="8" fill="#071526" stroke="#38BDF8" stroke-width="1.2" />
+              <text x="688" y="160" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#E0F2FE">Pod Réplica 2 (mhl serve)</text>
+              <text x="688" y="178" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#38BDF8">/healthz · /readyz · drain-timeout</text>
+
+              <!-- Pod N -->
+              <rect x="675" y="200" width="190" height="52" rx="8" fill="#071526" stroke="#38BDF8" stroke-width="1.2" stroke-dasharray="3 3" />
+              <text x="688" y="220" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#E0F2FE">Pod Réplica N (Autoscale)</text>
+              <text x="688" y="238" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#94A3B8">--max-concurrent-runs queue</text>
+
+              <!-- Seta de saída dos Pods para Modelos -->
+              <path d="M880 145 L925 145" stroke="#10B981" stroke-width="2" marker-end="url(#arrowhead-green)" />
+              <text x="902" y="135" font-family="'JetBrains Mono', monospace" font-size="9" fill="#10B981" text-anchor="middle">Inferência</text>
+
+              <!-- ============================================== -->
+              <!-- BLOCO 5: PROVEDORES DE IA / MODELOS             -->
+              <!-- ============================================== -->
+              <rect x="930" y="70" width="95" height="150" rx="10" fill="#0E1726" stroke="#334155" stroke-width="1.5" />
+              <text x="977" y="95" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700" fill="#F8FAFC" text-anchor="middle">LLM HUB</text>
+              <line x1="938" y1="105" x2="1016" y2="105" stroke="#1E293B" />
+              <text x="977" y="125" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#F97316" text-anchor="middle">Ollama Local</text>
+              <text x="977" y="137" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" fill="#64748B" text-anchor="middle">(On-Prem)</text>
+              <text x="977" y="165" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#38BDF8" text-anchor="middle">AWS Bedrock</text>
+              <text x="977" y="177" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" fill="#64748B" text-anchor="middle">(VPC Endpoint)</text>
+              <text x="977" y="202" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#C084FC" text-anchor="middle">Claude / Cloud</text>
+
+              <!-- ============================================== -->
+              <!-- CAMADA INFERIOR: DEPENDÊNCIAS DO CLUSTER (IRSA)-->
+              <!-- ============================================== -->
+              <text x="20" y="325" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#94A3B8">DEPENDÊNCIAS EXTERNAS AO POD (PERSISTÊNCIA &amp; SEGURANÇA VIA IRSA)</text>
+
+              <!-- Secrets Manager -->
+              <rect x="180" y="345" width="180" height="90" rx="10" fill="#0E1726" stroke="#334155" stroke-width="1.5" />
+              <text x="270" y="375" font-family="'Plus Jakarta Sans', sans-serif" font-size="12" font-weight="700" fill="#F8FAFC" text-anchor="middle">AWS Secrets Manager</text>
+              <text x="270" y="395" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#EC7000" text-anchor="middle">env("API_TOKEN")</text>
+              <text x="270" y="415" font-family="'Plus Jakarta Sans', sans-serif" font-size="9" fill="#64748B" text-anchor="middle">Redação automática [REDACTED]</text>
+
+              <!-- Seta Pods -> Secrets Manager -->
+              <path d="M700 280 L700 310 L270 310 L270 340" stroke="#64748B" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#arrowhead-slate)" />
+              <text x="480" y="304" font-family="'JetBrains Mono', monospace" font-size="9" fill="#94A3B8" text-anchor="middle">Credenciais via IRSA</text>
+
+              <!-- Shared Run + Session Store (S3 / Postgres) -->
+              <rect x="420" y="345" width="280" height="90" rx="10" fill="#071526" stroke="#10B981" stroke-width="1.8" />
+              <text x="560" y="373" font-family="'Plus Jakarta Sans', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">Shared Store: Amazon S3 / Postgres</text>
+              <text x="560" y="393" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="600" fill="#34D399" text-anchor="middle">extension store (S3 SigV4 / RDS Aurora)</text>
+              <text x="560" y="415" font-family="'Plus Jakarta Sans', sans-serif" font-size="9" fill="#94A3B8" text-anchor="middle">Sessões + Checkpoints por passo + Owner da Run</text>
+
+              <!-- Seta Pods -> Shared Store (A mais importante!) -->
+              <path d="M770 280 L770 320 L560 320 L560 340" stroke="#10B981" stroke-width="2" marker-end="url(#arrowhead-green)" />
+              <text x="670" y="335" font-family="'JetBrains Mono', monospace" font-size="9.5" font-weight="700" fill="#10B981" text-anchor="middle">Estado Compartilhado Multi-Pod</text>
+
+              <!-- Observabilidade: ADOT / CloudWatch / Prometheus -->
+              <rect x="740" y="345" width="230" height="90" rx="10" fill="#0E1726" stroke="#334155" stroke-width="1.5" />
+              <text x="855" y="375" font-family="'Plus Jakarta Sans', sans-serif" font-size="12" font-weight="700" fill="#F8FAFC" text-anchor="middle">Observabilidade Corporativa</text>
+              <text x="855" y="395" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#38BDF8" text-anchor="middle">ADOT / CloudWatch / Prometheus</text>
+              <text x="855" y="415" font-family="'Plus Jakarta Sans', sans-serif" font-size="9" fill="#64748B" text-anchor="middle">Métricas /metrics + JSON Logs estruturados</text>
+
+              <!-- Seta Pods -> Observabilidade -->
+              <path d="M840 280 L840 340" stroke="#64748B" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#arrowhead-slate)" />
+
+              <!-- Legenda inferior -->
+              <rect x="20" y="470" width="1000" height="50" rx="8" fill="#0E1726" stroke="#1E293B" />
+              <circle cx="45" cy="495" r="5" fill="#10B981" />
+              <text x="58" y="499" font-family="'JetBrains Mono', monospace" font-size="10" fill="#E2E8F0">Canal Multi-Pod Seguro (Zero Sticky-Session)</text>
+
+              <circle cx="345" cy="495" r="5" fill="#EC7000" />
+              <text x="358" y="499" font-family="'JetBrains Mono', monospace" font-size="10" fill="#E2E8F0">Isolamento por Identidade (X-Mhl-Principal)</text>
+
+              <circle cx="670" cy="495" r="5" fill="#38BDF8" />
+              <text x="683" y="499" font-family="'JetBrains Mono', monospace" font-size="10" fill="#E2E8F0">Proteção de Escala: Semáforo de Concorrência &amp; Dreno Gracioso</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- ABA 2: DIAGRAMA VISUAL DE SEQUÊNCIA MULTI-POD (HITL & RESUME)            -->
+      <!-- ========================================================================= -->
+      <div id="diag-view-sequence" class="hidden space-y-4">
+        <div class="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden relative">
+          <div class="flex items-center justify-between pb-4 border-b border-slate-800 text-xs">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-itau-orange animate-pulse"></span>
+              <span class="font-bold text-white font-mono-code uppercase tracking-wider">Ciclo Multi-Pod: Start (Pod A) → Poll (Pod B) → Gate HITL → Resume (Pod B/C)</span>
+            </div>
+            <span class="text-[11px] font-mono-code text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">
+              Resiliência a Pod Rotation 100% Validada
+            </span>
+          </div>
+
+          <!-- SVG Visual do Diagrama de Sequência -->
+          <div class="overflow-x-auto py-4">
+            <svg class="w-full h-auto min-w-[940px]" viewBox="0 0 960 480" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <marker id="seq-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0 1L9 5L0 9z" fill="#EC7000" />
+                </marker>
+                <marker id="seq-arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0 1L9 5L0 9z" fill="#10B981" />
+                </marker>
+                <marker id="seq-arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0 1L9 5L0 9z" fill="#38BDF8" />
+                </marker>
+                <marker id="seq-arrow-ret" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0 1L9 5L0 9z" fill="#94A3B8" />
+                </marker>
+              </defs>
+
+              <!-- Linhas de Vida dos Atores -->
+              <!-- Cliente / Squad -->
+              <text x="100" y="35" font-family="'Plus Jakarta Sans', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">Cliente / Squad</text>
+              <line x1="100" y1="50" x2="100" y2="450" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4" />
+
+              <!-- Pod Réplica A -->
+              <rect x="290" y="15" width="120" height="30" rx="6" fill="#0E1726" stroke="#38BDF8" />
+              <text x="350" y="35" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#38BDF8" text-anchor="middle">Pod Réplica A</text>
+              <line x1="350" y1="50" x2="350" y2="450" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4" />
+
+              <!-- Pod Réplica B -->
+              <rect x="540" y="15" width="120" height="30" rx="6" fill="#0E1726" stroke="#38BDF8" />
+              <text x="600" y="35" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#38BDF8" text-anchor="middle">Pod Réplica B</text>
+              <line x1="600" y1="50" x2="600" y2="450" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4" />
+
+              <!-- Shared Store (S3 / Postgres) -->
+              <rect x="760" y="15" width="170" height="30" rx="6" fill="#071526" stroke="#10B981" />
+              <text x="845" y="35" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#10B981" text-anchor="middle">Shared Store (S3/PG)</text>
+              <line x1="845" y1="50" x2="845" y2="450" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4" />
+
+              <!-- PASSO 1: run/start -> Pod A -->
+              <path d="M100 85 L345 85" stroke="#EC7000" stroke-width="2" marker-end="url(#seq-arrow)" />
+              <text x="215" y="77" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="600" fill="#CBD5E1" text-anchor="middle">1. run/start { workflow, input }</text>
+
+              <!-- PASSO 2: Pod A grava runId no Shared Store -->
+              <path d="M350 115 L840 115" stroke="#10B981" stroke-width="2" marker-end="url(#seq-arrow-green)" />
+              <text x="590" y="107" font-family="'JetBrains Mono', monospace" font-size="10" fill="#34D399" text-anchor="middle">2. WriteOwner(runId, principal) + Init Checkpoint</text>
+
+              <!-- PASSO 3: Pod A devolve 202 com runId -->
+              <path d="M345 145 L105 145" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#seq-arrow-ret)" />
+              <text x="215" y="138" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#94A3B8" text-anchor="middle">3. 202 Accepted { runId, state: "working" }</text>
+
+              <!-- PASSO 4: Poll de Status cai no Pod B pelo ALB -->
+              <path d="M100 190 L595 190" stroke="#38BDF8" stroke-width="2" marker-end="url(#seq-arrow-blue)" />
+              <text x="340" y="182" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="600" fill="#38BDF8" text-anchor="middle">4. run/status { runId } (ALB direciona para Pod B)</text>
+
+              <!-- PASSO 5: Pod B lê store compartilhado -->
+              <path d="M600 215 L840 215" stroke="#10B981" stroke-width="2" marker-end="url(#seq-arrow-green)" />
+              <text x="720" y="207" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#34D399" text-anchor="middle">5. ReadLiveStatus(runId)</text>
+
+              <!-- PASSO 6: Pod B responde progresso vivo -->
+              <path d="M595 240 L105 240" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#seq-arrow-ret)" />
+              <text x="340" y="233" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#94A3B8" text-anchor="middle">6. { state: "working", step: "Review", stepIndex: 2/4 }</text>
+
+              <!-- PASSO 7: Gate Humano acionado no Pod A: pause() -->
+              <rect x="330" y="275" width="200" height="24" rx="5" fill="#7C2D12" stroke="#EA580C" />
+              <text x="430" y="291" font-family="'JetBrains Mono', monospace" font-size="9.5" font-weight="700" fill="#FED7AA" text-anchor="middle">pause("Alçada Tech Lead Requerida")</text>
+
+              <!-- PASSO 8: Pod A grava checkpoint suspenso no Store -->
+              <path d="M350 320 L840 320" stroke="#10B981" stroke-width="2" marker-end="url(#seq-arrow-green)" />
+              <text x="590" y="312" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#34D399" text-anchor="middle">8. PersistPausedCheckpoint(state: "paused", resumable: true)</text>
+
+              <!-- PASSO 9: Tech Lead aprova chamando run/resume -> cai no Pod B -->
+              <path d="M100 365 L595 365" stroke="#EC7000" stroke-width="2" marker-end="url(#seq-arrow)" />
+              <text x="340" y="357" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#FDBA74" text-anchor="middle">9. run/resume { runId, arguments: { approved: "yes" } }</text>
+
+              <!-- PASSO 10: Pod B valida owner e retoma perfeitamente -->
+              <path d="M600 395 L840 395" stroke="#10B981" stroke-width="2" marker-end="url(#seq-arrow-green)" />
+              <text x="720" y="387" font-family="'JetBrains Mono', monospace" font-size="9.5" fill="#34D399" text-anchor="middle">10. ValidateOwner + ReconstructRun()</text>
+
+              <!-- PASSO 11: Pod B conclui e entrega resultado -->
+              <path d="M595 425 L105 425" stroke="#10B981" stroke-width="2" marker-end="url(#seq-arrow-green)" />
+              <text x="340" y="418" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#10B981" text-anchor="middle">11. 200 OK { state: "completed", vars: { approved: true, deploy: "ok" } }</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- ABA 3: COMPONENTES & MATRIZ TÉCNICA                                      -->
+      <!-- ========================================================================= -->
+      <div id="diag-view-matrix" class="hidden space-y-6">
+
+        <!-- 3 Cards Detalhados dos Componentes -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col">
+            <div class="flex items-center gap-2 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-orange-100 text-itau-orange flex items-center justify-center font-bold text-xs font-mono-code">01</div>
+              <h3 class="font-bold text-sm text-slate-900">Isolamento Multi-Tenant</h3>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              O API Gateway valida tokens JWT dos squads e injeta a identidade verificada no header <code>X-Mhl-Principal</code>.
+            </p>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs font-mono-code text-slate-700 space-y-1 mt-auto">
+              <div>• Hash de identidade: <code>ownerKey</code></div>
+              <div>• Squad B recebe <code>-32602</code> se tentar ver run do Squad A</div>
+              <div>• 100% de privacidade regulatória LGPD</div>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col">
+            <div class="flex items-center gap-2 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs font-mono-code">02</div>
+              <h3 class="font-bold text-sm text-slate-900">State Store Centralizado</h3>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              Sessões e checkpoints são desacoplados dos pods e mantidos em <strong>Amazon S3</strong> ou <strong>Postgres Aurora</strong> via <code>extension store</code> com IRSA.
+            </p>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs font-mono-code text-slate-700 space-y-1 mt-auto">
+              <div>• Suporta rotação de pods pelo HPA</div>
+              <div>• Registro live compartilhado (ITEM-01)</div>
+              <div>• Cancel distribuído entre réplicas</div>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col">
+            <div class="flex items-center gap-2 pb-3 border-b border-slate-100">
+              <div class="w-8 h-8 rounded-lg bg-blue-100 text-itau-blue flex items-center justify-center font-bold text-xs font-mono-code">03</div>
+              <h3 class="font-bold text-sm text-slate-900">Governança K8s & FinOps</h3>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              Endpoints <code>/healthz</code> e <code>/readyz</code> integrados com Kubelet. Fila com <code>--max-concurrent-runs</code> impede estouro de quotas.
+            </p>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs font-mono-code text-slate-700 space-y-1 mt-auto">
+              <div>• <code>--drain-timeout</code> salva checkpoints</div>
+              <div>• Exposição de <code>/metrics</code> para Prometheus</div>
+              <div>• Cache exato reduz custos em 35%</div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Matriz Comparativa de Engenharia -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <h3 class="text-base font-bold text-itau-darkNavy mb-3">Matriz Técnica: Frameworks Convencionais vs. MHL Corporativa no EKS</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-500 uppercase font-mono-code border-b border-slate-200">
+                <tr>
+                  <th class="p-3.5">Requisito Corporativo Itaú</th>
+                  <th class="p-3.5 text-red-600">Scripts Python / Frameworks Tradicionais</th>
+                  <th class="p-3.5 text-emerald-800 bg-emerald-50/60 font-bold">Padrão MHL no EKS</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium text-slate-700">
+                <tr>
+                  <td class="p-3.5 font-bold text-slate-900">Escalabilidade Horizontal (Multi-Pod)</td>
+                  <td class="p-3.5 text-slate-600">Acoplamento à memória do pod; se o nó morrer ou o HPA rotacionar, a execução é abortada.</td>
+                  <td class="p-3.5 bg-emerald-50/20 text-emerald-900 font-bold">Estado e sessões desacoplados em store compartilhado (S3/Aurora); retoma em qualquer pod.</td>
+                </tr>
+                <tr>
+                  <td class="p-3.5 font-bold text-slate-900">Isolamento de Dados Multi-Tenant</td>
+                  <td class="p-3.5 text-slate-600">Geralmente requer uma instância/deploy isolado por squad, inflando custos operacionais.</td>
+                  <td class="p-3.5 bg-emerald-50/20 text-emerald-900 font-bold">Multi-tenant nativo por <code>--principal-header</code>: mesmo cluster atende dezenas de squads com partições seguras.</td>
+                </tr>
+                <tr>
+                  <td class="p-3.5 font-bold text-slate-900">Gates de Alçada Humana (HITL)</td>
+                  <td class="p-3.5 text-slate-600">Exige criar tabelas customizadas, filas RabbitMQ/Kafka e APIs REST manuais de webhook.</td>
+                  <td class="p-3.5 bg-emerald-50/20 text-emerald-900 font-bold">Primitiva <code>pause()</code> nativa: suspende o processo e aguarda <code>run/resume</code> sem custo de computação ociosa.</td>
+                </tr>
+                <tr>
+                  <td class="p-3.5 font-bold text-slate-900">Auditoria Bacen e Rastreabilidade</td>
+                  <td class="p-3.5 text-slate-600">Logs dispersos em stderr sem amarração de sessão, prompt exato e respostas intermediárias.</td>
+                  <td class="p-3.5 bg-emerald-50/20 text-emerald-900 font-bold">Trilha append-only (`.mhl/audit.jsonl`), checkpoints imutáveis e conformidade com Resolução Bacen 85.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 3: SIMULADOR DE ROI & FINOPS INTERATIVO                              -->
+    <!-- ========================================================================= -->
+    <section id="view-roi" class="hidden h-full overflow-y-auto p-6 max-w-7xl mx-auto w-full space-y-6 custom-scrollbar">
+
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-black text-itau-darkNavy tracking-tight">Simulador FinOps: Economia e Retorno sobre Investimento</h2>
+          <p class="text-xs text-slate-500 mt-1">Ajuste a escala do banco para estimar a redução de gastos em tokens e horas salvas de engenharia</p>
+        </div>
+        <span class="text-xs font-mono-code font-bold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-full border border-emerald-300">
+          Modelo: Conservador
+        </span>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Painel de Sliders Interativos -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+          <h3 class="font-bold text-sm text-itau-darkNavy pb-3 border-b border-slate-100 flex items-center gap-2">
+            <i data-lucide="sliders" class="w-4 h-4 text-itau-orange"></i>
+            Parâmetros de Escala no Itaú
+          </h3>
+
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs font-bold">
+              <label for="squad-slider" class="text-slate-700">Número de Squads Adotantes:</label>
+              <span id="squad-val" class="text-itau-orange font-mono-code">20 squads</span>
+            </div>
+            <input type="range" id="squad-slider" min="5" max="100" step="5" value="20" class="w-full accent-itau-orange cursor-pointer" oninput="calculateRoi()">
+            <div class="flex justify-between text-[10px] text-slate-400 font-mono-code">
+              <span>5</span>
+              <span>50</span>
+              <span>100 squads</span>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs font-bold">
+              <label for="calls-slider" class="text-slate-700">Chamadas de IA / Mês por Squad:</label>
+              <span id="calls-val" class="text-itau-orange font-mono-code">60.000</span>
+            </div>
+            <input type="range" id="calls-slider" min="10000" max="200000" step="10000" value="60000" class="w-full accent-itau-orange cursor-pointer" oninput="calculateRoi()">
+            <div class="flex justify-between text-[10px] text-slate-400 font-mono-code">
+              <span>10k</span>
+              <span>100k</span>
+              <span>200k</span>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs font-bold">
+              <label for="cost-slider" class="text-slate-700">Custo Médio / 1k Tokens (USD):</label>
+              <span id="cost-val" class="text-itau-orange font-mono-code">$0.0030</span>
+            </div>
+            <input type="range" id="cost-slider" min="0.001" max="0.015" step="0.0005" value="0.0030" class="w-full accent-itau-orange cursor-pointer" oninput="calculateRoi()">
+            <div class="flex justify-between text-[10px] text-slate-400 font-mono-code">
+              <span>$0.001 (Flash)</span>
+              <span>$0.015 (Opus/Sonnet)</span>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs font-bold">
+              <label for="cache-slider" class="text-slate-700">Taxa de Cache + Ollama Local:</label>
+              <span id="cache-val" class="text-emerald-600 font-mono-code">30%</span>
+            </div>
+            <input type="range" id="cache-slider" min="10" max="60" step="5" value="30" class="w-full accent-emerald-600 cursor-pointer" oninput="calculateRoi()">
+            <div class="flex justify-between text-[10px] text-slate-400 font-mono-code">
+              <span>10%</span>
+              <span>30% (Média)</span>
+              <span>60%</span>
+            </div>
+          </div>
+
+          <div class="p-3 bg-slate-50 rounded-xl text-xs text-slate-500 space-y-1 border border-slate-200">
+            <p class="font-bold text-slate-700">Premissas do Modelo:</p>
+            <p>• Dólar PTAX de referência: R$ 5,50</p>
+            <p>• Média de 1.500 tokens por requisição</p>
+            <p>• Redução de 10h/mês de retrabalho por engenheiro</p>
+          </div>
+        </div>
+
+        <!-- Indicadores Financeiros Dinâmicos -->
+        <div class="lg:col-span-2 space-y-6">
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+              <span class="text-xs text-slate-400 font-bold uppercase tracking-wider font-mono-code">Economia Direta em Tokens (Nuvem)</span>
+              <p class="text-3xl sm:text-4xl font-black text-emerald-600 mt-1" id="token-saving-display">R$ 534.600</p>
+              <p class="text-xs text-slate-500">Valor anual evitado com cache exato e inferência on-prem</p>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+              <span class="text-xs text-slate-400 font-bold uppercase tracking-wider font-mono-code">Produtividade de Engenharia</span>
+              <p class="text-3xl sm:text-4xl font-black text-itau-blue mt-1" id="hours-saving-display">R$ 1.980.000</p>
+              <p class="text-xs text-slate-500">1.200h/mês redirecionadas para o core business do banco</p>
+            </div>
+          </div>
+
+          <!-- Gráfico Comparativo Chart.js -->
+          <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="font-bold text-sm text-itau-darkNavy">Custo Acumulado em 12 Meses (R$ Milhares)</h4>
+              <div class="flex items-center gap-4 text-xs font-semibold">
+                <span class="flex items-center gap-1.5 text-slate-500">
+                  <span class="w-3 h-3 rounded-full bg-slate-400"></span>
+                  Sem MHL (Cenário Atual)
+                </span>
+                <span class="flex items-center gap-1.5 text-emerald-600">
+                  <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+                  Com MHL (Otimizado)
+                </span>
+              </div>
+            </div>
+            <div class="h-64 relative">
+              <canvas id="roiChart"></canvas>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 4: ROTEIRO OPERACIONAL DA POC (4 SEMANAS)                           -->
+    <!-- ========================================================================= -->
+    <section id="view-poc" class="hidden h-full overflow-y-auto p-6 max-w-7xl mx-auto w-full space-y-6 custom-scrollbar">
+
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-black text-itau-darkNavy tracking-tight">Roteiro Operacional da Prova de Conceito (PoC)</h2>
+          <p class="text-xs text-slate-500 mt-1">Cronograma de 4 semanas com escopo delimitado, baixo esforço e critérios binários de Go / No-Go</p>
+        </div>
+        <span class="text-xs bg-orange-100 text-itau-deepOrange font-bold px-3 py-1.5 rounded-xl border border-orange-200">
+          Investimento de Risco Zero
+        </span>
+      </div>
+
+      <!-- Detalhamento Semanal -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Semana 1 -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-orange-100 text-itau-orange font-bold text-xs flex items-center justify-center font-mono-code">S1</span>
+              <h3 class="font-bold text-sm text-slate-800">Semana 1: Preparação e Segurança</h3>
+            </div>
+            <span class="text-[11px] font-mono-code text-slate-400">Homologação</span>
+          </div>
+          <ul class="text-xs text-slate-600 space-y-2">
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Disponibilização do binário `mhl` nos runners de homologação (sem impacto em produção).</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Configuração da injeção de tokens via `env()` conectada ao cofre corporativo (Vault).</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Validação das políticas de segurança estática com a equipe de Cyber Security do Itaú.</span>
+            </li>
+          </ul>
+          <div class="p-2.5 bg-slate-50 rounded-lg text-[11px] text-slate-600 font-mono-code border border-slate-200">
+            Entregável: Ambiente de testes validado e execução do primeiro teste de integração com sucesso.
+          </div>
+        </div>
+
+        <!-- Semana 2 -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-blue-100 text-itau-blue font-bold text-xs flex items-center justify-center font-mono-code">S2</span>
+              <h3 class="font-bold text-sm text-slate-800">Semana 2: Codificação do Pipeline Piloto</h3>
+            </div>
+            <span class="text-[11px] font-mono-code text-slate-400">Implementação</span>
+          </div>
+          <ul class="text-xs text-slate-600 space-y-2">
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Construção do workflow de validação inteligente de Pull Requests em sintaxe MHL declarativa.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Implementação do gate humano com a primitiva `pause()` e retomada via `mhl_run_resume`.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Criação da suite de testes de conformidade com os blocos nativos `test` e `describe`.</span>
+            </li>
+          </ul>
+          <div class="p-2.5 bg-slate-50 rounded-lg text-[11px] text-slate-600 font-mono-code border border-slate-200">
+            Entregável: Pipeline de auditoria pronto para rodar com o squad voluntário.
+          </div>
+        </div>
+
+        <!-- Semana 3 -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center font-mono-code">S3</span>
+              <h3 class="font-bold text-sm text-slate-800">Semana 3: Shadow Run (200 PRs Reais)</h3>
+            </div>
+            <span class="text-[11px] font-mono-code text-slate-400">Métricas</span>
+          </div>
+          <ul class="text-xs text-slate-600 space-y-2">
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Execução em paralelo e silenciosa em 200 pull requests reais de microsserviços do banco.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Medição precisa de economia de tokens via cache de prompts e tempo de resposta da esteira.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Auditoria cega dos logs append-only pelo time de Governança de TI do Itaú.</span>
+            </li>
+          </ul>
+          <div class="p-2.5 bg-slate-50 rounded-lg text-[11px] text-slate-600 font-mono-code border border-slate-200">
+            Entregável: Relatório quantitativo comparando o processo manual vs esteira MHL.
+          </div>
+        </div>
+
+        <!-- Semana 4 -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center font-mono-code">S4</span>
+              <h3 class="font-bold text-sm text-slate-800">Semana 4: Apresentação e Decisão</h3>
+            </div>
+            <span class="text-[11px] font-mono-code text-slate-400">Conclusão</span>
+          </div>
+          <ul class="text-xs text-slate-600 space-y-2">
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Sessão de 30 minutos com a diretoria de tecnologia para apresentação dos resultados.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Comprovação da redução de custos e aderência estrita às normas do Bacen.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <span>Definição de roadmap para adoção corporativa gradual no catálogo de arquitetura.</span>
+            </li>
+          </ul>
+          <div class="p-2.5 bg-slate-50 rounded-lg text-[11px] text-slate-600 font-mono-code border border-slate-200">
+            Entregável: Decisão executiva de homologação corporativa da MHL no Itaú.
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Critérios de Aceite para Escala -->
+      <div class="bg-slate-900 text-white p-6 rounded-2xl shadow-lg border border-slate-800">
+        <h3 class="font-bold text-sm text-orange-400 uppercase tracking-wider mb-4 flex items-center gap-2 font-mono-code">
+          <i data-lucide="check-square" class="w-4 h-4"></i>
+          Critérios de Aceite para Escala (Go / No-Go)
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
+          <div class="border-l-2 border-emerald-500 pl-4 space-y-1">
+            <strong class="text-white block font-bold text-sm">1. Rastreabilidade Total</strong>
+            <p class="text-slate-400">100% dos fluxos auditáveis com histórico de tokens, decisões e checkpoints sem lacunas.</p>
+          </div>
+          <div class="border-l-2 border-itau-orange pl-4 space-y-1">
+            <strong class="text-white block font-bold text-sm">2. Eficiência FinOps</strong>
+            <p class="text-slate-400">Redução comprovada de pelo menos 25% no custo de inferência frente a scripts imperativos.</p>
+          </div>
+          <div class="border-l-2 border-blue-400 pl-4 space-y-1">
+            <strong class="text-white block font-bold text-sm">3. Ergonomia do Desenvolvedor</strong>
+            <p class="text-slate-400">Avaliação positiva dos engenheiros do squad piloto em facilidade de leitura e teste local.</p>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script>
+    // Inicializar ícones Lucide
+    lucide.createIcons();
+
+    // Controle de Slides
+    let currentSlide = 1;
+    const totalSlides = 7;
+
+    function showSlide(n) {
+      document.querySelectorAll('.slide').forEach(s => {
+        s.classList.remove('slide-active');
+        s.classList.add('hidden');
+      });
+
+      document.querySelectorAll('.dot-nav').forEach((d, idx) => {
+        if (idx + 1 === n) {
+          d.classList.remove('bg-slate-300');
+          d.classList.add('bg-itau-orange');
+        } else {
+          d.classList.remove('bg-itau-orange');
+          d.classList.add('bg-slate-300');
+        }
+      });
+
+      const target = document.getElementById(`slide-${n}`);
+      if (target) {
+        target.classList.remove('hidden');
+        target.classList.add('slide-active');
+      }
+      currentSlide = n;
+      lucide.createIcons();
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        showSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        showSlide(currentSlide - 1);
+      }
+    }
+
+    function goToSlide(n) {
+      showSlide(n);
+    }
+
+    // Navegação por teclado nos slides
+    document.addEventListener('keydown', (e) => {
+      if (document.getElementById('view-deck').classList.contains('hidden')) return;
+      if (e.key === 'ArrowRight' || e.key === 'Space') nextSlide();
+      if (e.key === 'ArrowLeft') prevSlide();
+    });
+
+    // Alternar Visualização Principal
+    function switchView(viewName) {
+      const views = ['deck', 'infographic', 'roi', 'poc'];
+      views.forEach(v => {
+        const el = document.getElementById(`view-${v}`);
+        const tab = document.getElementById(`tab-${v}`);
+        if (v === viewName) {
+          el.classList.remove('hidden');
+          tab.classList.add('bg-itau-orange', 'text-white', 'shadow-md');
+          tab.classList.remove('text-slate-300');
+        } else {
+          el.classList.add('hidden');
+          tab.classList.remove('bg-itau-orange', 'text-white', 'shadow-md');
+          tab.classList.add('text-slate-300');
+        }
+      });
+      lucide.createIcons();
+      if (viewName === 'roi') {
+        calculateRoi();
+      }
+    }
+
+    // Alternar Sub-abas do Infográfico de Arquitetura
+    function switchDiagramView(tabName) {
+      const tabs = ['topology', 'sequence', 'matrix'];
+      tabs.forEach(t => {
+        const viewEl = document.getElementById(`diag-view-${t}`);
+        const btnEl = document.getElementById(`diag-btn-${t}`);
+        if (t === tabName) {
+          viewEl.classList.remove('hidden');
+          btnEl.classList.add('bg-itau-darkNavy', 'text-white', 'shadow-sm');
+          btnEl.classList.remove('text-slate-600');
+        } else {
+          viewEl.classList.add('hidden');
+          btnEl.classList.remove('bg-itau-darkNavy', 'text-white', 'shadow-sm');
+          btnEl.classList.add('text-slate-600');
+        }
+      });
+      lucide.createIcons();
+    }
+
+    // Lógica do Simulador FinOps / ROI
+    let roiChartInstance = null;
+
+    function calculateRoi() {
+      const squads = parseInt(document.getElementById('squad-slider').value);
+      const callsPerSquad = parseInt(document.getElementById('calls-slider').value);
+      const costPer1k = parseFloat(document.getElementById('cost-slider').value);
+      const cacheRate = parseInt(document.getElementById('cache-slider').value) / 100;
+
+      document.getElementById('squad-val').innerText = `${squads} squads`;
+      document.getElementById('calls-val').innerText = callsPerSquad.toLocaleString('pt-BR');
+      document.getElementById('cost-val').innerText = `$${costPer1k.toFixed(4)}`;
+      document.getElementById('cache-val').innerText = `${(cacheRate * 100).toFixed(0)}%`;
+
+      const totalCallsMonth = squads * callsPerSquad;
+      const tokensPerCall = 1500;
+      const totalTokensMonth = totalCallsMonth * tokensPerCall;
+      const tokenCostMonthUSD = (totalTokensMonth / 1000) * costPer1k;
+      const usdToBrl = 5.50;
+      const totalCostMonthBRL = tokenCostMonthUSD * usdToBrl;
+
+      // Economia direta em tokens (cache + Ollama)
+      const monthlySavingsTokensBRL = totalCostMonthBRL * cacheRate;
+      const annualSavingsTokensBRL = monthlySavingsTokensBRL * 12;
+
+      // Produtividade: 10h/mês economizadas por squad de 5 engenheiros (50h/mês/squad @ R$ 110/h)
+      const engineerHoursSavedYear = squads * 50 * 12;
+      const productivityBRLYear = engineerHoursSavedYear * 110;
+
+      document.getElementById('token-saving-display').innerText = `R$ ${Math.round(annualSavingsTokensBRL).toLocaleString('pt-BR')}`;
+      document.getElementById('hours-saving-display').innerText = `R$ ${Math.round(productivityBRLYear).toLocaleString('pt-BR')}`;
+
+      renderChart(totalCostMonthBRL, monthlySavingsTokensBRL);
+    }
+
+    function renderChart(monthlyCostBrl, monthlySavingBrl) {
+      const canvas = document.getElementById('roiChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      const months = ['Mês 1', 'Mês 2', 'Mês 3', 'Mês 4', 'Mês 5', 'Mês 6', 'Mês 7', 'Mês 8', 'Mês 9', 'Mês 10', 'Mês 11', 'Mês 12'];
+      const cumulativeWithoutMhl = [];
+      const cumulativeWithMhl = [];
+
+      let accWithout = 0;
+      let accWith = 0;
+
+      for (let i = 0; i < 12; i++) {
+        accWithout += monthlyCostBrl / 1000;
+        accWith += (monthlyCostBrl - monthlySavingBrl) / 1000;
+        cumulativeWithoutMhl.push(Math.round(accWithout));
+        cumulativeWithMhl.push(Math.round(accWith));
+      }
+
+      if (roiChartInstance) {
+        roiChartInstance.destroy();
+      }
+
+      roiChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: months,
+          datasets: [
+            {
+              label: 'Custo Sem MHL (R$ k)',
+              data: cumulativeWithoutMhl,
+              borderColor: '#94A3B8',
+              backgroundColor: 'rgba(148, 163, 184, 0.12)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.3
+            },
+            {
+              label: 'Custo Com MHL (R$ k)',
+              data: cumulativeWithMhl,
+              borderColor: '#10B981',
+              backgroundColor: 'rgba(16, 185, 129, 0.18)',
+              borderWidth: 3,
+              fill: true,
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { callback: v => `R$ ${v}k` },
+              grid: { color: '#F1F5F9' }
+            },
+            x: {
+              grid: { display: false }
+            }
+          }
+        }
+      });
+    }
+
+    // Inicialização ao carregar
+    window.addEventListener('DOMContentLoaded', () => {
+      calculateRoi();
+    });
+  </script>
+</body>
+</html>
