@@ -1,120 +1,285 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="./support.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="./support.js"></script>
 </head>
+
 <body>
-<x-dc>
-<helmet>
-<meta name="description" content="MHL — a small executable language for controlled, auditable AI workflows." />
-<link rel="icon" href="assets/mhl-logo.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" />
-<style>
-:root { --bg:#f7f8f5; --panel:#fff; --ink:#17201e; --muted:#66716d; --line:#dde3df; --soft:#eef2ef; --accent:#e85d3f; --accent-2:#b53c29; --teal:#167d73; --code:#0d1418; --code-2:#131f24; --code-line:#25333a; --code-ink:#dce8e3; --code-muted:#7c918b; --shadow:0 20px 60px rgba(23,32,30,.09); }
-:root.dark { --bg:#0a0f12; --panel:#121a1d; --ink:#edf4f0; --muted:#97a8a2; --line:#243033; --soft:#161f22; --accent:#ff7658; --accent-2:#ff9b83; --teal:#55c7b8; --code:#060b0e; --code-2:#0e181c; --code-line:#1e2a30; --code-ink:#dce8e3; --code-muted:#7c918b; --shadow:0 20px 60px rgba(0,0,0,.35); }
-* { box-sizing:border-box; }
-html { scroll-behavior:smooth; }
-body { margin:0; background:var(--bg); color:var(--ink); font:17.5px/1.6 Manrope,system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
-a { color:var(--accent); text-decoration:none; }
-a:hover { color:var(--accent-2); }
-::selection { background:var(--accent); color:#fff; }
-@keyframes mhl-pulse { 0%,100% { opacity:.35; transform:scale(.9); } 50% { opacity:1; transform:scale(1); } }
-@keyframes mhl-caret { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
-.brand-caption { white-space:nowrap; flex:0 0 auto; }
-@media (max-width:1180px) { .site-nav { display:none !important; } }
-@media (max-width:820px) { .site-search-field { display:none !important; } }
-@media (max-width:600px) { .site-header { height:auto !important; padding:12px 16px !important; flex-wrap:wrap; } }
-</style>
-</helmet>
+  <x-dc>
+    <helmet>
+      <meta name="description" content="MHL — a small executable language for controlled, auditable AI workflows." />
+      <link rel="icon" href="assets/mhl-logo.png" />
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+      <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" />
+      <style>
+        :root {
+          --bg: #f7f8f5;
+          --panel: #fff;
+          --ink: #17201e;
+          --muted: #66716d;
+          --line: #dde3df;
+          --soft: #eef2ef;
+          --accent: #e85d3f;
+          --accent-2: #b53c29;
+          --teal: #167d73;
+          --code: #0d1418;
+          --code-2: #131f24;
+          --code-line: #25333a;
+          --code-ink: #dce8e3;
+          --code-muted: #7c918b;
+          --shadow: 0 20px 60px rgba(23, 32, 30, .09);
+        }
 
-<div style="min-height:100vh;background:var(--bg)">
+        :root.dark {
+          --bg: #0a0f12;
+          --panel: #121a1d;
+          --ink: #edf4f0;
+          --muted: #97a8a2;
+          --line: #243033;
+          --soft: #161f22;
+          --accent: #ff7658;
+          --accent-2: #ff9b83;
+          --teal: #55c7b8;
+          --code: #060b0e;
+          --code-2: #0e181c;
+          --code-line: #1e2a30;
+          --code-ink: #dce8e3;
+          --code-muted: #7c918b;
+          --shadow: 0 20px 60px rgba(0, 0, 0, .35);
+        }
 
-  <header class="site-header" style="position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 clamp(18px,4vw,48px);height:70px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(20px)">
-    <a href="#top" style="display:flex;align-items:center;gap:11px;color:var(--ink)">
-      <img src="assets/mhl-logo.png" alt="" style="width:32px;height:32px;object-fit:contain;display:block" />
-      <span style="display:grid;gap:2px;letter-spacing:-.02em">
-        <strong style="font-size:17px;line-height:1">MHL</strong>
-        <small class="brand-caption" style="color:var(--muted);font:400 11.5px/1 'DM Mono',monospace;letter-spacing:.08em">META-HARNESS LANGUAGE</small>
-      </span>
-    </a>
-    <nav class="site-nav" style="display:flex;align-items:center;gap:6px;flex:1;justify-content:center">
-      <a href="#tour" data-pt="Como funciona" style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">How it works</a>
-      <a href="#docs" data-pt="Documentação" style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">Documentation</a>
-      <a href="#serve" data-pt="Servidores" style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">Servers</a>
-      <a href="#start" data-pt="Começar" style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">Get started</a>
-    </nav>
-    <div style="display:flex;align-items:center;gap:9px">
-      <label for="site-search" class="site-search-field" style="display:flex;align-items:center;gap:8px;width:190px;flex:0 0 auto;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 10px;color:var(--muted)">
-        <span aria-hidden="true" style="font-size:15px">⌕</span>
-        <input id="site-search" type="search" placeholder="Search" autocomplete="off" data-pt-placeholder="Buscar" style="width:100%;border:0;outline:0;background:transparent;color:var(--ink);font:14px 'DM Mono',monospace" />
-        <kbd style="font:12.5px 'DM Mono',monospace;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted)">/</kbd>
-      </label>
-      <button id="lang-toggle" type="button" style="border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:34px;padding:0 10px;cursor:pointer;font:700 13.5px 'DM Mono',monospace;letter-spacing:.04em">PT</button>
-      <button id="theme-toggle" type="button" aria-label="Toggle theme" style="border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:34px;width:34px;cursor:pointer;font-size:17px">☼</button>
-      <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer" style="border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:34px;display:flex;align-items:center;padding:0 12px;font-size:14px;font-weight:700">GitHub ↗</a>
-    </div>
-  </header>
+        * {
+          box-sizing: border-box;
+        }
 
-  <section id="top" style="position:relative;background:var(--code);color:var(--code-ink);padding:clamp(60px,9vw,110px) clamp(18px,4vw,48px) 96px;overflow:hidden">
-    <div style="position:absolute;inset:0;background-image:linear-gradient(color-mix(in srgb,var(--code-line) 60%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--code-line) 60%,transparent) 1px,transparent 1px);background-size:64px 64px;mask-image:radial-gradient(120% 90% at 50% 0%,#000 10%,transparent 70%);opacity:.7"></div>
-    <div style="position:relative;max-width:1180px;margin:0 auto;display:grid;gap:26px;justify-items:start">
-      <p data-pt="LINGUAGEM META-HARNESS · v1.2.0-alpha" style="margin:0;color:var(--accent);font:500 13.5px 'DM Mono',monospace;letter-spacing:.16em">META-HARNESS LANGUAGE · v1.2.0-alpha</p>
-      <h1 style="margin:0;max-width:15ch;font-size:clamp(44px,7.4vw,92px);line-height:.98;letter-spacing:-.055em;font-weight:800;text-wrap:balance">
-        <span data-pt="Workflows de IA que você">AI workflows you can</span>
-        <em data-pt="consegue ler, testar e auditar." style="font-style:normal;color:var(--accent);display:block">read, test and audit.</em>
-      </h1>
-      <p data-pt="MHL é uma linguagem executável pequena para orquestrar agentes, prompts, ferramentas, memória e serviços externos. O programa é dono do fluxo; a IA contribui com julgamento onde ajuda." style="margin:0;max-width:56ch;color:#b9c8c3;font-size:clamp(16px,1.5vw,19px);line-height:1.65">MHL is a small executable language for orchestrating agents, prompts, tools, memory and external services. Your program owns the flow; AI contributes judgment where it helps.</p>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">
-        <a href="#start" data-pt="Instalar em 30 segundos →" style="display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:9px;padding:13px 20px;font-size:16px;font-weight:800">Install in 30 seconds →</a>
-        <a href="#tour" data-pt="Ver um workflow real" style="display:inline-flex;align-items:center;gap:9px;background:transparent;color:var(--code-ink);border:1px solid var(--code-line);border-radius:9px;padding:13px 20px;font-size:16px;font-weight:700">Read a real workflow</a>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:22px;margin-top:8px;color:var(--code-muted);font:13.5px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase">
-        <span data-pt="fluxo determinístico">deterministic flow</span>
-        <span data-pt="local-first">local-first</span>
-        <span data-pt="estado auditável">auditable state</span>
-        <span data-pt="MCP + A2A nativos">native MCP + A2A</span>
-      </div>
-    </div>
-  </section>
+        html {
+          scroll-behavior: smooth;
+        }
 
-  <div style="max-width:1180px;margin:0 auto;padding:0 clamp(18px,4vw,48px)">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:-56px;position:relative;z-index:2">
-      <article style="background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--accent);border-radius:12px;padding:22px 22px 24px;box-shadow:var(--shadow)">
-        <p style="margin:0;color:var(--accent);font:500 12.5px 'DM Mono',monospace;letter-spacing:.12em">01 · CONTROL</p>
-        <h3 data-pt="Você escreve o fluxo" style="margin:26px 0 8px;font-size:18.5px;letter-spacing:-.02em">You write the flow</h3>
-        <p data-pt="Passos ordenados, condições, laços com limite e checkpoints — não uma cadeia de prompts esperando dar certo." style="margin:0;color:var(--muted);font-size:16px">Ordered steps, conditions, bounded loops and checkpoints — not a chain of prompts hoping for the best.</p>
-      </article>
-      <article style="background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--teal);border-radius:12px;padding:22px 22px 24px;box-shadow:var(--shadow)">
-        <p style="margin:0;color:var(--teal);font:500 12.5px 'DM Mono',monospace;letter-spacing:.12em">02 · EVIDENCE</p>
-        <h3 data-pt="Toda execução deixa rastro" style="margin:26px 0 8px;font-size:18.5px;letter-spacing:-.02em">Every run leaves a trace</h3>
-        <p data-pt="Custo, tentativas, cache, entradas e saídas de cada passo em memória append-only que você pode versionar." style="margin:0;color:var(--muted);font-size:16px">Cost, retries, cache hits, inputs and outputs per step, in append-only memory you can version.</p>
-      </article>
-      <article style="background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--line);border-radius:12px;padding:22px 22px 24px;box-shadow:var(--shadow)">
-        <p style="margin:0;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.12em">03 · REACH</p>
-        <h3 data-pt="Publique como MCP ou A2A" style="margin:26px 0 8px;font-size:18.5px;letter-spacing:-.02em">Serve it as MCP or A2A</h3>
-        <p data-pt="Um diretório de workflows vira ferramentas MCP ou skills Agent2Agent com um comando." style="margin:0;color:var(--muted);font-size:16px">A directory of workflows becomes MCP tools or Agent2Agent skills with one command.</p>
-      </article>
-    </div>
-  </div>
+        body {
+          margin: 0;
+          background: var(--bg);
+          color: var(--ink);
+          font: 17.5px/1.6 Manrope, system-ui, sans-serif;
+          -webkit-font-smoothing: antialiased;
+        }
 
-  <main style="max-width:1180px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 40px">
+        a {
+          color: var(--accent);
+          text-decoration: none;
+        }
 
-    <section id="why" data-section data-title="why problem prompt glue determinism porque problema" style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
-      <p data-pt="01 · POR QUE EXISTE" style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">01 · WHY IT EXISTS</p>
-      <h2 data-pt="Cola de prompts não é arquitetura." style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:22ch">Prompt glue is not architecture.</h2>
-      <p data-pt="A mesma lógica escrita como script imperativo com chamadas de modelo espalhadas versus escrita como declarações MHL. Mesmo resultado; só um dos dois você consegue revisar, testar e explicar para auditoria." style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">The same logic written as an imperative script with model calls sprinkled through it, versus written as MHL declarations. Same outcome; only one of them can be reviewed, tested and explained to an auditor.</p>
+        a:hover {
+          color: var(--accent-2);
+        }
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;margin-top:34px;align-items:start">
-        <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)">
-            <strong data-pt="Sem uma linguagem" style="font-size:15px">Without a language</strong>
-            <span data-pt="implícito" style="color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase">implicit</span>
+        ::selection {
+          background: var(--accent);
+          color: #fff;
+        }
+
+        @keyframes mhl-pulse {
+
+          0%,
+          100% {
+            opacity: .35;
+            transform: scale(.9);
+          }
+
+          50% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        @keyframes mhl-caret {
+
+          0%,
+          49% {
+            opacity: 1;
+          }
+
+          50%,
+          100% {
+            opacity: 0;
+          }
+        }
+
+        .brand-caption {
+          white-space: nowrap;
+          flex: 0 0 auto;
+        }
+
+        @media (max-width:1180px) {
+          .site-nav {
+            display: none !important;
+          }
+        }
+
+        @media (max-width:820px) {
+          .site-search-field {
+            display: none !important;
+          }
+        }
+
+        @media (max-width:600px) {
+          .site-header {
+            height: auto !important;
+            padding: 12px 16px !important;
+            flex-wrap: wrap;
+          }
+        }
+      </style>
+    </helmet>
+
+    <div style="min-height:100vh;background:var(--bg)">
+
+      <header class="site-header"
+        style="position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 clamp(18px,4vw,48px);height:70px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(20px)">
+        <a href="#top" style="display:flex;align-items:center;gap:11px;color:var(--ink)">
+          <img src="assets/mhl-logo.png" alt="" style="width:32px;height:32px;object-fit:contain;display:block" />
+          <span style="display:grid;gap:2px;letter-spacing:-.02em">
+            <strong style="font-size:17px;line-height:1">MHL</strong>
+            <small class="brand-caption"
+              style="color:var(--muted);font:400 11.5px/1 'DM Mono',monospace;letter-spacing:.08em">META-HARNESS
+              LANGUAGE</small>
+          </span>
+        </a>
+        <nav class="site-nav" style="display:flex;align-items:center;gap:6px;flex:1;justify-content:center">
+          <a href="#tour" data-pt="Como funciona"
+            style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">How
+            it works</a>
+          <a href="#docs" data-pt="Documentação"
+            style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">Documentation</a>
+          <a href="#serve" data-pt="Servidores"
+            style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">Servers</a>
+          <a href="#start" data-pt="Começar"
+            style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">Get
+            started</a>
+        </nav>
+        <div style="display:flex;align-items:center;gap:9px">
+          <label for="site-search" class="site-search-field"
+            style="display:flex;align-items:center;gap:8px;width:190px;flex:0 0 auto;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 10px;color:var(--muted)">
+            <span aria-hidden="true" style="font-size:15px">⌕</span>
+            <input id="site-search" type="search" placeholder="Search" autocomplete="off" data-pt-placeholder="Buscar"
+              style="width:100%;border:0;outline:0;background:transparent;color:var(--ink);font:14px 'DM Mono',monospace" />
+            <kbd
+              style="font:12.5px 'DM Mono',monospace;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted)">/</kbd>
+          </label>
+          <button id="lang-toggle" type="button"
+            style="border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:34px;padding:0 10px;cursor:pointer;font:700 13.5px 'DM Mono',monospace;letter-spacing:.04em">PT</button>
+          <button id="theme-toggle" type="button" aria-label="Toggle theme"
+            style="border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:34px;width:34px;cursor:pointer;font-size:17px">☼</button>
+          <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer"
+            style="border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:34px;display:flex;align-items:center;padding:0 12px;font-size:14px;font-weight:700">GitHub
+            ↗</a>
+        </div>
+      </header>
+
+      <section id="top"
+        style="position:relative;background:var(--code);color:var(--code-ink);padding:clamp(60px,9vw,110px) clamp(18px,4vw,48px) 96px;overflow:hidden">
+        <div
+          style="position:absolute;inset:0;background-image:linear-gradient(color-mix(in srgb,var(--code-line) 60%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--code-line) 60%,transparent) 1px,transparent 1px);background-size:64px 64px;mask-image:radial-gradient(120% 90% at 50% 0%,#000 10%,transparent 70%);opacity:.7">
+        </div>
+        <div style="position:relative;max-width:1180px;margin:0 auto;display:grid;gap:26px;justify-items:start">
+          <p data-pt="LINGUAGEM META-HARNESS · v1.3.2-beta.3"
+            style="margin:0;color:var(--accent);font:500 13.5px 'DM Mono',monospace;letter-spacing:.16em">META-HARNESS
+            LANGUAGE · v1.2.0-alpha</p>
+          <h1
+            style="margin:0;max-width:15ch;font-size:clamp(44px,7.4vw,92px);line-height:.98;letter-spacing:-.055em;font-weight:800;text-wrap:balance">
+            <span data-pt="Workflows de IA que você">AI workflows you can</span>
+            <em data-pt="consegue ler, testar e auditar."
+              style="font-style:normal;color:var(--accent);display:block">read, test and audit.</em>
+          </h1>
+          <p data-pt="MHL é uma linguagem executável pequena para orquestrar agentes, prompts, ferramentas, memória e serviços externos. O programa é dono do fluxo; a IA contribui com julgamento onde ajuda."
+            style="margin:0;max-width:56ch;color:#b9c8c3;font-size:clamp(16px,1.5vw,19px);line-height:1.65">MHL is a
+            small executable language for orchestrating agents, prompts, tools, memory and external services. Your
+            program owns the flow; AI contributes judgment where it helps.</p>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">
+            <a href="#start" data-pt="Instalar em 30 segundos →"
+              style="display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:9px;padding:13px 20px;font-size:16px;font-weight:800">Install
+              in 30 seconds →</a>
+            <a href="#tour" data-pt="Ver um workflow real"
+              style="display:inline-flex;align-items:center;gap:9px;background:transparent;color:var(--code-ink);border:1px solid var(--code-line);border-radius:9px;padding:13px 20px;font-size:16px;font-weight:700">Read
+              a real workflow</a>
           </div>
-          <pre style="margin:0;padding:20px;background:var(--code-2);color:var(--code-muted);font:14.5px/1.75 'DM Mono',monospace;overflow:auto"><code>risk = call_model(
+          <div
+            style="display:flex;flex-wrap:wrap;gap:22px;margin-top:8px;color:var(--code-muted);font:13.5px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase">
+            <span data-pt="fluxo determinístico">deterministic flow</span>
+            <span data-pt="local-first">local-first</span>
+            <span data-pt="estado auditável">auditable state</span>
+            <span data-pt="MCP + A2A nativos">native MCP + A2A</span>
+          </div>
+        </div>
+      </section>
+
+      <div style="max-width:1180px;margin:0 auto;padding:0 clamp(18px,4vw,48px)">
+        <div
+          style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:-56px;position:relative;z-index:2">
+          <article
+            style="background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--accent);border-radius:12px;padding:22px 22px 24px;box-shadow:var(--shadow)">
+            <p style="margin:0;color:var(--accent);font:500 12.5px 'DM Mono',monospace;letter-spacing:.12em">01 ·
+              CONTROL</p>
+            <h3 data-pt="Você escreve o fluxo" style="margin:26px 0 8px;font-size:18.5px;letter-spacing:-.02em">You
+              write the flow</h3>
+            <p data-pt="Passos ordenados, condições, laços com limite e checkpoints — não uma cadeia de prompts esperando dar certo."
+              style="margin:0;color:var(--muted);font-size:16px">Ordered steps, conditions, bounded loops and
+              checkpoints — not a chain of prompts hoping for the best.</p>
+          </article>
+          <article
+            style="background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--teal);border-radius:12px;padding:22px 22px 24px;box-shadow:var(--shadow)">
+            <p style="margin:0;color:var(--teal);font:500 12.5px 'DM Mono',monospace;letter-spacing:.12em">02 · EVIDENCE
+            </p>
+            <h3 data-pt="Toda execução deixa rastro" style="margin:26px 0 8px;font-size:18.5px;letter-spacing:-.02em">
+              Every run leaves a trace</h3>
+            <p data-pt="Custo, tentativas, cache, entradas e saídas de cada passo em memória append-only que você pode versionar."
+              style="margin:0;color:var(--muted);font-size:16px">Cost, retries, cache hits, inputs and outputs per step,
+              in append-only memory you can version.</p>
+          </article>
+          <article
+            style="background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--line);border-radius:12px;padding:22px 22px 24px;box-shadow:var(--shadow)">
+            <p style="margin:0;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.12em">03 · REACH
+            </p>
+            <h3 data-pt="Publique como MCP ou A2A" style="margin:26px 0 8px;font-size:18.5px;letter-spacing:-.02em">
+              Serve it as MCP or A2A</h3>
+            <p data-pt="Um diretório de workflows vira ferramentas MCP ou skills Agent2Agent com um comando."
+              style="margin:0;color:var(--muted);font-size:16px">A directory of workflows becomes MCP tools or
+              Agent2Agent skills with one command.</p>
+          </article>
+        </div>
+      </div>
+
+      <main style="max-width:1180px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 40px">
+
+        <section id="why" data-section data-title="why problem prompt glue determinism porque problema"
+          style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
+          <p data-pt="01 · POR QUE EXISTE"
+            style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">01 · WHY
+            IT EXISTS</p>
+          <h2 data-pt="Cola de prompts não é arquitetura."
+            style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:22ch">
+            Prompt glue is not architecture.</h2>
+          <p data-pt="A mesma lógica escrita como script imperativo com chamadas de modelo espalhadas versus escrita como declarações MHL. Mesmo resultado; só um dos dois você consegue revisar, testar e explicar para auditoria."
+            style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">The same logic written as an imperative
+            script with model calls sprinkled through it, versus written as MHL declarations. Same outcome; only one of
+            them can be reviewed, tested and explained to an auditor.</p>
+
+          <div
+            style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;margin-top:34px;align-items:start">
+            <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)">
+              <div
+                style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)">
+                <strong data-pt="Sem uma linguagem" style="font-size:15px">Without a language</strong>
+                <span data-pt="implícito"
+                  style="color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase">implicit</span>
+              </div>
+              <pre
+                style="margin:0;padding:20px;background:var(--code-2);color:var(--code-muted);font:14.5px/1.75 'DM Mono',monospace;overflow:auto"><code>risk = call_model(
   f"Classify the risk...\n{diff}",
   retries=3,            # policy buried in code
   timeout=45,
@@ -124,15 +289,20 @@ if "high" in risk.lower():   # parsing prose
 # where is the audit trail?
 # what did run #482 actually do?
 # can a reviewer read this as a process?</code></pre>
-        </div>
-        <div style="border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;overflow:hidden;background:var(--panel);box-shadow:var(--shadow)">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)">
-            <strong data-pt="Com MHL" style="font-size:15px">With MHL</strong>
-            <span data-pt="explícito" style="color:var(--accent);font:12.5px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase">explicit</span>
-          </div>
-          <div style="position:relative">
-            <button type="button" data-copy style="position:absolute;top:10px;right:10px;z-index:1;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:5px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
-            <pre style="margin:0;padding:20px;background:var(--code);font:14.5px/1.75 'DM Mono',monospace;overflow:auto"><code data-mhl-code style="color:var(--code-ink)">step Classify {
+            </div>
+            <div
+              style="border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;overflow:hidden;background:var(--panel);box-shadow:var(--shadow)">
+              <div
+                style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)">
+                <strong data-pt="Com MHL" style="font-size:15px">With MHL</strong>
+                <span data-pt="explícito"
+                  style="color:var(--accent);font:12.5px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase">explicit</span>
+              </div>
+              <div style="position:relative">
+                <button type="button" data-copy
+                  style="position:absolute;top:10px;right:10px;z-index:1;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:5px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+                <pre
+                  style="margin:0;padding:20px;background:var(--code);font:14.5px/1.75 'DM Mono',monospace;overflow:auto"><code data-mhl-code style="color:var(--code-ink)">step Classify {
     var risk = Reviewer.run(
         prompt: Triage(diff: diff)
     )
@@ -144,41 +314,61 @@ step Escalate {
         Hooks.notify(risk: risk)
     }
 }</code></pre>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:16px">
-        <div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--soft)">
-          <strong data-pt="Política é declaração" style="display:block;font-size:15px;margin-bottom:6px">Policy is a declaration</strong>
-          <p data-pt="retry, timeout, cache e fallback vivem no agent, não espalhados na lógica." style="margin:0;color:var(--muted);font-size:15px">retry, timeout, cache and fallback live on the agent, not scattered through logic.</p>
-        </div>
-        <div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--soft)">
-          <strong data-pt="Prompt é tipado" style="display:block;font-size:15px;margin-bottom:6px">Prompts are typed</strong>
-          <p data-pt="assinaturas explícitas e composição, então o lint pega o erro antes da execução." style="margin:0;color:var(--muted);font-size:15px">Explicit signatures and composition, so lint catches the mistake before the run.</p>
-        </div>
-        <div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--soft)">
-          <strong data-pt="Estado é nomeado" style="display:block;font-size:15px;margin-bottom:6px">State is named</strong>
-          <p data-pt="memory diz o que sobrevive ao passo seguinte e onde isso fica gravado." style="margin:0;color:var(--muted);font-size:15px">memory says what survives the next step, and where it is written down.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="tour" data-section data-title="tour anatomy workflow agent prompt memory pipeline step anatomia" style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
-      <p data-pt="02 · ANATOMIA DE UM WORKFLOW" style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">02 · ANATOMY OF A WORKFLOW</p>
-      <h2 data-pt="Leia um arquivo MHL de cima a baixo." style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:24ch">Read one MHL file, top to bottom.</h2>
-      <p data-pt="Um revisor de pull request de verdade, em 39 linhas. Percorra os passos — o arquivo destaca a parte que está sendo explicada." style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">A real pull-request reviewer in 39 lines. Walk the steps — the file highlights the part being explained.</p>
-
-      <div id="tour-grid" style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.85fr);gap:18px;margin-top:34px;align-items:start">
-        <div style="border-radius:14px;overflow:hidden;background:var(--code);box-shadow:var(--shadow);border:1px solid var(--code-line)">
-          <div style="display:flex;align-items:center;gap:7px;height:40px;padding:0 15px;border-bottom:1px solid var(--code-line);color:var(--code-muted);font:12.5px 'DM Mono',monospace">
-            <span style="width:8px;height:8px;border-radius:50%;background:#e35c4d"></span>
-            <span style="width:8px;height:8px;border-radius:50%;background:#e8af4e"></span>
-            <span style="width:8px;height:8px;border-radius:50%;background:#56b77d"></span>
-            <b style="margin-left:10px;font-weight:400">review.mh</b>
-            <button type="button" data-copy style="margin-left:auto;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:4px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:16px">
+            <div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--soft)">
+              <strong data-pt="Política é declaração" style="display:block;font-size:15px;margin-bottom:6px">Policy is a
+                declaration</strong>
+              <p data-pt="retry, timeout, cache e fallback vivem no agent, não espalhados na lógica."
+                style="margin:0;color:var(--muted);font-size:15px">retry, timeout, cache and fallback live on the agent,
+                not scattered through logic.</p>
+            </div>
+            <div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--soft)">
+              <strong data-pt="Prompt é tipado" style="display:block;font-size:15px;margin-bottom:6px">Prompts are
+                typed</strong>
+              <p data-pt="assinaturas explícitas e composição, então o lint pega o erro antes da execução."
+                style="margin:0;color:var(--muted);font-size:15px">Explicit signatures and composition, so lint catches
+                the mistake before the run.</p>
+            </div>
+            <div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--soft)">
+              <strong data-pt="Estado é nomeado" style="display:block;font-size:15px;margin-bottom:6px">State is
+                named</strong>
+              <p data-pt="memory diz o que sobrevive ao passo seguinte e onde isso fica gravado."
+                style="margin:0;color:var(--muted);font-size:15px">memory says what survives the next step, and where it
+                is written down.</p>
+            </div>
           </div>
-          <pre style="margin:0;padding:18px 0;overflow:auto;max-height:560px"><code data-mhl-tour style="display:block;color:var(--code-ink);font:14.5px/1.85 'DM Mono',monospace">import "std/http" as http
+        </section>
+
+        <section id="tour" data-section data-title="tour anatomy workflow agent prompt memory pipeline step anatomia"
+          style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
+          <p data-pt="02 · ANATOMIA DE UM WORKFLOW"
+            style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">02 ·
+            ANATOMY OF A WORKFLOW</p>
+          <h2 data-pt="Leia um arquivo MHL de cima a baixo."
+            style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:24ch">
+            Read one MHL file, top to bottom.</h2>
+          <p data-pt="Um revisor de pull request de verdade, em 39 linhas. Percorra os passos — o arquivo destaca a parte que está sendo explicada."
+            style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">A real pull-request reviewer in 39
+            lines. Walk the steps — the file highlights the part being explained.</p>
+
+          <div id="tour-grid"
+            style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.85fr);gap:18px;margin-top:34px;align-items:start">
+            <div
+              style="border-radius:14px;overflow:hidden;background:var(--code);box-shadow:var(--shadow);border:1px solid var(--code-line)">
+              <div
+                style="display:flex;align-items:center;gap:7px;height:40px;padding:0 15px;border-bottom:1px solid var(--code-line);color:var(--code-muted);font:12.5px 'DM Mono',monospace">
+                <span style="width:8px;height:8px;border-radius:50%;background:#e35c4d"></span>
+                <span style="width:8px;height:8px;border-radius:50%;background:#e8af4e"></span>
+                <span style="width:8px;height:8px;border-radius:50%;background:#56b77d"></span>
+                <b style="margin-left:10px;font-weight:400">review.mh</b>
+                <button type="button" data-copy
+                  style="margin-left:auto;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:4px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+              </div>
+              <pre style="margin:0;padding:18px 0;overflow:auto;max-height:560px"><code data-mhl-tour style="display:block;color:var(--code-ink);font:14.5px/1.85 'DM Mono',monospace">import "std/http" as http
 
 agent Reviewer {
     command: "claude"
@@ -217,55 +407,96 @@ pipeline ReviewPullRequest {
         }
     }
 }</code></pre>
-        </div>
+            </div>
 
-        <div id="tour-steps" style="display:grid;gap:8px;align-content:start">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
-            <p data-pt="7 partes" style="margin:0;color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase">7 parts</p>
-            <button id="tour-play" type="button" data-pt="Pausar" style="border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:5px 10px;cursor:pointer;font:12.5px 'DM Mono',monospace">Pause</button>
+            <div id="tour-steps" style="display:grid;gap:8px;align-content:start">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
+                <p data-pt="7 partes"
+                  style="margin:0;color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase">
+                  7 parts</p>
+                <button id="tour-play" type="button" data-pt="Pausar"
+                  style="border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:5px 10px;cursor:pointer;font:12.5px 'DM Mono',monospace">Pause</button>
+              </div>
+              <button type="button" data-tour-step="1" data-lines="1-1"
+                style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
+                <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">import</b>
+                <span data-pt="Traz a biblioteca padrão e ferramentas externas para dentro do arquivo, com nome."
+                  style="color:var(--muted);font-size:15px;line-height:1.5">Pulls the standard library and external
+                  tools into the file, under a name.</span>
+              </button>
+              <button type="button" data-tour-step="2" data-lines="3-9"
+                style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
+                <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">agent</b>
+                <span
+                  data-pt="O que pode ser chamado, e sob quais limites: comando, timeout, retry e cache ficam visíveis."
+                  style="color:var(--muted);font-size:15px;line-height:1.5">What can be called, and under which limits:
+                  command, timeout, retry and cache all in the open.</span>
+              </button>
+              <button type="button" data-tour-step="3" data-lines="11-18"
+                style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
+                <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">prompt</b>
+                <span
+                  data-pt="Um template tipado e reutilizável. A instrução é parte do código-fonte, não uma string escondida."
+                  style="color:var(--muted);font-size:15px;line-height:1.5">A typed, reusable template. The instruction
+                  is source code, not a hidden string.</span>
+              </button>
+              <button type="button" data-tour-step="4" data-lines="20-23"
+                style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
+                <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">memory</b>
+                <span data-pt="Estado com nome e forma: efêmero, JSON persistente ou log append-only para auditoria."
+                  style="color:var(--muted);font-size:15px;line-height:1.5">State with a name and a shape: ephemeral,
+                  persistent JSON, or an append-only audit log.</span>
+              </button>
+              <button type="button" data-tour-step="5" data-lines="25-27"
+                style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
+                <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">pipeline</b>
+                <span data-pt="O contrato: quais entradas o fluxo exige e qual saída ele promete."
+                  style="color:var(--muted);font-size:15px;line-height:1.5">The contract: which inputs the flow
+                  requires, and which output it promises.</span>
+              </button>
+              <button type="button" data-tour-step="6" data-lines="29-32"
+                style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
+                <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">step</b>
+                <span data-pt="Uma unidade de execução: chama a capacidade, guarda o valor e registra o que aconteceu."
+                  style="color:var(--muted);font-size:15px;line-height:1.5">One unit of execution: call the capability,
+                  keep the value, record what happened.</span>
+              </button>
+              <button type="button" data-tour-step="7" data-lines="34-38"
+                style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
+                <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">if · integrations</b>
+                <span
+                  data-pt="Ramificação determinística e chamadas externas — o programa decide, não a prosa do modelo."
+                  style="color:var(--muted);font-size:15px;line-height:1.5">Deterministic branching and outbound calls —
+                  the program decides, not the model's prose.</span>
+              </button>
+              <a href="Docs-Reference.dc.html#pipeline" data-pt="Sintaxe completa de pipeline e step →"
+                style="margin-top:6px;font:500 14px 'DM Mono',monospace">Full pipeline and step syntax →</a>
+            </div>
           </div>
-          <button type="button" data-tour-step="1" data-lines="1-1" style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
-            <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">import</b>
-            <span data-pt="Traz a biblioteca padrão e ferramentas externas para dentro do arquivo, com nome." style="color:var(--muted);font-size:15px;line-height:1.5">Pulls the standard library and external tools into the file, under a name.</span>
-          </button>
-          <button type="button" data-tour-step="2" data-lines="3-9" style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
-            <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">agent</b>
-            <span data-pt="O que pode ser chamado, e sob quais limites: comando, timeout, retry e cache ficam visíveis." style="color:var(--muted);font-size:15px;line-height:1.5">What can be called, and under which limits: command, timeout, retry and cache all in the open.</span>
-          </button>
-          <button type="button" data-tour-step="3" data-lines="11-18" style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
-            <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">prompt</b>
-            <span data-pt="Um template tipado e reutilizável. A instrução é parte do código-fonte, não uma string escondida." style="color:var(--muted);font-size:15px;line-height:1.5">A typed, reusable template. The instruction is source code, not a hidden string.</span>
-          </button>
-          <button type="button" data-tour-step="4" data-lines="20-23" style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
-            <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">memory</b>
-            <span data-pt="Estado com nome e forma: efêmero, JSON persistente ou log append-only para auditoria." style="color:var(--muted);font-size:15px;line-height:1.5">State with a name and a shape: ephemeral, persistent JSON, or an append-only audit log.</span>
-          </button>
-          <button type="button" data-tour-step="5" data-lines="25-27" style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
-            <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">pipeline</b>
-            <span data-pt="O contrato: quais entradas o fluxo exige e qual saída ele promete." style="color:var(--muted);font-size:15px;line-height:1.5">The contract: which inputs the flow requires, and which output it promises.</span>
-          </button>
-          <button type="button" data-tour-step="6" data-lines="29-32" style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
-            <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">step</b>
-            <span data-pt="Uma unidade de execução: chama a capacidade, guarda o valor e registra o que aconteceu." style="color:var(--muted);font-size:15px;line-height:1.5">One unit of execution: call the capability, keep the value, record what happened.</span>
-          </button>
-          <button type="button" data-tour-step="7" data-lines="34-38" style="display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:13px 15px;cursor:pointer;color:var(--ink)">
-            <b style="font:500 14px 'DM Mono',monospace;color:var(--accent)">if · integrations</b>
-            <span data-pt="Ramificação determinística e chamadas externas — o programa decide, não a prosa do modelo." style="color:var(--muted);font-size:15px;line-height:1.5">Deterministic branching and outbound calls — the program decides, not the model's prose.</span>
-          </button>
-          <a href="Docs-Reference.dc.html#pipeline" data-pt="Sintaxe completa de pipeline e step →" style="margin-top:6px;font:500 14px 'DM Mono',monospace">Full pipeline and step syntax →</a>
-        </div>
-      </div>
-    </section>
+        </section>
 
-    <section id="audit" data-section data-title="determinism audit trace observability determinismo auditoria rastro" style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
-      <p data-pt="03 · DETERMINISMO E AUDITORIA" style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">03 · DETERMINISM AND AUDIT</p>
-      <h2 data-pt="Se você não consegue explicar a execução, não pode colocar em produção." style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:26ch">If you can't explain the run, you can't ship it.</h2>
-      <p data-pt="O runtime executa o fluxo que você escreveu e relata cada passo: política aplicada, cache, tentativas, duração e o valor que saiu. Laços têm limite; execuções longas podem ter checkpoint e retomar." style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">The runtime executes the flow you wrote and reports every step: policy applied, cache, retries, duration and the value that came out. Loops are bounded; long runs can checkpoint and resume.</p>
+        <section id="audit" data-section
+          data-title="determinism audit trace observability determinismo auditoria rastro"
+          style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
+          <p data-pt="03 · DETERMINISMO E AUDITORIA"
+            style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">03 ·
+            DETERMINISM AND AUDIT</p>
+          <h2 data-pt="Se você não consegue explicar a execução, não pode colocar em produção."
+            style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:26ch">
+            If you can't explain the run, you can't ship it.</h2>
+          <p data-pt="O runtime executa o fluxo que você escreveu e relata cada passo: política aplicada, cache, tentativas, duração e o valor que saiu. Laços têm limite; execuções longas podem ter checkpoint e retomar."
+            style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">The runtime executes the flow you wrote
+            and reports every step: policy applied, cache, retries, duration and the value that came out. Loops are
+            bounded; long runs can checkpoint and resume.</p>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:34px;align-items:start">
-        <div style="border-radius:14px;overflow:hidden;background:var(--code);border:1px solid var(--code-line);box-shadow:var(--shadow)">
-          <div style="padding:12px 16px;border-bottom:1px solid var(--code-line);color:var(--code-muted);font:12.5px 'DM Mono',monospace;letter-spacing:.1em">TERMINAL</div>
-          <pre style="margin:0;padding:20px;color:var(--code-ink);font:14px/1.9 'DM Mono',monospace;overflow:auto"><code>$ mhl run review.mh --input diff=@patch.diff
+          <div
+            style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:34px;align-items:start">
+            <div
+              style="border-radius:14px;overflow:hidden;background:var(--code);border:1px solid var(--code-line);box-shadow:var(--shadow)">
+              <div
+                style="padding:12px 16px;border-bottom:1px solid var(--code-line);color:var(--code-muted);font:12.5px 'DM Mono',monospace;letter-spacing:.1em">
+                TERMINAL</div>
+              <pre style="margin:0;padding:20px;color:var(--code-ink);font:14px/1.9 'DM Mono',monospace;overflow:auto"><code>$ mhl run review.mh --input diff=@patch.diff
 
 ▸ step Classify   agent Reviewer   cache miss   1.84s
   ├ retry 0/2     tokens 1420 → 38
@@ -274,118 +505,189 @@ pipeline ReviewPullRequest {
 ✔ ReviewPullRequest                             2.09s
   audit .mhl/audit.jsonl  +1 entry
   checkpoint .mhl/state/review-482.json</code></pre>
-        </div>
-        <div style="display:grid;gap:14px">
-          <div style="position:relative;border-radius:14px;overflow:hidden;background:var(--code);border:1px solid var(--code-line)">
-            <button type="button" data-copy style="position:absolute;top:10px;right:10px;z-index:1;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:5px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
-            <pre style="margin:0;padding:20px;overflow:auto"><code data-mhl-code style="color:var(--code-ink);font:14.5px/1.8 'DM Mono',monospace">loop Refine max: 3 {
+            </div>
+            <div style="display:grid;gap:14px">
+              <div
+                style="position:relative;border-radius:14px;overflow:hidden;background:var(--code);border:1px solid var(--code-line)">
+                <button type="button" data-copy
+                  style="position:absolute;top:10px;right:10px;z-index:1;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:5px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+                <pre style="margin:0;padding:20px;overflow:auto"><code data-mhl-code style="color:var(--code-ink);font:14.5px/1.8 'DM Mono',monospace">loop Refine max: 3 {
     var review = Reviewer.run(prompt: Critique(draft: draft))
     if review.score >= 0.9 { break }
     draft = Editor.run(prompt: Revise(draft: draft, notes: review))
 }</code></pre>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+                <div style="border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel)">
+                  <b data-pt="Limite obrigatório" style="display:block;font-size:14.5px;margin-bottom:5px">Bound
+                    required</b>
+                  <span data-pt="todo laço declara max — sem execução infinita."
+                    style="color:var(--muted);font-size:14.5px">every loop declares max — no runaway runs.</span>
+                </div>
+                <div style="border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel)">
+                  <b data-pt="Testes executáveis" style="display:block;font-size:14.5px;margin-bottom:5px">Executable
+                    tests</b>
+                  <span data-pt="describe e test rodam com mhl test."
+                    style="color:var(--muted);font-size:14.5px">describe and test run under mhl test.</span>
+                </div>
+                <div style="border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel)">
+                  <b data-pt="Retomar" style="display:block;font-size:14.5px;margin-bottom:5px">Resume</b>
+                  <span data-pt="pause devolve o controle para uma pessoa e continua depois."
+                    style="color:var(--muted);font-size:14.5px">pause hands control to a human and continues
+                    later.</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
-            <div style="border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel)">
-              <b data-pt="Limite obrigatório" style="display:block;font-size:14.5px;margin-bottom:5px">Bound required</b>
-              <span data-pt="todo laço declara max — sem execução infinita." style="color:var(--muted);font-size:14.5px">every loop declares max — no runaway runs.</span>
-            </div>
-            <div style="border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel)">
-              <b data-pt="Testes executáveis" style="display:block;font-size:14.5px;margin-bottom:5px">Executable tests</b>
-              <span data-pt="describe e test rodam com mhl test." style="color:var(--muted);font-size:14.5px">describe and test run under mhl test.</span>
-            </div>
-            <div style="border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel)">
-              <b data-pt="Retomar" style="display:block;font-size:14.5px;margin-bottom:5px">Resume</b>
-              <span data-pt="pause devolve o controle para uma pessoa e continua depois." style="color:var(--muted);font-size:14.5px">pause hands control to a human and continues later.</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
+        </section>
 
-    <section id="serve" data-section data-title="serve mcp a2a http stdio servers servidores integracoes" style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
-      <p data-pt="04 · INTEGRAÇÕES" style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">04 · INTEGRATIONS</p>
-      <h2 data-pt="Seus workflows como ferramentas MCP ou skills A2A." style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:24ch">Your workflows as MCP tools or A2A skills.</h2>
-      <p data-pt="Aponte o runtime para um diretório e cada workflow é publicado com contrato de entrada e saída. Um workflow, uma ferramenta." style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">Point the runtime at a directory and every workflow is published with its input and output contract. One workflow, one tool.</p>
+        <section id="serve" data-section data-title="serve mcp a2a http stdio servers servidores integracoes"
+          style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
+          <p data-pt="04 · INTEGRAÇÕES"
+            style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">04 ·
+            INTEGRATIONS</p>
+          <h2 data-pt="Seus workflows como ferramentas MCP ou skills A2A."
+            style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:24ch">
+            Your workflows as MCP tools or A2A skills.</h2>
+          <p data-pt="Aponte o runtime para um diretório e cada workflow é publicado com contrato de entrada e saída. Um workflow, uma ferramenta."
+            style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">Point the runtime at a directory and
+            every workflow is published with its input and output contract. One workflow, one tool.</p>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:34px">
-        <article style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--panel)">
-          <span style="color:var(--accent);font:500 13.5px 'DM Mono',monospace;letter-spacing:.1em">MCP · STDIO</span>
-          <h3 data-pt="Cliente local" style="margin:20px 0 7px;font-size:17.5px">Local client</h3>
-          <p data-pt="JSON-RPC delimitado por linha em um subprocesso. O cliente sobe o processo." style="margin:0 0 18px;color:var(--muted);font-size:15.5px">Newline-delimited JSON-RPC over a subprocess. The client spawns the process.</p>
-          <pre style="margin:auto 0 0;padding:14px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto"><code>mhl serve mcp sample/serve</code></pre>
-        </article>
-        <article style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--panel)">
-          <span style="color:var(--accent);font:500 13.5px 'DM Mono',monospace;letter-spacing:.1em">MCP · HTTP</span>
-          <h3 data-pt="Cliente em rede" style="margin:20px 0 7px;font-size:17.5px">Networked client</h3>
-          <p data-pt="Os mesmos workflows por Streamable HTTP, com sessão e execução assíncrona." style="margin:0 0 18px;color:var(--muted);font-size:15.5px">The same workflows over Streamable HTTP, with sessions and async runs.</p>
-          <pre style="margin:auto 0 0;padding:14px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto"><code>mhl serve mcp --http \
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:34px">
+            <article
+              style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--panel)">
+              <span style="color:var(--accent);font:500 13.5px 'DM Mono',monospace;letter-spacing:.1em">MCP ·
+                STDIO</span>
+              <h3 data-pt="Cliente local" style="margin:20px 0 7px;font-size:17.5px">Local client</h3>
+              <p data-pt="JSON-RPC delimitado por linha em um subprocesso. O cliente sobe o processo."
+                style="margin:0 0 18px;color:var(--muted);font-size:15.5px">Newline-delimited JSON-RPC over a
+                subprocess. The client spawns the process.</p>
+              <div style="position:relative;min-width:0;width:100%;margin:auto 0 0">
+                <button type="button" data-copy
+                  style="position:absolute;top:6px;right:6px;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+                <pre
+                  style="margin:0;padding:12px 60px 12px 12px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>mhl serve mcp sample/serve</code></pre>
+              </div>
+            </article>
+            <article
+              style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--panel)">
+              <span style="color:var(--accent);font:500 13.5px 'DM Mono',monospace;letter-spacing:.1em">MCP ·
+                HTTP</span>
+              <h3 data-pt="Cliente em rede" style="margin:20px 0 7px;font-size:17.5px">Networked client</h3>
+              <p data-pt="Os mesmos workflows por Streamable HTTP, com sessão e execução assíncrona."
+                style="margin:0 0 18px;color:var(--muted);font-size:15.5px">The same workflows over Streamable HTTP,
+                with sessions and async runs.</p>
+              <div style="position:relative;min-width:0;width:100%;margin:auto 0 0">
+                <button type="button" data-copy
+                  style="position:absolute;top:6px;right:6px;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+                <pre
+                  style="margin:0;padding:12px 60px 12px 12px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>mhl serve mcp --http \
   --addr 127.0.0.1:8711 sample/serve</code></pre>
-        </article>
-        <article style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--panel)">
-          <span style="color:var(--teal);font:500 13.5px 'DM Mono',monospace;letter-spacing:.1em">A2A · HTTP</span>
-          <h3 data-pt="Interop entre agentes" style="margin:20px 0 7px;font-size:17.5px">Agent interop</h3>
-          <p data-pt="Publica workflows como tarefas Agent2Agent, com Agent Card e ciclo de vida." style="margin:0 0 18px;color:var(--muted);font-size:15.5px">Publishes workflows as Agent2Agent tasks, with an Agent Card and task lifecycle.</p>
-          <pre style="margin:auto 0 0;padding:14px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto"><code>mhl serve a2a \
+              </div>
+            </article>
+            <article
+              style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--panel)">
+              <span style="color:var(--teal);font:500 13.5px 'DM Mono',monospace;letter-spacing:.1em">A2A · HTTP</span>
+              <h3 data-pt="Interop entre agentes" style="margin:20px 0 7px;font-size:17.5px">Agent interop</h3>
+              <p data-pt="Publica workflows como tarefas Agent2Agent, com Agent Card e ciclo de vida."
+                style="margin:0 0 18px;color:var(--muted);font-size:15.5px">Publishes workflows as Agent2Agent tasks,
+                with an Agent Card and task lifecycle.</p>
+              <div style="position:relative;min-width:0;width:100%;margin:auto 0 0">
+                <button type="button" data-copy
+                  style="position:absolute;top:6px;right:6px;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+                <pre
+                  style="margin:0;padding:12px 60px 12px 12px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>mhl serve a2a \
   --addr 127.0.0.1:8710 sample/serve</code></pre>
-        </article>
-      </div>
+              </div>
+            </article>
+          </div>
 
-      <div style="display:flex;gap:14px;align-items:flex-start;margin-top:14px;border:1px solid color-mix(in srgb,var(--accent) 32%,var(--line));background:color-mix(in srgb,var(--accent) 6%,var(--panel));border-radius:12px;padding:18px 20px">
-        <span style="flex:0 0 auto;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:15px">!</span>
-        <div style="display:grid;gap:5px">
-          <strong data-pt="Antes de expor um servidor" style="font-size:16px">Before exposing a server</strong>
-          <p data-pt="Escolha o bind com intenção, configure autenticação fora do uso local, defina o diretório de estado para execuções retomáveis e revise as permissões de cada workflow." style="margin:0;color:var(--muted);font-size:15.5px;max-width:80ch">Bind deliberately, configure authentication for non-local use, choose a state directory for resumable runs, and review the permissions of every workflow.</p>
-          <a href="Docs-Servers.dc.html" data-pt="Guia de servidores →" style="font:500 14px 'DM Mono',monospace;margin-top:4px">Serving guide →</a>
-        </div>
-      </div>
-    </section>
+          <div
+            style="display:flex;gap:14px;align-items:flex-start;margin-top:14px;border:1px solid color-mix(in srgb,var(--accent) 32%,var(--line));background:color-mix(in srgb,var(--accent) 6%,var(--panel));border-radius:12px;padding:18px 20px">
+            <span
+              style="flex:0 0 auto;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:15px">!</span>
+            <div style="display:grid;gap:5px">
+              <strong data-pt="Antes de expor um servidor" style="font-size:16px">Before exposing a server</strong>
+              <p data-pt="Escolha o bind com intenção, configure autenticação fora do uso local, defina o diretório de estado para execuções retomáveis e revise as permissões de cada workflow."
+                style="margin:0;color:var(--muted);font-size:15.5px;max-width:80ch">Bind deliberately, configure
+                authentication for non-local use, choose a state directory for resumable runs, and review the
+                permissions of every workflow.</p>
+              <a href="Docs-Servers.dc.html" data-pt="Guia de servidores →"
+                style="font:500 14px 'DM Mono',monospace;margin-top:4px">Serving guide →</a>
+            </div>
+          </div>
+        </section>
 
-    <section id="start" data-section data-title="install quickstart run cli hello começar instalar" style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
-      <p data-pt="05 · COMECE EM 30 SEGUNDOS" style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">05 · START IN 30 SECONDS</p>
-      <h2 data-pt="De uma pasta vazia a um pipeline rodando." style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:22ch">From an empty folder to a running pipeline.</h2>
-      <p data-pt="Instale o runtime, salve o exemplo como hello.mh e rode. O agente echo não precisa de chave de API nem de rede." style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">Install the runtime, save the example as hello.mh and run it. The echo agent needs no API key and no network.</p>
+        <section id="start" data-section data-title="install quickstart run cli hello começar instalar"
+          style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
+          <p data-pt="05 · COMECE EM 30 SEGUNDOS"
+            style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">05 ·
+            START IN 30 SECONDS</p>
+          <h2 data-pt="De uma pasta vazia a um pipeline rodando."
+            style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:22ch">
+            From an empty folder to a running pipeline.</h2>
+          <p data-pt="Instale o runtime, salve o exemplo como hello.mh e rode. O agente echo não precisa de chave de API nem de rede."
+            style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">Install the runtime, save the example as
+            hello.mh and run it. The echo agent needs no API key and no network.</p>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:34px;align-items:start">
-        <div style="display:grid;gap:12px">
-          <div style="border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:14px 16px;background:var(--panel);display:grid;gap:8px">
-            <strong style="font-size:14.5px">macOS / Linux</strong>
-            <div style="position:relative;min-width:0;width:100%">
-              <button type="button" data-copy style="position:absolute;top:6px;right:6px;border:1px solid var(--line);background:var(--soft);color:var(--muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
-              <pre style="margin:0;padding:12px 60px 12px 12px;border-radius:8px;background:var(--soft);color:var(--teal);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | sh</code></pre>
+          <div
+            style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:34px;align-items:start">
+            <div style="display:grid;gap:12px">
+              <div
+                style="border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:14px 16px;background:var(--panel);display:grid;gap:8px">
+                <strong style="font-size:14.5px">macOS / Linux</strong>
+                <div style="position:relative;min-width:0;width:100%">
+                  <button type="button" data-copy
+                    style="position:absolute;top:6px;right:6px;border:1px solid var(--line);background:var(--soft);color:var(--muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+                  <pre
+                    style="margin:0;padding:12px 60px 12px 12px;border-radius:8px;background:var(--soft);color:var(--teal);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | sh</code></pre>
+                </div>
+              </div>
+              <div
+                style="border:1px solid var(--line);border-left:3px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--panel);display:grid;gap:8px">
+                <strong style="font-size:14.5px">Windows / PowerShell</strong>
+                <div style="position:relative;min-width:0;width:100%">
+                  <button type="button" data-copy
+                    style="position:absolute;top:6px;right:6px;border:1px solid var(--line);background:var(--soft);color:var(--muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+                  <pre
+                    style="margin:0;padding:12px 60px 12px 12px;border-radius:8px;background:var(--soft);color:var(--teal);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.ps1 | iex</code></pre>
+                </div>
+              </div>
+              <div style="display:grid;gap:8px;margin-top:2px">
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                  <span data-pt="rodar"
+                    style="color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;min-width:52px">run</span>
+                  <code
+                    style="background:var(--soft);color:var(--ink);padding:6px 9px;border-radius:6px;font:14px 'DM Mono',monospace">mhl run hello.mh --input name=Ana</code>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                  <span data-pt="checar"
+                    style="color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;min-width:52px">check</span>
+                  <code
+                    style="background:var(--soft);color:var(--ink);padding:6px 9px;border-radius:6px;font:14px 'DM Mono',monospace">mhl lint hello.mh</code>
+                  <code
+                    style="background:var(--soft);color:var(--ink);padding:6px 9px;border-radius:6px;font:14px 'DM Mono',monospace">mhl test hello.mh</code>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                  <span data-pt="saída"
+                    style="color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;min-width:52px">output</span>
+                  <code
+                    style="background:var(--soft);color:var(--teal);padding:6px 9px;border-radius:6px;font:14px 'DM Mono',monospace">Hello, Ana. Your first pipeline is running.</code>
+                </div>
+              </div>
             </div>
-          </div>
-          <div style="border:1px solid var(--line);border-left:3px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--panel);display:grid;gap:8px">
-            <strong style="font-size:14.5px">Windows / PowerShell</strong>
-            <div style="position:relative;min-width:0;width:100%">
-              <button type="button" data-copy style="position:absolute;top:6px;right:6px;border:1px solid var(--line);background:var(--soft);color:var(--muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
-              <pre style="margin:0;padding:12px 60px 12px 12px;border-radius:8px;background:var(--soft);color:var(--teal);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.ps1 | iex</code></pre>
-            </div>
-          </div>
-          <div style="display:grid;gap:8px;margin-top:2px">
-            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-              <span data-pt="rodar" style="color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;min-width:52px">run</span>
-              <code style="background:var(--soft);color:var(--ink);padding:6px 9px;border-radius:6px;font:14px 'DM Mono',monospace">mhl run hello.mh --input name=Ana</code>
-            </div>
-            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-              <span data-pt="checar" style="color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;min-width:52px">check</span>
-              <code style="background:var(--soft);color:var(--ink);padding:6px 9px;border-radius:6px;font:14px 'DM Mono',monospace">mhl lint hello.mh</code>
-              <code style="background:var(--soft);color:var(--ink);padding:6px 9px;border-radius:6px;font:14px 'DM Mono',monospace">mhl test hello.mh</code>
-            </div>
-            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-              <span data-pt="saída" style="color:var(--muted);font:12.5px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;min-width:52px">output</span>
-              <code style="background:var(--soft);color:var(--teal);padding:6px 9px;border-radius:6px;font:14px 'DM Mono',monospace">Hello, Ana. Your first pipeline is running.</code>
-            </div>
-          </div>
-        </div>
-        <div style="border-radius:14px;overflow:hidden;background:var(--code);border:1px solid var(--code-line);box-shadow:var(--shadow)">
-          <div style="display:flex;align-items:center;gap:7px;height:40px;padding:0 15px;border-bottom:1px solid var(--code-line);color:var(--code-muted);font:12.5px 'DM Mono',monospace">
-            <span style="width:8px;height:8px;border-radius:50%;background:#e35c4d"></span>
-            <span style="width:8px;height:8px;border-radius:50%;background:#e8af4e"></span>
-            <span style="width:8px;height:8px;border-radius:50%;background:#56b77d"></span>
-            <b style="margin-left:10px;font-weight:400">hello.mh</b>
-            <button type="button" data-copy style="margin-left:auto;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:4px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
-          </div>
-          <pre style="margin:0;padding:20px;overflow:auto"><code data-mhl-code style="color:var(--code-ink);font:14.5px/1.85 'DM Mono',monospace">agent Echo {
+            <div
+              style="border-radius:14px;overflow:hidden;background:var(--code);border:1px solid var(--code-line);box-shadow:var(--shadow)">
+              <div
+                style="display:flex;align-items:center;gap:7px;height:40px;padding:0 15px;border-bottom:1px solid var(--code-line);color:var(--code-muted);font:12.5px 'DM Mono',monospace">
+                <span style="width:8px;height:8px;border-radius:50%;background:#e35c4d"></span>
+                <span style="width:8px;height:8px;border-radius:50%;background:#e8af4e"></span>
+                <span style="width:8px;height:8px;border-radius:50%;background:#56b77d"></span>
+                <b style="margin-left:10px;font-weight:400">hello.mh</b>
+                <button type="button" data-copy
+                  style="margin-left:auto;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:4px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
+              </div>
+              <pre style="margin:0;padding:20px;overflow:auto"><code data-mhl-code style="color:var(--code-ink);font:14.5px/1.85 'DM Mono',monospace">agent Echo {
     command: "echo"
     args: ["${prompt}"]
 }
@@ -402,61 +704,89 @@ pipeline Hello {
         log(answer)
     }
 }</code></pre>
+            </div>
+          </div>
+        </section>
+
+        <section id="docs" data-section
+          data-title="documentation reference specification stdlib extensions documentacao"
+          style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
+          <p data-pt="06 · DOCUMENTAÇÃO"
+            style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">06 ·
+            DOCUMENTATION</p>
+          <h2 data-pt="Use o documento certo para a próxima pergunta."
+            style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:24ch">
+            Use the right document for the next question.</h2>
+          <p data-pt="Esta página é o mapa. O comportamento formal da linguagem fica na especificação estilo ECMA e nos guias focados abaixo."
+            style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">This page is the map. Formal language
+            behavior lives in the ECMA-style specification and the focused guides below.</p>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:34px">
+            <a href="Docs-Specification.dc.html"
+              style="display:grid;gap:8px;align-content:start;border:1px solid var(--line);border-top:2px solid var(--accent);border-radius:12px;padding:20px;background:var(--panel);color:var(--ink);min-height:170px">
+              <span style="color:var(--accent);font:500 13.5px 'DM Mono',monospace">01</span>
+              <strong data-pt="Especificação da linguagem" style="font-size:17.5px;margin-top:14px">Language
+                specification</strong>
+              <span
+                data-pt="Gramática formal, tipos, expressões, statements, biblioteca padrão, extensões, serving e segurança."
+                style="color:var(--muted);font-size:15.5px">Formal grammar, types, expressions, statements, standard
+                library, extensions, serving and security.</span>
+            </a>
+            <a href="Docs-Reference.dc.html"
+              style="display:grid;gap:8px;align-content:start;border:1px solid var(--line);border-top:2px solid var(--line);border-radius:12px;padding:20px;background:var(--panel);color:var(--ink);min-height:170px">
+              <span style="color:var(--muted);font:500 13.5px 'DM Mono',monospace">02</span>
+              <strong data-pt="Referência prática" style="font-size:17.5px;margin-top:14px">Practical reference</strong>
+              <span data-pt="Exemplos copiáveis de construções, pipelines, testes, diagnósticos e comportamento da CLI."
+                style="color:var(--muted);font-size:15.5px">Copyable examples for constructs, pipelines, tests,
+                diagnostics and CLI behavior.</span>
+            </a>
+            <a href="Docs-Extensions.dc.html"
+              style="display:grid;gap:8px;align-content:start;border:1px solid var(--line);border-top:2px solid var(--line);border-radius:12px;padding:20px;background:var(--panel);color:var(--ink);min-height:170px">
+              <span style="color:var(--muted);font:500 13.5px 'DM Mono',monospace">03</span>
+              <strong data-pt="Extensões" style="font-size:17.5px;margin-top:14px">Extensions</strong>
+              <span data-pt="Manifesto, permissões, protocolo JSON-RPC de processo e instalação com lock."
+                style="color:var(--muted);font-size:15.5px">Manifest, permissions, the JSON-RPC process protocol and
+                locked installation.</span>
+            </a>
+            <a href="Docs-Servers.dc.html"
+              style="display:grid;gap:8px;align-content:start;border:1px solid var(--line);border-top:2px solid var(--line);border-radius:12px;padding:20px;background:var(--panel);color:var(--ink);min-height:170px">
+              <span style="color:var(--muted);font:500 13.5px 'DM Mono',monospace">04</span>
+              <strong data-pt="Servidores MCP e A2A" style="font-size:17.5px;margin-top:14px">MCP and A2A
+                servers</strong>
+              <span
+                data-pt="Transportes stdio e HTTP, métodos run/*, retomada com humano no loop e diretório de estado."
+                style="color:var(--muted);font-size:15.5px">stdio and HTTP transports, run/* methods, human-in-the-loop
+                resume and the state directory.</span>
+            </a>
+          </div>
+
+          <div
+            style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px;border:1px solid var(--line);border-radius:12px;padding:16px 20px;background:var(--soft)">
+            <span data-pt="ATALHO"
+              style="color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.14em">SHORTCUT</span>
+            <span data-pt="Pressione / a qualquer momento para buscar nesta página."
+              style="font-size:15.5px;color:var(--muted)">Press / anywhere to search this page.</span>
+          </div>
+        </section>
+
+      </main>
+
+      <footer style="border-top:1px solid var(--line);margin-top:60px">
+        <div
+          style="max-width:1180px;margin:0 auto;padding:26px clamp(18px,4vw,48px);display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center;color:var(--muted);font-size:14.5px">
+          <span>© 2026 MHL · <span data-pt="Criado por Yan Justino">Created by Yan Justino</span></span>
+          <span style="display:flex;flex-wrap:wrap;gap:16px">
+            <a href="Docs-Specification.dc.html" data-pt="Especificação">Specification</a>
+            <a href="Docs-Extensions.dc.html" data-pt="Extensões">Extensions</a>
+            <a href="Docs-Servers.dc.html" data-pt="Servidores">Servers</a>
+            <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+          </span>
         </div>
-      </div>
-    </section>
-
-    <section id="docs" data-section data-title="documentation reference specification stdlib extensions documentacao" style="padding:clamp(70px,9vw,120px) 0 0;scroll-margin-top:90px">
-      <p data-pt="06 · DOCUMENTAÇÃO" style="margin:0 0 14px;color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.16em">06 · DOCUMENTATION</p>
-      <h2 data-pt="Use o documento certo para a próxima pergunta." style="margin:0 0 14px;font-size:clamp(28px,3.6vw,44px);line-height:1.08;letter-spacing:-.04em;max-width:24ch">Use the right document for the next question.</h2>
-      <p data-pt="Esta página é o mapa. O comportamento formal da linguagem fica na especificação estilo ECMA e nos guias focados abaixo." style="margin:0;color:var(--muted);max-width:70ch;font-size:17.5px">This page is the map. Formal language behavior lives in the ECMA-style specification and the focused guides below.</p>
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:34px">
-        <a href="Docs-Specification.dc.html" style="display:grid;gap:8px;align-content:start;border:1px solid var(--line);border-top:2px solid var(--accent);border-radius:12px;padding:20px;background:var(--panel);color:var(--ink);min-height:170px">
-          <span style="color:var(--accent);font:500 13.5px 'DM Mono',monospace">01</span>
-          <strong data-pt="Especificação da linguagem" style="font-size:17.5px;margin-top:14px">Language specification</strong>
-          <span data-pt="Gramática formal, tipos, expressões, statements, biblioteca padrão, extensões, serving e segurança." style="color:var(--muted);font-size:15.5px">Formal grammar, types, expressions, statements, standard library, extensions, serving and security.</span>
-        </a>
-        <a href="Docs-Reference.dc.html" style="display:grid;gap:8px;align-content:start;border:1px solid var(--line);border-top:2px solid var(--line);border-radius:12px;padding:20px;background:var(--panel);color:var(--ink);min-height:170px">
-          <span style="color:var(--muted);font:500 13.5px 'DM Mono',monospace">02</span>
-          <strong data-pt="Referência prática" style="font-size:17.5px;margin-top:14px">Practical reference</strong>
-          <span data-pt="Exemplos copiáveis de construções, pipelines, testes, diagnósticos e comportamento da CLI." style="color:var(--muted);font-size:15.5px">Copyable examples for constructs, pipelines, tests, diagnostics and CLI behavior.</span>
-        </a>
-        <a href="Docs-Extensions.dc.html" style="display:grid;gap:8px;align-content:start;border:1px solid var(--line);border-top:2px solid var(--line);border-radius:12px;padding:20px;background:var(--panel);color:var(--ink);min-height:170px">
-          <span style="color:var(--muted);font:500 13.5px 'DM Mono',monospace">03</span>
-          <strong data-pt="Extensões" style="font-size:17.5px;margin-top:14px">Extensions</strong>
-          <span data-pt="Manifesto, permissões, protocolo JSON-RPC de processo e instalação com lock." style="color:var(--muted);font-size:15.5px">Manifest, permissions, the JSON-RPC process protocol and locked installation.</span>
-        </a>
-        <a href="Docs-Servers.dc.html" style="display:grid;gap:8px;align-content:start;border:1px solid var(--line);border-top:2px solid var(--line);border-radius:12px;padding:20px;background:var(--panel);color:var(--ink);min-height:170px">
-          <span style="color:var(--muted);font:500 13.5px 'DM Mono',monospace">04</span>
-          <strong data-pt="Servidores MCP e A2A" style="font-size:17.5px;margin-top:14px">MCP and A2A servers</strong>
-          <span data-pt="Transportes stdio e HTTP, métodos run/*, retomada com humano no loop e diretório de estado." style="color:var(--muted);font-size:15.5px">stdio and HTTP transports, run/* methods, human-in-the-loop resume and the state directory.</span>
-        </a>
-      </div>
-
-      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px;border:1px solid var(--line);border-radius:12px;padding:16px 20px;background:var(--soft)">
-        <span data-pt="ATALHO" style="color:var(--muted);font:500 12.5px 'DM Mono',monospace;letter-spacing:.14em">SHORTCUT</span>
-        <span data-pt="Pressione / a qualquer momento para buscar nesta página." style="font-size:15.5px;color:var(--muted)">Press / anywhere to search this page.</span>
-      </div>
-    </section>
-
-  </main>
-
-  <footer style="border-top:1px solid var(--line);margin-top:60px">
-    <div style="max-width:1180px;margin:0 auto;padding:26px clamp(18px,4vw,48px);display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center;color:var(--muted);font-size:14.5px">
-      <span>© 2026 MHL · <span data-pt="Criado por Yan Justino">Created by Yan Justino</span></span>
-      <span style="display:flex;flex-wrap:wrap;gap:16px">
-        <a href="Docs-Specification.dc.html" data-pt="Especificação">Specification</a>
-        <a href="Docs-Extensions.dc.html" data-pt="Extensões">Extensions</a>
-        <a href="Docs-Servers.dc.html" data-pt="Servidores">Servers</a>
-        <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
-      </span>
+      </footer>
     </div>
-  </footer>
-</div>
 
-</x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280}}">
+  </x-dc>
+  <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280}}">
 const TOK = {
   comment: '#70827d', keyword: '#f38d74', declaration: '#ffb86a', string: '#b8d98d',
   varin: '#6fd3c2', number: '#d5a7f5', boolean: '#e6a6d7', property: '#7fc7e8',
@@ -666,4 +996,5 @@ class Component extends DCLogic {
 
 </script>
 </body>
+
 </html>
