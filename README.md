@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/site/assets/mhl-logo-rebrand.png" alt="mhl logo" width="160">
+  <img src="docs/site/assets/mhl-logo.png" alt="mhl logo" width="160">
 </p>
 
 # Meta-Harness Language (mhl)
