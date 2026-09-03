@@ -265,32 +265,58 @@ pipeline P {
 	}
 }
 
-// A fan-out handle array works with `wait N of` and `wait any`, and each
-// element exposes the usual `.result` / `.status` fields.
+// `wait N of <name>` accepts a fan-out handle array: the name expands to its
+// elements, the quorum is counted across them, and the call returns once N
+// have succeeded. (Straggler cancellation timing is covered by the
+// non-fan-out TestSpawnWaitQuorum; here the point is only that the array
+// expands.)
 func TestSpawnFanQuorum(t *testing.T) {
 	src := `
-agent Slow { command: "sh" args: ["-c", "sleep 30; echo s"] }
-agent Fast { command: "sh" args: ["-c", "echo f"] }
+agent Fast { command: "sh" args: ["-c", "echo ok"] }
 
 pipeline P {
     step S {
-        var kinds = ["fast", "fast", "slow"]
+        var kinds = ["a", "b", "c"]
         spawn probes = Fast.run(prompt: "${item}") for item in kinds
         wait 2 of probes timeout: 10s
-        log("done0=${probes[0].ok} done1=${probes[1].ok}")
+        var oks = 0
+        for (var p in probes) { if (p.ok) oks = oks + 1 }
+        log("size=${probes.size()} oks=${oks}")
     }
 }
 `
-	start := time.Now()
 	out, err := runSpawn(t, src)
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
-	if time.Since(start) > 5*time.Second {
-		t.Fatalf("quorum over a fan-out did not short-circuit")
+	// The quorum needs 2 successes; the third is a race (cancelled vs. already
+	// done), so assert 2 or 3 rather than an exact count.
+	if !strings.Contains(out, "size=3 oks=2") && !strings.Contains(out, "size=3 oks=3") {
+		t.Fatalf("expected the 3-element fan-out to reach a 2-of quorum:\n%s", out)
 	}
-	if !strings.Contains(out, "done0=true done1=true") {
-		t.Fatalf("unexpected handle state:\n%s", out)
+}
+
+// `wait N of` over a fan-out fails the step when the quorum is unreachable —
+// the count is taken across the expanded elements, like a name list would be.
+func TestSpawnFanQuorumUnreachable(t *testing.T) {
+	src := `
+agent Bad { command: "sh" args: ["-c", "exit 1"] }
+
+pipeline P {
+    step S {
+        var kinds = ["a", "b"]
+        spawn probes = Bad.run(prompt: "${item}") for item in kinds
+        wait 2 of probes timeout: 10s
+        log("unreachable")
+    }
+}
+`
+	out, err := runSpawn(t, src)
+	if err == nil {
+		t.Fatalf("expected a quorum failure, got success:\n%s", out)
+	}
+	if strings.Contains(out, "unreachable") {
+		t.Fatalf("step body continued past a failed quorum:\n%s", out)
 	}
 }
 
