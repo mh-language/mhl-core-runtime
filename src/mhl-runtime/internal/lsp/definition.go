@@ -16,23 +16,23 @@ import (
 //   - the cursor sits inside the path string of an `import { ... } from
 //     "..."` (or `prompt X(...) from "..."`) clause → the referenced file
 //     itself, at position 0:0;
-//   - the cursor is on the member of a `Receiver.member` access → the tool
-//     method (or enum variant) named `member` inside `Receiver`'s
-//     declaration body, falling back to `Receiver`'s own declaration when the
-//     member can't be pinned down;
+//   - the cursor is on the member of a `Receiver.member` access → the `tool`
+//     method (or `enum` variant) named `member` inside `Receiver`'s
+//     declaration body; for a member with no source (an agent's `.run`, a
+//     memory's `.get`) it falls back to `Receiver`'s own declaration;
 //   - the cursor is on any other identifier → the top-level declaration
 //     (agent / memory / tool / prompt / pipeline / workflow / extension /
-//     type / enum) of that name, searched in the current buffer first and
-//     then every sibling .mh file in the same directory — the same
-//     import-oblivious "everything nearby is in scope" approximation
-//     documentSymbols already uses.
+//     type / enum) of that name.
 //
-// It returns nil when nothing resolves.
+// A declaration is looked for in the current buffer first, then the file an
+// `import { name } from "..."` in that buffer points at (following `as`
+// aliases and re-exports), then — as a loose fallback — every other .mh file
+// one directory level deep. It returns nil when nothing resolves.
 func definitionAt(path, text string, pos position) []location {
 	line := lineAt(text, pos.Line)
 
 	if target, ok := importPathAt(line, pos.Character); ok {
-		if abs := resolveSiblingPath(path, target); abs != "" {
+		if abs := resolveRelativePath(path, target); abs != "" {
 			return []location{{URI: pathToURI(abs)}}
 		}
 		return nil
@@ -79,40 +79,74 @@ func findDeclaration(path, text, name string) (location, bool) {
 }
 
 // findMember resolves `receiver.member` to the member's own declaration
-// inside receiver's body — a tool method (`member(` at the start of a line)
-// or, for any other declaration kind, the first bare `member` token. When
-// receiver resolves but the member can't be found within it, the receiver's
-// declaration is returned instead so the jump still lands somewhere useful.
+// inside receiver's body: for a `tool`, the method line `member(`; for an
+// `enum`, the variant token `member`. For every other kind (an agent's
+// `.run`, a memory's `.get`/`.set`, an extension's methods) the member is a
+// runtime built-in with no source to point at, so the jump lands on the
+// receiver's declaration instead — still useful, and it follows imports so
+// it opens the right file. The same fallback covers a `tool`/`enum` whose
+// member can't be located textually.
 func findMember(path, text, receiver, member string) (location, bool) {
 	file, src, nameOff, kind, ok := locateDeclaration(path, text, receiver)
 	if !ok {
 		return location{}, false
 	}
-	if bodyStart, bodyEnd, ok := blockBounds(src, nameOff); ok {
-		body := src[bodyStart:bodyEnd]
-		var re *regexp.Regexp
-		if kind == symTool {
-			re = regexp.MustCompile(`(?m)^[ \t]*(` + regexp.QuoteMeta(member) + `)[ \t]*\(`)
-		} else {
-			re = regexp.MustCompile(`\b(` + regexp.QuoteMeta(member) + `)\b`)
-		}
-		if m := re.FindStringSubmatchIndex(body); m != nil {
-			return location{URI: pathToURI(file), Range: identRange(src, bodyStart+m[2], member)}, true
+	if kind == symTool || kind == symEnum {
+		if bodyStart, bodyEnd, ok := blockBounds(src, nameOff); ok {
+			var re *regexp.Regexp
+			if kind == symTool {
+				re = regexp.MustCompile(`(?m)^[ \t]*(` + regexp.QuoteMeta(member) + `)[ \t]*\(`)
+			} else {
+				re = regexp.MustCompile(`\b(` + regexp.QuoteMeta(member) + `)\b`)
+			}
+			if m := re.FindStringSubmatchIndex(src[bodyStart:bodyEnd]); m != nil {
+				return location{URI: pathToURI(file), Range: identRange(src, bodyStart+m[2], member)}, true
+			}
 		}
 	}
 	return location{URI: pathToURI(file), Range: identRange(src, nameOff, receiver)}, true
 }
 
-// locateDeclaration finds where name is declared: the current buffer first
-// (path/text), then every other .mh file one level deep in path's directory.
-// It returns the containing file's path and full text, the byte offset of the
-// declared name within that text, and the declaration's symbolKind.
+// maxImportHops bounds how many `import` edges locateDeclaration will follow
+// before giving up — enough for a name re-exported through a couple of
+// barrel files, without risking a pathological chain.
+const maxImportHops = 4
+
+// locateDeclaration finds where name is declared, in order of preference:
+// the current buffer (path/text); the file an `import { name } from "..."`
+// in that buffer points at (following `X as name` aliases, and re-exports up
+// to maxImportHops deep); finally a flat scan of every other .mh file one
+// level deep in path's directory. It returns the containing file's path and
+// full text, the byte offset of the declared name within that text, and the
+// declaration's symbolKind.
 func locateDeclaration(path, text, name string) (file, src string, nameOff int, kind symbolKind, ok bool) {
+	return locateDeclarationHop(path, text, name, 0, map[string]bool{})
+}
+
+func locateDeclarationHop(path, text, name string, hop int, seen map[string]bool) (file, src string, nameOff int, kind symbolKind, ok bool) {
+	seen[path] = true
+
 	if off, k, found := declMatch(text, name); found {
 		return path, text, off, k, true
 	}
-	dir := filepath.Dir(path)
-	entries, err := os.ReadDir(dir)
+
+	// Follow an import that names it (or aliases it).
+	if hop < maxImportHops {
+		if tgtPath, declName, found := importSource(text, path, name); found && !seen[tgtPath] {
+			if b, err := os.ReadFile(tgtPath); err == nil {
+				tgt := string(b)
+				if off, k, ok := declMatch(tgt, declName); ok {
+					return tgtPath, tgt, off, k, true
+				}
+				if f, s, o, k, ok := locateDeclarationHop(tgtPath, tgt, declName, hop+1, seen); ok {
+					return f, s, o, k, true
+				}
+			}
+		}
+	}
+
+	// Flat "everything in the same directory is in scope" fallback.
+	entries, err := os.ReadDir(filepath.Dir(path))
 	if err != nil {
 		return "", "", 0, 0, false
 	}
@@ -120,8 +154,8 @@ func locateDeclaration(path, text, name string) (file, src string, nameOff int, 
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".mh") {
 			continue
 		}
-		full := filepath.Join(dir, e.Name())
-		if full == path {
+		full := filepath.Join(filepath.Dir(path), e.Name())
+		if seen[full] {
 			continue
 		}
 		b, err := os.ReadFile(full)
@@ -133,6 +167,41 @@ func locateDeclaration(path, text, name string) (file, src string, nameOff int, 
 		}
 	}
 	return "", "", 0, 0, false
+}
+
+// importRe captures one `import { A, B as C } from "path"` statement: the
+// brace-delimited item list (group 1) and the module path (group 2).
+var importRe = regexp.MustCompile(`(?m)^[ \t]*import[ \t]*\{([^}]*)\}[ \t]*from[ \t]+"([^"]*)"`)
+
+// importSource scans src's import statements for one that binds `name`
+// locally and returns the referenced file (resolved relative to fromPath's
+// directory) together with the name as it is declared in that file — an
+// `X as name` item maps back to X.
+func importSource(src, fromPath, name string) (path, declName string, ok bool) {
+	for _, m := range importRe.FindAllStringSubmatch(src, -1) {
+		for _, item := range strings.Split(m[1], ",") {
+			fields := strings.Fields(item)
+			orig, local := "", ""
+			switch {
+			case len(fields) == 1:
+				orig, local = fields[0], fields[0]
+			case len(fields) == 3 && fields[1] == "as":
+				orig, local = fields[0], fields[2]
+			default:
+				continue
+			}
+			if local != name {
+				continue
+			}
+			rel := m[2]
+			p := rel
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(filepath.Dir(fromPath), rel)
+			}
+			return p, orig, true
+		}
+	}
+	return "", "", false
 }
 
 // declMatch scans src for a top-level declaration of name and returns the
@@ -220,9 +289,9 @@ func importPathAt(line string, ch int) (string, bool) {
 	return "", false
 }
 
-// resolveSiblingPath resolves target (relative to curPath's directory, or
+// resolveRelativePath resolves target (relative to curPath's directory, or
 // absolute) to an existing file, returning "" when it doesn't resolve.
-func resolveSiblingPath(curPath, target string) string {
+func resolveRelativePath(curPath, target string) string {
 	if target == "" {
 		return ""
 	}

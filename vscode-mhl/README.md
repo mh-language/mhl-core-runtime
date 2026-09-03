@@ -9,10 +9,13 @@ extension is just its client.
 
 Go-to-definition (`F12` / `Cmd`+click) jumps to the declaration of an
 `agent` / `memory` / `tool` / `prompt` / `pipeline` / `workflow` /
-`extension` / `type` / `enum` name — in the current file or a sibling `.mh`
-file in the same directory — to a `tool` method or `enum` variant named
-after a `Receiver.member` access, and to the file named in a `from "..."`
-import path.
+`extension` / `type` / `enum` name, resolving it through the file's
+`import { ... } from "..."` statements (following `as` aliases and
+re-exports) and, as a fallback, any `.mh` file one directory level deep. On
+a `Receiver.member` access it lands on the `tool` method or `enum` variant
+named `member`; for a runtime built-in like an agent's `.run` or a memory's
+`.get` it lands on `Receiver`'s declaration instead. The `"..."` path of a
+`from` clause jumps to that file.
 
 ## Requirements
 
