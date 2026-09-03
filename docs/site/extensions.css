@@ -477,3 +477,9 @@
 @media (max-width:520px) {
   .extensions-page #layout .code-block { font-size:13px; }
 }
+
+/* --- adapted to the modern docs shell (no .layout wrapper) --- */
+.extensions-page .extension-content { padding:0; max-width:none; }
+.extensions-page .extension-diagram { color:var(--ink); }
+.extensions-page .extension-diagram text { fill:currentColor; }
+.extensions-page .extension-diagram-scroll { border:1px solid var(--line); border-radius:12px; padding:18px; background:var(--panel); }

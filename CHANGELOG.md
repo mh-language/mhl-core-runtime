@@ -68,6 +68,12 @@ Per-tag release notes are also generated automatically on the
   runtime error; an empty array yields an empty handle array that a plain
   `wait` no-ops on. The run-wide `spawn: { max_concurrency: N }` ceiling
   still bounds how many calls are in flight.
+- **`uuid` native namespace: `uuid.v4()` and `uuid.v7()`.** Both return an
+  RFC 9562 UUID as its canonical 36-character lowercase string. `v4` is fully
+  random; `v7` prefixes a 48-bit Unix-epoch millisecond timestamp, so values
+  minted in sequence sort in creation order. All non-fixed bits come from
+  `crypto/rand`; an entropy failure raises like any other native-op error. No
+  new dependency — the runtime still builds on participle alone.
 
 ## [1.1.0-alpha] — 2026-08-30
 

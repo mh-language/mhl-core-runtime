@@ -107,6 +107,8 @@ var nativeSigs = map[string]sig{
 	"time.add":         {Label: "time.add(value: string, duration: duration) -> string", Params: []string{"value", "duration"}, Doc: "Returns `value + duration` as an RFC3339 UTC string."},
 	"time.diff":        {Label: "time.diff(a: string, b: string) -> number", Params: []string{"a", "b"}, Doc: "Seconds in `a - b` (negative when `a` is earlier)."},
 	"time.compare":     {Label: "time.compare(a: string, b: string) -> number", Params: []string{"a", "b"}, Doc: "`-1` if `a < b`, `0` if equal, `1` if `a > b`."},
+	"uuid.v4":          {Label: "uuid.v4() -> string", Params: nil, Doc: "Random (version 4) UUID as a canonical 36-char lowercase string. Raises on entropy failure."},
+	"uuid.v7":          {Label: "uuid.v7() -> string", Params: nil, Doc: "Time-ordered (version 7) UUID as a canonical 36-char lowercase string: 48-bit ms timestamp + random. Sorts in creation order. Raises on entropy failure."},
 }
 
 // httpSig builds the signature entry for one http.<verb> native op — they

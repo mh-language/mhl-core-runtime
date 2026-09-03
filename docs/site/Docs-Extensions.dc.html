@@ -1,62 +1,75 @@
-<!doctype html>
-<html lang="en-US">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="How to extend the MHL runtime with isolated executables, manifests, permissions, JSON-RPC, and lock files." />
-    <meta name="theme-color" content="#10161f" />
-    <meta property="og:title" content="Extending MHL — Runtime extension guide" />
-    <meta property="og:description" content="Build an external MHL extension in any language and connect it through the runtime host." />
-    <meta property="og:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Extending MHL — Runtime extension guide" />
-    <meta name="twitter:description" content="Build an external MHL extension in any language and connect it through the runtime host." />
-    <meta name="twitter:image" content="https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/docs/site/assets/og.png" />
-    <link rel="icon" href="assets/mhl-logo-rebrand.png" />
-    <title>Extending MHL — Runtime extension guide</title>
-    <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="extensions.css" />
-  </head>
-  <body class="extensions-page">
-    <header class="topbar">
-      <a class="brand" href="index.html" aria-label="MHL home">
-        <img class="brand-logo" src="assets/mhl-logo-rebrand.png" alt="" />
-        <span><strong>MHL</strong><small>Meta-Harness Language</small></span>
-      </a>
-      <div class="top-actions">
-        <label class="search" for="site-search">
-          <span aria-hidden="true">⌕</span>
-          <input id="site-search" type="search" placeholder="Search the extension guide" autocomplete="off" />
-          <kbd>/</kbd>
-        </label>
-        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
-        <a class="github-link" href="mhl-language-spec.html">Specification</a>
-        <a class="github-link" href="extensions.html" aria-current="page">Extensions</a>
-        <a class="github-link" href="serve.html">Servers</a>
-        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<title>Extending MHL — Runtime extension guide</title>
+<meta name="description" content="How to extend the MHL runtime with isolated executables, manifests, permissions, JSON-RPC, and lock files." />
+<link rel="icon" href="assets/mhl-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="extensions.css" />
+<link rel="stylesheet" href="docs-modern.css" />
+<style>
+html { scroll-behavior:smooth; }
+::selection { background:var(--accent); color:#fff; }
+</style>
+</helmet>
+
+<div class="extensions-page" style="min-height:100vh;background:var(--bg)">
+  <header style="position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 clamp(18px,3vw,40px);height:70px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(20px)">
+    <a href="MHL%20Home.dc.html" style="display:flex;align-items:center;gap:11px;color:var(--ink)">
+      <img src="assets/mhl-logo.png" alt="" style="width:32px;height:32px;object-fit:contain;display:block" />
+      <span style="display:grid;gap:2px;letter-spacing:-.02em">
+        <strong style="font-size:16.5px;line-height:1">MHL</strong>
+        <small style="color:var(--muted);font:400 11px/1 'DM Mono',monospace;letter-spacing:.08em">META-HARNESS LANGUAGE</small>
+      </span>
+    </a>
+    <div style="display:flex;align-items:center;gap:9px">
+      <label for="site-search" style="display:flex;align-items:center;gap:8px;width:230px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 10px;color:var(--muted)">
+        <span aria-hidden="true" style="font-size:14.5px">⌕</span>
+        <input id="site-search" type="search" placeholder="Search this page" autocomplete="off" data-pt-placeholder="Buscar nesta página" style="width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font:13.5px 'DM Mono',monospace" />
+        <kbd style="font:12px 'DM Mono',monospace;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted);white-space:nowrap">/</kbd>
+      </label>
+      <button id="lang-toggle" type="button" style="border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:34px;padding:0 10px;cursor:pointer;font:700 13px 'DM Mono',monospace;letter-spacing:.04em">PT</button>
+      <button id="theme-toggle" type="button" aria-label="Toggle theme" style="border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:34px;width:34px;cursor:pointer;font-size:16.5px">☼</button>
+      <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer" style="border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:34px;display:flex;align-items:center;padding:0 12px;font-size:13.5px;font-weight:700;white-space:nowrap">GitHub ↗</a>
+    </div>
+  </header>
+
+  <div class="docs-shell" style="display:grid;grid-template-columns:236px minmax(0,1fr) 216px;gap:clamp(24px,3vw,52px);max-width:1460px;margin:0 auto;padding:34px clamp(18px,3vw,40px) 70px">
+    <aside class="docs-nav" style="position:sticky;top:96px;align-self:start;max-height:calc(100vh - 130px);overflow:auto;display:grid;gap:4px;align-content:start">
+      <p data-pt="DOCUMENTAÇÃO" style="margin:0 0 10px;color:var(--muted);font:500 12px 'DM Mono',monospace;letter-spacing:.16em">DOCUMENTATION</p>
+        <a href="Docs-Reference.dc.html" data-pt="Referência" style="display:flex;gap:10px;align-items:baseline;color:var(--muted);background:transparent;border-left:2px solid transparent;border-radius:0 7px 7px 0;padding:8px 12px;font-size:15px;font-weight:500">Reference</a>
+        <a href="Docs-Extensions.dc.html" data-pt="Extensões" style="display:flex;gap:10px;align-items:baseline;color:var(--ink);background:var(--soft);border-left:2px solid var(--accent);border-radius:0 7px 7px 0;padding:8px 12px;font-size:15px;font-weight:700">Extensions</a>
+        <a href="Docs-Servers.dc.html" data-pt="Servidores" style="display:flex;gap:10px;align-items:baseline;color:var(--muted);background:transparent;border-left:2px solid transparent;border-radius:0 7px 7px 0;padding:8px 12px;font-size:15px;font-weight:500">Servers</a>
+        <a href="Docs-Specification.dc.html" data-pt="Especificação" style="display:flex;gap:10px;align-items:baseline;color:var(--muted);background:transparent;border-left:2px solid transparent;border-radius:0 7px 7px 0;padding:8px 12px;font-size:15px;font-weight:500">Specification</a>
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);display:grid;gap:8px">
+        <a href="MHL%20Home.dc.html" data-pt="← Voltar para a home" style="font:500 13.5px 'DM Mono',monospace">← Back to home</a>
+        <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer" style="color:var(--muted);font:500 13.5px 'DM Mono',monospace">Source ↗</a>
       </div>
-    </header>
+    </aside>
 
-    <div class="layout" id="top">
-      <aside class="sidebar" aria-label="Extension guide navigation">
-        <p class="eyebrow">RUNTIME EXTENSIONS</p>
-        <nav id="toc">
-          <a class="nav-link active" href="#overview">Overview</a>
-          <a class="nav-link" href="#model">Extension model</a>
-          <a class="nav-link" href="#layout">Project layout</a>
-          <a class="nav-link" href="#manifest">Manifest</a>
-          <a class="nav-link" href="#protocol">Wire protocol</a>
-          <a class="nav-link" href="#permissions">Host services</a>
-          <a class="nav-link" href="#workflow">Build and install</a>
-          <a class="nav-link" href="#checklist">Release checklist</a>
-        </nav>
-        <div class="sidebar-note">
-          <span class="status-dot"></span>
-          <span>External adapter API<br /><small>v1 · unstable until frozen</small></span>
-        </div>
-      </aside>
+    <div style="min-width:0">
+      <nav aria-label="Breadcrumb" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:26px;color:var(--muted);font:13px 'DM Mono',monospace;letter-spacing:.06em;text-transform:uppercase">
+        <a href="MHL%20Home.dc.html" style="color:var(--muted)">MHL</a>
+        <span>/</span>
+        <span data-pt="Documentação">Documentation</span>
+        <span>/</span>
+        <span data-pt="Extensões" style="color:var(--ink)">Extensions</span>
+        <span id="search-count" style="display:none;margin-left:auto;color:var(--accent);text-transform:none"></span>
+      </nav>
 
-      <main class="content reference-content extension-content">
+      <p id="search-empty" data-pt="Nenhuma seção corresponde à busca nesta página." style="display:none;margin:0 0 24px;padding:14px 18px;border:1px solid var(--line);border-radius:12px;background:var(--soft);color:var(--muted);font-size:15px">No section on this page matches that search.</p>
+
+      <div class="content reference-content extension-content">
         <section class="ref-hero extension-hero doc-section" id="overview" data-title="extensions external runtime adapter executable developer guide overview">
           <p class="eyebrow accent">MHL · RUNTIME EXTENSIONS · API V1</p>
           <h1>Add capabilities without recompiling the runtime.</h1>
@@ -71,7 +84,7 @@
             <a href="#permissions"><code>permissions</code><span>control access</span></a>
             <a href="#workflow"><code>lock</code><span>pin what runs</span></a>
           </div>
-          <div class="tip-row"><span>BUILT IN VS. EXTERNAL</span><p>MCP and A2A are built-in extension kinds documented in the <a href="reference.html#mcp">Language Reference</a>. This page is for developers who want to add a new kind without changing MHL itself.</p></div>
+          <div class="tip-row"><span>BUILT IN VS. EXTERNAL</span><p>MCP and A2A are built-in extension kinds documented in the <a href="Docs-Reference.dc.html#mcp">Language Reference</a>. This page is for developers who want to add a new kind without changing MHL itself.</p></div>
         </section>
 
         <section class="feature doc-section" id="model" data-title="extension model host process lifecycle start first use kept alive request id shutdown">
@@ -336,12 +349,151 @@ mhl extension install https://.../mhl-crm.tar.gz#sha256=&lt;hex from SHA256SUMS&
           <div class="tip-row"><span>FULL CONTRACT</span><p>For the exact message contract, see the <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/tests/extensions/extension-protocol.md" target="_blank" rel="noreferrer">external extension protocol ↗</a>. The source walkthrough and manifest examples are in <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/tests/extensions/README.md" target="_blank" rel="noreferrer"><code>tests/extensions/README.md</code> ↗</a>.</p></div>
         </section>
 
-        <footer class="site-footer">
-          <span>© 2026 MHL · Created by Yan Justino</span>
-          <span><a href="mhl-language-spec.html">Specification</a> · <a href="extensions.html">Extensions</a> · <a href="serve.html">Servers</a> · <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a></span>
-        </footer>
-      </main>
+        </div>
+
+      <nav style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:24px;padding-top:28px;border-top:1px solid var(--line)">
+          <span data-pt="← Anterior" style="color:var(--muted);font:12px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase">← Previous</span>
+          <strong data-pt="Extensões" style="font-size:16.5px">Extensions</strong>
+        </a>
+        <a href="Docs-Servers.dc.html" style="display:grid;gap:5px;justify-items:end;text-align:right;border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--panel);color:var(--ink)">
+          <span data-pt="Próximo →" style="color:var(--muted);font:12px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase">Next →</span>
+          <strong data-pt="Servidores" style="font-size:16.5px">Servers</strong>
+        </a>
+      </nav>
     </div>
-    <script src="app.js"></script>
-  </body>
+
+    <nav aria-label="On this page" class="docs-toc" style="position:sticky;top:96px;align-self:start;max-height:calc(100vh - 130px);overflow:auto;display:grid;gap:2px;align-content:start">
+      <p data-pt="NESTA PÁGINA" style="margin:0 0 10px;color:var(--muted);font:500 12px 'DM Mono',monospace;letter-spacing:.16em">ON THIS PAGE</p>
+          <a href="#overview" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Add capabilities without recompiling the runtime.</a>
+          <a href="#model" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">The extension model</a>
+          <a href="#layout" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Project layout</a>
+          <a href="#manifest" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Describe the capability</a>
+          <a href="#protocol" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Implement the wire protocol</a>
+          <a href="#permissions" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Use host services safely</a>
+          <a href="#workflow" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Build, test, and install</a>
+          <a href="#checklist" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Release checklist</a>
+    </nav>
+  </div>
+
+  <footer style="border-top:1px solid var(--line)">
+    <div style="max-width:1460px;margin:0 auto;padding:26px clamp(18px,3vw,40px);display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center;color:var(--muted);font-size:14px">
+      <span>© 2026 MHL · <span data-pt="Criado por Yan Justino">Created by Yan Justino</span></span>
+      <span style="display:flex;flex-wrap:wrap;gap:16px">
+        <a href="Docs-Specification.dc.html" data-pt="Especificação">Specification</a>
+        <a href="Docs-Extensions.dc.html" data-pt="Extensões">Extensions</a>
+        <a href="Docs-Servers.dc.html" data-pt="Servidores">Servers</a>
+        <a href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const KEYWORDS=new Set('import from as export loop var mem if else while try catch finally return break goto for in self fail pause'.split(' '));
+const DECLS=new Set('agent memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
+const CONSTS=new Set(['true','false','null']);
+const esc=(v)=>v.replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const span=(cls,v)=>'<span class="'+cls+'">'+v+'</span>';
+function stringBody(value){let out='',cursor=0;for(const m of value.matchAll(/\\?\${[^}]*}/g)){out+=esc(value.slice(cursor,m.index));out+=span(m[0].startsWith('\\')?'tok-escape':'tok-var',esc(m[0]));cursor=m.index+m[0].length;}return out+esc(value.slice(cursor));}
+function highlight(src){let html='',i=0;while(i<src.length){
+ if(src.startsWith('//',i)){const e=src.indexOf('\n',i);const v=src.slice(i,e<0?src.length:e);html+=span('tok-comment',esc(v));i+=v.length;continue;}
+ if(src.startsWith('"""',i)){const e=src.indexOf('"""',i+3);const f=e<0?src.length:e+3;const v=src.slice(i,f);html+=span('tok-string',stringBody(v));i=f;continue;}
+ if(src[i]==='"'){let e=i+1;while(e<src.length){if(src[e]==='\\')e+=2;else if(src[e++]==='"')break;}const v=src.slice(i,e);html+=span('tok-string',stringBody(v));i=e;continue;}
+ const num=src.slice(i).match(/^\d+(?:\.\d+)?(?:ms|s|m|h|d)\b/)||src.slice(i).match(/^\d+(?:\.\d+)?\b/);
+ if(num){html+=span('tok-number',num[0]);i+=num[0].length;continue;}
+ const id=src.slice(i).match(/^[a-zA-Z_][a-zA-Z0-9_]*/);
+ if(id){const v=id[0],after=src.slice(i+v.length);let cls='tok-variable';
+  if(DECLS.has(v))cls='tok-declaration';else if(KEYWORDS.has(v))cls='tok-keyword';else if(CONSTS.has(v))cls='tok-boolean';
+  else if(/^\s*:/.test(after))cls='tok-property';else if(/^\s*\(/.test(after))cls='tok-function';
+  html+=span(cls,v);i+=v.length;continue;}
+ const op=src.slice(i).match(/^(?:==|!=|<=|>=|&&|\|\||->|\.\.|[+*/%<>=!^-])/);
+ if(op){html+=span('tok-operator',esc(op[0]));i+=op[0].length;continue;}
+ const ch=src[i];html+=/[{}[\]().,:]/.test(ch)?span('tok-punctuation',esc(ch)):esc(ch);i+=1;}
+ return html;}
+function highlightJson(src){let html='',i=0;while(i<src.length){
+ if(src[i]==='"'){let e=i+1;while(e<src.length){if(src[e]==='\\')e+=2;else if(src[e++]==='"')break;}const v=src.slice(i,e);
+  html+=span(/^\s*:/.test(src.slice(e))?'tok-json-key':'tok-json-string',esc(v));i=e;continue;}
+ const num=src.slice(i).match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
+ if(num){html+=span('tok-json-number',num[0]);i+=num[0].length;continue;}
+ const lit=src.slice(i).match(/^(?:true|false|null)\b/);
+ if(lit){html+=span('tok-json-literal',lit[0]);i+=lit[0].length;continue;}
+ const ch=src[i];html+='{}[],:'.includes(ch)?span('tok-json-punctuation',esc(ch)):esc(ch);i+=1;}
+ return html;}
+
+class Component extends DCLogic {
+  componentDidMount(){
+    this.lang=localStorage.getItem('mhl-lang')||'en';
+    this.setTheme(localStorage.getItem('mhl-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));
+    this.paintCode();
+    this.applyLang(this.lang);
+    this.bind();
+  }
+  setTheme(theme){
+    document.documentElement.classList.toggle('dark',theme==='dark');
+    const b=document.querySelector('#theme-toggle');
+    if(b)b.textContent=theme==='dark'?'☾':'☼';
+    this.theme=theme;
+  }
+  paintCode(){
+    document.querySelectorAll('code.language-mhl').forEach((el)=>{if(el.dataset.raw===undefined)el.dataset.raw=el.textContent;el.innerHTML=highlight(el.dataset.raw);});
+    document.querySelectorAll('code.language-json').forEach((el)=>{if(el.dataset.raw===undefined)el.dataset.raw=el.textContent;el.innerHTML=highlightJson(el.dataset.raw);});
+  }
+  applyLang(lang){
+    this.lang=lang;const pt=lang==='pt';
+    document.querySelectorAll('[data-pt]').forEach((el)=>{if(el.dataset.en===undefined)el.dataset.en=el.textContent;el.textContent=pt?el.dataset.pt:el.dataset.en;});
+    document.querySelectorAll('[data-pt-placeholder]').forEach((el)=>{if(el.dataset.enPlaceholder===undefined)el.dataset.enPlaceholder=el.placeholder;el.placeholder=pt?el.dataset.ptPlaceholder:el.dataset.enPlaceholder;});
+    const t=document.querySelector('#lang-toggle');if(t)t.textContent=pt?'EN':'PT';
+    localStorage.setItem('mhl-lang',lang);
+  }
+  bind(){
+    document.querySelector('#theme-toggle')?.addEventListener('click',()=>{const next=this.theme==='dark'?'light':'dark';this.setTheme(next);localStorage.setItem('mhl-theme',next);});
+    document.querySelector('#lang-toggle')?.addEventListener('click',()=>this.applyLang(this.lang==='pt'?'en':'pt'));
+    document.querySelectorAll('[data-copy="copy"], .copy-button').forEach((button)=>{
+      button.addEventListener('click',async()=>{
+        const code=button.parentElement.querySelector('code');
+        const text=code?(code.dataset.raw??code.textContent):'';
+        const idle=button.textContent;
+        try{await navigator.clipboard.writeText(text);button.textContent=this.lang==='pt'?'Copiado':'Copied';}
+        catch{button.textContent=this.lang==='pt'?'Selecione':'Select it';}
+        setTimeout(()=>{button.textContent=idle;},1400);
+      });
+    });
+    const search=document.querySelector('#site-search');
+    const blocks=[...document.querySelectorAll('.content .doc-section, .content .feature')];
+    search?.addEventListener('input',()=>{
+      const q=search.value.trim().toLowerCase();
+      let shown=0;
+      blocks.forEach((s)=>{
+        const hay=((s.dataset.title||'')+' '+s.textContent).toLowerCase();
+        const hide=q&&!hay.includes(q);
+        s.style.display=hide?'none':'';
+        if(!hide)shown+=1;
+      });
+      const empty=document.querySelector('#search-empty');
+      if(empty)empty.style.display=q&&shown===0?'block':'none';
+      const count=document.querySelector('#search-count');
+      if(count){count.style.display=q?'inline':'none';count.textContent=shown+(this.lang==='pt'?' seções':' sections');}
+    });
+    document.addEventListener('keydown',(e)=>{
+      if(e.key==='/'&&document.activeElement!==search&&!e.metaKey&&!e.ctrlKey){e.preventDefault();search?.focus();}
+    });
+    const links=[...document.querySelectorAll('[data-toc]')];
+    const targets=links.map((a)=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+    const io=new IntersectionObserver((entries)=>{
+      entries.forEach((entry)=>{
+        if(!entry.isIntersecting)return;
+        links.forEach((a)=>{
+          const on=a.getAttribute('href')==='#'+entry.target.id;
+          a.style.color=on?'var(--ink)':'var(--muted)';
+          a.style.borderLeftColor=on?'var(--accent)':'transparent';
+          a.style.background=on?'var(--soft)':'transparent';
+        });
+      });
+    },{rootMargin:'-12% 0px -75% 0px'});
+    targets.forEach((t)=>io.observe(t));
+  }
+  renderVals(){return {};}
+}
+</script>
+</body>
 </html>

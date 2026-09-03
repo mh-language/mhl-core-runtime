@@ -459,6 +459,7 @@ var nativeSymbols = []symbol{
 	{Name: "json", Kind: symNative, Methods: []string{"parse", "parse_lines", "stringify"}},
 	{Name: "log", Kind: symNative, Methods: []string{"info", "warn", "error"}},
 	{Name: "time", Kind: symNative, Methods: []string{"now", "parse", "format", "add", "diff", "compare"}},
+	{Name: "uuid", Kind: symNative, Methods: []string{"v4", "v7"}},
 }
 
 // documentSymbols returns every symbol visible from path/text: the fixed

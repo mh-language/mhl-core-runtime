@@ -331,3 +331,7 @@
 @media (max-width:520px) {
   .servers-page #quickstart .code-block { font-size:13px; }
 }
+
+/* --- adapted to the modern docs shell (no .layout / .topbar wrappers) --- */
+.servers-page .serve-content { padding:0; max-width:none; }
+.servers-page .docs-shell { padding-top:34px; }

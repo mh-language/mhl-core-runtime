@@ -27,6 +27,8 @@ logs-*/
 /mhl.exe
 .mhl/
 sample/mhl
+*.nosync/
+
 
 # scripts
 release.sh

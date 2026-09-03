@@ -1,0 +1,8 @@
+test uuid_v4_is_canonical_random {
+    describe uuid_v4_is_canonical_random {
+        var id = uuid.v4()
+        is_true(id.size() == 36)                       // 8-4-4-4-12 + 4 dashes
+        is_true(id.substring(14, 15) == "4")           // version nibble
+        are_not_equal(uuid.v4(), uuid.v4())            // fresh entropy each call
+    }
+}

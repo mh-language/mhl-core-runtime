@@ -839,9 +839,9 @@ func findExtension(prog *ast.Program, name string) (*ast.Extension, bool) {
 }
 
 // nativeNamespaces mirrors internal/engine/interpreter.nativeNamespaces: the reserved
-// cmd/git/fs/http/json/log/time method-call targets (language-design.md §7) that are
+// cmd/git/fs/http/json/log/time/uuid method-call targets (language-design.md §7) that are
 // never looked up against user declarations.
-var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true, "log": true, "time": true}
+var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true, "log": true, "time": true, "uuid": true}
 
 // checkToolCall mirrors internal/engine/interpreter.evalToolCall's validation: the method
 // must exist on tool, and the call's argument count must match the

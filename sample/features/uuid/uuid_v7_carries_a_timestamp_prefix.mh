@@ -1,0 +1,12 @@
+test uuid_v7_carries_a_timestamp_prefix {
+    describe uuid_v7_carries_a_timestamp_prefix {
+        var first = uuid.v7()
+        var second = uuid.v7()
+        is_true(first.size() == 36)
+        is_true(first.substring(14, 15) == "7")        // version nibble
+        // The leading 48 bits are a millisecond Unix timestamp, so two v7s
+        // minted in the same millisecond share their first hex block.
+        are_equal(first.substring(0, 8), second.substring(0, 8))
+        are_not_equal(first, second)                   // random tail still differs
+    }
+}

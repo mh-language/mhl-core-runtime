@@ -26,10 +26,11 @@ func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
 }
 
 // nativeNamespaces are the reserved `tool` method-body namespaces
-// (language-design.md §7), plus `json`, `log`, and `time` — never looked up
-// against user declarations, the same way the bare `log(...)` builtin is
-// reserved regardless of what a .mh author might otherwise name a variable.
-var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true, "log": true, "time": true}
+// (language-design.md §7), plus `json`, `log`, `time`, and `uuid` — never
+// looked up against user declarations, the same way the bare `log(...)`
+// builtin is reserved regardless of what a .mh author might otherwise name a
+// variable.
+var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true, "log": true, "time": true, "uuid": true}
 
 // evalToolCall resolves and executes a declared `tool` method call, e.g.
 // `execution.get_diff()`. Arguments bind positionally to the method's
@@ -383,6 +384,10 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, fmt.Errorf("time.compare requires a string as its second argument")
 		}
 		return nativeops.TimeCompare(a, b)
+	case "uuid.v4":
+		return nativeops.UUIDv4()
+	case "uuid.v7":
+		return nativeops.UUIDv7()
 	default:
 		return nil, fmt.Errorf("%s.%s is not a supported native operation", namespace, op)
 	}

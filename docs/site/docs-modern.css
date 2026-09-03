@@ -1,0 +1,131 @@
+/* Modernization layer over styles.css — tokens + rhythm + type scale */
+:root { --bg:#f7f8f5; --panel:#fff; --ink:#17201e; --muted:#66716d; --line:#dde3df; --soft:#eef2ef; --accent:#e85d3f; --accent-dark:#b53c29; --accent-2:#b53c29; --teal:#167d73; --danger:#c0392b; --code:#0d1418; --code-2:#131f24; --code-line:#25333a; --code-ink:#dce8e3; --code-muted:#7c918b; --shadow:0 20px 60px rgba(23,32,30,.09); }
+:root.dark { --bg:#0a0f12; --panel:#121a1d; --ink:#edf4f0; --muted:#97a8a2; --line:#243033; --soft:#161f22; --accent:#ff7658; --accent-dark:#ff9b83; --accent-2:#ff9b83; --teal:#55c7b8; --danger:#ff6b6b; --code:#060b0e; --code-2:#0e181c; --code-line:#1e2a30; --code-ink:#dce8e3; --code-muted:#7c918b; --shadow:0 20px 60px rgba(0,0,0,.35); }
+body { font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+.content { min-width:0; }
+.content a:not(.button):not(.feature-card):not(.info-card) { color:var(--accent); }
+.content a:not(.button):not(.feature-card):not(.info-card):hover { color:var(--accent-dark); }
+
+/* rhythm */
+.doc-section { margin-bottom:104px; scroll-margin-top:96px; }
+.feature { padding-top:64px; scroll-margin-top:96px; }
+.section-heading { margin-bottom:36px; }
+.section-heading h2 { font-size:clamp(26px,3vw,38px); letter-spacing:-.04em; line-height:1.1; }
+.feature-head h2 { font-size:clamp(22px,2.4vw,30px); letter-spacing:-.035em; }
+.feature-lede { font-size:15.5px; line-height:1.65; max-width:74ch; }
+.section-heading p:not(.eyebrow) { font-size:16px; line-height:1.65; max-width:74ch; }
+.lead { font-size:17.5px; line-height:1.7; }
+.ref-hero, .extension-hero, .serve-hero, .how-hero { margin-bottom:72px; }
+.ref-hero h1, .extension-hero h1, .serve-hero h1, .how-hero h1 { font-size:clamp(34px,5vw,60px); letter-spacing:-.05em; line-height:1.02; }
+.eyebrow, .block-label { letter-spacing:.16em; }
+.plain-list li { font-size:14.5px; }
+
+/* surfaces */
+.code-block { border-radius:12px; padding:22px 24px; font-size:13px; line-height:1.8; background:var(--code); }
+.code-wrap .code-block { box-shadow:var(--shadow); }
+.copy-button { border-radius:7px; padding:5px 9px; border-color:var(--code-line); background:var(--code-2); }
+.info-card, .feature-card, .concept-note, .principle-card, .variation, .crosscut, .callout, .reference-table, .prompt-demo, .comparison, .quick-index, .gap-box, .security-banner, .checklist, .grammar-block, .sig-table, .ns-block { border-radius:12px; }
+.reference-table, .sig-table { overflow:hidden; box-shadow:0 1px 0 color-mix(in srgb,var(--line) 60%,transparent); }
+.table-row { padding:14px 18px; font-size:13.5px; line-height:1.6; }
+.table-head { letter-spacing:.1em; font-size:10px; }
+.signature { font-size:13px; }
+.tip-row, .callout { padding:14px 18px; }
+.tip-row p, .callout { font-size:13.5px; }
+.inline-code code, .cli-command code { font-size:12.5px; }
+.info-card:hover, .feature-card:hover { border-color:color-mix(in srgb,var(--accent) 45%,var(--line)); box-shadow:var(--shadow); }
+.info-card, .feature-card { transition:border-color .2s, box-shadow .2s, transform .2s; }
+.next-steps { border-radius:12px; }
+
+/* responsive collapse without the old .layout media queries */
+@media (max-width:1180px) { .architecture-flow, .architecture-flow-four, .anatomy-diagram, .extension-diagram { overflow-x:auto; } }
+@media (max-width:760px) {
+  .card-grid.three, .card-grid.four, .syntax-columns, .cli-grid, .feature-catalog, .guarantee-grid, .example-steps, .principle-grid, .install-tabs, .method-grid { grid-template-columns:1fr !important; }
+  .split-section { grid-template-columns:1fr !important; }
+  .table-row { grid-template-columns:1fr !important; gap:6px; }
+  .code-block { font-size:11.5px; padding:16px; }
+}
+
+/* --- fixed-height panes must not clip the enlarged code metrics --- */
+.file-example > div { overflow:visible; }
+.file-example .code-block { min-height:0; height:auto; font-size:12px; line-height:1.7; overflow-x:auto; overflow-y:visible; }
+.prompt-demo, .prompt-demo .code-block { height:auto; min-height:0; overflow-y:visible; }
+.reference-table, .sig-table { overflow:visible; }
+.reference-table .table-head:first-child, .sig-table .table-head:first-child { border-radius:12px 12px 0 0; }
+.table-row { overflow:visible; overflow-wrap:anywhere; }
+.grammar-block { font-size:11.5px; line-height:1.85; }
+
+/* --- responsive docs shell (inline styles can't carry media queries) --- */
+@media (max-width:1200px) {
+  .docs-shell { grid-template-columns:236px minmax(0,1fr) !important; }
+  .docs-toc { display:none !important; }
+}
+@media (max-width:900px) {
+  .docs-shell { grid-template-columns:minmax(0,1fr) !important; gap:18px !important; padding-top:22px !important; }
+  .docs-nav { position:static !important; max-height:none !important; display:flex !important; flex-wrap:nowrap; overflow-x:auto !important; gap:6px !important; padding-bottom:10px; border-bottom:1px solid var(--line); }
+  .docs-nav > p, .docs-nav > div { display:none !important; }
+  .docs-nav > a { white-space:nowrap; border-left:0 !important; border-radius:7px !important; }
+  .file-example { grid-template-columns:1fr !important; }
+}
+@media (max-width:620px) {
+  .doc-section { margin-bottom:72px; }
+  .feature { padding-top:44px; }
+}
+
+/* --- grid children must be allowed to shrink (min-width:auto inflates tracks) --- */
+.syntax-columns > *, .method-grid > *, .native-reference > *, .pipeline-anatomy > *,
+.card-grid > *, .cli-grid > *, .file-example > *, .install-tabs > *, .feature-catalog > *,
+.guarantee-grid > *, .example-steps > *, .comparison > *, .architecture-flow > *,
+.split-section > *, .runtime-timeline > *, .variation-grid > *, .quick-index > *,
+.principle-grid > *, .server-grid > *, .extension-intro-grid > *, .table-row > *,
+.sig-table > *, .reference-table > *, .checklist > *, .assertion-cloud > *,
+.extension-principles > *, .anatomy-diagram > *, .loop-main-flow > *, .recovery-flow > * { min-width:0; }
+.content > section, .content .doc-section, .content .feature { min-width:0; }
+.content pre, .content .code-block, .content .grammar-block { max-width:100%; }
+.content pre, .content .code-block { overflow-x:auto; }
+
+/* --- docs header must not overflow (inline styles carry no media queries) --- */
+header small { white-space:nowrap; flex:0 0 auto; }
+header label[for="site-search"] { flex:0 0 auto; }
+@media (max-width:860px) { header label[for="site-search"] { display:none !important; } }
+@media (max-width:600px) { header { height:auto !important; padding:12px 16px !important; flex-wrap:wrap; } }
+
+/* --- legibility pass: raise the inherited type scale --- */
+body { font-size:17.5px; line-height:1.65; }
+.content p, .content li, .content span, .content div { text-wrap:pretty; }
+.feature-lede { font-size:17px; line-height:1.7; }
+.section-heading p:not(.eyebrow) { font-size:17px; line-height:1.7; }
+.lead { font-size:19px; line-height:1.7; }
+.plain-list li { font-size:16px; line-height:1.7; }
+.plain-list code, code { font-size:.92em; }
+.table-row { font-size:15px; line-height:1.65; padding:15px 18px; }
+.table-head { font-size:11.5px; }
+.signature { font-size:14.5px; }
+.sig-note, .cite { font-size:12.5px; }
+.code-block { font-size:14px; line-height:1.8; }
+.file-example .code-block, .server-card .code-block { font-size:13.5px; line-height:1.75; }
+.grammar-block { font-size:13.5px; line-height:1.9; }
+.eyebrow, .block-label, .spec-label { font-size:11.5px; }
+.feature-num { font-size:14px; }
+.status, .legend-item { font-size:12.5px; }
+.tip-row p, .callout, .callout strong, .gap-box strong, .gap-box .plain-list li { font-size:15px; }
+.tip-row span, .callout span, .security-banner strong { font-size:12.5px; }
+.info-card p, .concept-note p, .variation p, .principle-card p, .example-steps p, .quick-index span { font-size:15px; line-height:1.6; }
+.info-card h3, .concept-note b, .variation h4, .principle-card h3, .feature-card h3 { font-size:16.5px; }
+.inline-code, .inline-code code, .cli-command, .cli-command code, .native-list span, .muted { font-size:14px; }
+.inline-code span, .cli-command span { font-size:12px; }
+.diagram-node strong, .loop-node strong, .architecture-flow strong { font-size:14px; }
+.diagram-node span, .loop-node span, .architecture-flow span, .diagram-caption p { font-size:13px; }
+.diagram-node small, .loop-node small, .architecture-flow small, .diagram-caption span { font-size:11.5px; }
+.runtime-timeline h3 { font-size:16.5px; }
+.runtime-timeline p { font-size:15px; }
+.next-steps strong { font-size:12.5px; }
+.next-steps a { font-size:14px; }
+.guarantee-grid h3 { font-size:16.5px; }
+.guarantee-grid p { font-size:15px; }
+.spec-abstract p { font-size:16.5px; }
+.d-sub, .d-lab, .d-title, .d-newtag { font-size:13px; }
+@media (max-width:760px) { .code-block { font-size:13px; } .table-row { font-size:14.5px; } }
+
+/* --- single source of vertical rhythm for sections carrying both classes --- */
+.content .feature.doc-section { margin-bottom:0; padding-top:56px; padding-bottom:56px; }
+.content .feature.doc-section:first-of-type { padding-top:0; }

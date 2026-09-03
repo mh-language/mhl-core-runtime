@@ -480,3 +480,15 @@
   .spec-page .code-block,
   .spec-page .grammar-block { font-size:12.5px; }
 }
+
+/* --- adapted to the modern docs shell (no .layout / .topbar wrappers) --- */
+.spec-page .spec-masthead-inner { width:min(1460px,calc(100% - 80px)); padding:52px 0 44px; }
+.spec-page .docs-shell { padding-top:38px; }
+.spec-page .spec-content { padding:0; max-width:78ch; }
+.spec-page .spec-content .feature:first-of-type { border-top:0; padding-top:0; }
+.spec-page .docs-nav a { font-family:'DM Mono',ui-monospace,monospace; font-size:13px; }
+.spec-page .docs-toc a { font-family:'DM Mono',ui-monospace,monospace; }
+.spec-page .spec-content table { font-family:Manrope,system-ui,sans-serif; }
+.spec-page .spec-content .doc-section { margin-bottom:0; }
+.spec-page .spec-abstract { margin-bottom:52px; border-radius:4px; }
+@media (max-width:960px) { .spec-page .spec-masthead-inner { width:calc(100% - 44px); } }
