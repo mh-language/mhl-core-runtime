@@ -892,6 +892,8 @@ class Component extends DCLogic {
     const btn = document.querySelector(`[data-tour-step="${n}"]`);
     if (!btn) return;
     const [from, to] = btn.dataset.lines.split('-').map(Number);
+    const code = document.querySelector('[data-mhl-tour]');
+    const viewport = code?.closest('pre');
     document.querySelectorAll('[data-tour-step]').forEach((b) => {
       const on = b === btn;
       b.style.borderColor = on ? 'color-mix(in srgb, var(--accent) 55%, var(--line))' : 'var(--line)';
@@ -905,6 +907,23 @@ class Component extends DCLogic {
       el.style.borderLeftColor = on ? 'var(--accent)' : 'transparent';
       el.style.background = on ? 'rgba(232,93,63,.07)' : 'transparent';
     });
+    if (code && viewport) {
+      const activeLines = [...code.querySelectorAll('[data-line]')]
+        .filter((el) => {
+          const line = Number(el.dataset.line);
+          return line >= from && line <= to;
+        });
+      const first = activeLines[0];
+      const last = activeLines[activeLines.length - 1];
+      if (first && last) {
+        const viewportTop = viewport.getBoundingClientRect().top;
+        const rangeTop = first.getBoundingClientRect().top - viewportTop + viewport.scrollTop;
+        const rangeBottom = last.getBoundingClientRect().bottom - viewportTop + viewport.scrollTop;
+        const target = (rangeTop + rangeBottom - viewport.clientHeight) / 2;
+        const maxScroll = viewport.scrollHeight - viewport.clientHeight;
+        viewport.scrollTo({ top: Math.max(0, Math.min(maxScroll, target)), behavior: 'smooth' });
+      }
+    }
   }
 
   applyLang(lang) {
