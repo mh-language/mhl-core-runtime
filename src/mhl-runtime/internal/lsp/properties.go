@@ -18,7 +18,7 @@ func propertyItem(name, detail string) completionItem {
 // list rather than folded into it.
 var pipelinePropertyItems = []completionItem{
 	propertyItem("description", `"..." — human-readable summary; surfaced as the MCP tool / A2A skill description by "mhl serve"`),
-	propertyItem("checkpoint", "{ enabled, strategy, storage, ttl }"),
+	propertyItem("checkpoint", "{ enabled, strategy, storage, ttl } — optional; per-step checkpointing is on by default, declare enabled: false to opt out"),
 	propertyItem("spawn", "{ max_concurrency } — run-wide ceiling on concurrent spawned agent calls"),
 	propertyItem("context", "{ source, require } — populate context.vars from a prior run (context.session_id / .started_at / .resumed / .principal need no block)"),
 }
@@ -34,8 +34,8 @@ var loopPipelineExtraPropertyItems = []completionItem{
 
 // checkpointFieldItems mirrors runtime.checkpointFromExpr's field switch.
 var checkpointFieldItems = []completionItem{
-	propertyItem("enabled", "boolean"),
-	propertyItem("strategy", `e.g. "per_step"`),
+	propertyItem("enabled", "boolean; default true — set false to disable checkpointing"),
+	propertyItem("strategy", `e.g. "per_step" (the default)`),
 	propertyItem("storage", `e.g. "file"`),
 	propertyItem("ttl", "duration, e.g. 7d"),
 }

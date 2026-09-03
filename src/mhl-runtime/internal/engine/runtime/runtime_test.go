@@ -62,6 +62,54 @@ func TestPipelineConfigFromAST(t *testing.T) {
 	}
 }
 
+// The `checkpoint { ... }` block is optional: a pipeline that omits it, or
+// declares an empty one, is still projected with per-step checkpointing on so
+// an interrupted run stays resumable. A partial block tunes fields without
+// losing that default; only `enabled: false` opts out.
+func TestPipelineCheckpointDefaultsWhenBlockOmittedOrPartial(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want runtime.CheckpointConfig
+	}{
+		{
+			name: "no block",
+			body: "step S { var x = 1 }",
+			want: runtime.DefaultCheckpointConfig(),
+		},
+		{
+			name: "empty block",
+			body: "checkpoint: {}\n    step S { var x = 1 }",
+			want: runtime.DefaultCheckpointConfig(),
+		},
+		{
+			name: "ttl only keeps per_step",
+			body: "checkpoint: { ttl: 30d }\n    step S { var x = 1 }",
+			want: runtime.CheckpointConfig{Enabled: true, Strategy: "per_step", TTL: 30 * 24 * time.Hour},
+		},
+		{
+			name: "enabled false opts out",
+			body: "checkpoint: { enabled: false }\n    step S { var x = 1 }",
+			want: runtime.CheckpointConfig{Enabled: false, Strategy: "per_step"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			prog, err := parser.Parse("pipeline P {\n    " + tc.body + "\n}\n")
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			p, err := runtime.FindPipeline(prog, "")
+			if err != nil {
+				t.Fatalf("find pipeline: %v", err)
+			}
+			if p.Checkpoint != tc.want {
+				t.Errorf("checkpoint = %+v, want %+v", p.Checkpoint, tc.want)
+			}
+		})
+	}
+}
+
 func TestContextConfigFromAST(t *testing.T) {
 	const src = `
 pipeline WithContext {

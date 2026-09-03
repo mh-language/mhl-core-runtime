@@ -92,11 +92,14 @@ logic, then `asToolResult` re-frames the reply as a `CallToolResult` (status obj
 `mhl://workflow/<name>/source`, and HTTP-only `mhl://run/<id>/{logs,result}` (owner-gated
 like `run/status`); `dispatch` serves the `workflow` URIs, `serveMCP` splices in the `run`
 ones and `asToolResult` adds `resource_link`s to a bridged reply. `run/resume` continues
-a stopped run from its `checkpoint { strategy: "per_step" }`, or a run suspended by the
+a stopped run from its checkpoint — per-step checkpointing is on by default
+(`runtime.DefaultCheckpointConfig`, applied in `PipelineFromAST`), so the `checkpoint { ... }`
+block is optional and only needed to override a field (`ttl`) or opt out entirely
+(`checkpoint: { enabled: false }`) — or a run suspended by the
 `pause(reason?)` builtin (the HITL primitive — a gate step calls `pause("awaiting …")`, the
 run parks in `state: "paused"` / `resumable: true` with its subtree kept, then
 `run/resume {runId, arguments}` re-enters that step with the decision merged in; `pause`
-writes its own checkpoint so no `checkpoint {}` block is needed, and it is a control signal
+writes its own checkpoint even when the block is disabled, and it is a control signal
 like `break`, not a catchable error like `fail()`). Signal path: `interpreter.pauseSignal`
 → `IsPause` → `runtime.PauseSignal` → `RunResult.Paused` / `LoopResult.TerminalReason
 "pause"` → `execsvc.Result.Paused` → `mcpserver` `state: "paused"`. Via
@@ -163,7 +166,7 @@ Key packages:
   to the node they introduce (`agent.go`, `pipeline.go`, ...), not in a separate keywords file.
   `literal.go` holds the shared "unwrap a bare literal" readers (`StringValue`, `BoolValue`,
   `DurationValue`, `BareObject`, ...) that every declaration's static config (an agent's
-  `command:`, a pipeline's `checkpoint { ttl: 7d }`) is read through outside the interpreter's
+  `command:`, a pipeline's `checkpoint: { ttl: 7d }`) is read through outside the interpreter's
   full expression evaluator.
 - **`internal/lang/parser`** — lexer + compiled Participle parser (`Parse`/`ParseExpr`).
 - **`internal/lang/lint`** — static analysis (broken imports, undeclared agents, misconfigured

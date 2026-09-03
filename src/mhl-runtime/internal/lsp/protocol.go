@@ -57,6 +57,14 @@ type publishDiagnosticsParams struct {
 	Diagnostics []diagnostic `json:"diagnostics"`
 }
 
+// location is LSP's Location: a document URI plus the range within it to
+// reveal. It is the payload of a textDocument/definition response (returned
+// singly or as a list).
+type location struct {
+	URI   string `json:"uri"`
+	Range rangeT `json:"range"`
+}
+
 // completionItemKind mirrors the subset of LSP's CompletionItemKind enum
 // this server uses.
 const (
@@ -90,6 +98,7 @@ type serverCapabilities struct {
 	TextDocumentSync      int                  `json:"textDocumentSync"` // 1=Full
 	CompletionProvider    completionOptions    `json:"completionProvider"`
 	SignatureHelpProvider signatureHelpOptions `json:"signatureHelpProvider"`
+	DefinitionProvider    bool                 `json:"definitionProvider"`
 }
 
 type completionOptions struct {

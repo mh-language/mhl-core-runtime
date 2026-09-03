@@ -54,6 +54,7 @@ func (s *server) handle(msg *rpcMessage) {
 					TriggerCharacters:   []string{"(", ","},
 					RetriggerCharacters: []string{","},
 				},
+				DefinitionProvider: true,
 			},
 			ServerInfo: serverInfo{Name: "mhl-lsp", Version: "0.1.0"},
 		})
@@ -98,6 +99,20 @@ func (s *server) handle(msg *rpcMessage) {
 		}
 		text := s.docs[p.TextDocument.URI]
 		s.wr.respond(msg.ID, signatureHelpAt(uriToPath(p.TextDocument.URI), text, p.Position))
+	case "textDocument/definition":
+		var p textDocumentPositionParams
+		if json.Unmarshal(msg.Params, &p) != nil {
+			s.wr.respond(msg.ID, nil)
+			return
+		}
+		text := s.docs[p.TextDocument.URI]
+		locs := definitionAt(uriToPath(p.TextDocument.URI), text, p.Position)
+		if len(locs) == 0 {
+			// LSP: null is the "no definition found" response.
+			s.wr.respond(msg.ID, nil)
+			return
+		}
+		s.wr.respond(msg.ID, locs)
 	default:
 		if msg.ID != nil {
 			s.wr.respondError(msg.ID, -32601, "method not found: "+msg.Method)

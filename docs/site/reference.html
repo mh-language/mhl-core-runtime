@@ -657,12 +657,10 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
     input environment: string
     var approved = false
 
-    checkpoint: {
-        enabled: true
-        strategy: "per_step"
-        storage: "file"
-        ttl: 7d
-    }
+    // No `checkpoint` block needed — per-step checkpointing is on by
+    // default, so `--resume` already works. Add one only to tune it:
+    //   checkpoint: { ttl: 30d }        // keep abandoned state longer
+    //   checkpoint: { enabled: false }  // opt out entirely
 
     step Validate {
         var result = cmd.exec(["go", "test", "./..."], timeout: 2m)
@@ -680,12 +678,11 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
             <div class="inline-code"><span>resume</span><code>mhl run release.mh --input environment=staging --resume</code></div>
             <div class="inline-code"><span>pin</span><code>mhl run release.mh --session nightly-42 --resume</code></div>
           </div>
+          <div class="tip-row"><span>CHECKPOINT</span><p>The <code>checkpoint: { enabled, strategy, storage, ttl }</code> block is <em>optional</em>. Every <code>pipeline</code>/<code>workflow</code> is projected with <code>enabled: true, strategy: "per_step"</code> unless it says otherwise, so an interrupted run is always resumable with <code>mhl run --resume</code> / <code>run/resume</code> and a completed run clears its own state. Declare the block only to override a field — <code>checkpoint: { ttl: 30d }</code> keeps the default strategy and just changes retention; <code>checkpoint: { enabled: false }</code> turns checkpointing off for a workflow whose steps aren't safe to half-replay. <code>strategy</code> has one value today (<code>"per_step"</code>) and <code>storage</code> one (<code>"file"</code>).</p></div>
           <div class="tip-row"><span>SESSIONS</span><p>Every run gets its own directory <code>.mhl/state/&lt;session-id&gt;/</code>, so two concurrent runs of the same pipeline never clobber each other's checkpoint. Each run prints a <code>session: &lt;id&gt;</code> line; a bare <code>--resume</code> follows the most recent one (via a <code>.mhl/state/&lt;pipeline&gt;.latest</code> pointer), and <code>--session &lt;id&gt;</code> pins an exact one. Abandoned session directories past their TTL are swept automatically at the start of a later run.</p></div>
 
           <p class="block-label">READING THE PREVIOUS RUN'S STATE</p>
           <pre class="code-block"><code class="language-mhl">pipeline BuildCounter {
-    checkpoint: { enabled: true, strategy: "per_step", ttl: 7d }
-
     context: {
         source: "latest"     // or "session:&lt;id&gt;"; default "latest"
         require: false        // true = fail the run when no prior state exists
@@ -785,7 +782,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
             <div><b><code>wait</code></b><span>join handles — all (fail-fast), <code>any</code> (first success), or <code>N of</code> (quorum); a fan-out array name expands to its elements; options <code>timeout:</code> and <code>on_error: "collect"</code></span></div>
           </div>
           <div class="tip-row"><span>LIMITS</span><p>For loops, always prefer an observable <code>stop_when</code> plus <code>max_iterations</code> as a safety ceiling. Step-local variables are not visible to <code>stop_when</code>; use <code>mem</code> or <code>memory</code>.</p></div>
-          <div class="tip-row"><span>TIMEOUT</span><p>A <code>step &lt;Name&gt; timeout &lt;duration&gt; { … }</code> clause caps how long that step may run — <code>step Build timeout 3m { … }</code>. The runtime wraps the step's context with that deadline, so every blocking call it makes (an agent, <code>http</code>, <code>cmd</code>, an extension) is aborted when it elapses; the step then fails exactly as an explicit <code>fail()</code> would, so a <code>checkpoint</code> block still lets <code>--resume</code> / <code>run/resume</code> re-enter the step — with a <em>fresh</em> budget (the duration is per attempt, never persisted). The same clause on a <code>parallel &lt;Name&gt; timeout &lt;duration&gt; { … }</code> group bounds the whole barrier and cancels every still-running branch; a branch may also carry its own <code>timeout</code>, and the earliest deadline wins. A purely non-blocking runaway (a spinning <code>while</code>) is still bounded by <code>max_iterations</code> / the interpreter's loop cap, not by this.</p></div>
+          <div class="tip-row"><span>TIMEOUT</span><p>A <code>step &lt;Name&gt; timeout &lt;duration&gt; { … }</code> clause caps how long that step may run — <code>step Build timeout 3m { … }</code>. The runtime wraps the step's context with that deadline, so every blocking call it makes (an agent, <code>http</code>, <code>cmd</code>, an extension) is aborted when it elapses; the step then fails exactly as an explicit <code>fail()</code> would, so <code>--resume</code> / <code>run/resume</code> can still re-enter the step (unless the workflow set <code>checkpoint: { enabled: false }</code>) — with a <em>fresh</em> budget (the duration is per attempt, never persisted). The same clause on a <code>parallel &lt;Name&gt; timeout &lt;duration&gt; { … }</code> group bounds the whole barrier and cancels every still-running branch; a branch may also carry its own <code>timeout</code>, and the earliest deadline wins. A purely non-blocking runaway (a spinning <code>while</code>) is still bounded by <code>max_iterations</code> / the interpreter's loop cap, not by this.</p></div>
           <div class="tip-row"><span>SPAWN</span><p><code>spawn</code>/<code>wait</code> are step-scoped: any handle not joined by a <code>wait</code> is joined automatically when the step ends, so nothing runs across a checkpoint. If the process dies mid-step, <code>--resume</code> re-runs the whole step and re-issues every <code>spawn</code> — keep them idempotent (or give the agent a <code>cache</code>). A spawned agent cannot itself <code>spawn</code>, and an agent's <code>log:</code> file is ignored under <code>spawn</code> (its output goes to the step log instead). The fan-out form <code>spawn xs = Agent.run(...) for item in &lt;array&gt;</code> starts one background call per element with <code>item</code> bound while that call's arguments are evaluated, and binds <code>xs</code> to an array of handles in element order — index it (<code>xs[0].result</code>), iterate it (<code>for (var h in xs) …</code>), take its <code>.size()</code>, and <code>wait xs</code> / <code>wait any xs</code> / <code>wait N of xs</code>. A non-array iterable is a runtime error; an empty array binds an empty handle array that a plain <code>wait</code> no-ops on. The run-wide <code>max_concurrency</code> still bounds how many are in flight, so fanning out over a large collection is safe.</p></div>
           <div class="tip-row"><span>PARALLEL</span><p>A <code>parallel &lt;Name&gt; { … }</code> group runs its steps concurrently and joins them all before the pipeline advances — the step-level counterpart of <code>spawn</code> (which parallelises agent calls <em>within</em> one step). Each branch gets its own copy of the pipeline vars; on join, the writes are merged back, and a var two branches set to <em>different</em> values fails the run — so the outcome is deterministic. Branch output is buffered and printed in declared order. The group is atomic for checkpointing: a crash re-runs the whole group on <code>--resume</code>, so branch steps must stay idempotent. <code>goto</code> may not target a grouped step or be used from within one, and <code>break</code> may not be used from within one.</p></div>
         </section>

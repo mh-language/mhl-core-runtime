@@ -1,11 +1,18 @@
 # MHL Language Support for VS Code
 
-Provides syntax highlighting, diagnostics, and completion for `.mh` files.
-It also highlights MHL code blocks inside Markdown files when the fence is
-tagged as `mhl` or `mh`.
-Diagnostics and completion are served by `mhl lsp` (a Language Server
-Protocol server built into the `mhl` binary, see `../src/mhl-runtime`) —
-this extension is just its client.
+Provides syntax highlighting, diagnostics, completion, signature help, and
+go-to-definition for `.mh` files. It also highlights MHL code blocks inside
+Markdown files when the fence is tagged as `mhl` or `mh`.
+These language features are served by `mhl lsp` (a Language Server Protocol
+server built into the `mhl` binary, see `../src/mhl-runtime`) — this
+extension is just its client.
+
+Go-to-definition (`F12` / `Cmd`+click) jumps to the declaration of an
+`agent` / `memory` / `tool` / `prompt` / `pipeline` / `workflow` /
+`extension` / `type` / `enum` name — in the current file or a sibling `.mh`
+file in the same directory — to a `tool` method or `enum` variant named
+after a `Receiver.member` access, and to the file named in a `from "..."`
+import path.
 
 ## Requirements
 

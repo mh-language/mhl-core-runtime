@@ -338,12 +338,13 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", p.RunID))
 	}
 	// A run suspended by pause(...) is always resumable — it wrote its own
-	// checkpoint. Otherwise the workflow must declare checkpoint { per_step }.
+	// checkpoint. Otherwise the workflow must not have opted out of the
+	// default per-step checkpointing with `checkpoint: { enabled: false }`.
 	rn.mu.Lock()
 	paused := rn.state == "paused"
 	rn.mu.Unlock()
 	if !paused && !rn.tool.Pipeline.Checkpoint.Enabled {
-		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q's workflow declares no checkpoint { strategy: \"per_step\" } — nothing to resume", p.RunID))
+		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q's workflow declares checkpoint: { enabled: false } — nothing to resume", p.RunID))
 	}
 	if !h.cps.Exists(rn.id) {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q has no checkpoint on disk to resume from", p.RunID))

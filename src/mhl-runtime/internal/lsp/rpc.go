@@ -6,9 +6,10 @@
 // (open/change/close, completion requests) into calls against them.
 //
 // Scope is deliberately an MVP: diagnostics (parse errors + lint findings,
-// pushed on open/change) and completion (keywords, declared symbol names,
-// and member-call suggestions after "name."). No hover, go-to-definition,
-// or incremental sync yet — full-document sync only.
+// pushed on open/change), completion (keywords, declared symbol names, and
+// member-call suggestions after "name."), signature help, and
+// go-to-definition for declared names (and `from "..."` import paths). No
+// hover or incremental sync yet — full-document sync only.
 package lsp
 
 import (

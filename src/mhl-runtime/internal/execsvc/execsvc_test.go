@@ -277,7 +277,7 @@ func TestRunResumeSkipsInputSchema(t *testing.T) {
 	src := writeFile(t, dir, "main.mh", `
 pipeline P {
     input repo: string
-    checkpoint { strategy: "per_step" }
+    checkpoint: { strategy: "per_step" }
     step S { var x = repo }
 }
 `)

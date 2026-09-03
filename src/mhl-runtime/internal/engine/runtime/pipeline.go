@@ -8,12 +8,29 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
-// CheckpointConfig is the resolved `checkpoint { ... }` block of a pipeline.
+// CheckpointConfig is the resolved `checkpoint: { ... }` block of a pipeline.
+//
+// The block is optional: a pipeline/workflow that declares none (or an empty
+// `checkpoint: {}`) is projected with DefaultCheckpointConfig — per-step
+// checkpointing on — so `mhl run --resume` / `run/resume` can always continue
+// an interrupted run. Declare `checkpoint: { enabled: false }` to opt out, or
+// `checkpoint: { ttl: ... }` to tune retention while keeping the default
+// strategy. This default is applied in PipelineFromAST only; a Pipeline value
+// built directly (tests, literal construction) still starts from the zero
+// CheckpointConfig{} — Enabled false — unchanged.
 type CheckpointConfig struct {
 	Enabled  bool
 	Strategy string        // e.g. "per_step"
 	Storage  string        // e.g. "file"
 	TTL      time.Duration // e.g. 7d
+}
+
+// DefaultCheckpointConfig is the checkpoint configuration a pipeline/workflow
+// receives from PipelineFromAST when it declares no `checkpoint: { ... }` block,
+// or an empty one: per-step checkpointing enabled, so an interrupted run is
+// always resumable without the author having to opt in.
+func DefaultCheckpointConfig() CheckpointConfig {
+	return CheckpointConfig{Enabled: true, Strategy: "per_step"}
 }
 
 // ContextConfig is the resolved `context: { ... }` block of a pipeline: it
@@ -112,8 +129,12 @@ type PipelineInputSpec struct {
 // annotations (built by the caller from the whole program via
 // types.Aliases); a nil map just means aliased input types fall back to
 // types.Any, exactly as an unrecognized keyword already does here.
+//
+// Checkpoint starts at DefaultCheckpointConfig (per-step, enabled) and is
+// only replaced when a `checkpoint: { ... }` block is present, so omitting the
+// block leaves a pipeline resumable rather than un-resumable.
 func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
-	out := Pipeline{Name: p.Name, Loop: p.Loop}
+	out := Pipeline{Name: p.Name, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
 	for _, m := range p.Body {
 		switch {
 		case m.Step != nil:
@@ -262,7 +283,7 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 
 // repeatConfigFromExpr reads a `repeat { stop_when, max_iterations }`
 // property's object literal — grouping a `loop pipeline`'s two repeat-policy
-// fields under one marker, the same way `checkpoint { ... }` already groups
+// fields under one marker, the same way `checkpoint: { ... }` already groups
 // its own, instead of leaving them loose directly in the pipeline body.
 // Either field may be absent (stopWhen stays nil, maxIterations stays 0),
 // matching how a loop with no explicit ceiling or condition already behaved
@@ -293,10 +314,14 @@ func repeatConfigFromExpr(e *ast.Expr) (stopWhen *ast.Expr, maxIterations int) {
 	return stopWhen, maxIterations
 }
 
-// checkpointFromExpr reads a `checkpoint { ... }` property's object literal
+// checkpointFromExpr reads a `checkpoint: { ... }` property's object literal
 // via the shared ast literal readers (internal/lang/ast/literal.go) — the
 // same readers internal/engine/interpreter uses for agent/memory config —
 // rather than keeping its own copy of "what counts as a bare literal".
+//
+// It starts from DefaultCheckpointConfig, so an empty `checkpoint: {}` matches
+// the no-block default and a partial block (e.g. just `ttl:`) keeps per-step
+// checkpointing on; only `enabled: false` turns it off.
 // spawnConfigFromExpr reads a `spawn { max_concurrency: N }` block. An
 // absent, non-numeric, or non-positive value leaves MaxConcurrency at 0,
 // which the interpreter reads as "use the default".
@@ -358,7 +383,7 @@ func contextConfigFromExpr(e *ast.Expr) *ContextConfig {
 }
 
 func checkpointFromExpr(e *ast.Expr) CheckpointConfig {
-	cfg := CheckpointConfig{}
+	cfg := DefaultCheckpointConfig()
 	obj := ast.BareObject(e)
 	if obj == nil {
 		return cfg
