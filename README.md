@@ -34,7 +34,9 @@ Download a binary and/or the `.vsix` directly from the
 
 ```bash
 # runtime
-cd src/mhl-runtime && make build   # outputs dist/mhl
+(cd src/mhl-runtime && make build)   # outputs dist/mhl
+# without make:
+(cd src/mhl-runtime && ./build.sh build)
 
 # VS Code extension
 cd vscode-mhl && npm install && npx @vscode/vsce package   # outputs mhl-language-<version>.vsix

@@ -182,4 +182,6 @@ and `internal/lang/*` package additionally has its own focused unit tests. Run e
 
 ```
 make test   # go test ./...
+# without make:
+./build.sh test
 ```
