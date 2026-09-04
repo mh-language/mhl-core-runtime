@@ -2,9 +2,68 @@ package lint
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
+
+// checkLoopMax validates the optional `max <N>` header clause on a
+// pipeline/workflow declaration — shorthand for `repeat { max_iterations: N }`.
+// runtime.PipelineFromAST parses it best-effort (a non-positive or
+// non-integer value is silently ignored, and it is inert without the `loop`
+// prefix since only LoopRunner reads MaxIterations), so without this check a
+// `max 0` or a `max 3` on a plain pipeline would just do nothing with no
+// feedback. It also flags declaring both `max <N>` and an explicit
+// `repeat { max_iterations }` — redundant, and the block silently wins.
+func checkLoopMax(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		p := decl.Pipeline
+		if p == nil || p.Max == "" {
+			continue
+		}
+		add := func(msg string) {
+			findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column, Message: msg})
+		}
+		if n, err := strconv.Atoi(p.Max); err != nil || n <= 0 {
+			add(fmt.Sprintf("%s %q: max %q is not a positive integer (e.g. max 3)", pipelineKind(p), p.Name, p.Max))
+		}
+		if !p.Loop {
+			add(fmt.Sprintf("%s %q: max has no effect without the leading `loop` keyword — only a `loop %s` repeats", pipelineKind(p), p.Name, p.Kind))
+		}
+		for _, m := range p.Body {
+			if m.Prop != nil && m.Prop.Name == "repeat" && repeatMaxIterationsExpr(m.Prop.Value) != nil {
+				add(fmt.Sprintf("%s %q: both `max %s` and `repeat { max_iterations }` are set — drop one (the repeat block wins)", pipelineKind(p), p.Name, p.Max))
+				break
+			}
+		}
+	}
+	return findings
+}
+
+// repeatMaxIterationsExpr reads just the max_iterations field out of a
+// `repeat { ... }` object literal — the lint-side twin of the max_iterations
+// half of runtime.repeatConfigFromExpr, kept separate for the same
+// internal/ dependency reason as repeatStopWhenExpr.
+func repeatMaxIterationsExpr(e *ast.Expr) *ast.Expr {
+	obj := ast.BareObject(e)
+	if obj == nil {
+		return nil
+	}
+	for _, f := range obj.Fields {
+		key := ""
+		switch {
+		case f.KeyIdent != nil:
+			key = *f.KeyIdent
+		case f.KeyStr != nil:
+			key = *f.KeyStr
+		}
+		if key == "max_iterations" {
+			return f.Value
+		}
+	}
+	return nil
+}
 
 // checkLoopStopWhen statically flags a `loop pipeline`'s `stop_when` when it
 // references one of that pipeline's own `var` declarations. It mirrors a gap

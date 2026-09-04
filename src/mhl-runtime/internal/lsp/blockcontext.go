@@ -48,7 +48,7 @@ var headerRe = []struct {
 	kind blockKind
 	re   *regexp.Regexp
 }{
-	{blockLoopPipeline, regexp.MustCompile(`\bloop\s+(?:pipeline|workflow)\s+\w+\s*$`)},
+	{blockLoopPipeline, regexp.MustCompile(`\bloop\s+(?:pipeline|workflow)\s+\w+(?:\s+max\s+\d+)?\s*$`)},
 	{blockPipeline, regexp.MustCompile(`\b(?:pipeline|workflow)\s+\w+\s*$`)},
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
 	{blockParallel, regexp.MustCompile(`\bparallel\s+\w+\s*$`)},

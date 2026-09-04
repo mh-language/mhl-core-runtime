@@ -53,6 +53,15 @@
         {
           "name": "storage.type.declaration.mhl",
           "match": "\\b(from|import|as|export|extension|agent|memory|tool|loop|pipeline|workflow|prompt|parallel|step|timeout|input|test|describe|type|enum)\\b"
+        },
+        {
+          "comment": "`max <N>` header clause on a `loop pipeline` / `loop workflow` — matched only after the declaration name so it never lights up an ordinary identifier, `.max(` call, or `max:` key",
+          "match": "(?<=\\b(?:pipeline|workflow)[ \\t]{1,64}[a-zA-Z_][a-zA-Z0-9_]{0,128}[ \\t]{1,64})(max)(?=[ \\t]+[0-9])",
+          "captures": {
+            "1": {
+              "name": "storage.type.declaration.mhl"
+            }
+          }
         }
       ]
     },

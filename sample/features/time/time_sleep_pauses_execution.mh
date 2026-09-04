@@ -1,0 +1,14 @@
+// time.sleep(<duration>) blocks the current step for the given duration --
+// the deliberate-delay primitive for polling backoff, pacing a `loop`
+// pipeline, or spacing retries. It takes an mhl duration literal (1ms, 500ms,
+// 2s, 1m, ...), evaluates to null, and is a no-op for a non-positive value.
+// It is cancellation-aware: a run-level cancel or the enclosing step's
+// `timeout` firing interrupts the wait and fails the step.
+//
+// Durations here are kept tiny so `make functional-test` stays fast.
+test time_sleep_pauses_execution {
+    describe time_sleep_pauses_execution {
+        are_equal(time.sleep(2ms), null)
+        are_equal(time.sleep(0s), null)   // non-positive: returns immediately
+    }
+}

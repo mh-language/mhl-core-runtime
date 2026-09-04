@@ -12,6 +12,15 @@ import "github.com/alecthomas/participle/v2/lexer"
 // keyword that already precedes `pipeline`. A pipeline with no `loop` prefix
 // still runs exactly once, unchanged.
 //
+// Max is the optional `max <N>` header clause — `loop workflow Refine max 3
+// { ... }` — shorthand for `repeat { max_iterations: N }`, the iteration
+// ceiling LoopRunner enforces. It reads as a bare Number token in the
+// declaration header (like a step's `timeout <dur>` clause), so `max` is a
+// contextually reserved word in that position only. Empty when the clause is
+// absent; runtime.PipelineFromAST parses it and lint rejects a non-positive
+// value, its use without the `loop` prefix, and its use alongside an
+// explicit `repeat { max_iterations }` (which wins).
+//
 // Kind is the declaration keyword: "pipeline" (steps run in order, each once
 // — `goto` is a lint error) or "workflow" (identical execution model, but
 // `goto <step>` is allowed, so the step sequence is an explicitly branching
@@ -19,9 +28,11 @@ import "github.com/alecthomas/participle/v2/lexer"
 // runtime treat both the same; internal/lang/lint is what rejects `goto`
 // outside a `workflow` (checkPipelineGoto).
 type Pipeline struct {
+	Pos  lexer.Position
 	Loop bool              `parser:"@'loop'?"`
 	Kind string            `parser:"@( 'pipeline' | 'workflow' )"`
 	Name string            `parser:"@Ident"`
+	Max  string            `parser:"( 'max' @Number )?"`
 	Body []*PipelineMember `parser:"'{' @@* '}'"`
 }
 

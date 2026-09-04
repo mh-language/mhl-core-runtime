@@ -1,6 +1,7 @@
 package nativeops_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -216,5 +217,43 @@ func TestTimeCompareInvalidInputErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "time.compare") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestTimeSleepBlocksForDuration(t *testing.T) {
+	start := time.Now()
+	if err := nativeops.TimeSleep(context.Background(), 40*time.Millisecond); err != nil {
+		t.Fatalf("TimeSleep: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 35*time.Millisecond {
+		t.Errorf("TimeSleep returned after %v, want >= ~40ms", elapsed)
+	}
+}
+
+func TestTimeSleepNonPositiveIsNoOp(t *testing.T) {
+	start := time.Now()
+	for _, d := range []time.Duration{0, -5 * time.Second} {
+		if err := nativeops.TimeSleep(context.Background(), d); err != nil {
+			t.Fatalf("TimeSleep(%v): %v", d, err)
+		}
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Millisecond {
+		t.Errorf("non-positive TimeSleep took %v, want immediate", elapsed)
+	}
+}
+
+func TestTimeSleepInterruptedByContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+	start := time.Now()
+	err := nativeops.TimeSleep(ctx, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected a context error when cancelled mid-sleep")
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Errorf("TimeSleep did not stop promptly on cancel: waited %v", elapsed)
 	}
 }

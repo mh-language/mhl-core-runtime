@@ -29,7 +29,7 @@ var spawnFieldItems = []completionItem{
 }
 
 var loopPipelineExtraPropertyItems = []completionItem{
-	propertyItem("repeat", "{ stop_when, max_iterations }"),
+	propertyItem("repeat", "{ stop_when, max_iterations } — the `max <N>` header clause is shorthand for just max_iterations"),
 }
 
 // checkpointFieldItems mirrors runtime.checkpointFromExpr's field switch.

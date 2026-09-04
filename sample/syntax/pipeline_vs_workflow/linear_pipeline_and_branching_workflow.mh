@@ -7,7 +7,10 @@
 //               sequence is an explicitly branching state machine.
 //
 // Both take the optional `loop` prefix (`loop pipeline` / `loop workflow`)
-// and the same `repeat: { stop_when, max_iterations }` policy.
+// and the same `repeat: { stop_when, max_iterations }` policy. A `max <N>`
+// header clause — `loop workflow Refine max 3 { ... }` — is shorthand for
+// `repeat: { max_iterations: N }` when a fixed iteration ceiling is all the
+// loop needs; writing both is a lint error (the `repeat` block wins).
 //
 // A `step` (or a `parallel` group) may carry a `timeout <duration>` header
 // clause: the runtime caps that step's wall-clock at the given duration and
@@ -39,10 +42,18 @@ workflow ReviewLoop {
     }
 
     step Gate {
-        if (!approved) {
-            goto Review          // backward jump — only legal in a `workflow`
-        }
+        if (!approved) goto Review          // backward jump — only legal in a `workflow`
         log.info("change ${change_id} approved")
+    }
+}
+
+// `max <N>` header clause: a fixed-ceiling loop with no stop condition.
+// Equivalent to `loop workflow Refine { repeat: { max_iterations: 3 } }`.
+loop workflow Refine max 3 {
+    input draft: string
+
+    step Improve {
+        log.info("refining ${draft}")
     }
 }
 
