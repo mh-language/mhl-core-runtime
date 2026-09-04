@@ -458,7 +458,7 @@ var nativeSymbols = []symbol{
 	{Name: "http", Kind: symNative, Methods: []string{"get", "post", "put", "patch", "delete", "head", "options", "download"}},
 	{Name: "json", Kind: symNative, Methods: []string{"parse", "parse_lines", "stringify"}},
 	{Name: "log", Kind: symNative, Methods: []string{"info", "warn", "error"}},
-	{Name: "time", Kind: symNative, Methods: []string{"now", "parse", "format", "add", "diff", "compare"}},
+	{Name: "time", Kind: symNative, Methods: []string{"now", "parse", "format", "add", "diff", "compare", "sleep"}},
 	{Name: "uuid", Kind: symNative, Methods: []string{"v4", "v7"}},
 }
 

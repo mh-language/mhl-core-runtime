@@ -544,7 +544,7 @@ if (result.exit_code != 0) fail(result.stderr)</code></pre>
             <article><h3><code>json</code></h3><p><code>parse</code> · <code>parse_lines</code> · <code>stringify</code></p></article>
             <article><h3><code>http</code></h3><p><code>get</code> · <code>post</code> · <code>put</code> · <code>patch</code> · <code>delete</code> · <code>head</code> · <code>options</code> · <code>download</code></p><p><code>(url:, headers:, query:, body:, text:, form:, timeout:, auth:, tls:, proxy:)</code></p></article>
             <article><h3><code>log</code></h3><p><code>info</code> · <code>warn</code> · <code>error</code></p></article>
-            <article><h3><code>time</code></h3><p><code>now()</code> · <code>parse(text, layout:)</code> · <code>format(value, layout:)</code></p><p><code>add(value, duration)</code> · <code>diff(a, b)</code> · <code>compare(a, b)</code></p></article>
+            <article><h3><code>time</code></h3><p><code>now()</code> · <code>parse(text, layout:)</code> · <code>format(value, layout:)</code></p><p><code>add(value, duration)</code> · <code>diff(a, b)</code> · <code>compare(a, b)</code> · <code>sleep(duration)</code></p></article>
           </div>
           <div class="tip-row"><span>SIGNATURES</span><p>Full parameter names, types, and return shapes for every native operation are in the <a href="Docs-Reference.dc.html#native">Standard Library</a>.</p></div>
           <pre class="code-block"><code class="language-mhl">var result = cmd.exec(["git", "status", "--short"], timeout: 30s)
@@ -741,6 +741,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
         if (status == "failed") break "build failed"
     }
 }</code></pre>
+          <div class="tip-row"><span>MAX CLAUSE</span><p>When a fixed iteration ceiling is the <em>whole</em> repeat policy — no <code>stop_when</code> — write it as a <code>max &lt;N&gt;</code> header clause instead of a one-field <code>repeat</code> block: <code>loop workflow Refine max 3 { … }</code> is exactly <code>repeat: { max_iterations: 3 }</code>. The word <code>max</code> is reserved only in that position (after the declaration name), so a pipeline may still be <em>named</em> <code>max</code>. Declaring both the clause and an explicit <code>repeat</code> <code>max_iterations</code> is a <code>mhl lint</code> error — the <code>repeat</code> block wins — and <code>max</code> without the leading <code>loop</code> keyword is flagged as inert.</p></div>
           <p class="block-label">CONCURRENT SUB-AGENTS IN A STEP</p>
           <pre class="code-block"><code class="language-mhl">pipeline Review {
     input diff: string

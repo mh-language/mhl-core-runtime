@@ -193,7 +193,12 @@ Key packages:
   `context.WithTimeout` on that one step's ctx; an expiry wraps `runtime.ErrStepTimeout` and
   flows through `saveCancelCheckpoint` (resume point written when checkpointing is on), i.e.
   it fails the step like `fail()` — per attempt, deadline never persisted.
-  `lint.checkPipelineStepTimeout` rejects a non-positive value.
+  `lint.checkPipelineStepTimeout` rejects a non-positive value. A `loop pipeline`/`loop
+  workflow` declaration may also carry a `max <N>` header clause (`ast.Pipeline.Max`,
+  `loop workflow Refine max 3 { ... }`) — pure sugar for `repeat { max_iterations: N }`,
+  projected onto `runtime.Pipeline.MaxIterations` in `PipelineFromAST` (an explicit
+  `repeat` block's `max_iterations` still wins). `lint.checkLoopMax` rejects a non-positive
+  value, use without the `loop` prefix, and use alongside `repeat { max_iterations }`.
 - **`internal/execsvc`** — `Run(Request) (*Result, error)`: the reusable "run a pipeline,
   get a structured result" entry point extracted from `cli.runPipeline`. `internal/cli`'s
   `run` and (later) the MCP/A2A server adapters call it. `Request.Context` carries the

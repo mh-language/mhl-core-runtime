@@ -1035,6 +1035,40 @@ func TestToolTimeCompareOrdering(t *testing.T) {
 	}
 }
 
+func TestToolTimeSleepBlocksForDuration(t *testing.T) {
+	start := time.Now()
+	out, err := run(t, wrapStep(`
+        time.sleep(60ms)
+        log("done")
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "done\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+	if elapsed := time.Since(start); elapsed < 50*time.Millisecond {
+		t.Errorf("step returned after %v, want >= ~60ms — time.sleep did not block", elapsed)
+	}
+}
+
+func TestToolTimeSleepRequiresDurationArgument(t *testing.T) {
+	_, err := run(t, wrapStep(`time.sleep("not a duration")`))
+	if err == nil || !strings.Contains(err.Error(), "time.sleep requires a duration") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestToolTimeSleepNonPositiveIsNoOp(t *testing.T) {
+	start := time.Now()
+	if _, err := run(t, wrapStep(`time.sleep(0s)`)); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("time.sleep(0s) took %v, want near-immediate", elapsed)
+	}
+}
+
 // --- native namespaces are reserved, not user-declarable ------------------
 
 func TestNativeNamespaceUnknownOperationErrors(t *testing.T) {

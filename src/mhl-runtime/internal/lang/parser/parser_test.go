@@ -731,6 +731,43 @@ func TestPipelineKindParses(t *testing.T) {
 	}
 }
 
+// TestPipelineMaxClauseParses covers the optional `max <N>` header clause on
+// a `loop pipeline` / `loop workflow` declaration (ast.Pipeline.Max) —
+// shorthand for `repeat { max_iterations: N }`.
+func TestPipelineMaxClauseParses(t *testing.T) {
+	cases := []struct {
+		src     string
+		wantMax string
+	}{
+		{"loop workflow Refine max 3 { step S { log(\"s\") } }", "3"},
+		{"loop pipeline P max 10 { step S { log(\"s\") } }", "10"},
+		{"loop workflow Refine { step S { log(\"s\") } }", ""},
+		{"workflow W { step S { log(\"s\") } }", ""},
+	}
+	for _, c := range cases {
+		prog, err := Parse(c.src)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", c.src, err)
+		}
+		if got := prog.Decls[0].Pipeline.Max; got != c.wantMax {
+			t.Errorf("Parse(%q): Max=%q, want %q", c.src, got, c.wantMax)
+		}
+	}
+}
+
+// A `loop workflow` may still be named `max` — the keyword is reserved only
+// in the header-clause position, after the name.
+func TestPipelineNamedMaxStillParses(t *testing.T) {
+	prog, err := Parse(`loop workflow max max 3 { step S { log("s") } }`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	p := prog.Decls[0].Pipeline
+	if p.Name != "max" || p.Max != "3" {
+		t.Fatalf("Name=%q Max=%q, want name %q with clause %q", p.Name, p.Max, "max", "3")
+	}
+}
+
 // TestImportKeywordRemoved confirms `import "..." as x` no longer parses —
 // cross-file composition is `import { ... } from "..."` only.
 func TestImportKeywordRemoved(t *testing.T) {

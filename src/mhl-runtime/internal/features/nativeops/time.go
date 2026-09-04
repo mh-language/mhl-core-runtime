@@ -1,6 +1,7 @@
 package nativeops
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -57,6 +58,28 @@ func TimeAdd(value string, d time.Duration) (string, error) {
 		return "", fmt.Errorf("time.add %q: %w", value, err)
 	}
 	return t.Add(d).UTC().Format(time.RFC3339), nil
+}
+
+// TimeSleep blocks for d, then returns nil — the deliberate-delay primitive
+// (polling backoff, rate-pacing a loop, spacing retries). It is
+// cancellation-aware: if ctx is cancelled first — a run-level cancel, or the
+// enclosing step's `timeout` firing — it stops waiting immediately and
+// returns ctx.Err(), so the step fails like any other interrupted blocking
+// call rather than the sleep swallowing the signal. A non-positive d is a
+// no-op (mhl duration literals are always unsigned; a computed value can
+// still be zero or negative).
+func TimeSleep(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // TimeDiff returns the number of seconds between a and b (a minus b), both

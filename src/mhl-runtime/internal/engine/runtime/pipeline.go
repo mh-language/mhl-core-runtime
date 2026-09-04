@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
@@ -88,11 +89,14 @@ type Pipeline struct {
 	// clause is declared anywhere (a missing key reads back as 0, i.e. no
 	// cap). Runner.Run wraps that step's / group's context with
 	// context.WithTimeout; an expiry fails it like an explicit fail().
-	StepTimeouts  map[string]time.Duration
-	Checkpoint    CheckpointConfig
-	Spawn         SpawnConfig
-	Loop          bool
-	StopWhen      *ast.Expr
+	StepTimeouts map[string]time.Duration
+	Checkpoint   CheckpointConfig
+	Spawn        SpawnConfig
+	Loop         bool
+	StopWhen     *ast.Expr
+	// MaxIterations is the loop's hard iteration ceiling, from either the
+	// `max <N>` header clause or a `repeat { max_iterations: N }` block (the
+	// block wins if both are written — a lint finding). Zero means no ceiling.
 	MaxIterations int
 	// InstanceID is not derived from the AST at all — PipelineFromAST never
 	// sets it. It's a runtime-only field LoopRunner.Run fills in (resolved
@@ -135,6 +139,14 @@ type PipelineInputSpec struct {
 // block leaves a pipeline resumable rather than un-resumable.
 func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 	out := Pipeline{Name: p.Name, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
+	// `max <N>` header clause — shorthand for `repeat { max_iterations: N }`.
+	// Read first so an explicit `repeat` block below still wins (both being
+	// set is a lint finding); a non-positive / non-integer value is ignored
+	// here, the same best-effort handling the `timeout` clause gets, with
+	// lint.checkLoopMax reporting it.
+	if n, err := strconv.Atoi(p.Max); err == nil && n > 0 {
+		out.MaxIterations = n
+	}
 	for _, m := range p.Body {
 		switch {
 		case m.Step != nil:
@@ -155,7 +167,14 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 		case m.Prop != nil && m.Prop.Name == "spawn":
 			out.Spawn = spawnConfigFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "repeat":
-			out.StopWhen, out.MaxIterations = repeatConfigFromExpr(m.Prop.Value)
+			var mi int
+			out.StopWhen, mi = repeatConfigFromExpr(m.Prop.Value)
+			// Only override the `max <N>` header clause when the block
+			// actually carries a max_iterations — otherwise a `repeat` block
+			// with just a stop_when would silently reset the ceiling to 0.
+			if mi > 0 {
+				out.MaxIterations = mi
+			}
 		case m.Prop != nil && m.Prop.Name == "context":
 			out.Context = contextConfigFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "description":

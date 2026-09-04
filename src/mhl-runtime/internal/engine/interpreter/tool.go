@@ -364,6 +364,15 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, fmt.Errorf("time.add requires a duration as its second argument")
 		}
 		return nativeops.TimeAdd(value, d)
+	case "time.sleep":
+		d, ok := args.durationNamedOrAt("duration", 0)
+		if !ok {
+			return nil, fmt.Errorf("time.sleep requires a duration as its first argument (e.g. 500ms, 2s)")
+		}
+		if err := nativeops.TimeSleep(goctxOf(ctx), d); err != nil {
+			return nil, err
+		}
+		return nil, nil
 	case "time.diff":
 		a, ok := args.stringAt(0)
 		if !ok {
