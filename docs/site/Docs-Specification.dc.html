@@ -149,10 +149,10 @@ html { scroll-behavior:smooth; }
 <h2>4. Syntactic grammar</h2>
 <p>The following is a compact grammar. The complete behavior of each production is specified in the subsequent clauses.</p>
 <pre class="grammar-block">program        ::= declaration*
-declaration    ::= ["export"] (use | agent | prompt | memory | tool | extension
+declaration    ::= ["export"] (import | agent | prompt | memory | tool | extension
                     | pipeline | workflow | type | enum | test)
-use            ::= "use" "{" use-item ("," use-item)* "}" "from" String
-use-item       ::= Identifier ["as" Identifier]
+import         ::= "import" "{" import-item ("," import-item)* "}" "from" String
+import-item    ::= Identifier ["as" Identifier]
 type-alias     ::= "type" Identifier "=" type
 type           ::= Identifier array-suffix* | object-shape array-suffix*
 object-shape   ::= "{" [shape-field (","? shape-field)* ","?] "}"
@@ -355,7 +355,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <div class="tip-row"><strong>Immutability and mutation</strong>Collection transforms, concatenation, and slices return new arrays. Plain indexed assignment such as <code>items[0] = value</code> and object-field assignment mutate the addressed collection.</div>
 </section>
 
-<section class="feature doc-section" id="native">
+<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7">
 <h2>11. Native operations</h2>
 <p>Native namespaces are reserved and can be called from pipeline statements, tool methods, hooks, and other expression positions. They execute host effects and therefore MUST be treated as privileged operations.</p>
 <h3>11.1 Command execution: <code>cmd</code></h3>
@@ -395,6 +395,8 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">log.info(...values: any) → null</td><td>Writes an <code>[INFO]</code> line.</td></tr><tr><td class="signature">log.warn(...values: any) → null</td><td>Writes a <code>[WARN]</code> line.</td></tr><tr><td class="signature">log.error(...values: any) → null</td><td>Writes an <code>[ERROR]</code> line; it does not raise or change exit status.</td></tr></tbody></table>
 <h3>11.7 Time: <code>time</code></h3>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">time.now() → string</td><td>Current instant as RFC3339 UTC.</td></tr><tr><td class="signature">time.parse(text: string, layout?: string) → string</td><td>Parses and normalizes to RFC3339 UTC; default input layout is RFC3339.</td></tr><tr><td class="signature">time.format(value: string, layout?: string) → string</td><td>Formats an RFC3339 value using a Go layout or tokens such as <code>dd/MM/yyyy</code>.</td></tr><tr><td class="signature">time.add(value: string, duration: duration) → string</td><td>Adds a duration and returns RFC3339 UTC.</td></tr><tr><td class="signature">time.diff(a: string, b: string) → number</td><td>Returns seconds in <code>a - b</code>.</td></tr><tr><td class="signature">time.compare(a: string, b: string) → number</td><td>Returns -1, 0, or 1 for temporal ordering.</td></tr><tr><td class="signature">time.sleep(duration: duration) → null</td><td>Blocks for <code>duration</code> (e.g. <code>500ms</code>, <code>2s</code>). Cancellation-aware — a run-level cancel or the step's <code>timeout</code> firing interrupts it and fails the step; a non-positive value is a no-op.</td></tr></tbody></table>
+<h3>11.8 Identifiers: <code>uuid</code></h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">uuid.v4() → string</td><td>Random (version 4) UUID as a canonical 36-character lower-case string. An entropy failure raises.</td></tr><tr><td class="signature">uuid.v7() → string</td><td>Time-ordered (version 7) UUID — a 48-bit millisecond timestamp followed by random bits — as a canonical 36-character lower-case string. Values sort in creation order. An entropy failure raises.</td></tr></tbody></table>
 </section>
 
 <section class="feature doc-section" id="agents">
@@ -429,9 +431,20 @@ agent LocalModel {
 <section class="feature doc-section" id="memory">
 <h2>13. Memory and state</h2>
 <h3>13.1 Named memory declarations</h3>
-<pre class="code-block"><code class="language-mhl">memory Session { type: "json", path: ".mhl/session.json" }
-memory Audit { type: "append_log", path: ".mhl/audit.log" }
-memory Events { type: "jsonl", path: ".mhl/events.jsonl" }
+<pre class="code-block"><code class="language-mhl">memory Session {
+    type: "json"
+    path: ".mhl/session.json"
+}
+
+memory Audit {
+    type: "append_log"
+    path: ".mhl/audit.log"
+}
+
+memory Events {
+    type: "jsonl"
+    path: ".mhl/events.jsonl"
+}
 
 Session.set("attempt", 1)
 var attempt = Session.get("attempt", 0)
@@ -447,11 +460,11 @@ Events.append({event: "started", at: time.now()})</code></pre>
 <table><thead><tr><th>Memory signature</th><th>Returns and behavior</th></tr></thead><tbody>
 <tr><td class="signature">set(key: string, value: any) → any</td><td>Stores and returns <code>value</code>. JSON memory also accepts <code>set(values: object) → object</code> as a bulk form.</td></tr>
 <tr><td class="signature">get(key: string, default?: any) → any</td><td>Returns the value or the supplied default; absent values otherwise yield null. JSON and KV keys support <code>::</code> navigation.</td></tr>
-<tr><td class="signature">remove(key: string) → any</td><td>Supported by JSON memory; removes a top-level or nested key and reports whether it existed.</td></tr>
+<tr><td class="signature">remove(key: string) → bool</td><td>Supported by JSON memory; removes a top-level or <code>::</code>-nested key and reports whether it existed. <em>Current profile:</em> the interpreter implements it, but <code>mhl lint</code> does not yet list it among the JSON methods and reports it as an unknown method.</td></tr>
 <tr><td class="signature">append(text: string) → string</td><td>Append-log operation. Writes one line and returns the text.</td></tr>
 <tr><td class="signature">append(value: any) → any</td><td>JSONL operation. Writes <code>{value, ts}</code> and returns the original value.</td></tr>
 </tbody></table>
-<p>Memory methods are positional. JSON memory keys MAY navigate nested objects or arrays with <code>::</code>, for example <code>Session.get("config::retries", 3)</code>. A missing key returns the default when supplied, otherwise null. Path-backed memory interpolates its path, so use <code>context.session_id</code> to isolate concurrent runs.</p>
+<p>A declaration body separates its properties by line breaks, not commas — <code>type:</code> and <code>path:</code> are properties of the <code>memory</code> declaration, not fields of an object literal. Memory methods are positional. JSON memory keys MAY navigate nested objects or arrays with <code>::</code>, for example <code>Session.get("config::retries", 3)</code>. A missing key returns the default when supplied, otherwise null. Path-backed memory interpolates its path, so use <code>context.session_id</code> to isolate concurrent runs.</p>
 <h3>13.2 Persistent pipeline variables</h3>
 <pre class="code-block"><code class="language-mhl">loop pipeline Poll {
     mem attempts = 0
@@ -527,12 +540,14 @@ Events.append({event: "started", at: time.now()})</code></pre>
         if (context.vars.keys().contains("build")) log(context.vars["build"])
     }
 }</code></pre>
-<p>A declared <code>context</code> exposes the read-only object <code>{session_id, started_at, resumed, principal, vars}</code>. <code>vars</code> is the previous completed run's final variable state; <code>principal</code> is the verified server caller identity when available and is not an authorization mechanism. Context access is absent when the pipeline does not declare the block.</p>
+<p>Every pipeline and workflow step MAY read the read-only object <code>context</code> = <code>{session_id, started_at, resumed, principal, vars}</code>; no declaration is required for <code>session_id</code>, <code>started_at</code>, <code>resumed</code>, or <code>principal</code>. <code>principal</code> is the verified server caller identity when available (otherwise the empty string) and is not an authorization mechanism. The <code>context: {source, require}</code> block governs <code>vars</code> only — the previous completed run's final variable state. Without the block <code>vars</code> is the empty object; with it, <code>vars</code> stays empty until a run of that pipeline has completed once, so a program SHOULD guard with <code>context.vars.keys().contains(...)</code>.</p>
 <h3>15.4 Parallel groups and spawned agents</h3>
 <pre class="code-block"><code class="language-mhl">pipeline Review {
     input diff: string
     input changed_files: string[]
     spawn: {max_concurrency: 4}
+    var docs = ""
+    var issues = ""
     step Analyze {
         spawn code = Code.run(prompt: diff)
         spawn security = Security.run(prompt: diff)
@@ -591,9 +606,10 @@ Events.append({event: "started", at: time.now()})</code></pre>
 <h3>17.2 Serving workflows</h3>
 <p><code>mhl serve mcp</code> publishes one MCP tool per pipeline/workflow. Stdio uses newline-delimited JSON-RPC 2.0. HTTP defaults to <code>127.0.0.1:8711</code> and accepts one JSON-RPC message per <code>POST /mcp</code>. The A2A server defaults to <code>127.0.0.1:8710</code> and publishes <code>/.well-known/agent-card.json</code>.</p>
 <table><thead><tr><th>Async method</th><th>Purpose</th></tr></thead><tbody>
-<tr><td><code>run/start</code></td><td>Starts a long workflow and returns a run id immediately.</td></tr><tr><td><code>run/status</code></td><td>Returns state, current step, reached steps, final variables, errors, and resumability.</td></tr><tr><td><code>run/resume</code></td><td>Continues a failed checkpointed workflow, optionally merging new arguments such as an approval.</td></tr><tr><td><code>run/cancel</code></td><td>Cancels an active run.</td></tr><tr><td><code>run/list</code></td><td>Lists runs owned by the current session.</td></tr>
+<tr><td><code>run/start</code></td><td>Starts a long workflow and returns a run id immediately.</td></tr><tr><td><code>run/status</code></td><td>Returns state, current step, reached steps, final variables, errors, and resumability.</td></tr><tr><td><code>run/resume</code></td><td>Continues a failed checkpointed workflow, optionally merging new arguments such as an approval.</td></tr><tr><td><code>run/cancel</code></td><td>Cancels an active run.</td></tr><tr><td><code>run/list</code></td><td>Lists runs owned by the current caller.</td></tr><tr><td><code>run/logs</code></td><td>Returns the run's retained step and <code>log()</code> output, incrementally via a <code>since</code> cursor.</td></tr>
 </tbody></table>
-<p>HTTP serving supports <code>--token</code>, <code>--principal-header</code>, <code>--state-dir</code>, <code>--drain-timeout</code>, and <code>--max-concurrent-runs</code>. Operational endpoints include <code>/healthz</code>, <code>/readyz</code>, and <code>/metrics</code>.</p>
+<p>The <code>run/*</code> family is HTTP-only. Because a stock MCP client can call only <code>tools/call</code>, the HTTP <code>tools/list</code> also publishes six control tools — <code>mhl_run_start</code>, <code>mhl_run_status</code>, <code>mhl_run_resume</code>, <code>mhl_run_cancel</code>, <code>mhl_run_list</code>, <code>mhl_run_logs</code> — each a thin bridge onto the same-named method, returning the status object as <code>structuredContent</code>. Read-only detail is served as MCP resources: <code>mhl://workflow/&lt;name&gt;</code> (a manifest projected from the loaded pipeline) and <code>mhl://workflow/&lt;name&gt;/source</code> on both transports, plus the owner-gated <code>mhl://run/&lt;id&gt;/logs</code> and <code>mhl://run/&lt;id&gt;/result</code> over HTTP.</p>
+<p>HTTP serving supports <code>--token</code>, <code>--principal-header</code>, <code>--state-dir</code>, <code>--drain-timeout</code>, and <code>--max-concurrent-runs</code>. Operational endpoints include <code>/healthz</code>, <code>/readyz</code>, and <code>/metrics</code>. Each run is owned by its caller — the <code>--principal-header</code> principal when one is configured, otherwise the <code>Mcp-Session-Id</code> — and <code>run/status</code>, <code>run/resume</code>, <code>run/cancel</code>, <code>run/list</code>, and <code>run/logs</code> act only for that owner.</p>
 </section>
 
 <section class="feature doc-section" id="security">
@@ -614,7 +630,10 @@ Events.append({event: "started", at: time.now()})</code></pre>
 <section class="feature doc-section" id="annex-a">
 <h2>Annex A — Complete grammar summary</h2>
 <p>This annex collects the declaration and statement productions omitted from the compact expression grammar.</p>
-<pre class="grammar-block">agent          ::= "agent" Identifier "{" property* "}"
+<pre class="grammar-block">import         ::= "import" "{" import-item ("," import-item)* "}" "from" String
+import-item    ::= Identifier ["as" Identifier]
+enum           ::= "enum" Identifier "{" [Identifier (","? Identifier)* ","?] "}"
+agent          ::= "agent" Identifier "{" property* "}"
 prompt         ::= "prompt" Identifier "(" [parameter ("," parameter)*] ")"
                    ("from" String | "{" expression "}")
 memory         ::= "memory" Identifier "{" property* "}"
@@ -623,7 +642,8 @@ tool-method    ::= Identifier "(" [parameter ("," parameter)*] ")"
                    [":" type] "->" (expression | block)
 parameter      ::= Identifier [":" type] ["=" expression]
 extension      ::= "extension" Identifier Identifier "{" property* "}"
-pipeline       ::= ["loop"] ("pipeline" | "workflow") Identifier "{" pipeline-member* "}"
+pipeline       ::= ["loop"] ("pipeline" | "workflow") Identifier ["max" Number]
+                    "{" pipeline-member* "}"
 pipeline-member ::= input | const-declaration | var-declaration | mem-declaration
                    | parallel | step | property
 input          ::= "input" Identifier ":" type
@@ -644,7 +664,9 @@ return         ::= "return" [expression]
 break          ::= "break" [expression]
 goto           ::= "goto" Identifier
 test           ::= "test" Identifier "{" describe* "}"
-describe       ::= "describe" Identifier block</pre>
+describe       ::= "describe" Identifier block
+property       ::= Identifier ":" expression</pre>
+<p>A declaration body (<code>agent</code>, <code>memory</code>, <code>extension</code>, and the property members of a pipeline) is a sequence of <code>property</code> productions separated by line breaks. Commas separate the fields of an <em>object literal</em> — the value on the right of a property — never the properties of a declaration body itself.</p>
 <p>Implementations MAY expose richer diagnostic positions, syntax highlighting, completion, or generated schemas. Those facilities do not alter the source grammar.</p>
 </section>
 
@@ -680,7 +702,7 @@ loop workflow AuditLoop {
     step Inspect {
         attempts = attempts + 1
         var diff = Project.diff(repo)
-        var result = Reviewer.run(prompt: Audit(repo, diff))
+        var result = Reviewer.run(prompt: Audit(repo: repo, diff: diff))
         fs.write("audit.json", result)
         status = Outcome.Passed
     }

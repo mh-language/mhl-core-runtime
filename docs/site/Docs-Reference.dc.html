@@ -86,7 +86,7 @@ html { scroll-behavior:smooth; }
 
       <div class="content reference-content">
         <section class="ref-hero doc-section" id="overview" data-title="reference how to use legend status alpha">
-          <p class="eyebrow accent">MHL · SELF-CONTAINED REFERENCE · v1.0.0-alpha</p>
+          <p class="eyebrow accent">MHL · SELF-CONTAINED REFERENCE · v1.3.4-beta.3</p>
           <h1>The language, from literals to loops.</h1>
           <p class="lead">Everything you need to read and write an MHL program is on this page: practical grammar, behavior, commands, and complete examples. No explanation depends on internal project documents.</p>
           <div class="legend">
@@ -157,12 +157,12 @@ var job = {
     status: "pending"
     metadata: { priority: 1, owner: "platform" }
 }</code></pre>
-          <div class="tip-row"><span>NUMBERS &amp; DURATIONS</span><p>A number is digits with an optional single decimal point (<code>3</code>, <code>0.2</code>) — it carries no type suffix. A duration is an <em>integer</em> followed by a unit: <code>ms</code>, <code>s</code>, <code>m</code>, <code>h</code>, <code>d</code> (<code>45s</code>, <code>7d</code>). A digit run glued directly to letters that is not a valid duration (<code>10.0d</code>, <code>1e5</code>, <code>5days</code>) is a parse error, not a number followed by a name. A string literal is always a string — even when its content is exactly an operator, so <code>["a","b"].join("-")</code> is fine.</p></div>
+          <div class="tip-row"><span>NUMBERS &amp; DURATIONS</span><p>A number is digits with an optional single decimal point (<code>3</code>, <code>0.2</code>) — it carries no type suffix. A duration is an <em>integer</em> followed by a unit: <code>ms</code>, <code>s</code>, <code>m</code>, <code>h</code>, <code>d</code> (<code>45s</code>, <code>7d</code>). A digit run glued directly to letters that is not a valid duration (<code>10.0d</code>, <code>1e5</code>, <code>5days</code>) is a parse error, not a number followed by a name. A string literal is always a string — even when its content is exactly an operator, so <code>["a","b"].join("-")</code> is fine. <code>duration</code> is a literal form, <em>not</em> a declarable type: it is accepted only where an operation or a config field expects one (<code>timeout:</code>, <code>ttl:</code>, <code>time.add</code>, a step's <code>timeout</code> clause). Annotating a parameter <code>: duration</code> fails at run time with <em>unrecognized type</em>.</p></div>
 
           <p class="block-label">DECLARABLE TYPES</p>
           <div class="reference-table">
             <div class="table-row table-head"><span>Type</span><span>Example</span><span>Use</span></div>
-            <div class="table-row"><span>Primitives</span><code>string · number · bool · duration</code><span>Inputs, parameters, returns, and contracts.</span></div>
+            <div class="table-row"><span>Primitives</span><code>string · number · bool · any</code><span>Inputs, parameters, returns, and contracts. <code>int</code>/<code>integer</code>/<code>float</code> spell <code>number</code>; <code>boolean</code> spells <code>bool</code>.</span></div>
             <div class="table-row"><span>Arrays</span><code>string[] · number[][]</code><span>Add <code>[]</code> for each level.</span></div>
             <div class="table-row"><span>Objects</span><code>{id: number, name: string}</code><span>Structural shape with named fields.</span></div>
             <div class="table-row"><span>Composites</span><code>{id: number, tags: string[]}[]</code><span>Arrays of typed objects.</span></div>
@@ -204,14 +204,15 @@ pipeline Publish {
 }</code></pre>
 
           <p class="block-label">PRACTICAL GRAMMAR</p>
-          <pre class="grammar-block"><code>declaration  := [export] (use | agent | prompt | memory | tool | extension | pipeline | type | enum | test)
+          <pre class="grammar-block"><code>declaration  := [export] (import | agent | prompt | memory | tool | extension | pipeline | workflow | type | enum | test)
+import       := "import" "{" name ["as" alias] {"," name ["as" alias]} "}" "from" string
 extension    := "extension" kind identifier "{" {property} "}"   // kind is "mcp", "a2a" (built in), or an installed adapter's kind
 type-alias   := "type" identifier "=" type
 enum         := "enum" identifier "{" [identifier {"," identifier}] "}"
 variable     := "var" identifier "=" expression
 constant     := "const" identifier "=" expression   // single-assignment; reassigning is an error
 assignment   := lvalue ("=" | "+=") expression   // "+=" is sugar for `x = x + expr`
-property     := identifier ":" expression
+property     := identifier ":" expression                        // declaration-body properties are newline-separated, not comma-separated
 call         := expression "(" [argument {"," argument}] ")"
 array        := "[" [expression {"," expression}] "]"
 object       := "{" [key ":" expression {","? key ":" expression}] "}"
@@ -260,7 +261,7 @@ var field  = record?.[name] ?? null      // no `is_object(record)` guard needed<
             <article><h3>Array</h3><code>get_index()</code><code>index_of()</code><code>contains()</code><code>filter()</code><code>find()</code><code>sort_by()</code><code>map()</code><code>reduce()</code><code>any()</code><code>all()</code><code>append()</code><code>join()</code><code>unique()</code></article>
             <article><h3>Object</h3><code>keys()</code><code>values()</code><code>get()</code><p>Keys are returned in stable order. <code>get(key, default?)</code> never raises on a missing field.</p></article>
           </div>
-          <div class="tip-row"><span>SIGNATURES</span><p>Every method's parameters, types, and return value are in the <a href="Docs-Reference.dc.html#collections">Standard Library</a>.</p></div>
+          <div class="tip-row"><span>SIGNATURES</span><p>Every method's parameters, types, and return value are in the <a href="Docs-Specification.dc.html#stdlib">specification’s standard-library clause</a>.</p></div>
           <div class="tip-row"><span>RUNTIME TYPES</span><p><code>type_of(x)</code> returns a kind string (<code>"string"</code>, <code>"number"</code>, <code>"bool"</code>, <code>"array"</code>, <code>"object"</code>, <code>"null"</code>, …); <code>is_string</code>, <code>is_number</code>, <code>is_bool</code>, <code>is_array</code>, <code>is_object</code>, <code>is_null</code> are the per-kind predicates. Pair them with <code>?.</code> to branch on a dynamic field's shape.</p></div>
 
           <p class="block-label">DETERMINISTIC SELECTION EXAMPLE</p>
@@ -486,12 +487,12 @@ Session.remove("owner")
 Audit.append("pipeline started")</code></pre>
           <div class="reference-table">
             <div class="table-row table-head"><span>Type</span><span>Configuration</span><span>Operations</span></div>
-            <div class="table-row"><span>In-memory KV</span><code>{type: "kv", store: "memory"}</code><span><code>set</code>, <code>get</code>, <code>remove</code>; lasts one execution.</span></div>
-            <div class="table-row"><span>JSON</span><code>{type: "json", path: "state.json"}</code><span><code>set</code>, <code>get</code>, <code>remove</code>; persists to disk.</span></div>
-            <div class="table-row"><span>Text log</span><code>{type: "append_log", path: "audit.log"}</code><span><code>append</code>; one line per call.</span></div>
-            <div class="table-row"><span>JSONL</span><code>{type: "append_jsonl", path: "events.jsonl"}</code><span><code>append</code>; one JSON object per line.</span></div>
+            <div class="table-row"><span>In-memory KV</span><code>type: "kv" · store: "memory"</code><span><code>set</code>, <code>get</code>; lasts one execution. No <code>remove</code>.</span></div>
+            <div class="table-row"><span>JSON</span><code>type: "json" · path: "state.json"</code><span><code>set</code>, <code>get</code>, <code>remove</code>; persists to disk.</span></div>
+            <div class="table-row"><span>Text log</span><code>type: "append_log" · path: "audit.log"</code><span><code>append</code>; one text line per call.</span></div>
+            <div class="table-row"><span>JSONL</span><code>type: "jsonl" · path: "events.jsonl"</code><span><code>append</code>; writes <code>{value, ts}</code> as one JSON line.</span></div>
           </div>
-          <div class="tip-row"><span>PATHS</span><p>A store's <code>path:</code> is interpolated for <code>${...}</code> spans the same way an agent's <code>log:</code> path is — <code>path: ".mhl/state.${context.session_id}.json"</code> gives every run (and every <code>--session</code>) its own file, so concurrent runs never share a store. <code>context.session_id</code> and the other run-metadata fields are available with no <code>context:</code> block, exactly like in <code>log:</code>. Within JSON memory, <code>Session.get("config::retry")</code> navigates nested objects and <code>remove("config::retry")</code> removes only that field.</p></div>
+          <div class="tip-row"><span>PATHS</span><p>A store's <code>path:</code> is interpolated for <code>${...}</code> spans the same way an agent's <code>log:</code> path is — <code>path: ".mhl/state.${context.session_id}.json"</code> gives every run (and every <code>--session</code>) its own file, so concurrent runs never share a store. <code>context.session_id</code> and the other run-metadata fields are available with no <code>context:</code> block, exactly like in <code>log:</code>. Within JSON memory, <code>Session.get("config::retry")</code> navigates nested objects and <code>remove("config::retry")</code> removes only that field. <strong>Current profile:</strong> <code>remove</code> executes correctly under <code>mhl run</code>, but <code>mhl lint</code> does not yet list it among the JSON methods and reports <em>json memory has no method "remove"</em>. Until lint catches up, treat a <code>remove</code> finding as a false positive.</p></div>
 
           <p class="block-label">PERSISTENT PIPELINE VARIABLE</p>
           <pre class="code-block"><code class="language-mhl">loop pipeline Poll {
@@ -516,7 +517,7 @@ Audit.append("pipeline started")</code></pre>
           </ul>
         </section>
 
-        <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs http json log return types">
+        <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs http json log time uuid v4 v7 return types">
           <div class="feature-head"><h2><span class="feature-num">08</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">A tool creates a small, reusable API over native operations. Methods take positional arguments, may declare types, and use either an expression body or a statement block.</p>
           <div class="tip-row"><span>DEFAULT ARGUMENTS</span><p>A method or lambda parameter may end with <code>= expression</code> — <code>write(path: string, mode: string = "0644")</code> — supplying a value when the caller omits that argument. Positional parameters bind left to right, so a default may read an earlier parameter (<code>close: string = open</code>) but a non-defaulted parameter may not follow a defaulted one (<code>mhl lint</code> flags it). Each default is evaluated in the callee's own scope, once per call that omits it.</p></div>
@@ -542,11 +543,12 @@ if (result.exit_code != 0) fail(result.stderr)</code></pre>
             <article><h3><code>fs</code></h3><p><code>read</code> · <code>exists</code> · <code>write</code> · <code>append</code></p><p><code>delete</code> · <code>join</code> · <code>list</code></p></article>
             <article><h3><code>git</code></h3><p><code>diff</code> · <code>add</code> · <code>commit</code> · <code>status</code></p><p><code>rev_parse</code> · <code>log</code></p></article>
             <article><h3><code>json</code></h3><p><code>parse</code> · <code>parse_lines</code> · <code>stringify</code></p></article>
-            <article><h3><code>http</code></h3><p><code>get</code> · <code>post</code> · <code>put</code> · <code>patch</code> · <code>delete</code> · <code>head</code> · <code>options</code> · <code>download</code></p><p><code>(url:, headers:, query:, body:, text:, form:, timeout:, auth:, tls:, proxy:)</code></p></article>
+            <article><h3><code>http</code></h3><p><code>get</code> · <code>post</code> · <code>put</code> · <code>patch</code> · <code>delete</code> · <code>head</code> · <code>options</code> · <code>download</code></p><p><code>(url:, headers:, query:, body:, text:, form:, timeout:, follow_redirects:, raise_for_status:, auth:, tls:, proxy:)</code></p></article>
             <article><h3><code>log</code></h3><p><code>info</code> · <code>warn</code> · <code>error</code></p></article>
             <article><h3><code>time</code></h3><p><code>now()</code> · <code>parse(text, layout:)</code> · <code>format(value, layout:)</code></p><p><code>add(value, duration)</code> · <code>diff(a, b)</code> · <code>compare(a, b)</code> · <code>sleep(duration)</code></p></article>
+            <article><h3><code>uuid</code></h3><p><code>v4()</code> · <code>v7()</code></p><p>Canonical 36-character lower-case UUIDs; <code>v7</code> is time-ordered, so its values sort in creation order.</p></article>
           </div>
-          <div class="tip-row"><span>SIGNATURES</span><p>Full parameter names, types, and return shapes for every native operation are in the <a href="Docs-Reference.dc.html#native">Standard Library</a>.</p></div>
+          <div class="tip-row"><span>SIGNATURES</span><p>Full parameter names, types, and return shapes for every native operation are in the <a href="Docs-Specification.dc.html#native">specification’s native-operations clause</a>.</p></div>
           <pre class="code-block"><code class="language-mhl">var result = cmd.exec(["git", "status", "--short"], timeout: 30s)
 var response = http.post(
     url: "https://api.example.com/jobs",
@@ -851,11 +853,12 @@ test normalize_examples {
             <div class="cli-command"><code>mhl init</code><span>scaffold an immediately-runnable main.mh (never overwrites)</span></div>
             <div class="cli-command"><code>mhl run flow.mh</code><span>run the declared pipeline</span></div>
             <div class="cli-command"><code>mhl run flow.mh --input key=value</code><span>supply typed inputs</span></div>
-            <div class="cli-command"><code>mhl run flow.mh --resume</code><span>resume a checkpoint</span></div>
+            <div class="cli-command"><code>mhl run flow.mh --resume</code><span>resume the most recent session's checkpoint</span></div>
+            <div class="cli-command"><code>mhl run flow.mh --session &lt;id&gt;</code><span>pin an exact session directory (combine with <code>--resume</code>)</span></div>
             <div class="cli-command"><code>mhl test file.mh</code><span>run assertions</span></div>
             <div class="cli-command"><code>mhl test directory/</code><span>discover tests recursively</span></div>
             <div class="cli-command"><code>mhl lint .</code><span>validate syntax, types, and references</span></div>
-            <div class="cli-command"><code>mhl lsp</code><span>start the language server</span></div>
+            <div class="cli-command"><code>mhl lsp</code><span>start the language server over stdio (used by the VS&nbsp;Code extension)</span></div>
             <div class="cli-command"><code>mhl serve mcp dir/</code><span>serve every workflow under <code>dir/</code> as an MCP tool (stdio) — <a href="Docs-Servers.dc.html">serving workflows</a></span></div>
             <div class="cli-command"><code>mhl serve mcp --http dir/</code><span>the same over Streamable HTTP, plus async <code>run/*</code> — <a href="Docs-Servers.dc.html#mcp-http">serving workflows</a></span></div>
             <div class="cli-command"><code>mhl serve a2a dir/</code><span>serve them as Agent2Agent skills over HTTP — <a href="Docs-Servers.dc.html#a2a">serving workflows</a></span></div>
@@ -868,6 +871,7 @@ test normalize_examples {
             <div class="cli-command"><code>mhl extension doctor</code><span>validate manifests and hashes</span></div>
           </div>
           <div class="tip-row"><span>EXTENSIONS</span><p>This reference covers how to declare and <em>call</em> <code>extension mcp</code> / <code>extension a2a</code> (§10, §11). The <a href="Docs-Extensions.dc.html">extension guide</a> covers external adapters and their JSON-RPC contract.</p></div>
+          <div class="tip-row"><span>EDITOR</span><p><code>mhl lsp</code> speaks LSP over stdin/stdout. It advertises three capabilities, all backed by the same static analysis <code>mhl lint</code> runs: <strong>diagnostics</strong> (published on open and on every change), <strong>completion</strong> (trigger character <code>.</code> — declaration keywords, the names declared in the file, the properties valid in the enclosing block, the type vocabulary in a <code>: type</code> position, and, after a <code>.</code>, that receiver's methods with their signature in the item detail), and <strong>signature help</strong> (trigger <code>(</code> and <code>,</code>), plus <strong>go-to-definition</strong>. There is no hover, formatting, rename, or workspace-symbol support yet. The VS&nbsp;Code extension in <code>vscode-mhl/</code> is a thin <code>vscode-languageclient</code> wrapper around it — set <code>mhl.serverPath</code> if <code>mhl</code> is not on <code>PATH</code>, and use <em>MHL: Restart Language Server</em> after rebuilding the binary.</p></div>
           <div class="tip-row"><span>SERVE</span><p>The other direction — exposing your own workflows as MCP tools or A2A skills with <code>mhl serve</code>, including the async <code>run/*</code> methods, <code>run/resume</code> for human-in-the-loop, per-session ownership, and <code>--state-dir</code> — has its own page: <a href="Docs-Servers.dc.html">serving workflows</a>.</p></div>
 
           <p class="block-label">OPERATIONAL CHECKLIST</p>
@@ -884,9 +888,11 @@ test normalize_examples {
         </div>
 
       <nav style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:24px;padding-top:28px;border-top:1px solid var(--line)">
+        <a href="index.html" style="display:grid;gap:5px;border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--panel);color:var(--ink)">
           <span data-pt="← Anterior" style="color:var(--muted);font:12px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase">← Previous</span>
           <strong data-pt="Início" style="font-size:16.5px">Home</strong>
         </a>
+        <a href="Docs-Extensions.dc.html" style="display:grid;gap:5px;justify-items:end;text-align:right;border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--panel);color:var(--ink)">
           <span data-pt="Próximo →" style="color:var(--muted);font:12px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase">Next →</span>
           <strong data-pt="Extensões" style="font-size:16.5px">Extensions</strong>
         </a>

@@ -108,7 +108,7 @@ body { font-size:17.5px; line-height:1.65; }
 .feature-num { font-size:14px; }
 .status, .legend-item { font-size:12.5px; }
 .tip-row p, .callout, .callout strong, .gap-box strong, .gap-box .plain-list li { font-size:15px; }
-.tip-row span, .callout span, .security-banner strong { font-size:12.5px; }
+.tip-row span, .callout span { font-size:12.5px; }
 .info-card p, .concept-note p, .variation p, .principle-card p, .example-steps p, .quick-index span { font-size:15px; line-height:1.6; }
 .info-card h3, .concept-note b, .variation h4, .principle-card h3, .feature-card h3 { font-size:16.5px; }
 .inline-code, .inline-code code, .cli-command, .cli-command code, .native-list span, .muted { font-size:14px; }
@@ -129,3 +129,16 @@ body { font-size:17.5px; line-height:1.65; }
 /* --- single source of vertical rhythm for sections carrying both classes --- */
 .content .feature.doc-section { margin-bottom:0; padding-top:56px; padding-bottom:56px; }
 .content .feature.doc-section:first-of-type { padding-top:0; }
+
+/* --- callout badge: a flex item with a fixed box must not be allowed to
+   shrink, or `border-radius:50%` renders it as a lopsided oval next to a
+   long paragraph. Matches the inline-styled banner on index.html. --- */
+.security-banner { align-items:flex-start; gap:14px; padding:18px 20px; }
+.security-banner > span {
+  flex:0 0 auto;
+  width:24px; height:24px;
+  font-size:15px; line-height:1;
+}
+.security-banner > div { display:grid; gap:5px; min-width:0; }
+.security-banner strong { font-size:16px; }
+.security-banner p { font-size:15px; line-height:1.6; margin:0; }

@@ -203,9 +203,9 @@
           style="position:absolute;inset:0;background-image:linear-gradient(color-mix(in srgb,var(--code-line) 60%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--code-line) 60%,transparent) 1px,transparent 1px);background-size:64px 64px;mask-image:radial-gradient(120% 90% at 50% 0%,#000 10%,transparent 70%);opacity:.7">
         </div>
         <div style="position:relative;max-width:1180px;margin:0 auto;display:grid;gap:26px;justify-items:start">
-          <p data-pt="LINGUAGEM META-HARNESS · v1.3.2-beta.3"
+          <p data-pt="LINGUAGEM META-HARNESS · v1.3.4-beta.3"
             style="margin:0;color:var(--accent);font:500 13.5px 'DM Mono',monospace;letter-spacing:.16em">META-HARNESS
-            LANGUAGE · v1.3.2-beta.3</p>
+            LANGUAGE · v1.3.4-beta.3</p>
           <h1
             style="margin:0;max-width:15ch;font-size:clamp(44px,7.4vw,92px);line-height:.98;letter-spacing:-.055em;font-weight:800;text-wrap:balance">
             <span data-pt="Workflows de IA que você">AI workflows you can</span>
@@ -322,11 +322,11 @@ if "high" in risk.lower():   # parsing prose
     var risk = Reviewer.run(
         prompt: Triage(diff: diff)
     )
-    Audit.append({ risk: risk, at: now() })
+    Audit.append({ risk: risk, at: time.now() })
 }
 
 step Escalate {
-    if risk == "high" {
+    if (risk == "high") {
         Hooks.notify(risk: risk)
     }
 }</code></pre>
@@ -523,7 +523,7 @@ pipeline ReviewPullRequest {
               <div
                 style="padding:12px 16px;border-bottom:1px solid var(--code-line);color:var(--code-muted);font:12.5px 'DM Mono',monospace;letter-spacing:.1em">
                 TERMINAL</div>
-              <pre style="margin:0;padding:20px;color:var(--code-ink);font:14px/1.9 'DM Mono',monospace;overflow:auto"><code>$ mhl run review.mh --input diff=@patch.diff
+              <pre style="margin:0;padding:20px;color:var(--code-ink);font:14px/1.9 'DM Mono',monospace;overflow:auto"><code>$ mhl run review.mh --input diff="$(cat patch.diff)"
 
 ▸ step Classify   agent Reviewer   cache miss   1.84s
   ├ retry 0/2     tokens 1420 → 38
@@ -538,18 +538,22 @@ pipeline ReviewPullRequest {
                 style="position:relative;border-radius:14px;overflow:hidden;background:var(--code);border:1px solid var(--code-line)">
                 <button type="button" data-copy
                   style="position:absolute;top:10px;right:10px;z-index:1;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:5px 8px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
-                <pre style="margin:0;padding:20px;overflow:auto"><code data-mhl-code style="color:var(--code-ink);font:14.5px/1.8 'DM Mono',monospace">loop Refine max: 3 {
-    var review = Reviewer.run(prompt: Critique(draft: draft))
-    if review.score >= 0.9 { break }
-    draft = Editor.run(prompt: Revise(draft: draft, notes: review))
+                <pre style="margin:0;padding:20px;overflow:auto"><code data-mhl-code style="color:var(--code-ink);font:14.5px/1.8 'DM Mono',monospace">loop pipeline Refine max 3 {
+    mem draft = ""
+
+    step Improve {
+        var review = Reviewer.run(prompt: Critique(draft: draft))
+        if (json.parse(review).score &gt;= 0.9) break "good enough"
+        draft = Editor.run(prompt: Revise(draft: draft, notes: review))
+    }
 }</code></pre>
               </div>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
                 <div style="border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel)">
-                  <b data-pt="Limite obrigatório" style="display:block;font-size:14.5px;margin-bottom:5px">Bound
-                    required</b>
-                  <span data-pt="todo laço declara max — sem execução infinita."
-                    style="color:var(--muted);font-size:14.5px">every loop declares max — no runaway runs.</span>
+                  <b data-pt="Limite explícito" style="display:block;font-size:14.5px;margin-bottom:5px">Bounded
+                    on purpose</b>
+                  <span data-pt="max N (ou repeat { max_iterations }) fixa o teto de iterações; stop_when encerra antes."
+                    style="color:var(--muted);font-size:14.5px">max N (or repeat { max_iterations }) caps the iterations; stop_when ends it sooner.</span>
                 </div>
                 <div style="border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel)">
                   <b data-pt="Testes executáveis" style="display:block;font-size:14.5px;margin-bottom:5px">Executable
@@ -593,7 +597,7 @@ pipeline ReviewPullRequest {
                 <button type="button" data-copy
                   style="position:absolute;top:6px;right:6px;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
                 <pre
-                  style="margin:0;padding:12px 60px 12px 12px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>mhl serve mcp sample/serve</code></pre>
+                  style="margin:0;padding:12px 60px 12px 12px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>mhl serve mcp ./workflows</code></pre>
               </div>
             </article>
             <article
@@ -609,7 +613,7 @@ pipeline ReviewPullRequest {
                   style="position:absolute;top:6px;right:6px;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
                 <pre
                   style="margin:0;padding:12px 60px 12px 12px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>mhl serve mcp --http \
-  --addr 127.0.0.1:8711 sample/serve</code></pre>
+  --addr 127.0.0.1:8711 ./workflows</code></pre>
               </div>
             </article>
             <article
@@ -624,7 +628,7 @@ pipeline ReviewPullRequest {
                   style="position:absolute;top:6px;right:6px;border:1px solid var(--code-line);background:var(--code-2);color:var(--code-muted);border-radius:6px;padding:3px 7px;cursor:pointer;font:12.5px 'DM Mono',monospace">Copy</button>
                 <pre
                   style="margin:0;padding:12px 60px 12px 12px;border-radius:9px;background:var(--code);color:var(--code-ink);font:14px/1.6 'DM Mono',monospace;overflow:auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap"><code>mhl serve a2a \
-  --addr 127.0.0.1:8710 sample/serve</code></pre>
+  --addr 127.0.0.1:8710 ./workflows</code></pre>
               </div>
             </article>
           </div>

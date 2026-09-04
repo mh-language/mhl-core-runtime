@@ -87,7 +87,7 @@ html { scroll-behavior:smooth; }
 
       <div class="content reference-content serve-content">
         <section class="ref-hero serve-hero doc-section" id="intro" data-title="serve serving workflows mcp a2a server stdio http streamable expose tools skills mhl serve directory">
-          <p class="eyebrow accent">MHL · SERVING WORKFLOWS · v1.2.0-alpha</p>
+          <p class="eyebrow accent">MHL · SERVING WORKFLOWS · v1.3.4-beta.3</p>
           <h1>Turn a folder of workflows into a server.</h1>
           <p class="lead"><code>mhl serve</code> exposes every <code>pipeline</code>/<code>workflow</code> declared under a directory to another agent — as Model Context Protocol tools or Agent2Agent skills — without writing any server code. This page is the server side; calling <em>out</em> to someone else's MCP or A2A server is <a href="Docs-Reference.dc.html#mcp"><code>extension mcp</code></a> / <a href="Docs-Reference.dc.html#a2a"><code>extension a2a</code></a> in the reference.</p>
           <div class="quick-index">
@@ -112,15 +112,68 @@ html { scroll-behavior:smooth; }
 
         <section class="feature doc-section" id="quickstart" data-title="quickstart sample serve directory summarize triage report approval clone try example workflows">
           <div class="feature-head"><h2><span class="feature-num">02</span>Try it with the sample</h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">The repository's <code>sample/serve/</code> directory holds four self-contained workflows (no real LLM needed) used by every example on this page.</p>
+          <p class="feature-lede">Save these four self-contained workflows (no real LLM needed) into a <code>workflows/</code> directory — every example on this page serves that directory.</p>
           <div class="code-wrap">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
-            <pre class="code-block"><code>git clone https://github.com/mh-language/mhl-core-runtime
-cd mhl-core-runtime
+            <pre class="code-block"><code class="language-mhl">// workflows/summarize.mh
+agent Writer {
+    command: "echo"
+    args: ["${prompt}"]
+}
 
-mhl serve mcp sample/serve          # stdio
-mhl serve mcp --http sample/serve   # http://127.0.0.1:8711/mcp
-mhl serve a2a sample/serve          # http://127.0.0.1:8710/</code></pre>
+workflow Summarize {
+    description: "Summarize a topic in at most `max_words` words."
+    input topic: string
+    input max_words: number
+    var summary = ""
+    step Draft { summary = Writer.run(prompt: "Summarize ${topic} in ${max_words} words.") }
+}
+
+// workflows/triage.mh
+workflow Triage {
+    description: "Classify an incoming issue as normal or urgent."
+    input title: string
+    input body: string
+    var priority = "normal"
+    step Classify {
+        if (title.contains("outage") || body.contains("down")) priority = "urgent"
+    }
+}
+
+// workflows/report.mh — four ~1s steps, so run/status visibly advances
+workflow Report {
+    description: "Four-step report pipeline (gather, analyze, summarize, publish)."
+    input topic: string
+    var gathered = ""
+    var analysis = ""
+    var summary = ""
+    var published = ""
+    step Gather    { gathered = cmd.exec(["sh", "-c", "sleep 1; echo notes on ${topic}"]).stdout }
+    step Analyze   { analysis = cmd.exec(["sh", "-c", "sleep 1; echo analyzed"]).stdout + " " + gathered }
+    step Summarize { summary = cmd.exec(["sh", "-c", "sleep 1; echo summary of ${topic}"]).stdout }
+    step Publish   { published = "published: " + summary }
+}
+
+// workflows/approval.mh — the human-in-the-loop gate
+workflow Approval {
+    description: "Prepare, wait for human approval, then finish."
+    input request: string
+    input approved: string          // "no" on start, "yes" on resume
+    var summary = ""
+    step Prepare { summary = "ready to act on: " + request }
+    step Gate {
+        if (approved != "yes") pause("awaiting approval for: " + request)
+    }
+    step Act { summary = "acted on: " + request }
+}</code></pre>
+          </div>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code>mhl lint ./workflows
+
+mhl serve mcp ./workflows          # stdio
+mhl serve mcp --http ./workflows   # http://127.0.0.1:8711/mcp
+mhl serve a2a ./workflows          # http://127.0.0.1:8710/</code></pre>
           </div>
           <div class="reference-table">
             <div class="table-row table-head"><span>Workflow</span><span>Signature</span><span>Shows</span></div>
@@ -141,7 +194,7 @@ mhl serve a2a sample/serve          # http://127.0.0.1:8710/</code></pre>
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"Triage","arguments":{"title":"api outage","body":"everything is down"}}}' \
-| mhl serve mcp sample/serve</code></pre>
+| mhl serve mcp ./workflows</code></pre>
           </div>
           <div class="tip-row"><span>DUAL-ERA</span><p>Both protocol modes work on one connection: the <code>initialize</code> / <code>notifications/initialized</code> handshake (revisions <code>2025-11-25</code> / <code>2025-06-18</code> / <code>2025-03-26</code>), and the stateless <code>2026-07-28</code> form where every <code>tools/*</code> request carries <code>params._meta</code> with <code>io.modelcontextprotocol/protocolVersion</code> + <code>io.modelcontextprotocol/clientCapabilities</code> and <code>server/discover</code> replaces <code>initialize</code>. A stateless request missing that <code>_meta</code> is rejected with <code>-32602</code>.</p></div>
         </section>
@@ -163,7 +216,7 @@ mhl serve a2a sample/serve          # http://127.0.0.1:8710/</code></pre>
           <p class="block-label">Standard lifecycle — <code>initialize</code> returns an <code>Mcp-Session-Id</code> header the client echoes on every later request</p>
           <div class="code-wrap">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
-            <pre class="code-block"><code>mhl serve mcp --http --addr 127.0.0.1:8711 sample/serve &amp;
+            <pre class="code-block"><code>mhl serve mcp --http --addr 127.0.0.1:8711 ./workflows &amp;
 
 sid=$(curl -sD - -o /dev/null -X POST localhost:8711/mcp -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{}}}' \
@@ -297,7 +350,7 @@ curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-S
           <p class="block-label">Start the server, discover it, and send a task</p>
           <div class="code-wrap">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
-            <pre class="code-block"><code>mhl serve a2a --addr 127.0.0.1:8710 sample/serve &amp;
+            <pre class="code-block"><code>mhl serve a2a --addr 127.0.0.1:8710 ./workflows &amp;
 
 curl -s localhost:8710/.well-known/agent-card.json
 
@@ -328,7 +381,7 @@ claude mcp add --transport http mhl-local http://127.0.0.1:8711/mcp</code></pre>
   "mcpServers": {
     "mhl-workflows": {
       "command": "mhl",
-      "args": ["serve", "mcp", "/absolute/path/to/sample/serve"]
+      "args": ["serve", "mcp", "/absolute/path/to/workflows"]
     }
   }
 }</code></pre>
