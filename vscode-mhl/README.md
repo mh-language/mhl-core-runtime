@@ -1,5 +1,13 @@
 # MHL Language Support for VS Code
 
+**MHL** (Meta-Harness Language, `.mh`) is a declarative language for describing
+AI agent pipelines. A program declares the pieces — `agent`s, `tool`s, `memory`,
+`prompt`s, MCP servers, and typed data (`type` / `enum`) — and the `pipeline`s or
+`workflow`s that wire them together into an ordered run. It is executed by the
+`mhl` CLI (parser, interpreter, runtime, and language server), which can also
+expose those workflows over MCP or A2A. See
+[the language reference](https://mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html).
+
 Provides syntax highlighting, diagnostics, completion, signature help, and
 go-to-definition for `.mh` files. It also highlights MHL code blocks inside
 Markdown files when the fence is tagged as `mhl` or `mh`.
@@ -30,6 +38,14 @@ either symlink `src/mhl-runtime/dist/mhl` onto your `PATH`, or point the
 `mhl.serverPath` setting at it directly (`${workspaceFolder}` is expanded,
 e.g. `${workspaceFolder}/src/mhl-runtime/dist/mhl`). After changing it, run
 **MHL: Restart Language Server** from the command palette.
+
+## Installation
+
+The extension is published on the [Open VSX Registry](https://open-vsx.org/extension/local-mhl/mhl-language),
+so it installs directly from the Extensions view in editors that use Open VSX —
+VSCodium, Cursor, Windsurf, Gitpod, Eclipse Theia — by searching for
+**MHL Language Support**. It is not on the Visual Studio Marketplace; on
+stock VS Code, build the VSIX as described below.
 
 ## Local installation
 
