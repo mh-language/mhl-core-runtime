@@ -6,8 +6,8 @@
     "type": "git",
     "url": "https://github.com/mh-language/mhl-core-runtime.git"
   },
-  "version": "0.5.7",
-  "publisher": "yan-justino",
+  "version": "0.5.8",
+  "publisher": "mhl-language",
   "icon": "assets/mhl-logo-rebrand.png",
   "license": "MIT",
   "engines": {
