@@ -109,7 +109,7 @@ MHL_SQL_PG_TEST_DSN=postgres://… go test ./...   # + the live DQL test
 make up          # seeded Postgres on :5434
 make smoke       # build + up + end-to-end
 make down
-make dist        # dist/mhl-sql-postgres/ — metadata only (extension.json, declarations.json, README.md)
+make dist        # dist/mhl-sql-postgres/ — metadata only (extension.mh, README.md)
 make release     # dist/mhl-sql-postgres/ + bin/mhl-sql-postgres-<goos>-<goarch> x5, then dist/release/mhl-sql-postgres.tar.gz + SHA256SUMS
 ```
 

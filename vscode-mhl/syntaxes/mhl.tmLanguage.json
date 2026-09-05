@@ -43,6 +43,17 @@
     "comments": {
       "patterns": [
         {
+          "comment": "The one block-comment shape mhl recognizes: a leading `/** ... **/` header on an `extensible` declaration, read back as its kind-level documentation. Highlighted as a doc comment wherever it appears; the compiler only honors it at the very start of a file.",
+          "name": "comment.block.documentation.mhl",
+          "begin": "/\\*\\*",
+          "end": "\\*\\*/"
+        },
+        {
+          "comment": "A `///` doc-comment on an `extensible` property or method line — the rest of the line, recovered by the extension loader's own scan off the raw source. Not a distinct grammar token (the third `/` is just more comment text to the lexer), but worth its own scope so it reads as documentation rather than a plain code comment.",
+          "name": "comment.line.documentation.mhl",
+          "match": "///.*$"
+        },
+        {
           "name": "comment.line.double-slash.mhl",
           "match": "//.*$"
         }
@@ -52,7 +63,7 @@
       "patterns": [
         {
           "name": "storage.type.declaration.mhl",
-          "match": "\\b(from|import|as|export|extension|agent|memory|tool|loop|pipeline|workflow|prompt|parallel|step|timeout|input|test|describe|type|enum)\\b"
+          "match": "\\b(from|import|as|export|extension|extensible|agent|memory|tool|loop|pipeline|workflow|prompt|parallel|step|timeout|input|test|describe|type|enum)\\b"
         },
         {
           "comment": "`max <N>` header clause on a `loop pipeline` / `loop workflow` — matched only after the declaration name so it never lights up an ordinary identifier, `.max(` call, or `max:` key",
@@ -249,7 +260,7 @@
       "patterns": [
         {
           "name": "storage.type.mhl",
-          "match": "\\b(?:string|number|int|integer|float|bool|boolean|array|object|any|prompt)\\b"
+          "match": "\\b(?:string|number|int|integer|float|bool|boolean|array|object|any|prompt|void)\\b"
         },
         {
           "include": "#type-object-shape"
@@ -290,7 +301,16 @@
     "types": {
       "patterns": [
         {
-          "match": ":\\s*((?:string|number|int|integer|float|bool|boolean|array|object|any|prompt)\\b(?:\\[\\])*)",
+          "match": ":\\s*((?:string|number|int|integer|float|bool|boolean|array|object|any|prompt|void)\\b(?:\\[\\])*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.mhl"
+            }
+          }
+        },
+        {
+          "comment": "A bare `-> Type` return type, as on an `extensible` method signature (`get(key: string) -> any`) — distinguished from an ordinary `-> expr(...)` tool-method body by requiring the type word to run straight to end-of-line or a comment, since a real call is always followed by `(`.",
+          "match": "->[ \\t]*((?:string|number|int|integer|float|bool|boolean|array|object|any|prompt|void)\\b(?:\\[\\])*)(?=[ \\t]*(?://|$))",
           "captures": {
             "1": {
               "name": "storage.type.mhl"

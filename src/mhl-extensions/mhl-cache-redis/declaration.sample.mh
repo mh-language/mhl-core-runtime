@@ -1,0 +1,43 @@
+/**
+TTL-first key/value cache backed by Redis. Values are JSON-encoded strings;
+a declaration-level `ttl` is the default expiry for set() calls that do not
+name their own. Dependency-free RESP2 client. Not the `store` KV backend —
+this is a plain capability, not wired into `mhl serve`.
+**/
+extensible cache {
+    manifest: {
+        id: "dev.mhl.cache-redis",
+        version: "0.1.0",
+        api_version: "1",
+        executable: "bin/mhl-cache-redis",
+        permissions: {
+            network: ["*"],
+            secrets: []
+        }
+    }
+
+    properties: {
+        url: string /// redis://[user:pass@]host:port/db (rediss:// for TLS). Use env("REDIS_URL"). Fills addr/username/password/db/tls; wins over the discrete fields.
+        addr: string /// host:port (used when `url` is unset). Default localhost:6379.
+        username: string /// ACL username (Redis 6+). Use env(...).
+        password: string /// AUTH password. Use env("REDIS_PASSWORD"); the host resolves and redacts it.
+        db: number /// Logical database index (SELECT). Default 0.
+        tls: bool /// Connect over TLS (managed Redis: ElastiCache in-transit, Upstash, …). Implied by a rediss:// url.
+        tls_skip_verify: bool /// Skip TLS certificate verification (dev only).
+        ttl: string /// Default expiry for every set() without its own ttl: "30s" / "5m" / "1h" or a number of seconds. Unset = keys never expire.
+        key_prefix: string /// Namespace prepended to every key (stored, not stripped).
+        pool_size: number /// Number of connections to maintain in the connection pool. Default 10.
+        dial_timeout: string /// Connect timeout as a Go duration. Default 5s.
+        read_timeout: string /// Per-command read/write timeout as a Go duration. Default 3s.
+        log: string /// Optional path to append a JSON-lines wire trace (op + key, never values).
+    }
+
+    get(key: string) -> any /// The JSON-decoded value, or null when the key is absent.
+    set(key: string, value: any, ttl: number) -> void /// Store value (JSON). ttl overrides the declaration default: "30s"/"5m" or seconds.
+    delete(key: string) -> void /// Remove the key. Absent key is not an error.
+    has(key: string) -> bool /// Whether the key exists (EXISTS).
+    incr(key: string) -> number /// Atomically increment the integer at key by 1 and return it (INCR).
+    incrBy(key: string, n: number) -> number /// Atomically add n and return the new value (INCRBY).
+    expire(key: string, ttl: number) -> bool /// Set/refresh the key's expiry; false when the key does not exist.
+    ttl(key: string) -> number /// Remaining seconds: -1 = no expiry, -2 = missing key.
+}

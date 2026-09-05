@@ -154,6 +154,56 @@ func TestManifestDeclarationsFileWrappedForm(t *testing.T) {
 	}
 }
 
+func TestManifestDeclarationsFileMHLSidecar(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "crm.d.mh"), []byte(`[
+		{ kind: "crm", methods: [{ name: "lookup", signature: "lookup(id: string) -> object" }] }
+	]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := writeManifest(t, dir, `{
+		"id": "com.acme.crm",
+		"api_version": "1",
+		"executable": "bin/crm",
+		"declarations_file": "crm.d.mh"
+	}`)
+	m, err := LoadManifest(p)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if len(m.Declares) != 1 || len(m.Declares[0].Methods) != 1 || m.Declares[0].Methods[0].Name != "lookup" {
+		t.Fatalf("mhl sidecar declarations not loaded: %+v", m.Declares)
+	}
+}
+
+func TestManifestDeclarationsFileMHLWrappedForm(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "d.mh"), []byte(`{ declarations: [{ kind: "crm" }] }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := writeManifest(t, dir, `{
+		"id": "x", "api_version": "1", "executable": "bin/x",
+		"declarations_file": "d.mh"
+	}`)
+	if _, err := LoadManifest(p); err != nil {
+		t.Fatalf("wrapped { declarations: [...] } mhl form should load: %v", err)
+	}
+}
+
+func TestManifestDeclarationsFileMHLRejectsBadLiteral(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "d.mh"), []byte(`{ declarations: someIdent }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := writeManifest(t, dir, `{
+		"id": "x", "api_version": "1", "executable": "bin/x",
+		"declarations_file": "d.mh"
+	}`)
+	if _, err := LoadManifest(p); err == nil {
+		t.Fatal("expected an error for a non-literal declarations_file")
+	}
+}
+
 func TestManifestRejectsBothInlineAndFile(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.WriteFile(filepath.Join(dir, "d.json"), []byte(`[{ "kind": "crm" }]`), 0o644)

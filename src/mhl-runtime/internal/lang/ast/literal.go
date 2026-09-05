@@ -189,6 +189,69 @@ func DurationValue(e *Expr) (time.Duration, bool) {
 	return ParseDuration(p.Duration)
 }
 
+// LiteralValue reads e as a bare, fully-literal value tree — nil, bool,
+// float64, string, []any, or map[string]any — recursing into nested array
+// and object literals so the whole thing round-trips through
+// encoding/json. It exists for a caller that wants to treat an entire `.mh`
+// literal (e.g. an extension's declarations_file sidecar) as plain JSON-
+// shaped data rather than binding each field by hand the way the other
+// Bare*/*Value readers in this file do. A duration literal reads as its
+// original string form (e.g. "7d"), since callers of this function have no
+// separate "duration" case of their own. An Ident, Agent, Lambda, IfExpr, or
+// Match primary — none of them plain data — makes the whole read fail (ok
+// is false), same as any operator or trailer applied along the way.
+func LiteralValue(e *Expr) (any, bool) {
+	p := barePrimary(e)
+	if p == nil {
+		return nil, false
+	}
+	switch {
+	case p.Null:
+		return nil, true
+	case p.Bool != nil:
+		return *p.Bool == "true", true
+	case p.Str != nil:
+		return *p.Str, true
+	case p.MultiStr != nil:
+		return *p.MultiStr, true
+	case p.Number != nil:
+		return *p.Number, true
+	case p.Duration != "":
+		return p.Duration, true
+	case p.Array != nil:
+		values := make([]any, 0, len(p.Array.Items))
+		for _, item := range p.Array.Items {
+			v, ok := LiteralValue(item)
+			if !ok {
+				return nil, false
+			}
+			values = append(values, v)
+		}
+		return values, true
+	case p.Object != nil:
+		obj := make(map[string]any, len(p.Object.Fields))
+		for _, f := range p.Object.Fields {
+			var key string
+			switch {
+			case f.KeyStr != nil:
+				key = *f.KeyStr
+			case f.KeyIdent != nil:
+				key = *f.KeyIdent
+			default:
+				return nil, false
+			}
+			v, ok := LiteralValue(f.Value)
+			if !ok {
+				return nil, false
+			}
+			obj[key] = v
+		}
+		return obj, true
+	default:
+		return nil, false
+	}
+}
+
 // ParseDuration parses a MHL duration literal (e.g. "2s", "45s", "24h",
 // "7d"). Go's time.ParseDuration has no day unit, so days are handled
 // explicitly.

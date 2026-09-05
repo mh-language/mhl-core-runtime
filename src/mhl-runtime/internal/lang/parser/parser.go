@@ -3,6 +3,7 @@
 package parser
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/alecthomas/participle/v2"
@@ -61,12 +62,41 @@ func trimMultiline(t lexer.Token) (lexer.Token, error) {
 	return t, nil
 }
 
+// leadingDocBlockPattern matches an optional `/** ... **/` block at the very
+// start of a source file (only leading whitespace allowed before it) — the
+// one block-comment form mhl recognizes, reserved for a file-level doc
+// header on an `extensible` declaration (internal/extension/external reads
+// its text back off the raw source; see docBlockPattern there). mhl has no
+// general block-comment syntax, so Parse strips this one specific shape out
+// before lexing — blanking its characters to spaces while keeping every
+// newline, so every following line keeps its original line number — rather
+// than teach the shared lexer a token that would need eliding (or handling)
+// in every other grammar position it could otherwise appear in.
+var leadingDocBlockPattern = regexp.MustCompile(`(?s)\A\s*/\*\*.*?\*\*/`)
+
+// stripLeadingDocBlock blanks out a leading `/** ... **/` block, if present,
+// so mhlParser never sees it. A source with no such block is returned
+// unchanged.
+func stripLeadingDocBlock(source string) string {
+	loc := leadingDocBlockPattern.FindStringIndex(source)
+	if loc == nil {
+		return source
+	}
+	b := []byte(source[loc[0]:loc[1]])
+	for i, c := range b {
+		if c != '\n' {
+			b[i] = ' '
+		}
+	}
+	return source[:loc[0]] + string(b) + source[loc[1]:]
+}
+
 // Parse parses .mh source into a complete AST. On a syntactically valid
 // source it returns a *ast.Program with a nil error; on malformed input it
 // returns a nil program and a descriptive parse error (including position),
 // never a partial or best-effort AST.
 func Parse(source string) (*ast.Program, error) {
-	prog, err := mhlParser.ParseString("", source)
+	prog, err := mhlParser.ParseString("", stripLeadingDocBlock(source))
 	if err != nil {
 		return nil, err
 	}

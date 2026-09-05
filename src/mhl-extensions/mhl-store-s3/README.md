@@ -26,7 +26,7 @@ directly — **no third-party dependencies** (`go.mod` requires nothing).
 | `s3.go` | dependency-free S3 client (Put/Get/Delete/ListObjectsV2) + AWS SigV4 + retry |
 | `creds.go` | credential sources: static · IRSA web-identity (STS) · IMDSv2 · anonymous |
 | `s3_test.go` | pins SigV4 to the AWS documentation's worked example; fake-S3 round trip; retry; IRSA/IMDS |
-| `extension.json` / `declarations.json` | manifest + tooling metadata |
+| `extension.mh` | manifest + declarations, single file |
 | `docker-compose.yml` | local MinIO + bucket bootstrap |
 | `smoke.sh` | end-to-end check against local MinIO |
 
@@ -37,7 +37,7 @@ cd src/mhl-extensions/mhl-store-s3
 make build      # -> bin/mhl-store-s3  (host arch; ad-hoc codesigned on macOS)
 make test       # go test ./...  (no network; SigV4 vector + fake-S3 round trip)
 make vet
-make dist       # dist/mhl-store-s3/ — metadata only (extension.json, declarations.json, README.md)
+make dist       # dist/mhl-store-s3/ — metadata only (extension.mh, README.md)
 make release    # dist/mhl-store-s3/ + bin/mhl-store-s3-<goos>-<goarch> x5, then dist/release/mhl-store-s3.tar.gz + SHA256SUMS
 ```
 

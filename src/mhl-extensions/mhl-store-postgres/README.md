@@ -18,7 +18,7 @@ the property `store-fs` and `mhl-store-s3` can't offer.
 | `main.go` | JSON-RPC loop, dispatch, concurrent (goroutine per call) |
 | `pg.go` | `pgxpool` pool, `auto_migrate`, `get`/`put`/`delete`/`list` |
 | `pg_test.go` | pure-function tests always; live round-trip gated on `MHL_PG_TEST_DSN` |
-| `extension.json` / `declarations.json` | manifest + tooling metadata |
+| `extension.mh` | manifest + declarations, single file |
 | `docker-compose.yml` | local Postgres 16 |
 | `smoke.sh` | end-to-end check against local Postgres |
 
@@ -34,7 +34,7 @@ make build      # -> bin/mhl-store-postgres  (host arch; ad-hoc codesigned on ma
 make test       # pure-function unit tests (no DB)
 MHL_PG_TEST_DSN=postgres://... go test ./...   # + the live round trip
 make vet
-make dist       # dist/mhl-store-postgres/ — metadata only (extension.json, declarations.json, README.md)
+make dist       # dist/mhl-store-postgres/ — metadata only (extension.mh, README.md)
 make release    # dist/mhl-store-postgres/ + bin/mhl-store-postgres-<goos>-<goarch> x5, then dist/release/mhl-store-postgres.tar.gz + SHA256SUMS
 ```
 

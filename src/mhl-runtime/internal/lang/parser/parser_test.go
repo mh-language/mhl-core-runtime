@@ -863,3 +863,110 @@ extension a2a Translator {
 		t.Fatalf("unexpected a2a extension: %#v", a)
 	}
 }
+
+// TestExtensibleDeclParses covers the author-time single-file extension
+// declaration: `extensible <kind> { manifest: {...} properties: {...}
+// <bare method signatures> }` — kind is a bare identifier, the same shape
+// an `extension <kind> <Name>` usage site already writes it in. Doc-comment
+// capture (`/** ... **/` and trailing `///...`) is not part of this grammar
+// — both forms lex as ordinary comments and are elided here exactly like
+// anywhere else; internal/extension/external recovers them with its own
+// source scan (see extensible_test.go there).
+func TestExtensibleDeclParses(t *testing.T) {
+	prog, err := Parse(`
+extensible cache {
+    manifest: {
+        id: "dev.mhl.cache-redis",
+        api_version: "1",
+        executable: "bin/mhl-cache-redis",
+        permissions: {
+            network: ["*"]
+        }
+    }
+
+    properties: {
+        url: string
+        db: number
+        tags: string[]
+    }
+
+    get(key: string) -> any
+    set(key: string, value: any, ttl: number) -> void
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(prog.Decls) != 1 || prog.Decls[0].Extensible == nil {
+		t.Fatalf("expected one extensible declaration, got %#v", prog.Decls)
+	}
+	e := prog.Decls[0].Extensible
+	if e.Kind != "cache" {
+		t.Fatalf("expected kind=cache, got kind=%q", e.Kind)
+	}
+	if len(e.Items) != 4 {
+		t.Fatalf("expected 4 body items (manifest, properties, get, set), got %d: %#v", len(e.Items), e.Items)
+	}
+	if e.Items[0].Manifest == nil {
+		t.Fatalf("expected the first item to be the manifest object, got %#v", e.Items[0])
+	}
+	props := e.Items[1].Properties
+	if len(props) != 3 || props[0].Name != "url" || props[0].Type.String() != "string" {
+		t.Fatalf("unexpected properties: %#v", props)
+	}
+	if props[2].Type.String() != "string[]" {
+		t.Fatalf("expected tags: string[], got %q", props[2].Type.String())
+	}
+	get := e.Items[2].Method
+	if get == nil || get.Name != "get" || len(get.Params) != 1 || get.Returns.String() != "any" {
+		t.Fatalf("unexpected get() method: %#v", get)
+	}
+}
+
+// TestLeadingDocBlockCommentIsStripped covers the one block-comment shape
+// mhl recognizes: a `/** ... **/` header at the very start of a file, used
+// for an extensible declaration's kind-level documentation (see
+// internal/extension/external, which reads the block's text back off the
+// raw source independently of this). Parse must not choke on it, and line
+// numbers of everything after the block must stay anchored to the original
+// source — internal/extension/external's per-line `///` doc-comment
+// recovery depends on that.
+func TestLeadingDocBlockCommentIsStripped(t *testing.T) {
+	prog, err := Parse(`/**
+first line of docs
+second line
+**/
+extensible cache {
+    manifest: { id: "x", api_version: "1", executable: "bin/x" }
+    get(key: string) -> any
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(prog.Decls) != 1 || prog.Decls[0].Extensible == nil {
+		t.Fatalf("expected one extensible declaration, got %#v", prog.Decls)
+	}
+	e := prog.Decls[0].Extensible
+	if e.Pos.Line != 5 {
+		t.Fatalf("expected the extensible declaration on line 5 (unaffected by the stripped header), got line %d", e.Pos.Line)
+	}
+	get := e.Items[len(e.Items)-1].Method
+	if get == nil || get.Pos.Line != 7 {
+		t.Fatalf("expected get() on line 7, got %#v", get)
+	}
+}
+
+// A `/**`/`**/` block anywhere but the very start of the file is not this
+// syntax — it lexes as ordinary punctuation, same as before this feature,
+// and fails to parse.
+func TestDocBlockCommentOnlyRecognizedAtFileStart(t *testing.T) {
+	_, err := Parse(`extensible cache {
+    manifest: { id: "x", api_version: "1", executable: "bin/x" }
+}
+/** trailing, not a leading header **/
+`)
+	if err == nil {
+		t.Fatal("expected a parse error for a non-leading /** ... **/ block")
+	}
+}

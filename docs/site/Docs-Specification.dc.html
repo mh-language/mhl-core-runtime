@@ -498,14 +498,26 @@ Events.append({event: "started", at: time.now()})</code></pre>
 </tbody></table>
 <p>Streaming, push notifications, and input-required task continuation are not implemented in the current client profile.</p>
 <h3>14.3 External adapters</h3>
-<p>An unknown extension kind resolves through an installed external adapter. The adapter is an executable described by <code>extension.json</code>, selected by a locked identifier and SHA-256 digest, and spoken to over newline-delimited JSON-RPC. The host sends <code>initialize</code>, <code>call</code>, and <code>shutdown</code>; the adapter MAY send <code>log</code> and <code>secret.resolve</code> requests. Protocol messages belong on stdout; diagnostics belong on stderr.</p>
+<p>An unknown extension kind resolves through an installed external adapter. The adapter is an executable described by a manifest, selected by a locked identifier and SHA-256 digest, and spoken to over newline-delimited JSON-RPC. The host sends <code>initialize</code>, <code>call</code>, and <code>shutdown</code>; the adapter MAY send <code>log</code> and <code>secret.resolve</code> requests. Protocol messages belong on stdout; diagnostics belong on stderr.</p>
+<p>The manifest is <code>extension.json</code>: <code>id</code>, <code>api_version</code>, <code>executable</code>, and one or more <code>declarations</code> (<code>kind</code>, and optionally tooling metadata — <code>properties</code>, <code>methods</code>) are required; <code>permissions</code> gates secret and network access. <code>declarations</code> MAY instead live in a <code>declarations_file</code> sidecar — a JSON array/object, or the same shape in native mhl object/array syntax when the sidecar's extension is <code>.mh</code> — so tooling metadata can be regenerated without touching the manifest.</p>
 <pre class="code-block"><code class="language-json">{
   "id": "com.acme.crm",
   "api_version": "1",
   "executable": "bin/crm",
   "declarations": [{"kind": "crm", "methods": [{"name": "lookup"}]}]
 }</code></pre>
-<p>Use <code>mhl extension init</code>, <code>test</code>, <code>package</code>, <code>install</code>, <code>list</code>, and <code>doctor</code> to create, probe, lock, and inspect adapters.</p>
+<p>An <code>extensible</code> declaration is a third, mhl-native manifest form: one <code>extension.mh</code> file folds the manifest and its declarations together, in place of <code>extension.json</code> and any sidecar. <code>manifest: { ... }</code> supplies the same fields as <code>extension.json</code>'s top level; a <code>properties: { name: type }</code> block and bare <code>name(params) -&gt; type</code> method signatures replace the JSON <code>declarations</code> array. A leading <code>/** ... **/</code> block documents the kind, and a trailing <code>/// ...</code> on a property or method line documents that entry — both read from the source text itself, not evaluated as expressions.</p>
+<pre class="code-block"><code class="language-mhl">/**
+Fetch a customer by id from the Acme CRM.
+**/
+extensible crm {
+    manifest: { id: "com.acme.crm", api_version: "1", executable: "bin/crm" }
+    properties: {
+        endpoint: string /// The Acme API base URL.
+    }
+    lookup(id: string) -> object /// Fetch a customer by id.
+}</code></pre>
+<p><code>mhl extension</code> looks for <code>extension.json</code> first, then <code>extension.mh</code>, in every directory it scans; the two forms are otherwise interchangeable — never both in the same directory. Use <code>mhl extension init</code>, <code>test</code>, <code>package</code>, <code>install</code>, <code>list</code>, and <code>doctor</code> to create, probe, lock, and inspect adapters. See Docs-Extensions.dc.html for the full manifest schema and wire protocol.</p>
 </section>
 
 <section class="feature doc-section" id="pipelines">
@@ -642,6 +654,12 @@ tool-method    ::= Identifier "(" [parameter ("," parameter)*] ")"
                    [":" type] "->" (expression | block)
 parameter      ::= Identifier [":" type] ["=" expression]
 extension      ::= "extension" Identifier Identifier "{" property* "}"
+extensible     ::= "extensible" Identifier "{" extensible-member* "}"
+extensible-member ::= "manifest" ":" object
+                   | "properties" ":" "{" extensible-property* "}"
+                   | extensible-method
+extensible-property ::= Identifier ":" type
+extensible-method ::= Identifier "(" [parameter ("," parameter)*] ")" "->" type
 pipeline       ::= ["loop"] ("pipeline" | "workflow") Identifier ["max" Number]
                     "{" pipeline-member* "}"
 pipeline-member ::= input | const-declaration | var-declaration | mem-declaration

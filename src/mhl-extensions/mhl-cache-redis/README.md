@@ -67,7 +67,7 @@ MHL_REDIS_TEST_ADDR=localhost:6380 go test ./...   # + the live test
 make up          # Redis on :6380
 make smoke       # build + up + end-to-end
 make down
-make dist        # dist/mhl-cache-redis/ — metadata only (extension.json, declarations.json, README.md)
+make dist        # dist/mhl-cache-redis/ — metadata only (extension.mh, README.md)
 make release     # dist/mhl-cache-redis/ + bin/mhl-cache-redis-<goos>-<goarch> x5, then dist/release/mhl-cache-redis.tar.gz + SHA256SUMS
 ```
 

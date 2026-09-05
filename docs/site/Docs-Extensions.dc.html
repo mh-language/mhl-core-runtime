@@ -251,13 +251,48 @@ html { scroll-behavior:smooth; }
             <div><h3>Declarations are routing</h3><p class="muted">The <code>kind</code> connects an MHL declaration to your adapter. <code>properties</code> and <code>methods</code> are optional editor and lint metadata.</p><pre class="code-block"><code class="language-mhl">extension crm Customer {
     endpoint: env("CRM_URL")
 }</code></pre></div>
-            <div><h3>Use a sidecar when preferred</h3><p class="muted">Set <code>declarations_file</code> to keep tooling metadata in a portable file. Use either inline <code>declarations</code> or a sidecar, never both.</p><pre class="code-block"><code class="language-json">{
+            <div><h3>Use a sidecar when preferred</h3><p class="muted">Set <code>declarations_file</code> to keep tooling metadata in a portable file. Use either inline <code>declarations</code> or a sidecar, never both. The sidecar may be JSON or native <code>.mh</code> object/array syntax — chosen by the file extension — and either accepts a bare array or a <code>{ declarations: [...] }</code> wrapper.</p><pre class="code-block"><code class="language-json">{
   "id": "com.acme.crm",
   "api_version": "1",
   "executable": "bin/crm",
   "declarations_file": "crm.d.json"
-}</code></pre></div>
+}</code></pre><pre class="code-block"><code class="language-mhl">// crm.d.mh
+[
+  {
+    kind: "crm",
+    properties: [{ name: "endpoint", type: "string" }],
+    methods: [{ name: "lookup", signature: "lookup(id: string) -> object" }]
+  }
+]</code></pre></div>
           </div>
+          <p class="block-label">OR: ONE <code>extensible</code> FILE, NO JSON AT ALL</p>
+          <p class="feature-lede">An <code>extension.mh</code> replaces <code>extension.json</code> and any declarations sidecar together: an <code>extensible &lt;kind&gt; { ... }</code> declaration carries the manifest (as a <code>manifest: { ... }</code> object, read the same way <code>extension.json</code>'s top level is), a <code>properties: { name: Type }</code> block, and the capability's methods as bare <code>name(params) -&gt; ReturnType</code> signatures — no <code>"methods"</code>/<code>"params"</code> wrapper needed. <code>kind</code> is a bare identifier, the same shape a usage site already writes it in (<code>extension crm Customer</code>) — no separate name, no quotes. A leading <code>/** ... **/</code> block documents the kind; a trailing <code>/// ...</code> on a property or method line documents that one entry — the rest of the line, no quoting needed even when the text itself contains <code>"..."</code>. Neither is ordinary mhl syntax elsewhere — both are recognized only in this position, read by <code>mhl extension</code>'s manifest loader off the source text itself.</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-mhl">/**
+Fetch a customer by id from the Acme CRM.
+**/
+extensible crm {
+    manifest: {
+        id: "com.acme.crm",
+        version: "1.2.0",
+        api_version: "1",
+        executable: "bin/crm",
+        permissions: {
+            network: ["api.acme.com"],
+            secrets: ["env(\"CRM_TOKEN\")"]
+        }
+    }
+
+    properties: {
+        endpoint: string /// The Acme API base URL.
+    }
+
+    lookup(id: string) -> object /// Fetch a customer by id.
+}</code></pre>
+          </div>
+          <div class="tip-row"><span>ONE OR THE OTHER</span><p><code>mhl extension</code> looks for <code>extension.json</code> first, then <code>extension.mh</code>, in every directory it scans (install, package, doctor, archives) — pick one form per extension, not both. <code>mhl lint</code> and the LSP validate an <code>extensible</code> declaration's shape (a <code>manifest</code> block present exactly once, no duplicate property or method names) the same way they validate any other declaration.</p></div>
+          <div class="tip-row"><span>ONE PROPERTY PER LINE</span><p>A trailing <code>/// ...</code> doc-comment runs to end of line, same as any comment — so a <code>properties: { ... }</code> block's closing <code>}</code> must be on its own line (or after a property with no trailing doc-comment). Written on the same line as the last documented property, the <code>}</code> is swallowed into the comment and parsing fails later, at the next declaration, with an unrelated-looking error.</p></div>
         </section>
 
         <section class="feature doc-section" id="protocol" data-title="protocol transport newline json rpc initialize call shutdown log stdin stdout stderr message request response notification">

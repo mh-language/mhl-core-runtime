@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/extension"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
 // Manifest is a parsed extension.json. It is the static description of an
@@ -32,9 +34,11 @@ type Manifest struct {
 	// DeclarationsFile, not both. `[{ "kind": "crm" }]` alone is enough —
 	// properties/methods within each entry are optional ("debug symbols").
 	Declares []extension.DeclarationSpec `json:"declarations,omitempty"`
-	// DeclarationsFile is a path (relative to the manifest) to a JSON file
+	// DeclarationsFile is a path (relative to the manifest) to a sidecar
 	// holding the declarations array — the "portable symbols" form, so the
-	// SDK can regenerate the list without editing the manifest.
+	// SDK can regenerate the list without editing the manifest. JSON or
+	// native mhl object/array syntax, chosen by the file's extension
+	// (".mh" routes through the mhl parser; anything else is read as JSON).
 	DeclarationsFile string      `json:"declarations_file,omitempty"`
 	Perms            Permissions `json:"permissions"`
 }
@@ -49,9 +53,36 @@ type Permissions struct {
 	Filesystem []string `json:"filesystem,omitempty"`
 }
 
-// LoadManifest reads and validates the extension.json at path, pulling in a
-// sidecar declarations file if the manifest names one.
+// ManifestFilenames lists the two accepted manifest filenames, in the order
+// callers should prefer to find/scaffold them: "extension.json" (id +
+// permissions, usually paired with a separate declarations sidecar) and
+// "extension.mh" (a single-file `extensible ... { manifest: {...} ... }`
+// declaration carrying both). Both may be passed to LoadManifest directly —
+// it dispatches on the extension.
+var ManifestFilenames = []string{"extension.json", "extension.mh"}
+
+// FindManifestFile returns the path to whichever of ManifestFilenames exists
+// directly inside dir, preferring "extension.json" when both are present.
+// ok is false when dir has neither.
+func FindManifestFile(dir string) (path string, ok bool) {
+	for _, name := range ManifestFilenames {
+		p := filepath.Join(dir, name)
+		if _, err := os.Stat(p); err == nil {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// LoadManifest reads and validates the extension manifest at path: an
+// extension.json (pulling in a sidecar declarations file if it names one),
+// or — when path ends in ".mh" — a single-file `extensible <Name> kind
+// "<kind>" { manifest: {...} properties: {...} <methods> }` declaration that
+// carries the manifest and its declarations together (see extensible.go).
 func LoadManifest(path string) (*Manifest, error) {
+	if strings.EqualFold(filepath.Ext(path), ".mh") {
+		return loadExtensibleManifest(path)
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -84,14 +115,19 @@ func LoadManifest(path string) (*Manifest, error) {
 	return &m, nil
 }
 
-// loadDeclarationsFile reads a sidecar holding the declarations. It accepts a
-// bare array (`[{ "kind": ... }]`) or an object wrapping one
-// (`{ "declarations": [ ... ] }`), so a file produced by `mhl extension
-// package` and one hand-written both work.
+// loadDeclarationsFile reads a sidecar holding the declarations, as either
+// JSON (the historical format) or `.mh` (native mhl object/array literal
+// syntax, routed by file extension). Either format accepts a bare array
+// (`[{ kind: ... }]`) or an object wrapping one (`{ declarations: [ ... ] }`),
+// so a file produced by `mhl extension package` and one hand-written both
+// work.
 func loadDeclarationsFile(path string) ([]extension.DeclarationSpec, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("declarations_file: %w", err)
+	}
+	if strings.EqualFold(filepath.Ext(path), ".mh") {
+		return parseDeclarationsMHL(path, raw)
 	}
 	var specs []extension.DeclarationSpec
 	if err := json.Unmarshal(raw, &specs); err == nil {
@@ -104,6 +140,40 @@ func loadDeclarationsFile(path string) ([]extension.DeclarationSpec, error) {
 		return nil, fmt.Errorf("declarations_file %s: not a declarations array or { \"declarations\": [...] } object", path)
 	}
 	return wrapper.Declarations, nil
+}
+
+// parseDeclarationsMHL reads a declarations_file written in native mhl
+// syntax: a bare array literal (`[{ kind: "cache", ... }]`) or an object
+// wrapping one (`{ declarations: [ ... ] }`), mirroring the two shapes the
+// JSON sidecar accepts. The literal is read via ast.LiteralValue — plain
+// data only, no expression evaluation — then round-tripped through
+// encoding/json into []extension.DeclarationSpec so both formats share one
+// decoding of the DeclarationSpec/PropertySpec/MethodSpec shape.
+func parseDeclarationsMHL(path string, raw []byte) ([]extension.DeclarationSpec, error) {
+	expr, err := parser.ParseExpr(string(raw))
+	if err != nil {
+		return nil, fmt.Errorf("declarations_file %s: %w", path, err)
+	}
+	value, ok := ast.LiteralValue(expr)
+	if !ok {
+		return nil, fmt.Errorf("declarations_file %s: must be a literal array or object, e.g. [ { kind: \"...\" } ]", path)
+	}
+	if obj, isObj := value.(map[string]any); isObj {
+		value = obj["declarations"]
+	}
+	items, isArray := value.([]any)
+	if !isArray {
+		return nil, fmt.Errorf("declarations_file %s: not a declarations array or { declarations: [...] } object", path)
+	}
+	encoded, err := json.Marshal(items)
+	if err != nil {
+		return nil, fmt.Errorf("declarations_file %s: %w", path, err)
+	}
+	var specs []extension.DeclarationSpec
+	if err := json.Unmarshal(encoded, &specs); err != nil {
+		return nil, fmt.Errorf("declarations_file %s: %w", path, err)
+	}
+	return specs, nil
 }
 
 func (m *Manifest) validate() error {

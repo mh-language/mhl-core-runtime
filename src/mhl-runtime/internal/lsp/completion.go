@@ -9,10 +9,11 @@ import (
 // offered as a plain keyword completion whenever the cursor isn't in a
 // member-access position.
 var keywords = []string{
-	"agent", "memory", "tool", "prompt", "pipeline", "workflow", "extension", "loop",
+	"agent", "memory", "tool", "prompt", "pipeline", "workflow", "extension", "extensible", "loop",
 	"import", "from", "as", "export", "input", "step", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
 	"return", "break", "goto", "spawn", "wait", "parallel", "timeout", "max", "true", "false", "null",
+	"kind", "manifest", "properties",
 }
 
 // memberAccessRe matches an in-progress "name.partial" at the very end of

@@ -27,15 +27,15 @@ down:
 smoke: build up
 	./smoke.sh
 
-# Metadata-only package under dist/$(NAME): extension.json, declarations.json
-# and README.md — what `mhl lint`, the LSP and a reviewer read without the
-# binary. `make release` adds the executables and tars it.
+# Metadata-only package under dist/$(NAME): extension.mh and README.md — what
+# `mhl lint`, the LSP and a reviewer read without the binary. `make release`
+# adds the executables and tars it.
 DIST_OSARCH ?= linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64
 
 dist:
 	rm -rf $(DIST)
 	mkdir -p $(DIST)
-	cp extension.json declarations.json README.md $(DIST)/
+	cp extension.mh README.md $(DIST)/
 	@echo "packaged $(NAME) metadata -> $(DIST)"
 
 # Install-ready archive: the dist metadata plus bin/$(NAME)-<goos>-<goarch>

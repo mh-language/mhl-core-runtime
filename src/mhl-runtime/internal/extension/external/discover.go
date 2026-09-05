@@ -129,14 +129,13 @@ func Inspect(projectDir string) ([]Status, error) {
 func resolveLocked(projectDir, id string, entry LockEntry) (*Manifest, string) {
 	var manifestPath string
 	for _, dir := range searchDirs(projectDir) {
-		p := filepath.Join(dir, id, "extension.json")
-		if _, err := os.Stat(p); err == nil {
+		if p, ok := FindManifestFile(filepath.Join(dir, id)); ok {
 			manifestPath = p
 			break
 		}
 	}
 	if manifestPath == "" {
-		return nil, "locked but not installed (no extension.json in any search dir)"
+		return nil, "locked but not installed (no extension.json or extension.mh in any search dir)"
 	}
 
 	m, err := LoadManifest(manifestPath)

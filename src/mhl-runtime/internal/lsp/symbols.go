@@ -29,6 +29,7 @@ const (
 	symObject
 	symType
 	symEnum
+	symExtensible
 )
 
 func (k symbolKind) label() string {
@@ -57,6 +58,8 @@ func (k symbolKind) label() string {
 		return "type"
 	case symEnum:
 		return "enum"
+	case symExtensible:
+		return "extensible"
 	default:
 		return ""
 	}
@@ -98,6 +101,8 @@ func symbolsFromProgram(prog *ast.Program) []symbol {
 			syms = append(syms, symbol{Name: decl.Type.Name, Kind: symType})
 		case decl.Enum != nil:
 			syms = append(syms, symbol{Name: decl.Enum.Name, Kind: symEnum, Methods: decl.Enum.Variants})
+		case decl.Extensible != nil:
+			syms = append(syms, symbol{Name: decl.Extensible.Kind, Kind: symExtensible, Methods: extensibleMethodNames(decl.Extensible)})
 		default:
 			// An `extension <kind> <Name>` declaration; its method set comes
 			// from the registered adapter's DeclarationSpec.
@@ -107,6 +112,20 @@ func symbolsFromProgram(prog *ast.Program) []symbol {
 		}
 	}
 	return syms
+}
+
+// extensibleMethodNames lists the bare method signatures declared directly
+// inside an `extensible ... { ... }` block, in source order — the same
+// names internal/extension/external's loadExtensibleManifest turns into
+// extension.MethodSpec entries.
+func extensibleMethodNames(ext *ast.Extensible) []string {
+	var methods []string
+	for _, item := range ext.Items {
+		if item.Method != nil {
+			methods = append(methods, item.Method.Name)
+		}
+	}
+	return methods
 }
 
 // memoryMethods mirrors internal/lang/lint.checkMemoryOp's per-type method

@@ -71,6 +71,7 @@ func Source(path, src string) []Finding {
 	findings = append(findings, checkParamDefaults(path, merged)...)
 	findings = append(findings, checkConstReassign(path, merged)...)
 	findings = append(findings, checkExtensions(path, merged)...)
+	findings = append(findings, checkExtensible(path, merged)...)
 	return findings
 }
 

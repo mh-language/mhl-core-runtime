@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mh-language/mhl-core-runtime/internal/extension/external"
 )
 
 // maxArchiveBytes caps a downloaded extension archive (and any single file
@@ -126,11 +128,12 @@ func fetchArchiveSource(ctx context.Context, as archiveSource, out io.Writer) (d
 	return root, cleanup, nil
 }
 
-// manifestRoot returns the directory under tmp that holds extension.json: tmp
-// itself, or its single top-level subdirectory (an archive made with
-// `tar czf x.tgz <name>/` wraps everything in one directory).
+// manifestRoot returns the directory under tmp that holds a manifest
+// (extension.json or extension.mh): tmp itself, or its single top-level
+// subdirectory (an archive made with `tar czf x.tgz <name>/` wraps
+// everything in one directory).
 func manifestRoot(tmp string) (string, error) {
-	if _, err := os.Stat(filepath.Join(tmp, "extension.json")); err == nil {
+	if _, ok := external.FindManifestFile(tmp); ok {
 		return tmp, nil
 	}
 	entries, err := os.ReadDir(tmp)
@@ -145,11 +148,11 @@ func manifestRoot(tmp string) (string, error) {
 	}
 	if len(dirs) == 1 {
 		inner := filepath.Join(tmp, dirs[0])
-		if _, err := os.Stat(filepath.Join(inner, "extension.json")); err == nil {
+		if _, ok := external.FindManifestFile(inner); ok {
 			return inner, nil
 		}
 	}
-	return "", fmt.Errorf("archive has no extension.json at its root or in a single top-level directory")
+	return "", fmt.Errorf("archive has no extension.json or extension.mh at its root or in a single top-level directory")
 }
 
 // safeJoin resolves an archive entry name under base, rejecting any path that

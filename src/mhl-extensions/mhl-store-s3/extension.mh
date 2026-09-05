@@ -1,0 +1,40 @@
+/**
+Key/value backend for `mhl serve mcp --http` durable state (sessions + run
+checkpoints + owners), stored as one JSON object per key in an S3 bucket at
+`<prefix><key>.json`. Works with real Amazon S3 and any S3-compatible
+endpoint (MinIO, Cloudflare R2, Ceph RGW).
+**/
+extensible store {
+    manifest: {
+        id: "dev.mhl.store-s3",
+        version: "0.1.0",
+        api_version: "1",
+        executable: "bin/mhl-store-s3",
+        permissions: {
+            network: ["*"],
+            secrets: []
+        }
+    }
+
+    properties: {
+        bucket: string /// Target bucket. Required.
+        endpoint: string /// S3 endpoint URL, e.g. http://localhost:9000 for MinIO. Omit for real AWS S3. Setting it implies path-style addressing.
+        region: string /// AWS region for SigV4 signing. Default "us-east-1" (MinIO ignores it but it must still match what the client signs).
+        prefix: string /// Key namespace inside the bucket. Default "mhl/". A trailing slash is added if missing; set "" to store at the bucket root.
+        access_key_id: string /// Static access key id. Use env("AWS_ACCESS_KEY_ID"); the host resolves and redacts it.
+        secret_access_key: string /// Static secret access key. Use env("AWS_SECRET_ACCESS_KEY"); the host resolves and redacts it.
+        session_token: string /// Optional STS session token for static credentials. Use env("AWS_SESSION_TOKEN").
+        web_identity_token_file: string /// EKS IRSA / Pod Identity: path to the projected service-account token. Use env("AWS_WEB_IDENTITY_TOKEN_FILE"). With `role_arn`, the extension calls STS AssumeRoleWithWebIdentity and refreshes before expiry. Ignored when static credentials are set.
+        role_arn: string /// IRSA: the role to assume. Use env("AWS_ROLE_ARN"). Required together with `web_identity_token_file`.
+        role_session_name: string /// IRSA: STS session name. Default "mhl-store-s3".
+        use_imds: bool /// Fetch credentials from the EC2/EKS node instance role via IMDSv2 (169.254.169.254). Used only when no static and no web-identity credentials are set.
+        force_path_style: bool /// Force path-style addressing (bucket in the path, not the host). Implied true when `endpoint` is set.
+        max_retries: number /// Retries for transient failures (transport errors, HTTP 429/5xx), with exponential backoff + full jitter. Default 3; 0 disables.
+        log: string /// Optional path to append a JSON-lines wire trace (one line per handled message) for debugging.
+    }
+
+    get(key: string) -> any /// The value at key, or null when the object is absent.
+    put(key: string, value: any) -> void /// Store value at key as a JSON object, overwriting.
+    delete(key: string) -> void /// Remove key. An absent key is not an error.
+    list(prefix: string) -> string[] /// Every key with the given prefix (ListObjectsV2, paginated).
+}
