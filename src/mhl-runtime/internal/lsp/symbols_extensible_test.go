@@ -20,7 +20,7 @@ extensible cache {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	syms := symbolsFromProgram(prog)
+	syms := symbolsFromProgram("/p/main.mh", prog)
 	var found *symbol
 	for i := range syms {
 		if syms[i].Name == "cache" {

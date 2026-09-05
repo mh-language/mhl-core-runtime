@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -185,6 +187,62 @@ func TestCompletionExtensionMembers(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCompletionExtensionMembersFromProjectLockedExtension is the real
+// regression this guards: a custom extension kind (installed via `mhl
+// extension install`, not one of the two built-ins) previously offered no
+// method/property completion at all — extensionMethodNames/
+// extensionPropertyItems only ever consulted extension.BuiltinSpec. This
+// sets up a minimal locked project (.mhl/extensions.lock + a vendored
+// extension.mh, exactly what `mhl extension install` produces) and checks
+// completion resolves the custom "cache" kind's declared members from it.
+func TestCompletionExtensionMembersFromProjectLockedExtension(t *testing.T) {
+	dir := t.TempDir()
+	extDir := filepath.Join(dir, ".mhl", "extensions", "dev.mhl.cache-repro")
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `extensible cache {
+    manifest: { id: "dev.mhl.cache-repro", api_version: "1", executable: "bin/cache-repro" }
+    properties: {
+        url: string /// Redis connection string.
+    }
+    get(key: string) -> any /// The JSON-decoded value, or null.
+    set(key: string, value: any) -> void /// Store value.
+}
+`
+	if err := os.WriteFile(filepath.Join(extDir, "extension.mh"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lock := `{"extensions":{"dev.mhl.cache-repro":{"version":"","sha256":""}}}`
+	lockPath := filepath.Join(dir, ".mhl", "extensions.lock")
+	if err := os.WriteFile(lockPath, []byte(lock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	main := filepath.Join(dir, "main.mh")
+	src, pos := posAtMarker(t, `extension cache CacheM {
+    url: env("REDIS_URL")
+}
+
+pipeline P {
+    step S { var t = CacheM.§ }
+}
+`)
+	items := completionAt(main, src, pos)
+	for _, want := range []string{"get", "set"} {
+		if !hasLabel(items, want) {
+			t.Errorf("missing method %q, got %+v", want, items)
+		}
+	}
+
+	// Property completion inside the extension body itself.
+	propSrc, propPos := posAtMarker(t, "extension cache CacheM {\n    §\n}\n")
+	propItems := completionAt(main, propSrc, propPos)
+	if !hasLabel(propItems, "url") {
+		t.Errorf("missing property %q, got %+v", "url", propItems)
 	}
 }
 

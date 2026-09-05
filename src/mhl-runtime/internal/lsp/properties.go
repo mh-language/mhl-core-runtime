@@ -105,13 +105,13 @@ var rateLimitFieldItems = []completionItem{
 // isn't one property-position completion has an opinion about (a step body,
 // an if/while/try block, a plain object literal, ...), in which case
 // completionAt's general keyword+symbol list is left untouched.
-func propertyItemsFor(stack []blockRef) []completionItem {
+func propertyItemsFor(path string, stack []blockRef) []completionItem {
 	if len(stack) == 0 {
 		return nil
 	}
 	top := stack[len(stack)-1]
 	if top.Kind == blockExtension {
-		return extensionPropertyItems(top.ExtKind)
+		return extensionPropertyItems(path, top.ExtKind)
 	}
 	switch top.Kind {
 	case blockPipeline:

@@ -183,8 +183,8 @@ var memoryMethodSigs = map[string]sig{
 // mcpServerMethodSigs / a2aAgentMethodSigs are built from the registered
 // extension adapters' MethodSpec entries (see extensions.go), not hand-copied.
 var (
-	mcpServerMethodSigs = extensionMethodSigs("mcp")
-	a2aAgentMethodSigs  = extensionMethodSigs("a2a")
+	mcpServerMethodSigs = extensionMethodSigs("", "mcp")
+	a2aAgentMethodSigs  = extensionMethodSigs("", "a2a")
 )
 
 var agentMethodSigs = map[string]sig{
@@ -232,7 +232,7 @@ var assertionSigs = map[string]sig{
 // receiver symbol (a native namespace, a declared agent/memory/extension, or a
 // typed variable). ok is false when nothing static is known (a user-declared
 // `tool` method, say).
-func signatureForMethod(s symbol, method string) (sig, bool) {
+func signatureForMethod(path string, s symbol, method string) (sig, bool) {
 	switch s.Kind {
 	case symNative:
 		x, ok := nativeSigs[s.Name+"."+method]
@@ -247,7 +247,7 @@ func signatureForMethod(s symbol, method string) (sig, bool) {
 		x, ok := memoryMethodSigs[method]
 		return x, ok
 	case symExtension:
-		x, ok := extensionMethodSigs(s.ExtKind)[method]
+		x, ok := extensionMethodSigs(path, s.ExtKind)[method]
 		return x, ok
 	case symAgent:
 		x, ok := agentMethodSigs[method]

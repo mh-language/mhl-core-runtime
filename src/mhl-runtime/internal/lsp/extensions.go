@@ -8,15 +8,33 @@ import (
 
 // This file makes the LSP's knowledge of `extension` declarations
 // metadata-driven: property lists, dot-callable method names, and signature
-// help all come from the registered extension adapters' DeclarationSpec /
-// MethodSpec rather than from tables hand-copied out of the interpreter. A
-// new built-in extension kind (registered in internal/extbuiltin) is picked
-// up here automatically.
+// help all come from a DeclarationSpec / MethodSpec rather than from tables
+// hand-copied out of the interpreter. A new built-in extension kind
+// (registered in internal/extbuiltin) is picked up here automatically; an
+// unrecognized kind falls back to path's project's locked external
+// extensions (projectext.go) — the ones `mhl extension install` vendored —
+// so a custom kind (e.g. a `cache` extension backed by mhl-cache-redis) gets
+// the same completion/signature-help support a built-in one does. path may
+// be "" (the three package-level *Sigs/*Methods vars below, always for a
+// built-in kind), in which case the project fallback is skipped.
 
-// extensionMethodNames returns the dot-callable method names a built-in
-// extension kind ("mcp", "a2a", ...) exposes, or nil for an unknown kind.
-func extensionMethodNames(kind string) []string {
-	spec, ok := extension.BuiltinSpec(kind)
+// extensionSpec resolves kind to its DeclarationSpec: a built-in first
+// (internal/extbuiltin's registered adapters), else path's project's locked
+// external extensions. ok is false when neither knows kind.
+func extensionSpec(path, kind string) (extension.DeclarationSpec, bool) {
+	if spec, ok := extension.BuiltinSpec(kind); ok {
+		return spec, true
+	}
+	if path == "" {
+		return extension.DeclarationSpec{}, false
+	}
+	return projectExtensionSpec(path, kind)
+}
+
+// extensionMethodNames returns the dot-callable method names extension kind
+// exposes, or nil for an unknown kind.
+func extensionMethodNames(path, kind string) []string {
+	spec, ok := extensionSpec(path, kind)
 	if !ok {
 		return nil
 	}
@@ -29,8 +47,8 @@ func extensionMethodNames(kind string) []string {
 
 // extensionPropertyItems returns the property-name completions valid directly
 // inside a declaration body of the given kind.
-func extensionPropertyItems(kind string) []completionItem {
-	spec, ok := extension.BuiltinSpec(kind)
+func extensionPropertyItems(path, kind string) []completionItem {
+	spec, ok := extensionSpec(path, kind)
 	if !ok {
 		return nil
 	}
@@ -48,10 +66,10 @@ func extensionPropertyItems(kind string) []completionItem {
 	return items
 }
 
-// extensionMethodSigs builds the signature-help table for a built-in
-// extension kind from its MethodSpec entries.
-func extensionMethodSigs(kind string) map[string]sig {
-	spec, ok := extension.BuiltinSpec(kind)
+// extensionMethodSigs builds the signature-help table for an extension kind
+// from its MethodSpec entries.
+func extensionMethodSigs(path, kind string) map[string]sig {
+	spec, ok := extensionSpec(path, kind)
 	if !ok {
 		return map[string]sig{}
 	}

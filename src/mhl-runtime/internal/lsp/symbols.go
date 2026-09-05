@@ -79,7 +79,7 @@ type symbol struct {
 
 // symbolsFromProgram walks a successfully parsed AST and returns every
 // top-level declared symbol, memory/tool member methods included.
-func symbolsFromProgram(prog *ast.Program) []symbol {
+func symbolsFromProgram(path string, prog *ast.Program) []symbol {
 	var syms []symbol
 	for _, decl := range prog.Decls {
 		switch {
@@ -107,7 +107,7 @@ func symbolsFromProgram(prog *ast.Program) []symbol {
 			// An `extension <kind> <Name>` declaration; its method set comes
 			// from the registered adapter's DeclarationSpec.
 			if k, name, _, ok := ast.AsExtension(decl); ok && name != "" {
-				syms = append(syms, symbol{Name: name, Kind: symExtension, ExtKind: k, Methods: extensionMethodNames(k)})
+				syms = append(syms, symbol{Name: name, Kind: symExtension, ExtKind: k, Methods: extensionMethodNames(path, k)})
 			}
 		}
 	}
@@ -145,8 +145,8 @@ func memoryMethods(mem *ast.Memory) []string {
 // copy of the interpreter's dispatch. signatures_test.go still cross-checks
 // them against the signature tables.
 var (
-	mcpServerMethods = extensionMethodNames("mcp")
-	a2aAgentMethods  = extensionMethodNames("a2a")
+	mcpServerMethods = extensionMethodNames("", "mcp")
+	a2aAgentMethods  = extensionMethodNames("", "a2a")
 )
 
 func memoryMethodsForType(memType string) []string {
@@ -177,7 +177,7 @@ var (
 	extDeclRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?extension\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
-func symbolsFromText(src string) []symbol {
+func symbolsFromText(path, src string) []symbol {
 	var syms []symbol
 	for _, m := range declRe.FindAllStringSubmatch(src, -1) {
 		kind, ok := kindFromKeyword(m[1])
@@ -196,7 +196,7 @@ func symbolsFromText(src string) []symbol {
 		syms = append(syms, s)
 	}
 	for _, m := range extDeclRe.FindAllStringSubmatch(src, -1) {
-		syms = append(syms, symbol{Name: m[2], Kind: symExtension, ExtKind: m[1], Methods: extensionMethodNames(m[1])})
+		syms = append(syms, symbol{Name: m[2], Kind: symExtension, ExtKind: m[1], Methods: extensionMethodNames(path, m[1])})
 	}
 	return syms
 }
@@ -495,10 +495,10 @@ var nativeSymbols = []symbol{
 func documentSymbols(path, text string) []symbol {
 	syms := append([]symbol{}, nativeSymbols...)
 	if prog, err := parser.Parse(text); err == nil {
-		syms = append(syms, symbolsFromProgram(prog)...)
+		syms = append(syms, symbolsFromProgram(path, prog)...)
 		syms = append(syms, localVarSymbols(prog)...)
 	} else {
-		syms = append(syms, symbolsFromText(text)...)
+		syms = append(syms, symbolsFromText(path, text)...)
 		syms = append(syms, localVarSymbolsFromText(text)...)
 	}
 	syms = append(syms, workspaceSymbols(path)...)
@@ -531,7 +531,7 @@ func workspaceSymbols(path string) []symbol {
 		if err != nil {
 			continue
 		}
-		syms = append(syms, symbolsFromProgram(prog)...)
+		syms = append(syms, symbolsFromProgram(full, prog)...)
 	}
 	return syms
 }

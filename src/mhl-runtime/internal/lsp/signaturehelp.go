@@ -35,7 +35,7 @@ func signatureHelpAt(path, text string, pos position) *signatureHelp {
 		receiver, method := m[1], m[2]
 		for _, s := range documentSymbols(path, text) {
 			if s.Name == receiver {
-				sg, found = signatureForMethod(s, method)
+				sg, found = signatureForMethod(path, s, method)
 				break
 			}
 		}
