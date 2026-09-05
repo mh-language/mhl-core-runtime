@@ -509,8 +509,11 @@ func TestHTTPMaxConcurrentRunsQueues(t *testing.T) {
 	if second["state"] != "queued" {
 		t.Fatalf("second run state = %v, want queued", second["state"])
 	}
-	if second["queuePosition"].(float64) != 0 {
-		t.Errorf("queuePosition = %v, want 0", second["queuePosition"])
+	// A queued run reports no position: computing one meant an O(n) scan of
+	// the whole registry on the accept path (and O(n^2) inside run/list).
+	// Aggregate queue depth lives in /metrics as mhl_serve_runs_queued.
+	if _, ok := second["queuePosition"]; ok {
+		t.Errorf("queuePosition present in %v, want it dropped", second)
 	}
 
 	// The queued run gets its slot once the first finishes.

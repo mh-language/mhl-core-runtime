@@ -1,14 +1,14 @@
 # Cenário 008: Concorrência limitada e fila de runs
 
 **Objetivo:** Verificar que `--max-concurrent-runs` limita execuções simultâneas no
-pod, que runs excedentes entram em `queued` com `queuePosition`, que `run/cancel`
+pod, que runs excedentes entram em `queued`, que `run/cancel`
 descarta uma run enfileirada, e que um `tools/call` síncrono com o pool cheio
 sofre shed de carga.
 
 ```gherkin
 Dado que o servidor MCP está em execução com --max-concurrent-runs 1
 Quando o cliente dispara três run/start de SlowBuild em sequência
-Então a primeira fica working e as outras ficam queued com queuePosition 0 e 1
+Então a primeira fica working e as outras ficam queued
 E um tools/call síncrono nesse momento responde -32000 "server at capacity"
 E run/cancel numa run queued a leva a canceled sem nunca executar
 E conforme a run em execução termina, a próxima da fila passa a working
@@ -16,8 +16,9 @@ E conforme a run em execução termina, a próxima da fila passa a working
 
 **Resultado Esperado:**
 - `run/start` #1 → `state: "working"`.
-- `run/start` #2 → `state: "queued"`, `queuePosition: 0`.
-- `run/start` #3 → `state: "queued"`, `queuePosition: 1`.
+- `run/start` #2 → `state: "queued"` (sem `queuePosition`: o campo foi removido;
+  a profundidade da fila está em `/metrics`).
+- `run/start` #3 → `state: "queued"`.
 - `tools/call` (SlowBuild) com o pool cheio → após ~5 s, erro JSON-RPC `-32000`
   `server at capacity — retry, or use run/start` (HTTP 503).
 - `run/cancel` na run #3 (queued) → `state: "canceled"`; ela nunca gera `step:`.
@@ -31,7 +32,7 @@ E conforme a run em execução termina, a próxima da fila passa a working
 ### Evidências:
 
 - [ ] Log do servidor MCP
-- [ ] Respostas dos três run/start (com state/queuePosition)
+- [ ] Respostas dos três run/start (com `state`)
 - [ ] Resposta do tools/call em capacidade máxima
 - [ ] `/metrics` durante a fila
 - [ ] run/status da run enfileirada cancelada e da que subiu da fila

@@ -254,8 +254,10 @@ failed / canceled / paused ──▶ queued|working   (run/resume — re-enters 
 ```
 
 A run starts `working` immediately unless `--max-concurrent-runs` is set and
-every slot is taken — then it is `queued` and `run/status` reports its
-`queuePosition` (0 = next up). A synchronous `tools/call` does not queue: it
+every slot is taken — then it is `queued`. A run status carries no queue
+position: deriving one meant scanning the whole registry on every reply (and
+O(n^2) inside `run/list`), so aggregate queue depth lives in `/metrics` as
+`mhl_serve_runs_queued` instead. A synchronous `tools/call` does not queue: it
 holds the client connection while it waits up to ~5s for a slot, then either
 runs or returns `-32000` "server at capacity".
 
@@ -264,7 +266,7 @@ on completion it becomes `Result.Skipped ++ Result.Executed` (authoritative,
 and across a resume it includes the steps the resume skipped over). `vars`
 appears in `completed` and `paused`; `error` only in `failed` / `canceled`;
 `reason` only in `paused`; `resumable` whenever `run/resume` can continue the
-run; `queuePosition` only while `queued`.
+run.
 
 `run/logs { runId, since? }` returns `{ text, nextSince, dropped? }` — this
 run's own ~64 KiB rolling copy of its `step:` / `log()` output, cursored by

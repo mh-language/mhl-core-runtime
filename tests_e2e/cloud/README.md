@@ -257,15 +257,16 @@ for i in 1 2 3; do
   curl -s -X POST $BASE/mcp -H "$JSON" -H "$AUTH" -H "Mcp-Session-Id: $sid" -d "{
     \"jsonrpc\":\"2.0\",\"id\":$i,\"method\":\"run/start\",
     \"params\":{\"name\":\"SlowBuild\",\"arguments\":{\"target\":\"t$i\"}}}" \
-  | python3 -c 'import sys,json; r=json.load(sys.stdin)["result"]; print(r["state"], r.get("queuePosition",""))'
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["state"])'
 done
 # -> working
-# -> queued 0
-# -> queued 1
+# -> queued
+# -> queued
 ```
 
-A queued run transitions to `working` as slots free up; `run/status` reports
-its `queuePosition` (0 = next up). `run/cancel` on a queued run drops it before
+A queued run transitions to `working` as slots free up; a run status carries no
+queue position (see `mhl_serve_runs_queued` in `/metrics` for aggregate queue
+depth). `run/cancel` on a queued run drops it before
 it ever executes. A synchronous `tools/call` does **not** queue — it waits ~5s
 for a slot, then returns `-32000` "server at capacity — retry, or use
 run/start". This is why the daily workflow should use `run/*`, not `tools/call`.

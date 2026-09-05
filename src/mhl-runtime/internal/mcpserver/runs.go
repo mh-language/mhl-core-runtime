@@ -317,7 +317,7 @@ func (h *httpServer) runStart(sess *session, msg rpcMsg) *rpcMsg {
 	}
 
 	h.launch(ctx, rn, false)
-	return h.srv.replyResult(sess, msg.ID, h.runViewFor(rn))
+	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
 }
 
 // runResume relaunches a stopped run from its checkpoint. params:
@@ -375,7 +375,7 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	}
 
 	h.launch(ctx, rn, true)
-	return h.srv.replyResult(sess, msg.ID, h.runViewFor(rn))
+	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
 }
 
 // execRun drives one asyncRun to a terminal state.
@@ -499,7 +499,7 @@ func (h *httpServer) runStatus(sess *session, msg rpcMsg) *rpcMsg {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", id))
 	}
 	h.refreshRemote(rn) // a reconstructed run advances on the owning replica
-	return h.srv.replyResult(sess, msg.ID, h.runViewFor(rn))
+	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
 }
 
 // runLogs returns this run's retained step/log() output from a byte cursor.
@@ -546,7 +546,7 @@ func (h *httpServer) runCancel(sess *session, msg rpcMsg) *rpcMsg {
 		rn.state, rn.updated = "canceled", time.Now()
 	}
 	rn.mu.Unlock()
-	return h.srv.replyResult(sess, msg.ID, h.runViewFor(rn))
+	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
 }
 
 func (h *httpServer) runList(sess *session, msg rpcMsg) *rpcMsg {
@@ -556,7 +556,7 @@ func (h *httpServer) runList(sess *session, msg rpcMsg) *rpcMsg {
 	views := make([]map[string]any, 0, len(runs))
 	for _, rn := range runs {
 		if rn.owner == owner {
-			views = append(views, h.runViewFor(rn))
+			views = append(views, h.runView(rn))
 		}
 	}
 	return h.srv.replyResult(sess, msg.ID, map[string]any{"runs": views})
@@ -694,34 +694,6 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 		}
 	}
 	return v
-}
-
-// runViewFor is runView plus the fields that depend on other runs — kept out
-// of runView so it never nests one run's lock inside another's.
-func (h *httpServer) runViewFor(rn *asyncRun) map[string]any {
-	v := h.runView(rn)
-	if v["state"] == "queued" {
-		v["queuePosition"] = h.queuePosition(rn)
-	}
-	return v
-}
-
-// queuePosition is how many other runs are queued ahead of rn (0 = next up).
-// Call it without holding rn.mu.
-func (h *httpServer) queuePosition(rn *asyncRun) int {
-	pos := 0
-	for _, other := range h.runs.List() {
-		if other == rn {
-			continue
-		}
-		other.mu.Lock()
-		ahead := other.state == "queued" && other.started.Before(rn.started)
-		other.mu.Unlock()
-		if ahead {
-			pos++
-		}
-	}
-	return pos
 }
 
 // sweepRuns is opportunistic registry housekeeping, called on `initialize`.
