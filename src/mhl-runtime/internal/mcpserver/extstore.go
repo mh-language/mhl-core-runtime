@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
@@ -191,6 +192,25 @@ func (c *extCheckpointStore) ReadStatus(runID string) (RunStatusRec, bool) {
 		return RunStatusRec{}, false
 	}
 	return rec, true
+}
+
+func (c *extCheckpointStore) ListStatuses() (map[string]RunStatusRec, error) {
+	keys, err := c.kv.List(context.Background(), kvRunPrefix)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]RunStatusRec)
+	for _, k := range keys {
+		rest := strings.TrimPrefix(k, kvRunPrefix)
+		id, ok := strings.CutSuffix(rest, "/status")
+		if !ok || id == "" || strings.Contains(id, "/") {
+			continue
+		}
+		if rec, found := c.ReadStatus(id); found {
+			out[id] = rec
+		}
+	}
+	return out, nil
 }
 
 func (c *extCheckpointStore) RequestCancel(runID string) error {

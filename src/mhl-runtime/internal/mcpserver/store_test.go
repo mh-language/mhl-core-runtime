@@ -1,7 +1,9 @@
 package mcpserver
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -200,6 +202,90 @@ func TestDiskCheckpointStoreLiveStatusAndCancel(t *testing.T) {
 	}
 	if d.CancelRequested("r1") {
 		t.Error("Remove should drop the cancel flag too")
+	}
+}
+
+// TestDiskCheckpointStoreListStatuses: ListStatuses returns one entry per run
+// that has a status record, ignores the sessions/ sibling dir, and skips a run
+// dir that holds only a checkpoint.
+func TestDiskCheckpointStoreListStatuses(t *testing.T) {
+	d, err := newDiskCheckpointStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+
+	if m, err := d.ListStatuses(); err != nil || len(m) != 0 {
+		t.Fatalf("empty store: ListStatuses = %v, %v", m, err)
+	}
+
+	now := time.Now()
+	_ = d.WriteStatus("r1", RunStatusRec{Tool: "A", State: "completed", UpdatedAt: now})
+	_ = d.WriteStatus("r2", RunStatusRec{Tool: "B", State: "working", UpdatedAt: now})
+	// The diskSessionStore lives at <state>/sessions/ — it must not be read as a run.
+	if err := os.MkdirAll(filepath.Join(d.runsDir, runtime.StateDirName, "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A run dir with a checkpoint but no status record contributes nothing.
+	cpDir := d.stateDir("r3")
+	_ = os.MkdirAll(cpDir, 0o755)
+	_ = os.WriteFile(filepath.Join(cpDir, "cp.json"), []byte("{}"), 0o600)
+
+	m, err := d.ListStatuses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m) != 2 || m["r1"].Tool != "A" || m["r2"].State != "working" {
+		t.Fatalf("ListStatuses = %+v", m)
+	}
+	if _, ok := m["sessions"]; ok {
+		t.Error("sessions dir leaked into ListStatuses")
+	}
+	if _, ok := m["r3"]; ok {
+		t.Error("a run with no status record leaked into ListStatuses")
+	}
+}
+
+// TestSweepRunsRetiresOldSharedStatus: on a shared store, sweepRuns removes the
+// status record of a terminal run (completed, or a non-resumable failure) older
+// than sessionTTL, but keeps a fresh one and keeps an old terminal run that
+// still has a resumable checkpoint.
+func TestSweepRunsRetiresOldSharedStatus(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "w.mh"),
+		[]byte("pipeline W {\n  step S { log(\"x\") }\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, h, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, StateDir: t.TempDir()}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { h.runsCancel(); _ = h.cps.Close() })
+
+	now := time.Now()
+	old := now.Add(-2 * sessionTTL)
+	_ = h.cps.WriteStatus("old", RunStatusRec{Tool: "W", State: "completed", StartedAt: old, UpdatedAt: old})
+	_ = h.cps.WriteStatus("oldFail", RunStatusRec{Tool: "W", State: "failed", StartedAt: old, UpdatedAt: old})
+	_ = h.cps.WriteStatus("fresh", RunStatusRec{Tool: "W", State: "completed", StartedAt: now, UpdatedAt: now})
+	_ = h.cps.WriteStatus("kept", RunStatusRec{Tool: "W", State: "failed", StartedAt: old, UpdatedAt: old})
+	// "kept" is old and terminal but still resumable — a checkpoint on the store.
+	keptDir := h.cps.(*diskCheckpointStore).stateDir("kept")
+	_ = os.MkdirAll(keptDir, 0o755)
+	_ = os.WriteFile(filepath.Join(keptDir, "cp.json"), []byte(`{"pipeline":"W"}`), 0o600)
+
+	h.sweepRuns()
+
+	if _, ok := h.cps.ReadStatus("old"); ok {
+		t.Error("an old completed status record must be retired by sweepRuns")
+	}
+	if _, ok := h.cps.ReadStatus("oldFail"); ok {
+		t.Error("an old non-resumable failed status record must be retired by sweepRuns")
+	}
+	if _, ok := h.cps.ReadStatus("fresh"); !ok {
+		t.Error("a fresh terminal status record must be kept")
+	}
+	if _, ok := h.cps.ReadStatus("kept"); !ok {
+		t.Error("an old terminal run with a resumable checkpoint must be kept")
 	}
 }
 

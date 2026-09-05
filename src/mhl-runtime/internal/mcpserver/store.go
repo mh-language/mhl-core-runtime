@@ -295,18 +295,21 @@ func (r *memRunRegistry) List() []*asyncRun {
 
 // RunStatusRec is a run's live status, published to the (shared) CheckpointStore
 // each step boundary so another replica's run/status can report progress it did
-// not itself produce. It carries no secrets — just what runView renders.
+// not itself produce. It carries no secrets — just what runView renders, and
+// Vars is stored through runtime.RedactVars so resolved credentials never land
+// in the shared store.
 type RunStatusRec struct {
-	Tool      string    `json:"tool"`
-	State     string    `json:"state"`
-	Step      string    `json:"step,omitempty"`
-	StepIndex int       `json:"stepIndex,omitempty"`
-	StepTotal int       `json:"stepTotal,omitempty"`
-	Reached   []string  `json:"reached,omitempty"`
-	Resumable bool      `json:"resumable,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	StartedAt time.Time `json:"startedAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Tool      string         `json:"tool"`
+	State     string         `json:"state"`
+	Step      string         `json:"step,omitempty"`
+	StepIndex int            `json:"stepIndex,omitempty"`
+	StepTotal int            `json:"stepTotal,omitempty"`
+	Reached   []string       `json:"reached,omitempty"`
+	Resumable bool           `json:"resumable,omitempty"`
+	Error     string         `json:"error,omitempty"`
+	Vars      map[string]any `json:"vars,omitempty"`
+	StartedAt time.Time      `json:"startedAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
 }
 
 // CheckpointStore is what runs.go needs about a run's durable state: a
@@ -345,6 +348,11 @@ type CheckpointStore interface {
 	// Best-effort — a write error is ignored by the caller.
 	WriteStatus(runID string, rec RunStatusRec) error
 	ReadStatus(runID string) (rec RunStatusRec, ok bool)
+	// ListStatuses returns every run that has a status record in the store,
+	// keyed by runID. It lets sweepRuns retire the status of a terminal run
+	// this replica never held in memory, so the shared store does not keep
+	// completed runs forever. Empty (not an error) for a non-shared store.
+	ListStatuses() (map[string]RunStatusRec, error)
 	// RequestCancel marks runID for cancellation; the replica executing it
 	// observes CancelRequested (poll + step boundary) and stops its goroutine.
 	RequestCancel(runID string) error
@@ -497,6 +505,27 @@ func (d *diskCheckpointStore) ReadStatus(runID string) (RunStatusRec, bool) {
 		return RunStatusRec{}, false
 	}
 	return rec, true
+}
+
+func (d *diskCheckpointStore) ListStatuses() (map[string]RunStatusRec, error) {
+	root := filepath.Join(d.runsDir, runtime.StateDirName)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]RunStatusRec{}, nil
+		}
+		return nil, err
+	}
+	out := make(map[string]RunStatusRec)
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == "sessions" {
+			continue
+		}
+		if rec, ok := d.ReadStatus(e.Name()); ok {
+			out[e.Name()] = rec
+		}
+	}
+	return out, nil
 }
 
 func (d *diskCheckpointStore) RequestCancel(runID string) error {

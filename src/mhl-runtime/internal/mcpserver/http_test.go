@@ -856,6 +856,66 @@ func TestHTTPRunLiveStatusAndCancelAcrossReplicas(t *testing.T) {
 	}
 }
 
+// TestHTTPRunStatusAfterCompleteAcrossReplicas: two servers on the same
+// --state-dir. A run that COMPLETES on replica A must still be reportable by
+// run/status on replica B — with an identical status object, vars included —
+// because B reconstructs it from the status record the shared store retains
+// for a window, not "unknown runId". Regression test for the eager cleanup
+// that used to wipe run/<id>/ from the shared store the instant execRun
+// finished, so the same runId answered "completed" or "unknown" depending on
+// which replica the request landed on.
+func TestHTTPRunStatusAfterCompleteAcrossReplicas(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "greet.mh"), []byte(httpWF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	serverWith := func() *httptest.Server {
+		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
+		if err != nil {
+			t.Fatalf("HandlerWithState: %v", err)
+		}
+		s := httptest.NewServer(h)
+		t.Cleanup(s.Close)
+		return s
+	}
+
+	a, b := serverWith(), serverWith()
+	sidA, sidB := initHTTPSession(t, a.URL), initHTTPSession(t, b.URL)
+
+	_, body := postMCP(t, a.URL, sidA, rpcMap(2, "run/start", map[string]any{
+		"name": "Greet", "arguments": map[string]any{"name": "world"},
+	}), nil)
+	runID, _ := body["result"].(map[string]any)["runId"].(string)
+	if runID == "" {
+		t.Fatalf("run/start on A returned no runId: %v", body)
+	}
+
+	resA := pollRun(t, a.URL, sidA, runID)
+	if resA["state"] != "completed" {
+		t.Fatalf("run on A ended %v, want completed", resA["state"])
+	}
+
+	// B has never seen this run and A has already finished it: B must
+	// reconstruct it from the retained status record, not reject it.
+	_, sb := postMCP(t, b.URL, sidB, rpcMap(3, "run/status", map[string]any{"runId": runID}), nil)
+	resB, ok := sb["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("B run/status for a run A completed: %v (want a result, not an error)", sb)
+	}
+	if resB["state"] != "completed" {
+		t.Fatalf("B run/status state = %v, want completed", resB["state"])
+	}
+	wantVars, _ := json.Marshal(resA["vars"])
+	gotVars, _ := json.Marshal(resB["vars"])
+	if string(gotVars) == "null" {
+		t.Fatalf("B run/status carried no vars (%s); A had %s", gotVars, wantVars)
+	}
+	if string(wantVars) != string(gotVars) {
+		t.Fatalf("B vars = %s, want %s (identical to A)", gotVars, wantVars)
+	}
+}
+
 // TestHTTPSharedSessionsAcrossReplicas: two servers on the same --state-dir.
 // An Mcp-Session-Id minted by `initialize` on A is a usable session on B —
 // tools/list returns 200 (not 404), and a run started on A is visible via

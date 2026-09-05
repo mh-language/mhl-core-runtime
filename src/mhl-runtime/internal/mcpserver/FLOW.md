@@ -174,14 +174,20 @@ alone does not stop an async run — only `drain()` (`runsCancel`, gated by
 `--drain-timeout`) or a per-run `cancel()` (`run/cancel`, shutdown) does.
 
 **Across replicas** (`h.cps.Shared()` — a `--state-dir` on shared storage, or an
-extension store): `execRun` publishes a `RunStatusRec` (state + current step) to
-the store each `OnStep`, so another replica's `run/status` reconstructs a
-`working` run it never started and its `run/cancel` writes a `cancel` flag under
-`run/<id>/` that the owning replica observes (a 1 s `watchRemoteCancel` poll +
-each step boundary) and turns into a local `cancel()`. `reconstructRun` falls
-back to the status record when there is no checkpoint (a run without `per_step`
-still working elsewhere); such a run is marked `remote` and `run/status`
-re-reads the record on each poll. The `h.runs` registry itself stays
+extension store): `execRun` publishes a `RunStatusRec` (state, current step,
+and — on the terminal publish — the run's final `vars`, stored through
+`runtime.RedactVars` so no resolved credential reaches the shared store) each
+`OnStep`, so another replica's `run/status` reconstructs a `working` run it
+never started, or a finished one with the same result, and its `run/cancel`
+writes a `cancel` flag under `run/<id>/` that the owning replica observes (a 1 s
+`watchRemoteCancel` poll + each step boundary) and turns into a local
+`cancel()`. `reconstructRun` falls back to the status record when there is no
+checkpoint (a run without `per_step` still working elsewhere, or a completed one
+whose checkpoint was cleared); such a run is marked `remote` and `run/status`
+re-reads the record on each poll. A terminal run's record is **not** deleted
+when `execRun` finishes — doing so made the same `runId` resolve on the replica
+that ran it and 404 everywhere else — it is kept for `sessionTTL` and then
+retired by `sweepRuns` (see below). The `h.runs` registry itself stays
 process-local.
 
 ```mermaid
@@ -208,7 +214,7 @@ sequenceDiagram
     end
     X-->>G: Result{Skipped, Executed, Vars}  |  runErr
     G->>Reg: rn.state = completed / failed / canceled / paused · rn.resumable = checkpoint on disk (always, for paused) · close(rn.done)
-    Note over G: completed → remove runsDir/.mhl/state/runId · failed/canceled/paused → keep it for run/resume
+    Note over G: completed → runtime clears the per-step checkpoint; the status record (with redacted vars) is kept for sessionTTL, then swept · failed/canceled/paused → whole state subtree kept for run/resume
 
     C->>H: POST /mcp  run/status { runId }
     H->>Reg: ownedRun = lookupRun · else reconstructRun (claims it) · reject if owner != caller
@@ -231,7 +237,7 @@ sequenceDiagram
         Note over G,X: execsvc.Run(Session: runId, Resume: true) → Runner loads the checkpoint,<br/>restores vars, restarts at NextStep (the failed / pausing step) · inputs re-applied shadow checkpoint vars
     end
 
-    Note over Reg: run/list returns only the caller's runs · initialize sweeps completed runs older than 1 h (removes the dir) · a resumable run is kept in the registry for the process lifetime so its owner binding holds · on-disk state is GC'd by runtime.PruneExpired · shutdown cancels all and, only for a temp runsDir, deletes it
+    Note over Reg: run/list returns only the caller's runs · initialize sweeps completed runs older than 1 h from the registry (removes the dir) and, on a shared store, retires terminal-run status records older than 1 h that have no resumable checkpoint · a resumable run is kept in the registry for the process lifetime so its owner binding holds · on-disk state is GC'd by runtime.PruneExpired · shutdown cancels all and, only for a temp runsDir, deletes it
 ```
 
 ### `asyncRun` states
@@ -240,7 +246,9 @@ sequenceDiagram
 queued  ──▶ working           (a concurrency slot freed — see --max-concurrent-runs)
         └─▶ canceled          (run/cancel or shutdown while still waiting for a slot)
 
-working ──▶ completed         (run finished with no error — state dir removed)
+working ──▶ completed         (run finished with no error — per-step checkpoint cleared;
+        │                      on a shared store the status record, with redacted vars,
+        │                      lingers for sessionTTL so every replica agrees, then sweepRuns retires it)
         ├─▶ failed            (runErr != nil and ctx not cancelled — resumable if a checkpoint is on disk;
         │                      a step's `timeout <dur>` clause elapsing lands here, `error` wraps
         │                      runtime.ErrStepTimeout, and a resume re-enters the step with a fresh budget)

@@ -186,6 +186,12 @@ func (h *httpServer) publishRunStatus(rn *asyncRun) {
 		Resumable: rn.resumable, Error: rn.errMsg,
 		StartedAt: rn.started, UpdatedAt: rn.updated,
 	}
+	// Final vars (set only once the run reaches a terminal state) travel with
+	// the record so a replica that reconstructs the run reports the same
+	// result — redacted, so resolved credentials never reach the shared store.
+	if rn.vars != nil {
+		rec.Vars = runtime.RedactVars(rn.vars)
+	}
 	rn.mu.Unlock()
 	_ = h.cps.WriteStatus(rn.id, rec)
 }
@@ -240,6 +246,9 @@ func (h *httpServer) refreshRemote(rn *asyncRun) {
 	}
 	rn.resumable = rec.Resumable
 	rn.errMsg = rec.Error
+	if rec.Vars != nil {
+		rn.vars = rec.Vars // redacted at publish time
+	}
 	if !rec.UpdatedAt.IsZero() {
 		rn.updated = rec.UpdatedAt
 	}
@@ -482,14 +491,14 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		"runId", rn.id, "owner", string(rn.owner), "tool", w.Name,
 		"durationMs", dur.Milliseconds(), "steps", steps)
 
-	// Publish the terminal state so another replica's run/status stops seeing
-	// "working". A clean finish then clears its own checkpoint (runtime does
-	// that) and we drop the now-empty state dir — which also removes the status
-	// / cancel markers. A stopped run keeps them for run/resume.
+	// Publish the terminal state (with final vars) so another replica's
+	// run/status stops seeing "working" and reports the same result. A clean
+	// finish clears its own per-step checkpoint (runtime does that), but the
+	// status record is kept for a retention window — sweepRuns removes it from
+	// the shared store once it is older than sessionTTL, the same bound the
+	// in-memory registry uses. Removing it here made the same runId answer
+	// "completed" on the replica that ran it and "unknown" on any other.
 	h.publishRunStatus(rn)
-	if terminal == "completed" {
-		_ = h.cps.Remove(rn.id)
-	}
 }
 
 func (h *httpServer) runStatus(sess *session, msg rpcMsg) *rpcMsg {
@@ -654,6 +663,7 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 		reached:   append([]string(nil), rec.Reached...),
 		resumable: rec.Resumable,
 		errMsg:    rec.Error,
+		vars:      rec.Vars, // already redacted at publish time
 	}
 	if rn.state == "" {
 		rn.state = "working"
@@ -684,7 +694,10 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 		v["resumable"] = true
 	}
 	if (rn.state == "completed" || rn.state == "paused") && rn.vars != nil {
-		v["vars"] = rn.vars
+		// Redacted here too, so the replica that ran the workflow and a replica
+		// that reconstructs it from the shared status record return the same
+		// vars, and no resolved credential is ever surfaced.
+		v["vars"] = runtime.RedactVars(rn.vars)
 	}
 	if rn.errMsg != "" {
 		if rn.state == "paused" {
@@ -703,20 +716,55 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 // checkpoint) is kept in the registry for the whole process lifetime so its
 // owner binding keeps holding — on-disk state is GC'd by runtime.PruneExpired
 // once its TTL passes.
+//
+// When the store is shared between replicas it also retires terminal-run
+// status records the shared store keeps: execRun no longer deletes a completed
+// run's record on the spot (that made the same runId resolve on the replica
+// that ran it and 404 everywhere else), so this is what bounds the store's
+// growth — same sessionTTL window the in-memory registry uses.
 func (h *httpServer) sweepRuns() {
 	cut := time.Now().Add(-sessionTTL)
 	for _, rn := range h.runs.List() {
 		rn.mu.Lock()
 		state := rn.state
 		old := rn.updated.Before(cut)
+		remote := rn.remote
 		rn.mu.Unlock()
 		switch {
 		case state == "completed" && old:
 			h.runs.Delete(rn.id)
-			_ = h.cps.Remove(rn.id)
+			// A locally-run completion clears its whole state dir here. A run
+			// reconstructed from another replica only drops this pod's copy —
+			// retiring the shared record is the walk below's job, on one
+			// consistent UpdatedAt clock.
+			if !remote {
+				_ = h.cps.Remove(rn.id)
+			}
 		case (state == "failed" || state == "canceled") && !h.cps.Exists(rn.id):
 			h.runs.Delete(rn.id)
 		}
+	}
+
+	if !h.cps.Shared() {
+		return
+	}
+	statuses, err := h.cps.ListStatuses()
+	if err != nil {
+		return
+	}
+	for id, rec := range statuses {
+		switch rec.State {
+		case "completed", "failed", "canceled":
+		default:
+			continue // queued / working / paused — still live, keep it
+		}
+		if rec.UpdatedAt.IsZero() || !rec.UpdatedAt.Before(cut) {
+			continue // inside the retention window (or undatable)
+		}
+		if h.cps.Exists(id) {
+			continue // a resumable checkpoint is still there — leave it for run/resume
+		}
+		_ = h.cps.Remove(id)
 	}
 }
 

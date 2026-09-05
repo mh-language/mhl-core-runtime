@@ -146,6 +146,34 @@ func TestExtCheckpointStoreAndStateStore(t *testing.T) {
 	}
 }
 
+// TestExtCheckpointStoreListStatuses: ListStatuses returns one entry per run
+// that has a status key, and does not mistake an owner / checkpoint / cancel
+// key for one.
+func TestExtCheckpointStoreListStatuses(t *testing.T) {
+	kv := newFakeKV()
+	cps, _ := newExtCheckpointStore(kv)
+	t.Cleanup(func() { _ = cps.Close() })
+
+	if m, err := cps.ListStatuses(); err != nil || len(m) != 0 {
+		t.Fatalf("empty store: ListStatuses = %v, %v", m, err)
+	}
+
+	now := time.Now()
+	_ = cps.WriteStatus("r1", RunStatusRec{Tool: "A", State: "completed", UpdatedAt: now})
+	_ = cps.WriteStatus("r2", RunStatusRec{Tool: "B", State: "working", UpdatedAt: now})
+	_ = cps.WriteOwner("r1", Owner("o"))
+	_ = kv.Put(context.Background(), runKey("r2", "checkpoint/W"), map[string]any{})
+	_ = cps.RequestCancel("r2")
+
+	m, err := cps.ListStatuses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m) != 2 || m["r1"].Tool != "A" || m["r2"].State != "working" {
+		t.Fatalf("ListStatuses = %+v", m)
+	}
+}
+
 // The extension store is Shared, and its status record / cancel flag
 // round-trip through the KV without tripping Exists/Load.
 func TestExtCheckpointStoreLiveStatusAndCancel(t *testing.T) {
