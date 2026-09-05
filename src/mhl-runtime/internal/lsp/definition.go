@@ -59,12 +59,14 @@ func definitionAt(path, text string, pos position) []location {
 }
 
 // declLocRe matches a top-level `<keyword> <Name>` declaration line,
-// capturing the keyword (group 1) and the declared name (group 2). It mirrors
-// symbols.go's declRe but is anchored for FindAllStringSubmatchIndex so the
-// name's byte offset is recoverable. extDeclLocRe is its `extension <kind>
-// <Name>` counterpart (two identifiers), capturing the name in group 1.
+// capturing the keyword (group 1) and the declared name (group 2) — this
+// also covers `extensible <kind> { ... }`, whose single identifier is the
+// same one-name-after-keyword shape. It mirrors symbols.go's declRe but is
+// anchored for FindAllStringSubmatchIndex so the name's byte offset is
+// recoverable. extDeclLocRe is its `extension <kind> <Name>` counterpart
+// (two identifiers), capturing the name in group 1.
 var (
-	declLocRe    = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:loop[ \t]+)?(agent|memory|tool|prompt|pipeline|workflow|type|enum)[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
+	declLocRe    = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:loop[ \t]+)?(agent|memory|tool|prompt|pipeline|workflow|type|enum|extensible)[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
 	extDeclLocRe = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?extension[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
@@ -79,25 +81,26 @@ func findDeclaration(path, text, name string) (location, bool) {
 }
 
 // findMember resolves `receiver.member` to the member's own declaration
-// inside receiver's body: for a `tool`, the method line `member(`; for an
-// `enum`, the variant token `member`. For every other kind (an agent's
-// `.run`, a memory's `.get`/`.set`, an extension's methods) the member is a
+// inside receiver's body: for a `tool` or an `extensible` block, the bare
+// method line `member(`; for an `enum`, the variant token `member`. For
+// every other kind (an agent's `.run`, a memory's `.get`/`.set`, a usage
+// site's `.method(...)` on an `extension <kind> <Name>`) the member is a
 // runtime built-in with no source to point at, so the jump lands on the
 // receiver's declaration instead — still useful, and it follows imports so
-// it opens the right file. The same fallback covers a `tool`/`enum` whose
-// member can't be located textually.
+// it opens the right file. The same fallback covers a `tool`/`extensible`/
+// `enum` whose member can't be located textually.
 func findMember(path, text, receiver, member string) (location, bool) {
 	file, src, nameOff, kind, ok := locateDeclaration(path, text, receiver)
 	if !ok {
 		return location{}, false
 	}
-	if kind == symTool || kind == symEnum {
+	if kind == symTool || kind == symExtensible || kind == symEnum {
 		if bodyStart, bodyEnd, ok := blockBounds(src, nameOff); ok {
 			var re *regexp.Regexp
-			if kind == symTool {
-				re = regexp.MustCompile(`(?m)^[ \t]*(` + regexp.QuoteMeta(member) + `)[ \t]*\(`)
-			} else {
+			if kind == symEnum {
 				re = regexp.MustCompile(`\b(` + regexp.QuoteMeta(member) + `)\b`)
+			} else {
+				re = regexp.MustCompile(`(?m)^[ \t]*(` + regexp.QuoteMeta(member) + `)[ \t]*\(`)
 			}
 			if m := re.FindStringSubmatchIndex(src[bodyStart:bodyEnd]); m != nil {
 				return location{URI: pathToURI(file), Range: identRange(src, bodyStart+m[2], member)}, true
@@ -234,6 +237,8 @@ func declKind(keyword string) symbolKind {
 		return symPipeline
 	case "enum":
 		return symEnum
+	case "extensible":
+		return symExtensible
 	default: // "type"
 		return symType
 	}

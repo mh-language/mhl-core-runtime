@@ -97,6 +97,57 @@ pipeline P {
 	}
 }
 
+// TestDefinitionExtensibleName covers going to the `extensible <kind> { ... }`
+// declaration itself — a real regression: declLocRe (used by findDeclaration
+// for every plain identifier reference) never listed "extensible" as a
+// recognized declaration keyword, so a reference to it resolved to nothing.
+func TestDefinitionExtensibleName(t *testing.T) {
+	src := `extensible cache {
+    manifest: { id: "x", api_version: "1", executable: "bin/x" }
+    get(key: string) -> any
+}
+
+pipeline P {
+    step S { var x = cache }
+}
+`
+	pos := positionOfNthWord(t, src, "cache", 2)
+	locs := definitionAt("/p/main.mh", src, pos)
+	if len(locs) != 1 {
+		t.Fatalf("want 1 location, got %+v", locs)
+	}
+	if locs[0].Range.Start.Line != 0 {
+		t.Errorf("start line = %d, want 0 (the extensible declaration)", locs[0].Range.Start.Line)
+	}
+}
+
+// TestDefinitionExtensibleMethod mirrors TestDefinitionToolMethod: an
+// extensible method is real declared syntax with its own position (unlike an
+// agent's synthetic `.run`), so `Receiver.method` resolves straight to the
+// `method(` line instead of falling back to the declaration.
+func TestDefinitionExtensibleMethod(t *testing.T) {
+	src, pos := posAtMarker(t, `extensible cache {
+    manifest: { id: "x", api_version: "1", executable: "bin/x" }
+    get(key: string) -> any
+    set(key: string, value: any) -> void
+}
+
+pipeline P {
+    step S { var x = cache.g§et("k") }
+}
+`)
+	locs := definitionAt("/p/main.mh", src, pos)
+	if len(locs) != 1 {
+		t.Fatalf("want 1 location, got %+v", locs)
+	}
+	if locs[0].Range.Start.Line != 2 {
+		t.Errorf("start line = %d, want 2 (the get() method)", locs[0].Range.Start.Line)
+	}
+	if locs[0].Range.Start.Character != 4 {
+		t.Errorf("start character = %d, want 4", locs[0].Range.Start.Character)
+	}
+}
+
 func TestDefinitionEnumVariant(t *testing.T) {
 	src, pos := posAtMarker(t, `enum Status { Draft, Published }
 
