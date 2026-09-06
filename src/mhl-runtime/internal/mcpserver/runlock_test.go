@@ -64,12 +64,12 @@ func TestRunLockAcquireConflictAndRelease(t *testing.T) {
 	a := newTestLock(kv, "replica-A", &now)
 	b := newTestLock(kv, "replica-B", &now)
 
-	held, holder, err := a.acquire(context.Background(), "r1")
-	if err != nil || !held || holder != "replica-A" {
+	leaseA, held, holder, err := a.acquire(context.Background(), "r1")
+	if err != nil || !held || holder != "replica-A" || !leaseA.held() {
 		t.Fatalf("A.acquire = held:%v holder:%q err:%v", held, holder, err)
 	}
 
-	held, holder, err = b.acquire(context.Background(), "r1")
+	_, held, holder, err = b.acquire(context.Background(), "r1")
 	if err != nil || held {
 		t.Fatalf("B.acquire should fail while A holds a fresh lease: held:%v err:%v", held, err)
 	}
@@ -77,10 +77,10 @@ func TestRunLockAcquireConflictAndRelease(t *testing.T) {
 		t.Fatalf("B.acquire reported holder %q, want replica-A", holder)
 	}
 
-	if err := a.release(context.Background(), "r1"); err != nil {
+	if err := a.release(context.Background(), leaseA); err != nil {
 		t.Fatalf("A.release: %v", err)
 	}
-	held, _, err = b.acquire(context.Background(), "r1")
+	_, held, _, err = b.acquire(context.Background(), "r1")
 	if err != nil || !held {
 		t.Fatalf("B.acquire after release: held:%v err:%v", held, err)
 	}
@@ -92,25 +92,26 @@ func TestRunLockTakeoverAfterExpiry(t *testing.T) {
 	a := newTestLock(kv, "replica-A", &now)
 	b := newTestLock(kv, "replica-B", &now)
 
-	if held, _, _ := a.acquire(context.Background(), "r1"); !held {
+	leaseA, held, _, _ := a.acquire(context.Background(), "r1")
+	if !held {
 		t.Fatal("A failed initial acquire")
 	}
 
 	// Advance past the TTL — A's lease is stale.
 	now = now.Add(runLockTTL + time.Second)
 
-	held, _, err := b.acquire(context.Background(), "r1")
+	leaseB, held, _, err := b.acquire(context.Background(), "r1")
 	if err != nil || !held {
 		t.Fatalf("B should take over an expired lease: held:%v err:%v", held, err)
 	}
 
 	// A's heartbeat now finds the lease is no longer its own.
-	stillMine, err := a.renew(context.Background(), "r1")
+	stillMine, err := a.renew(context.Background(), leaseA)
 	if err != nil || stillMine {
 		t.Fatalf("A.renew after B took over = stillMine:%v err:%v", stillMine, err)
 	}
 	// B's heartbeat keeps working.
-	stillMine, err = b.renew(context.Background(), "r1")
+	stillMine, err = b.renew(context.Background(), leaseB)
 	if err != nil || !stillMine {
 		t.Fatalf("B.renew = stillMine:%v err:%v", stillMine, err)
 	}
@@ -146,32 +147,34 @@ func TestAssessmentExpiredHolderCannotDeleteSuccessor(t *testing.T) {
 	c := newTestLock(kv, "C", &now)
 	ctx := context.Background()
 
-	if held, _, _ := a.acquire(ctx, "review"); !held {
+	leaseA, held, _, _ := a.acquire(ctx, "review")
+	if !held {
 		t.Fatal("A did not acquire")
 	}
 	now = now.Add(runLockTTL + time.Second)
-	if held, _, _ := b.acquire(ctx, "review"); !held {
+	leaseB, held, _, _ := b.acquire(ctx, "review")
+	if !held {
 		t.Fatal("B did not take over the expired lease")
 	}
-	if err := a.release(ctx, "review"); err != nil {
+	if err := a.release(ctx, leaseA); err != nil { // late release by the deposed holder
 		t.Fatalf("A.release: %v", err)
 	}
-	if held, _, _ := c.acquire(ctx, "review"); held {
+	if _, held, _, _ := c.acquire(ctx, "review"); held {
 		t.Fatal("C acquired while B was still the live holder — A's late release wiped B's lease")
 	}
 	// B is still the holder and can renew.
-	if mine, err := b.renew(ctx, "review"); err != nil || !mine {
+	if mine, err := b.renew(ctx, leaseB); err != nil || !mine {
 		t.Fatalf("B.renew after A's late release = mine:%v err:%v", mine, err)
 	}
 
 	// A may acquire again once B is done — a fresh acquisition, new token.
-	if err := b.release(ctx, "review"); err != nil {
+	if err := b.release(ctx, leaseB); err != nil {
 		t.Fatalf("B.release: %v", err)
 	}
-	if held, _, _ := a.acquire(ctx, "review"); !held {
+	if _, held, _, _ := a.acquire(ctx, "review"); !held {
 		t.Fatal("A could not re-acquire after B released")
 	}
-	if mine, _ := b.renew(ctx, "review"); mine {
+	if mine, _ := b.renew(ctx, leaseB); mine {
 		t.Fatal("B.renew succeeded against A's new acquisition")
 	}
 }
@@ -185,21 +188,90 @@ func TestRunLockReleaseIsConditional(t *testing.T) {
 	b := newTestLock(kv, "B", &now)
 	ctx := context.Background()
 
-	a.acquire(ctx, "r1")
+	leaseA, _, _, _ := a.acquire(ctx, "r1")
 	now = now.Add(runLockTTL + time.Second)
 	b.acquire(ctx, "r1") // takeover
 
-	// A still thinks it holds r1 (token in its map) but must not renew or
-	// release B's lease.
-	if mine, _ := a.renew(ctx, "r1"); mine {
+	// A still holds its own acquisition handle but must not renew or release
+	// B's lease.
+	if mine, _ := a.renew(ctx, leaseA); mine {
 		t.Fatal("A.renew succeeded after B took over")
 	}
-	if err := a.release(ctx, "r1"); err != nil {
+	if err := a.release(ctx, leaseA); err != nil {
 		t.Fatalf("A.release: %v", err)
 	}
 	if st, holder, _ := b.peek(ctx, "r1"); st != lockFresh || holder != "B" {
 		t.Fatalf("after A's late release, lease = %v/%q, want lockFresh/B", st, holder)
 	}
+}
+
+// R5: a deposed holder's release, run late with the handle from its *first*
+// acquisition, must not touch the lease of its own *second* acquisition (nor
+// any successor's). The handle — not a per-runID map — is what scopes it.
+func TestRunLockStaleHandleCannotReleaseLaterAcquisition(t *testing.T) {
+	kv := newFakeLockingKV()
+	now := time.Now()
+	a := newTestLock(kv, "A", &now)
+	ctx := context.Background()
+
+	lease1, held, _, _ := a.acquire(ctx, "r1")
+	if !held {
+		t.Fatal("first acquire failed")
+	}
+	if err := a.release(ctx, lease1); err != nil {
+		t.Fatalf("release lease1: %v", err)
+	}
+	lease2, held, _, _ := a.acquire(ctx, "r1")
+	if !held || lease2.token == lease1.token {
+		t.Fatalf("re-acquire: held=%v token reused=%v", held, lease2.token == lease1.token)
+	}
+
+	// The late, stale release of lease1 must be a no-op against lease2.
+	if err := a.release(ctx, lease1); err != nil {
+		t.Fatalf("stale release: %v", err)
+	}
+	if st, holder, _ := a.peek(ctx, "r1"); st != lockFresh || holder != "A" {
+		t.Fatalf("lease2 after stale release of lease1 = %v/%q, want lockFresh/A", st, holder)
+	}
+	if mine, _ := a.renew(ctx, lease2); !mine {
+		t.Fatal("lease2 renew failed after a stale release of lease1")
+	}
+}
+
+// R4: renew is bounded by its context — a wedged store cannot make the
+// heartbeat loop block past the point a takeover could begin.
+func TestRunLockRenewRespectsContextDeadline(t *testing.T) {
+	kv := &blockGetKV{fakeLockingKV: newFakeLockingKV()}
+	now := time.Now()
+	l := newTestLock(kv, "A", &now)
+	lease, held, _, _ := l.acquire(context.Background(), "r1") // PutIfAbsent path, no Get
+	if !held {
+		t.Fatal("acquire failed")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := l.renew(ctx, lease)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("renew against a wedged store returned nil error")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("renew did not return within the context deadline — it is not bounded")
+	}
+}
+
+// blockGetKV hangs every Get until the caller's context is done.
+type blockGetKV struct{ *fakeLockingKV }
+
+func (k *blockGetKV) Get(ctx context.Context, _ string) ([]byte, bool, error) {
+	<-ctx.Done()
+	return nil, false, ctx.Err()
 }
 
 // TestPeekReportsStoreError: a store failure surfaces as lockUnknown + err, not
@@ -347,7 +419,8 @@ func TestRunResumeRefusedWhileLockedElsewhere(t *testing.T) {
 	})
 
 	// A is executing it — take the lock as execRun would.
-	if held, _, _ := hA.lock.acquire(ctx, runID); !held {
+	leaseA, held, _, _ := hA.lock.acquire(ctx, runID)
+	if !held {
 		t.Fatal("A failed to acquire the run lock")
 	}
 
@@ -362,7 +435,7 @@ func TestRunResumeRefusedWhileLockedElsewhere(t *testing.T) {
 	}
 
 	// A finishes / dies — release the lock.
-	_ = hA.lock.release(ctx, runID)
+	_ = hA.lock.release(ctx, leaseA)
 
 	reply = resume(hB)
 	if reply.Error != nil {

@@ -204,10 +204,14 @@ type httpServer struct {
 	lock *runLock
 
 	// claimKV is the same cas-capable store as lock.kv, held for durable
-	// intake: run/start persists an intake record through it and a claim loop
-	// (Etapa 1) takes pending runs from it. nil ⇒ no durable intake, run/start
-	// keeps the in-memory registry path.
+	// intake: run/start persists an intake record through it and the claim loop
+	// takes pending runs from it. nil ⇒ no durable intake, run/start keeps the
+	// in-memory registry path.
 	claimKV LockingKVStore
+	// claimNudge wakes the claim loop immediately after run/start writes a
+	// pending run (buffered 1; the safety ticker covers a missed nudge). nil
+	// when durable intake is off.
+	claimNudge chan struct{}
 
 	// State seams — see store.go. Each has one implementation today (a
 	// process-local map, or the on-disk .mhl/state tree); Phase 3 swaps in
@@ -291,7 +295,9 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 	if lk, ok := cfg.Store.(LockingKVStore); ok && lk.CASCapable() {
 		h.lock = &runLock{kv: lk, replicaID: h.replicaID, now: time.Now}
 		h.claimKV = lk
-		h.srv.logEvent(slog.LevelInfo, "cross-replica run locking enabled", "replicaId", h.replicaID)
+		h.claimNudge = make(chan struct{}, 1)
+		go h.claimLoop(runsCtx)
+		h.srv.logEvent(slog.LevelInfo, "cross-replica run locking + durable intake enabled", "replicaId", h.replicaID)
 	} else if cfg.Store != nil {
 		if !cfg.SingleReplica {
 			return nil, nil, fmt.Errorf("mcpserver: store extension has no \"cas\" capability, so runs cannot be " +

@@ -3,9 +3,54 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
+
+// With durable intake active (a cas store), run/start returns `pending` and does
+// not launch; the per-replica claim loop takes the pending run to completion.
+func TestDurableIntakeClaimLoopRunsPendingRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "w.mh"),
+		[]byte("pipeline P {\n  input who: string\n  step S { log(who) }\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kv := newFakeLockingKV()
+	_, h, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, Store: kv}, io.Discard)
+	if err != nil {
+		t.Fatalf("buildHTTP: %v", err)
+	}
+	t.Cleanup(func() { h.runsCancel(); _ = h.cps.Close() })
+
+	sess := &session{id: "s1"}
+	res := decodeResult(t, h.runStart(sess, mkMsg("run/start", map[string]any{
+		"name": "P", "arguments": map[string]any{"who": "bob"},
+	})))
+	if res["state"] != string(RunStatePending) {
+		t.Fatalf("run/start state = %v, want pending", res["state"])
+	}
+	runID := res["runId"].(string)
+	if _, found, _ := kv.Get(context.Background(), intakeKey(runID)); !found {
+		t.Fatal("no intake record after run/start")
+	}
+
+	// The claim loop (nudged by run/start) drives it to a terminal state.
+	var st map[string]any
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		st = decodeResult(t, h.runStatus(sess, mkMsg("run/status", map[string]any{"runId": runID})))
+		if s, _ := st["state"].(string); s == string(RunStateCompleted) || s == string(RunStateFailed) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if st["state"] != string(RunStateCompleted) {
+		t.Fatalf("pending run never completed via the claim loop: %v", st)
+	}
+}
 
 func seedStatus(t *testing.T, kv *fakeLockingKV, id string, rec RunStatusRec) {
 	t.Helper()
@@ -73,6 +118,50 @@ func TestClaimNextCASSkipsCandidateLostToARace(t *testing.T) {
 	}
 	if id != "r2" {
 		t.Errorf("claimed %q, want r2 (r1 was lost to a race)", id)
+	}
+}
+
+// A run stuck in `claimed` past claimReclaimAfter whose claimer left no lease is
+// returned to `pending`; a fresh claim, or one with a live lease, is left alone.
+func TestReconcileClaimsReturnsOrphanedClaimToPending(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "w.mh"),
+		[]byte("pipeline P {\n  step S { var x = 1 }\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kv := newFakeLockingKV()
+	_, h, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, Store: kv}, io.Discard)
+	if err != nil {
+		t.Fatalf("buildHTTP: %v", err)
+	}
+	h.runsCancel() // stop the background claim loop; drive reconcile directly
+	t.Cleanup(func() { _ = h.cps.Close() })
+	ctx := context.Background()
+
+	old := time.Now().Add(-3 * runLockTTL)
+	seedStatus(t, kv, "orphan", RunStatusRec{Tool: "P", State: RunStateClaimed, Holder: "dead", StartedAt: old, UpdatedAt: old})
+	seedStatus(t, kv, "fresh", RunStatusRec{Tool: "P", State: RunStateClaimed, Holder: "r1", StartedAt: time.Now(), UpdatedAt: time.Now()})
+	seedStatus(t, kv, "held", RunStatusRec{Tool: "P", State: RunStateClaimed, Holder: "r2", StartedAt: old, UpdatedAt: old})
+	if _, held, _, _ := h.lock.acquire(ctx, "held"); !held {
+		t.Fatal("could not seed a held lease")
+	}
+
+	h.reconcileClaims(ctx)
+
+	state := func(id string) RunStatusRec {
+		raw, _, _ := kv.Get(ctx, runKey(id, "status"))
+		var r RunStatusRec
+		_ = json.Unmarshal(raw, &r)
+		return r
+	}
+	if r := state("orphan"); r.State != RunStatePending || r.Holder != "" {
+		t.Errorf("orphan = state:%q holder:%q, want pending with holder cleared", r.State, r.Holder)
+	}
+	if r := state("fresh"); r.State != RunStateClaimed {
+		t.Errorf("fresh = %q, want left claimed (not yet stale)", r.State)
+	}
+	if r := state("held"); r.State != RunStateClaimed {
+		t.Errorf("held = %q, want left claimed (lease is live)", r.State)
 	}
 }
 

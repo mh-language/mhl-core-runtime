@@ -194,11 +194,14 @@ process-local.
 advertised the `cas` capability, i.e. implements `PutIfAbsent` /
 `CompareAndSwap`; see `runlock.go`): before `execRun` drives a run it
 `acquire`s `run/<id>/lock` = `{holder, token, expires}` and renews it on a
-`runLockHeartbeat` (`runLockTTL/3`). Each `acquire` mints a random `token`,
-stored per-runID in `runLock.tokens`; `renew` and `release` compare-and-swap
-only against a record that still carries this replica's `holder` **and**
-`token`, so a stale holder cannot renew or wipe a successor's lease. `release`
-is a conditional `CompareAndSwap` to an expired tombstone (the next `acquire`
+`runLockHeartbeat` (`runLockTTL/3`). Each `acquire` mints a random `token` and
+returns an immutable `leaseHandle{runID, token}`; `execRun` keeps it for the
+attempt and passes it to `renew` / `release`, which compare-and-swap only
+against a record that still carries this replica's `holder` **and** that exact
+`token` — a later `acquire` of the same run (this replica lost the lease and
+took it back) yields a different handle, so a stale holder's late `renew` /
+`release` cannot touch the successor's (or its own new) lease. `release` is a
+conditional `CompareAndSwap` to an expired tombstone (the next `acquire`
 overwrites it; `Remove` sweeps it) — never an unconditional `Delete`.
 
 A confirmed lease is a hard precondition. An `acquire` that returns an **error**
@@ -210,8 +213,12 @@ errors (`lockUnknown` — it cannot rule out a live worker). `heartbeatLock`
 (`heartbeatDecision`) `cancel()`s the run when `renew` reports the lease is gone
 **or** when renews have been failing long enough that the lease is within one
 heartbeat of expiring — it stops *before* a takeover elsewhere could begin, not
-merely after N failures. If the holder simply stalls past `runLockTTL`, another
-replica's `acquire` takes the lapsed lock over via `CompareAndSwap`.
+merely after N failures. Each `renew` is bounded by `renewBudget` (a ctx
+timeout) so a wedged store cannot stall the loop, and an independent watchdog
+timer in the same `select` cancels the run if no `renew` succeeds within the
+safe window even if a `renew` call never returns. If the holder simply stalls
+past `runLockTTL`, another replica's `acquire` takes the lapsed lock over via
+`CompareAndSwap`.
 `reconstructRun` / `refreshRemote` run `markIfLeaseExpired`: a `remote` run the
 status says is `working` but whose lock is positively absent/expired is reported
 `failed` + `resumable` — a store read error leaves it `working` — and takeover

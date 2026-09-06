@@ -225,24 +225,38 @@ Progresso 06/09/2026:
 `internal/mcpserver/{runstate,claim}_test.go` (4). Suíte completa + vet +
 `-race` mcpserver + functional 111/8 verdes.
 
-### Etapa 1 — intake durável (base do piloto; ~1–2 semanas)
+### Etapa 1 — intake durável (base do piloto) — feita 06/09/2026
 
-- [~] `run/start` grava registro durável; serializa/reduz inputs (redação P0-4).
-      *Slice A feito (06/09/2026):* `intake.go` — `intakeRec` escrito por
-      `writeIntake` via `h.claimKV` antes do `launch`, args redigidos/reidratados,
-      owner persistido. `TestRunStartPersistsDurableIntakeRecord`. Falta o status
-      `pending` explícito e tornar o `launch` local opcional.
-- [ ] claim loop por réplica; `ClaimNext` genérico (CAS-scan).
-- [ ] reconcile loop built-in (back-to-`pending` default).
-- [ ] `run/cancel` de `pending` → `cancelled` sem executar (caminho durável via
-      `reconstructRun` do `intakeRec`).
-- [ ] Owner (principal) persistido no `run/start` *(feito no Slice A)*;
-      `run/status`/`cancel` barram não-dono na fase `pending`.
+- [x] `run/start` grava `intakeRec` + status `pending` (redação P0-4, owner
+      sempre persistido). Com store CAS, `run/start` **não lança** — retorna
+      `state:"pending"` + `nudgeClaim()`; sem CAS, caminho em memória inalterado;
+      falha de escrita → fallback `launch`.
+- [x] claim loop por réplica (`claim.go`): `claimLoop`/`drainClaims` (nudge +
+      ticker de 1s), `claimNextCAS` → `runForClaimed` (local ou reconstruído do
+      `intakeRec`) → `runClaimed` (lease + `working` + `execRun`, `resume` se há
+      checkpoint), limitado pelo semáforo. `failClaimed` para claim sem intake.
+- [x] reconcile: `reconcileClaims` no ticker — `claimed` parado > 2×`runLockTTL`
+      sem lease vivo (`peek` positivo) → CAS de volta a `pending`, `Holder` limpo.
+      *Falta:* `working`/`paused` órfão → `pending` (dupla execução; Etapa 2).
+- [x] `run/cancel` de `pending`/`claimed` → `canceled` sem executar (in-memory +
+      status terminal + `RequestCancel` com CAS; caminho durável via
+      `reconstructRun` do status `pending`).
+- [x] `run/status` adota como remoto um run local reivindicado por outra réplica
+      (`adoptIfClaimedElsewhere` via `RunStatusRec.Holder`); owner persistido no
+      `run/start` barra não-dono no `reconstructRun`.
+
+Testes novos: `internal/mcpserver/{runstate,claim,intake}_test.go` (8).
+`go build`/`vet`/`go test ./...`/`-race` mcpserver+execsvc/functional 111/8 e
+runlock+2-réplicas+resume verdes pelo novo caminho.
 
 ### Etapa 2 — gate do piloto com tráfego real
 
-- [ ] **Fechar R4/R5:** watchdog de heartbeat independente da renovação lenta
-      (R4); handle imutável de aquisição por tentativa (R5). Ver P1-10.
+- [x] **Fechar R4/R5** (06/09/2026). R5: `leaseHandle` imutável de `acquire`,
+      capturado por `execRun`, usado por `renew`/`release` — `runLock.tokens`
+      removido. R4: `renew` limitado por `renewBudget` (5s) + watchdog
+      independente em `heartbeatLock` que cancela o run se nenhum `renew` tiver
+      sucesso dentro da janela segura. Testes migrados para a API de handle +
+      `TestRunLock{StaleHandleCannotReleaseLaterAcquisition,RenewRespectsContextDeadline}`.
 - [ ] Fencing token de escrita de checkpoint (P1-10) — zumbi que voltou a
       `pending`.
 - [ ] `mhl-store-postgres.ClaimNext` com `SKIP LOCKED` + ordenação por prioridade.

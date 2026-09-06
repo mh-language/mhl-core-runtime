@@ -60,6 +60,10 @@ type asyncRun struct {
 	// it from the store on each poll; run/cancel signals through the store
 	// instead of calling a local cancel func.
 	remote bool
+	// holder is the replica id that claimed this run from durable intake
+	// (RunStatusRec.Holder). "" for the in-memory-only path. Published with the
+	// status so another replica's run/status can tell it was claimed here.
+	holder string
 
 	mu        sync.Mutex
 	state     RunState // see runstate.go for the full state machine
@@ -181,7 +185,7 @@ func (h *httpServer) publishRunStatus(rn *asyncRun) {
 	}
 	rn.mu.Lock()
 	rec := RunStatusRec{
-		Tool: rn.tool.Name, State: rn.state, Step: rn.step,
+		Tool: rn.tool.Name, State: rn.state, Holder: rn.holder, Step: rn.step,
 		StepIndex: rn.stepIndex, StepTotal: rn.stepTotal,
 		Reached:   append([]string(nil), rn.reached...),
 		Resumable: rn.resumable, Error: auth.Redact(rn.errMsg),
@@ -253,27 +257,50 @@ func heartbeatDecision(stillMine bool, err error, sinceLastRenew time.Duration) 
 	}
 }
 
-// heartbeatLock renews this replica's run lock while the run executes. It
-// cancels the run when the lease is lost (another replica took it over) or when
-// renews have been failing long enough that the lease is about to expire —
-// stopping before the safe window closes, not merely after N failures. Stops
-// when stop is closed (execRun returning).
-func (h *httpServer) heartbeatLock(rn *asyncRun, stop <-chan struct{}) {
+// heartbeatLock renews lease while the run executes. It cancels the run when the
+// lease is lost (another replica took it over) or when renews have failed long
+// enough that the lease is about to expire — stopping before the safe window
+// closes, not after N failures. Each renew is bounded by renewBudget so a wedged
+// store cannot stall the loop, and an independent watchdog cancels the run if no
+// renew succeeds within the safe window even if a renew call never returns.
+// Stops when stop is closed (execRun returning).
+func (h *httpServer) heartbeatLock(rn *asyncRun, lease leaseHandle, stop <-chan struct{}) {
 	if h.lock == nil {
 		return
 	}
 	t := time.NewTicker(runLockHeartbeat)
 	defer t.Stop()
+	safeWindow := runLockTTL - runLockHeartbeat
+	watchdog := time.NewTimer(safeWindow)
+	defer watchdog.Stop()
+	resetWatchdog := func() {
+		if !watchdog.Stop() {
+			select {
+			case <-watchdog.C:
+			default:
+			}
+		}
+		watchdog.Reset(safeWindow)
+	}
 	lastRenew := time.Now()
 	for {
 		select {
 		case <-stop:
 			return
+		case <-watchdog.C:
+			h.srv.logEvent(slog.LevelError,
+				"run lock watchdog fired — no successful renew within the safe window; cancelling to avoid two writers",
+				"runId", rn.id, "sinceLastRenew", time.Since(lastRenew).String())
+			rn.cancel()
+			return
 		case <-t.C:
-			stillMine, err := h.lock.renew(context.Background(), rn.id)
+			ctx, cancel := context.WithTimeout(context.Background(), renewBudget)
+			stillMine, err := h.lock.renew(ctx, lease)
+			cancel()
 			switch heartbeatDecision(stillMine, err, time.Since(lastRenew)) {
 			case hbRefreshed:
 				lastRenew = time.Now()
+				resetWatchdog()
 			case hbContinue:
 				h.srv.logEvent(slog.LevelWarn, "run lock renew failed — retrying before the lease expires",
 					"runId", rn.id, "err", err.Error(), "sinceLastRenew", time.Since(lastRenew).String())
@@ -447,27 +474,38 @@ func (h *httpServer) runStart(sess *session, msg rpcMsg) *rpcMsg {
 		state:     RunStateQueued, // launch sets the authoritative state synchronously
 	}
 	h.runs.Put(rn)
+
+	// Durable intake (Etapa 1): when a cas store is configured, run/start does
+	// not launch. It persists the intake record and a `pending` status, then
+	// returns — the per-replica claim loop takes it from there (on this replica
+	// or another), so an accepted run survives a crash before its first step.
+	// Without a cas store the historical in-memory path runs unchanged.
+	if h.claimKV != nil {
+		if err := h.writeIntake(ctx, rn); err != nil {
+			// Persisting the run failed: fall back rather than drop it.
+			h.srv.logEvent(slog.LevelError, "durable intake write failed — launching in-memory only",
+				"runId", rn.id, "err", err.Error())
+			if sess.principal != "" {
+				_ = h.cps.WriteOwner(rn.id, rn.owner)
+			}
+			h.launch(ctx, rn, false)
+			return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+		}
+		rn.mu.Lock()
+		rn.state, rn.updated = RunStatePending, time.Now()
+		rn.mu.Unlock()
+		_ = h.cps.WriteOwner(rn.id, rn.owner)
+		h.publishRunStatus(rn)
+		h.nudgeClaim()
+		return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+	}
+
 	// Persist the owner only for a verified principal: a session-hash owner
 	// (no verifier) can't survive a restart anyway — each process mints fresh
 	// session ids — so cross-restart reclaim stays as in Phase 0 there.
 	if sess.principal != "" {
 		_ = h.cps.WriteOwner(rn.id, rn.owner)
 	}
-
-	// Durable intake (Etapa 1): when a cas store is configured, persist the run's
-	// intake record before it launches, so a crash between here and the first
-	// step leaves a recoverable record rather than losing the accepted run. The
-	// owner is persisted here too (not only for a verified principal) — the
-	// claim loop / reconstruct path is what reads it back.
-	if h.claimKV != nil {
-		if err := h.writeIntake(ctx, rn); err != nil {
-			h.srv.logEvent(slog.LevelError, "durable intake write failed — falling back to in-memory only",
-				"runId", rn.id, "err", err.Error())
-		} else {
-			_ = h.cps.WriteOwner(rn.id, rn.owner)
-		}
-	}
-
 	h.launch(ctx, rn, false)
 	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
 }
@@ -566,7 +604,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	// confirmed lease is a hard precondition — if the store cannot be reached
 	// to take it, this run does not start (it cannot rule out another writer).
 	if h.lock != nil {
-		held, holder, err := h.lock.acquire(ctx, rn.id)
+		lease, held, holder, err := h.lock.acquire(ctx, rn.id)
 		switch {
 		case err != nil:
 			rn.mu.Lock()
@@ -593,8 +631,8 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		}
 		stopHB := make(chan struct{})
 		defer close(stopHB)
-		go h.heartbeatLock(rn, stopHB)
-		defer func() { _ = h.lock.release(context.WithoutCancel(ctx), rn.id) }()
+		go h.heartbeatLock(rn, lease, stopHB)
+		defer func() { _ = h.lock.release(context.WithoutCancel(ctx), lease) }()
 	}
 
 	// A cancel issued at another replica lands as a flag in the shared store;
@@ -719,8 +757,31 @@ func (h *httpServer) runStatus(sess *session, msg rpcMsg) *rpcMsg {
 	if rn == nil {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", id))
 	}
-	h.refreshRemote(rn) // a reconstructed run advances on the owning replica
+	h.adoptIfClaimedElsewhere(rn) // this replica accepted it, another claimed it
+	h.refreshRemote(rn)           // a reconstructed run advances on the owning replica
 	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+}
+
+// adoptIfClaimedElsewhere turns a locally-accepted run that another replica has
+// claimed from durable intake into a remote view, so subsequent polls track it
+// through the shared status record and run/cancel signals through the store.
+func (h *httpServer) adoptIfClaimedElsewhere(rn *asyncRun) {
+	if h.claimKV == nil || rn == nil {
+		return
+	}
+	rn.mu.Lock()
+	skip := rn.remote || !rn.state.IsPreExecution()
+	rn.mu.Unlock()
+	if skip {
+		return
+	}
+	rec, ok := h.cps.ReadStatus(rn.id)
+	if !ok || rec.Holder == "" || rec.Holder == h.replicaID {
+		return
+	}
+	rn.mu.Lock()
+	rn.remote = true
+	rn.mu.Unlock()
 }
 
 // runLogs returns this run's retained step/log() output from a byte cursor.
@@ -763,13 +824,22 @@ func (h *httpServer) runCancel(sess *session, msg rpcMsg) *rpcMsg {
 		rn.cancel() // wakes a queued run's waitAndRun, which finishes the cancel
 	}
 	rn.mu.Lock()
-	// working or any pre-execution state (queued now; pending/claimed once
-	// durable intake lands) → canceled. A pre-execution run has no goroutine
-	// to stop and no external effect yet; run/cancel just records the state.
+	// working or any pre-execution state (queued, or durable pending/claimed) →
+	// canceled. A pre-execution run has no goroutine to stop and no external
+	// effect yet; run/cancel just records the state.
+	changed := false
 	if rn.state == RunStateWorking || rn.state.IsPreExecution() {
 		rn.state, rn.updated = RunStateCanceled, time.Now()
+		changed = true
 	}
 	rn.mu.Unlock()
+	// With durable intake, persist the terminal state so the claim loop stops
+	// selecting this pending run, and signal any replica that may have claimed
+	// it in the same instant.
+	if changed && h.claimKV != nil {
+		h.publishRunStatus(rn)
+		_ = h.cps.RequestCancel(rn.id)
+	}
 	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
 }
 

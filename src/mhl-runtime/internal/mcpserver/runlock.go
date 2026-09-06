@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -43,20 +42,26 @@ type runLock struct {
 	kv        LockingKVStore
 	replicaID string
 	now       func() time.Time
-
-	// tokens records, per runID, the nonce of the lease acquisition this
-	// replica currently holds. renew and release act only on that exact
-	// acquisition: the replica ID alone cannot tell one acquisition from a
-	// later one (this replica lost the lease, another took over, this replica
-	// re-acquired), so a stale holder must not renew or delete a successor's
-	// lease.
-	mu     sync.Mutex
-	tokens map[string]string
 }
+
+// leaseHandle is an immutable reference to one successful acquire. renew and
+// release act only on this exact acquisition — a later acquire of the same
+// runId (this replica lost the lease and took it back) yields a different
+// handle, so a stale holder's late renew or release cannot touch the
+// successor's lease. The zero value is not a valid lease.
+type leaseHandle struct {
+	runID string
+	token string
+}
+
+func (h leaseHandle) held() bool { return h.token != "" }
 
 const (
 	runLockTTL       = 30 * time.Second
 	runLockHeartbeat = runLockTTL / 3
+	// renewBudget bounds one renew call so a wedged store cannot stall the
+	// heartbeat loop past the point a takeover could begin elsewhere.
+	renewBudget = 5 * time.Second
 )
 
 func runLockKey(runID string) string { return kvRunPrefix + runID + "/lock" }
@@ -87,100 +92,78 @@ func newLeaseToken() string {
 	return hex.EncodeToString(b[:])
 }
 
-func (l *runLock) setToken(runID, token string) {
-	l.mu.Lock()
-	if l.tokens == nil {
-		l.tokens = map[string]string{}
-	}
-	l.tokens[runID] = token
-	l.mu.Unlock()
-}
-
-func (l *runLock) getToken(runID string) string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.tokens[runID]
-}
-
-func (l *runLock) clearToken(runID string) {
-	l.mu.Lock()
-	delete(l.tokens, runID)
-	l.mu.Unlock()
-}
-
 func (l *runLock) leaseRec(runID, token string) lockRec {
 	return lockRec{Holder: l.replicaID, RunID: runID, Token: token, Expires: l.now().Add(runLockTTL)}
 }
 
-// acquire tries to take the lease for runID. held is true when this replica now
-// owns it — either it was free, or a stale (expired) lease was taken over.
-// When held is false and err is nil, holder names the replica that still holds
-// a fresh lease. A non-nil err means the store could not be reached: the caller
-// must not start work (it cannot rule out another writer).
-func (l *runLock) acquire(ctx context.Context, runID string) (held bool, holder string, err error) {
+// acquire tries to take the lease for runID. On success it returns a leaseHandle
+// the caller keeps for the duration of this attempt and passes to renew/release;
+// held is true. When held is false and err is nil, holder names the replica that
+// still holds a fresh lease. A non-nil err means the store could not be reached:
+// the caller must not start work (it cannot rule out another writer).
+func (l *runLock) acquire(ctx context.Context, runID string) (lease leaseHandle, held bool, holder string, err error) {
 	key := runLockKey(runID)
 	token := newLeaseToken()
 	rec := l.leaseRec(runID, token)
+	mine := leaseHandle{runID: runID, token: token}
 
 	ok, err := l.kv.PutIfAbsent(ctx, key, rec)
 	if err != nil {
-		return false, "", err
+		return leaseHandle{}, false, "", err
 	}
 	if ok {
-		l.setToken(runID, token)
-		return true, l.replicaID, nil
+		return mine, true, l.replicaID, nil
 	}
 	// Someone has (or had) it. Take over only if their lease has lapsed.
 	raw, found, err := l.kv.Get(ctx, key)
 	if err != nil {
-		return false, "", err
+		return leaseHandle{}, false, "", err
 	}
 	if !found {
 		// Raced with a release between PutIfAbsent and Get — try once more.
 		ok, err = l.kv.PutIfAbsent(ctx, key, rec)
 		if err != nil {
-			return false, "", err
+			return leaseHandle{}, false, "", err
 		}
 		if ok {
-			l.setToken(runID, token)
+			return mine, true, l.replicaID, nil
 		}
-		return ok, l.replicaID, nil
+		return leaseHandle{}, false, l.replicaID, nil
 	}
 	var cur lockRec
 	if json.Unmarshal(raw, &cur) != nil {
 		// Unparseable lease — overwrite it conditionally on its exact bytes.
 		swapped, serr := l.kv.CompareAndSwap(ctx, key, raw, rec)
 		if serr != nil {
-			return false, "", serr
+			return leaseHandle{}, false, "", serr
 		}
 		if swapped {
-			l.setToken(runID, token)
+			return mine, true, l.replicaID, nil
 		}
-		return swapped, l.replicaID, nil
+		return leaseHandle{}, false, l.replicaID, nil
 	}
 	if cur.fresh(l.now()) {
-		return false, cur.Holder, nil
+		return leaseHandle{}, false, cur.Holder, nil
 	}
 	swapped, err := l.kv.CompareAndSwap(ctx, key, raw, rec)
 	if err != nil {
-		return false, "", err
+		return leaseHandle{}, false, "", err
 	}
 	if swapped {
-		l.setToken(runID, token)
+		return mine, true, l.replicaID, nil
 	}
-	return swapped, l.replicaID, nil
+	return leaseHandle{}, false, l.replicaID, nil
 }
 
-// renew extends this replica's current acquisition of the lease. stillMine is
-// false (nil error) when the lease is gone or no longer this exact acquisition
-// — the caller must stop working. A non-nil error is a transient store failure;
-// the caller decides how long to tolerate it before the lease would expire.
-func (l *runLock) renew(ctx context.Context, runID string) (stillMine bool, err error) {
-	token := l.getToken(runID)
-	if token == "" {
+// renew extends the acquisition named by lease. stillMine is false (nil error)
+// when the lease is gone or no longer that exact acquisition — the caller must
+// stop working. A non-nil error is a transient store failure; the caller decides
+// how long to tolerate it before the lease would expire.
+func (l *runLock) renew(ctx context.Context, lease leaseHandle) (stillMine bool, err error) {
+	if !lease.held() {
 		return false, nil
 	}
-	key := runLockKey(runID)
+	key := runLockKey(lease.runID)
 	raw, found, err := l.kv.Get(ctx, key)
 	if err != nil {
 		return false, err
@@ -189,25 +172,23 @@ func (l *runLock) renew(ctx context.Context, runID string) (stillMine bool, err 
 		return false, nil
 	}
 	var cur lockRec
-	if json.Unmarshal(raw, &cur) != nil || cur.Holder != l.replicaID || cur.Token != token {
+	if json.Unmarshal(raw, &cur) != nil || cur.Holder != l.replicaID || cur.Token != lease.token {
 		return false, nil
 	}
-	rec := l.leaseRec(runID, token) // same acquisition, later expiry
+	rec := l.leaseRec(lease.runID, lease.token) // same acquisition, later expiry
 	return l.kv.CompareAndSwap(ctx, key, raw, rec)
 }
 
-// release ends this replica's acquisition. It is conditional on the lease still
-// being that exact acquisition: it compare-and-swaps the record to an expired
-// tombstone (which the next acquire overwrites, and Remove sweeps) so a late
-// release by a replica whose lease already lapsed and was taken over cannot
-// wipe the successor's live lease. Not an unconditional Delete.
-func (l *runLock) release(ctx context.Context, runID string) error {
-	token := l.getToken(runID)
-	defer l.clearToken(runID)
-	if token == "" {
+// release ends the acquisition named by lease. It is conditional on the lease
+// still being that exact acquisition: it compare-and-swaps the record to an
+// expired tombstone (which the next acquire overwrites, and Remove sweeps) so a
+// late release by a replica whose lease already lapsed and was taken over
+// cannot wipe the successor's live lease. Not an unconditional Delete.
+func (l *runLock) release(ctx context.Context, lease leaseHandle) error {
+	if !lease.held() {
 		return nil
 	}
-	key := runLockKey(runID)
+	key := runLockKey(lease.runID)
 	raw, found, err := l.kv.Get(ctx, key)
 	if err != nil {
 		return err
@@ -216,10 +197,10 @@ func (l *runLock) release(ctx context.Context, runID string) error {
 		return nil
 	}
 	var cur lockRec
-	if json.Unmarshal(raw, &cur) != nil || cur.Holder != l.replicaID || cur.Token != token {
+	if json.Unmarshal(raw, &cur) != nil || cur.Holder != l.replicaID || cur.Token != lease.token {
 		return nil // a successor holds it — leave their lease alone
 	}
-	tombstone := lockRec{RunID: runID, Expires: l.now().Add(-time.Second)}
+	tombstone := lockRec{RunID: lease.runID, Expires: l.now().Add(-time.Second)}
 	_, err = l.kv.CompareAndSwap(ctx, key, raw, tombstone)
 	return err
 }
