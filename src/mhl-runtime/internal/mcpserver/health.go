@@ -48,10 +48,21 @@ func (h *httpServer) liveGauges() liveGauges {
 		switch rn.state {
 		case RunStateWorking:
 			g.runsActive++
-		case RunStateQueued, RunStatePending, RunStateClaimed:
+		case RunStateQueued:
 			g.runsQueued++
 		}
 		rn.mu.Unlock()
+	}
+	// Durable-intake pending depth is fleet-wide, so it comes from the shared
+	// store, not this replica's registry. One scan per scrape.
+	if h.claimKV != nil {
+		if statuses, err := h.cps.ListStatuses(); err == nil {
+			for _, rec := range statuses {
+				if rec.State == RunStatePending {
+					g.runsPending++
+				}
+			}
+		}
 	}
 	g.sessionsActive = h.sessions.Len()
 	return g

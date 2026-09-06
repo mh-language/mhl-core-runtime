@@ -182,6 +182,42 @@ func (s *pgStore) compareAndSwap(ctx context.Context, logical string, expected, 
 	return tag.RowsAffected() == 1, nil
 }
 
+// claimNext atomically moves one row under logicalPrefix whose value ->>'state'
+// is 'pending' (oldest by ->>'startedAt', ties broken by key) to 'claimed' with
+// ->>'holder' set to holder, using FOR UPDATE SKIP LOCKED so concurrent
+// claimers on other connections never contend for the same row. Returns the
+// updated logical key and the new value bytes, or ok=false when nothing is
+// pending. Purpose-built for `mhl serve`'s durable intake (the RunStatusRec
+// shape: state / holder / startedAt fields, keys `run/<id>/status`).
+func (s *pgStore) claimNext(ctx context.Context, logicalPrefix, holder string) (string, []byte, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	pattern := likeEscape(s.prefix+logicalPrefix) + "%"
+	var key string
+	var val []byte
+	err := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		UPDATE %[1]s SET
+			value = jsonb_set(jsonb_set(value, '{state}', '"claimed"'), '{holder}', to_jsonb($2::text)),
+			updated_at = now()
+		WHERE key = (
+			SELECT key FROM %[1]s
+			WHERE key LIKE $1 ESCAPE '\'
+			  AND key LIKE '%%/status'
+			  AND value->>'state' = 'pending'
+			ORDER BY value->>'startedAt' NULLS FIRST, key
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		RETURNING key, value`, s.table), pattern, holder).Scan(&key, &val)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil, false, nil
+	}
+	if err != nil {
+		return "", nil, false, fmt.Errorf("store-postgres: claim_next: %w", err)
+	}
+	return strings.TrimPrefix(key, s.prefix), val, true, nil
+}
+
 func (s *pgStore) del(ctx context.Context, logical string) error {
 	ctx, cancel := context.WithTimeout(ctx, opTimeout)
 	defer cancel()

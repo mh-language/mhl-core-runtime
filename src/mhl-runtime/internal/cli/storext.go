@@ -68,17 +68,18 @@ func discoverStoreExtension(dir string, logw io.Writer) (mcpserver.KVStore, func
 	// A store that advertises the "cas" capability in its handshake unlocks
 	// cross-replica run locking (mcpserver.LockingKVStore). Absent it, the
 	// server runs uncoordinated (single-writer) and says so.
-	cas := false
+	cas, claim := false, false
 	if cr, ok := chosen.(interface {
 		Capabilities(context.Context) ([]string, error)
 	}); ok {
 		if caps, cerr := cr.Capabilities(context.Background()); cerr == nil {
 			cas = slices.Contains(caps, "cas")
+			claim = slices.Contains(caps, "claim")
 		} else {
 			fmt.Fprintf(logw, "warning: store extension %q capability probe failed: %v\n", chosen.ID(), cerr)
 		}
 	}
-	return &extKV{inst: inst, decl: decl, cas: cas}, set.CloseAll, nil
+	return &extKV{inst: inst, decl: decl, cas: cas, claim: claim}, set.CloseAll, nil
 }
 
 // scanStoreDecl walks dir's .mh files for exactly one `extension store` block
@@ -177,9 +178,10 @@ func (h serveHost) Redact(s string) string { return auth.Redact(s) }
 // extKV adapts a bound `store` extension.Instance to mcpserver.KVStore (and,
 // when the extension advertised the "cas" capability, mcpserver.LockingKVStore).
 type extKV struct {
-	inst extension.Instance
-	decl extension.Declaration
-	cas  bool
+	inst  extension.Instance
+	decl  extension.Declaration
+	cas   bool
+	claim bool // extension advertised "claim" (native claim_next)
 }
 
 func (k *extKV) call(ctx context.Context, method string, named map[string]extension.Value) (extension.Value, error) {
@@ -249,4 +251,32 @@ func (k *extKV) CompareAndSwap(ctx context.Context, key string, expected []byte,
 	}
 	swapped, _ := v.(bool)
 	return swapped, nil
+}
+
+// ClaimNext implements mcpserver.ClaimNexter over the extension's optional
+// `claim_next(prefix, holder)` method (e.g. Postgres `SELECT … FOR UPDATE SKIP
+// LOCKED`). Returns ErrClaimNextUnsupported when the extension did not advertise
+// "claim", so the caller falls back to the generic CAS scan.
+func (k *extKV) ClaimNext(ctx context.Context, holder string) (string, mcpserver.RunStatusRec, bool, error) {
+	if !k.claim {
+		return "", mcpserver.RunStatusRec{}, false, mcpserver.ErrClaimNextUnsupported
+	}
+	v, err := k.call(ctx, "claim_next", map[string]extension.Value{"prefix": "run/", "holder": holder})
+	if err != nil {
+		return "", mcpserver.RunStatusRec{}, false, err
+	}
+	obj, ok := v.(map[string]any)
+	if !ok || obj == nil {
+		return "", mcpserver.RunStatusRec{}, false, nil // no pending run
+	}
+	keyStr, _ := obj["key"].(string)
+	id := strings.TrimSuffix(strings.TrimPrefix(keyStr, "run/"), "/status")
+	var rec mcpserver.RunStatusRec
+	if raw, mErr := json.Marshal(obj["value"]); mErr == nil {
+		_ = json.Unmarshal(raw, &rec)
+	}
+	if id == "" {
+		return "", mcpserver.RunStatusRec{}, false, fmt.Errorf("claim_next returned an unparseable key %q", keyStr)
+	}
+	return id, rec, true, nil
 }

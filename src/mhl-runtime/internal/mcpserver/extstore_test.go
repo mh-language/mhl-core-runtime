@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -10,6 +11,35 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 )
+
+// A fenced extStateStore fails mutating writes once the fence reports the lease
+// is lost, and leaves earlier checkpoints untouched.
+func TestExtStateStoreFencesWritesOnLostLease(t *testing.T) {
+	kv := newFakeKV()
+	lost := false
+	ss := newExtStateStore(kv, "r1", func() error {
+		if lost {
+			return ErrLeaseLost
+		}
+		return nil
+	})
+
+	cp := &runtime.Checkpoint{Pipeline: "P", NextStep: "S2", Variables: map[string]any{}}
+	if err := ss.Save(cp); err != nil {
+		t.Fatalf("Save while lease held: %v", err)
+	}
+
+	lost = true
+	if err := ss.Save(cp); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("Save after lease lost = %v, want ErrLeaseLost", err)
+	}
+	if err := ss.Clear("P"); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("Clear after lease lost = %v, want ErrLeaseLost", err)
+	}
+	if _, found, _ := ss.Load("P"); !found {
+		t.Error("checkpoint from the pre-loss Save was lost")
+	}
+}
 
 // fakeKV is an in-process KVStore for exercising the ext* adapters without a
 // child process.
@@ -108,7 +138,7 @@ func TestExtCheckpointStoreAndStateStore(t *testing.T) {
 	}
 
 	// The runtime.StateStore leg writes the checkpoint...
-	ss := newExtStateStore(kv, runID)
+	ss := newExtStateStore(kv, runID, nil)
 	cp := &runtime.Checkpoint{Pipeline: "P", NextStep: "Two", CompletedSteps: []string{"One"},
 		Variables: map[string]any{"x": 1.0}}
 	if err := ss.Save(cp); err != nil {

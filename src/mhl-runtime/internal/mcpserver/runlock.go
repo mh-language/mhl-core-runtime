@@ -205,6 +205,28 @@ func (l *runLock) release(ctx context.Context, lease leaseHandle) error {
 	return err
 }
 
+// ownsLease reports whether the record at runID is still this exact acquisition
+// and fresh. It is the fence check for checkpoint writes: a replica that stalled
+// past its lease (and was taken over) gets false here and fails the write. A
+// store error is surfaced so the caller can decide (fail closed).
+func (l *runLock) ownsLease(ctx context.Context, lease leaseHandle) (bool, error) {
+	if !lease.held() {
+		return false, nil
+	}
+	raw, found, err := l.kv.Get(ctx, runLockKey(lease.runID))
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+	var cur lockRec
+	if json.Unmarshal(raw, &cur) != nil {
+		return false, nil
+	}
+	return cur.Holder == l.replicaID && cur.Token == lease.token && cur.fresh(l.now()), nil
+}
+
 // peek reports the current lease state for runID without touching it.
 // lockUnknown (non-nil err) means the store could not be read — the caller must
 // not treat that as "no lease".

@@ -16,9 +16,12 @@ func TestPromMetricsRender(t *testing.T) {
 	m.ObserveToolCall("ok")
 	m.ObserveToolCall("error")
 	m.ObserveToolCall("ok")
+	m.ObserveClaim(30 * time.Millisecond)
+	m.ObserveClaim(70 * time.Millisecond)
+	m.ObserveReconcile()
 
 	var sb strings.Builder
-	m.render(&sb, liveGauges{runsActive: 2, runsQueued: 3, sessionsActive: 4})
+	m.render(&sb, liveGauges{runsActive: 2, runsQueued: 3, runsPending: 5, sessionsActive: 4})
 	out := sb.String()
 
 	for _, want := range []string{
@@ -31,6 +34,11 @@ func TestPromMetricsRender(t *testing.T) {
 		`mhl_serve_tool_calls_total{outcome="error"} 1`,
 		"mhl_serve_runs_active 2",
 		"mhl_serve_runs_queued 3",
+		"mhl_serve_runs_pending 5",
+		"mhl_serve_intake_claims_total 2",
+		"mhl_serve_intake_reconciled_total 1",
+		"mhl_serve_intake_claim_latency_seconds_sum 0.100",
+		"mhl_serve_intake_claim_latency_seconds_count 2",
 		"mhl_serve_sessions_active 4",
 	} {
 		if !strings.Contains(out, want) {

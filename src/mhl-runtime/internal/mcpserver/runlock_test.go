@@ -238,6 +238,36 @@ func TestRunLockStaleHandleCannotReleaseLaterAcquisition(t *testing.T) {
 	}
 }
 
+// ownsLease is the checkpoint-write fence: true only for the exact live
+// acquisition, false after takeover or expiry.
+func TestRunLockOwnsLease(t *testing.T) {
+	kv := newFakeLockingKV()
+	now := time.Now()
+	a := newTestLock(kv, "A", &now)
+	b := newTestLock(kv, "B", &now)
+	ctx := context.Background()
+
+	leaseA, held, _, _ := a.acquire(ctx, "r1")
+	if !held {
+		t.Fatal("A acquire failed")
+	}
+	if ok, err := a.ownsLease(ctx, leaseA); err != nil || !ok {
+		t.Fatalf("A.ownsLease while holding = %v err:%v", ok, err)
+	}
+	// B has no lease here.
+	if ok, _ := b.ownsLease(ctx, leaseHandle{runID: "r1", token: "nope"}); ok {
+		t.Fatal("B.ownsLease true for a bogus handle")
+	}
+	// Takeover: A's handle no longer owns.
+	now = now.Add(runLockTTL + time.Second)
+	if _, held, _, _ := b.acquire(ctx, "r1"); !held {
+		t.Fatal("B takeover failed")
+	}
+	if ok, _ := a.ownsLease(ctx, leaseA); ok {
+		t.Fatal("A.ownsLease still true after B took over")
+	}
+}
+
 // R4: renew is bounded by its context — a wedged store cannot make the
 // heartbeat loop block past the point a takeover could begin.
 func TestRunLockRenewRespectsContextDeadline(t *testing.T) {

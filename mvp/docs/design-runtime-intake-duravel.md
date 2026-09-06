@@ -91,7 +91,7 @@ elas fixa uma API que bloqueia o caminho do piloto.
               │ + bloco de rate-limit / 429 (sem estado, no próprio nginx)
               ▼
 ╔═══════════ RUNTIME (core) ═══════════════════════════════════════════╗
-║                                                                     ║
+║                                                                      ║
 ║  run/start ──▶ grava run `pending` no store  ◀── ①  runId nasce     ║
 ║               e devolve o runId NA HORA          aqui, durável       ║
 ║                                                                     ║
@@ -182,9 +182,9 @@ trabalho dobrado é inofensivo). A cada ciclo:
 - Run terminal mais velho que TTL → GC.
 
 **Dependência:** um `working` que voltou a `pending` e foi reclamado por outra
-réplica, com a réplica antiga (zumbi) ainda gravando checkpoint, exige o
-**fencing token de escrita** (P1-10, "próximo incremento"). É pré-requisito da
-Etapa 2.
+réplica, com a réplica antiga (zumbi) ainda gravando checkpoint, é coberto pelo
+**fencing check-then-write** (Etapa 2 — `extStateStore.fence` → `ErrLeaseLost`);
+a rejeição store-side monótona fecha a janela TOCTOU restante.
 
 ## 8. A camada de admissão (fora do runtime)
 
@@ -235,9 +235,13 @@ Progresso 06/09/2026:
       ticker de 1s), `claimNextCAS` → `runForClaimed` (local ou reconstruído do
       `intakeRec`) → `runClaimed` (lease + `working` + `execRun`, `resume` se há
       checkpoint), limitado pelo semáforo. `failClaimed` para claim sem intake.
-- [x] reconcile: `reconcileClaims` no ticker — `claimed` parado > 2×`runLockTTL`
-      sem lease vivo (`peek` positivo) → CAS de volta a `pending`, `Holder` limpo.
-      *Falta:* `working`/`paused` órfão → `pending` (dupla execução; Etapa 2).
+- [x] reconcile: `reconcileRuns` no ticker — run em `claimed`/`working`/`paused`
+      parado > 2×`runLockTTL` com lease positivamente ausente/expirado (`peek`) →
+      CAS de volta a `pending`, `Holder` limpo; claim loop re-reivindica e
+      `runClaimed` executa com `resume` se há checkpoint (at-least-once, P1-8).
+      `runForClaimed` só reusa o `asyncRun` local se ele nunca começou aqui
+      (`IsPreExecution`), senão reconstrói do `intakeRec` — sem 2ª goroutine no
+      mesmo run. `TestReconcileRunsReturnsOrphansToPending`.
 - [x] `run/cancel` de `pending`/`claimed` → `canceled` sem executar (in-memory +
       status terminal + `RequestCancel` com CAS; caminho durável via
       `reconstructRun` do status `pending`).
@@ -257,16 +261,27 @@ runlock+2-réplicas+resume verdes pelo novo caminho.
       independente em `heartbeatLock` que cancela o run se nenhum `renew` tiver
       sucesso dentro da janela segura. Testes migrados para a API de handle +
       `TestRunLock{StaleHandleCannotReleaseLaterAcquisition,RenewRespectsContextDeadline}`.
-- [ ] Fencing token de escrita de checkpoint (P1-10) — zumbi que voltou a
-      `pending`.
-- [ ] `mhl-store-postgres.ClaimNext` com `SKIP LOCKED` + ordenação por prioridade.
-- [ ] Métricas `mhl_serve_intake_*` (profundidade `pending`, latência de claim,
-      contagem de reconcile).
+- [~] Fencing de escrita de checkpoint (P1-10). **Feito (check-then-write):**
+      `extStateStore` recebe uma closure `fence` → `runLock.ownsLease` antes de
+      cada `Save`/`Clear`; réplica que passou do lease e foi substituída recebe
+      `ErrLeaseLost` e falha a escrita. `TestExtStateStoreFencesWritesOnLostLease`,
+      `TestRunLockOwnsLease`. **Falta:** rejeição no lado do store (fence
+      monótono que o `Put` impõe) fecha a janela TOCTOU restante.
+- [x] `mhl-store-postgres.ClaimNext` com `SELECT … FOR UPDATE SKIP LOCKED`
+      (`pg.go` `claimNext`, capacidade `"claim"`, op `claim_next`). Runtime:
+      `ClaimNexter` + `ErrClaimNextUnsupported`, `claimNext` tenta o nativo
+      (store/kv) e cai no CAS-scan; `extKV.ClaimNext` gated pela capacidade.
+      `TestClaimNextPrefersNativeThenFallsBack` + `pg_test.go` (live). Ordenação
+      por prioridade quando houver o campo — pendente.
+- [x] Métricas `mhl_serve_intake_*` (06/09): `runs_pending` gauge, `intake_claims_total`,
+      `intake_reconciled_total`, `intake_claim_latency_seconds` (summary).
 - [ ] Spill de inputs grandes para blob.
-- [ ] **Ensaio distribuído real:** N réplicas + Postgres real; matar pod em cada
-      estado (`pending`, `claimed`, `working`, `paused`); confirmar conclusão
-      efetiva única com a idempotência do destino — 0 perdidos, 0 duplicados
-      além do replay idempotente.
+- [~] **Ensaio distribuído.** In-process feito
+      (`TestDurableIntakeReplicaDeathRecoveredByPeer` — 2 `httpServer`/store CAS
+      compartilhado; A aceita e morre, B reconcilia+conclui, A=0/B=1; `-race`).
+      **Falta:** N réplicas + Postgres real, matar pod em cada estado
+      (`pending`/`claimed`/`working`/`paused`), idempotência do destino ponta a
+      ponta — 0 perdidos, 0 duplicados além do replay.
 
 ### Fora de escopo imediato
 
@@ -300,6 +315,8 @@ runlock+2-réplicas+resume verdes pelo novo caminho.
 
 ### Etapa 2 (gate do piloto)
 
-- Ensaio distribuído real acima, verde, contra Postgres real.
-- R4/R5 fechados: `TestHeartbeatWatchdog…` e handle de aquisição por tentativa
-  cobertos; `-race` limpo.
+- Ensaio distribuído: in-process (`TestDurableIntakeReplicaDeathRecoveredByPeer`)
+  verde; o real contra Postgres + pods pendente.
+- R4/R5 fechados (`TestRunLockRenewRespectsContextDeadline`,
+  `TestRunLockStaleHandleCannotReleaseLaterAcquisition`, `TestHeartbeatDecision`),
+  fencing check-then-write (`TestExtStateStoreFencesWritesOnLostLease`); `-race` limpo.

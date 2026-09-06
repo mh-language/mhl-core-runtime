@@ -256,13 +256,32 @@ func (c *extCheckpointStore) CancelRequested(runID string) bool {
 
 // extStateStore is the runtime.StateStore a run's Runner writes through
 // (injected via execsvc.Request.StateStore). It is scoped to one runID.
+//
+// fence, when set, is checked before every mutating write: it returns a non-nil
+// error (ErrLeaseLost) when this replica no longer holds the run's execution
+// lease. A replica that stalled past its lease and was taken over then fails
+// its checkpoint writes instead of corrupting the state the successor is
+// driving. It is a check-then-write, so a narrow TOCTOU window remains — true
+// store-side fencing is a further increment (P1-10).
 type extStateStore struct {
 	kv    KVStore
 	runID string
+	fence func() error
 }
 
-func newExtStateStore(kv KVStore, runID string) *extStateStore {
-	return &extStateStore{kv: kv, runID: runID}
+func newExtStateStore(kv KVStore, runID string, fence func() error) *extStateStore {
+	return &extStateStore{kv: kv, runID: runID, fence: fence}
+}
+
+// ErrLeaseLost is returned by a fenced extStateStore write when this replica no
+// longer holds the run's execution lease.
+var ErrLeaseLost = errors.New("mcpserver: run execution lease lost — refusing checkpoint write")
+
+func (s *extStateStore) checkFence() error {
+	if s.fence == nil {
+		return nil
+	}
+	return s.fence()
 }
 
 func (s *extStateStore) key(pipeline string) string {
@@ -293,6 +312,9 @@ func (s *extStateStore) Load(pipeline string) (*runtime.Checkpoint, bool, error)
 }
 
 func (s *extStateStore) Save(cp *runtime.Checkpoint) error {
+	if err := s.checkFence(); err != nil {
+		return err
+	}
 	stamped := *cp
 	stamped.SavedAt = time.Now()
 	// Never persist resolved secrets; a secret with a known credential
@@ -303,6 +325,9 @@ func (s *extStateStore) Save(cp *runtime.Checkpoint) error {
 }
 
 func (s *extStateStore) Clear(pipeline string) error {
+	if err := s.checkFence(); err != nil {
+		return err
+	}
 	return s.kv.Delete(context.Background(), s.key(pipeline))
 }
 

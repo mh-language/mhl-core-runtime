@@ -167,4 +167,34 @@ func TestRoundTripAgainstRealPostgres(t *testing.T) {
 	}
 	_ = s.del(ctx, lockKey)
 	_ = s.del(ctx, "session/a")
+
+	// --- claim capability (SELECT … FOR UPDATE SKIP LOCKED) ------------
+	_ = s.put(ctx, "run/c-new/status", []byte(`{"tool":"P","state":"pending","startedAt":"2026-09-06T10:02:00Z"}`))
+	_ = s.put(ctx, "run/c-old/status", []byte(`{"tool":"P","state":"pending","startedAt":"2026-09-06T10:01:00Z"}`))
+	_ = s.put(ctx, "run/c-run/status", []byte(`{"tool":"P","state":"working","startedAt":"2026-09-06T10:00:00Z"}`))
+
+	// Oldest pending first, flipped to claimed for the holder.
+	key, val, ok, err := s.claimNext(ctx, "run/", "replica-A")
+	if err != nil || !ok || key != "run/c-old/status" {
+		t.Fatalf("claim_next #1 = key:%q ok:%v err:%v", key, ok, err)
+	}
+	var cr map[string]any
+	_ = json.Unmarshal(val, &cr)
+	if cr["state"] != "claimed" || cr["holder"] != "replica-A" {
+		t.Fatalf("claim_next #1 value = %v", cr)
+	}
+	// Second claim takes the remaining pending; third finds none.
+	if key, _, ok, _ := s.claimNext(ctx, "run/", "replica-B"); !ok || key != "run/c-new/status" {
+		t.Fatalf("claim_next #2 = key:%q ok:%v", key, ok)
+	}
+	if _, _, ok, err := s.claimNext(ctx, "run/", "replica-B"); ok || err != nil {
+		t.Fatalf("claim_next #3 should find nothing: ok=%v err=%v", ok, err)
+	}
+	// The `working` row was never touched.
+	if raw, _, _ := s.get(ctx, "run/c-run/status"); string(raw) == "" {
+		t.Fatal("working row vanished")
+	}
+	for _, k := range []string{"run/c-new/status", "run/c-old/status", "run/c-run/status"} {
+		_ = s.del(ctx, k)
+	}
 }

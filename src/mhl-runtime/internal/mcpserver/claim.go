@@ -14,10 +14,11 @@ import (
 // nudges it so an accepted run normally starts without waiting a full tick.
 const claimPollInterval = time.Second
 
-// claimReclaimAfter is how long a run may sit in `claimed` before reconcile
-// treats its claimer as dead and returns it to `pending`. Two lock TTLs — the
-// claimer had every chance to turn the claim into a held lease.
-const claimReclaimAfter = 2 * runLockTTL
+// reconcileStaleAfter is how long a non-terminal run may go without a status
+// update before reconcile checks its lease. Two lock TTLs — a live run renews
+// its lease well inside this, so the lease peek (authoritative) still gates the
+// reclaim; this is only a cheap pre-filter to avoid peeking every run.
+const reconcileStaleAfter = 2 * runLockTTL
 
 // nudgeClaim wakes the claim loop now (non-blocking; a pending nudge is enough).
 func (h *httpServer) nudgeClaim() {
@@ -47,18 +48,20 @@ func (h *httpServer) claimLoop(ctx context.Context) {
 		}
 		if tick {
 			// Reconcile only on the safety tick, not on a run/start nudge.
-			h.reconcileClaims(ctx)
+			h.reconcileRuns(ctx)
 		}
 		h.drainClaims(ctx)
 	}
 }
 
-// reconcileClaims returns to `pending` any run stuck in `claimed` past
-// claimReclaimAfter whose claimer left no live execution lease — its replica
-// died between the claim and acquiring the lease, so no step ran and no
-// external effect happened. A no-op without a run lock (a dead claimer cannot
-// be told from a slow one) or a store-read error on a given run.
-func (h *httpServer) reconcileClaims(ctx context.Context) {
+// reconcileRuns returns to `pending` any run in a non-terminal state
+// (`claimed`, `working`, `paused`) that has gone stale and whose execution
+// lease is positively gone — the replica that held it is presumed dead. The
+// claim loop then re-claims it and, when a checkpoint exists, resumes from it
+// (at-least-once: a step that had started may run again, absorbed by the
+// destination's idempotency — see P1-8). A no-op without a run lock (a dead
+// holder cannot be told from a slow one) or on a store-read error for a run.
+func (h *httpServer) reconcileRuns(ctx context.Context) {
 	if h.lock == nil || h.claimKV == nil {
 		return
 	}
@@ -66,12 +69,18 @@ func (h *httpServer) reconcileClaims(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	cut := time.Now().Add(-claimReclaimAfter)
+	cut := time.Now().Add(-reconcileStaleAfter)
 	for id, rec := range statuses {
-		if rec.State != RunStateClaimed || rec.UpdatedAt.IsZero() || rec.UpdatedAt.After(cut) {
+		switch rec.State {
+		case RunStateClaimed, RunStateWorking, RunStatePaused:
+		default:
+			continue // terminal or pending — nothing to reconcile
+		}
+		if rec.UpdatedAt.IsZero() || rec.UpdatedAt.After(cut) {
 			continue
 		}
-		// Only reclaim on a positive read that no lease is held.
+		// The lease is the authoritative signal: reclaim only on a positive
+		// read that none is held. A live worker renews well inside the window.
 		st, _, perr := h.lock.peek(ctx, id)
 		if perr != nil || st == lockFresh || st == lockUnknown {
 			continue
@@ -85,8 +94,9 @@ func (h *httpServer) reconcileClaims(ctx context.Context) {
 		back.Holder = ""
 		back.UpdatedAt = time.Now()
 		if ok, _ := h.claimKV.CompareAndSwap(ctx, runKey(id, "status"), raw, back); ok {
-			h.srv.logEvent(slog.LevelWarn, "reclaimed orphaned run — claimer left no lease",
-				"runId", id, "staleFor", time.Since(rec.UpdatedAt).String())
+			h.metrics.ObserveReconcile()
+			h.srv.logEvent(slog.LevelWarn, "reconcile: run returned to pending — no live lease",
+				"runId", id, "was", string(rec.State), "staleFor", time.Since(rec.UpdatedAt).String())
 		}
 	}
 }
@@ -103,6 +113,7 @@ func (h *httpServer) drainClaims(ctx context.Context) {
 		if !ok {
 			return
 		}
+		claimStart := time.Now()
 		id, _, claimed, err := claimNext(ctx, h.cps, h.claimKV, h.replicaID)
 		if err != nil {
 			h.srv.logEvent(slog.LevelWarn, "claim scan failed", "err", err.Error())
@@ -113,6 +124,7 @@ func (h *httpServer) drainClaims(ctx context.Context) {
 			release()
 			return
 		}
+		h.metrics.ObserveClaim(time.Since(claimStart))
 		rn := h.runForClaimed(id)
 		if rn == nil {
 			// No usable intake record (missing, or its tool is not loaded here).
@@ -125,16 +137,24 @@ func (h *httpServer) drainClaims(ctx context.Context) {
 	}
 }
 
-// runForClaimed resolves the asyncRun for a just-claimed runId: the in-memory
-// one when this replica accepted it, else a fresh run rebuilt from the durable
-// intake record. Returns nil when there is no intake record or its workflow is
-// not loaded on this replica.
+// runForClaimed resolves the asyncRun for a just-claimed runId. It reuses the
+// in-memory run only when this replica accepted it and it has not started here
+// (a pre-execution state); otherwise — a run that already executed here and had
+// its lease die, or a remote view — it rebuilds a fresh execution object from
+// the durable intake record, so a reconcile → re-claim never starts a second
+// goroutine on the same asyncRun. Returns nil when there is no intake record or
+// its workflow is not loaded on this replica.
 func (h *httpServer) runForClaimed(id string) *asyncRun {
 	if rn, ok := h.runs.Get(id); ok {
 		rn.mu.Lock()
-		rn.holder = h.replicaID
+		reuse := !rn.remote && rn.state.IsPreExecution()
+		if reuse {
+			rn.holder = h.replicaID
+		}
 		rn.mu.Unlock()
-		return rn
+		if reuse {
+			return rn
+		}
 	}
 	rec, ok := h.readIntake(context.Background(), id)
 	if !ok {
@@ -215,12 +235,28 @@ type ClaimNexter interface {
 // ClaimNexter nor offers a CAS-capable KV to run the generic path against.
 var ErrNoClaimBackend = errors.New("mcpserver: durable intake needs a ClaimNexter store or a cas-capable KV")
 
-// claimNext moves one pending run to claimed for holder. It uses the store's
-// ClaimNexter fast path when present, else the generic CAS scan against kv.
-// ok == false with a nil error means there is no pending run right now.
+// ErrClaimNextUnsupported is what a ClaimNexter returns when the backing store
+// does not actually implement the native claim (it structurally satisfies the
+// interface but advertised no such capability). claimNext catches it and falls
+// back to the generic CAS scan.
+var ErrClaimNextUnsupported = errors.New("mcpserver: store has no native claim_next")
+
+// claimNext moves one pending run to claimed for holder. It uses a native
+// ClaimNexter fast path (the CheckpointStore's, or the KV's — e.g. Postgres
+// `SELECT … FOR UPDATE SKIP LOCKED`) when one is present and supported, else the
+// generic CAS scan against kv. ok == false with a nil error means there is no
+// pending run right now.
 func claimNext(ctx context.Context, store any, kv LockingKVStore, holder string) (runID string, rec RunStatusRec, ok bool, err error) {
-	if cn, isCN := store.(ClaimNexter); isCN {
-		return cn.ClaimNext(ctx, holder)
+	for _, cand := range []any{store, kv} {
+		cn, isCN := cand.(ClaimNexter)
+		if !isCN {
+			continue
+		}
+		id, r, done, cErr := cn.ClaimNext(ctx, holder)
+		if errors.Is(cErr, ErrClaimNextUnsupported) {
+			break // this backend can't; fall through to the CAS scan
+		}
+		return id, r, done, cErr
 	}
 	if kv == nil || !kv.CASCapable() {
 		return "", RunStatusRec{}, false, ErrNoClaimBackend

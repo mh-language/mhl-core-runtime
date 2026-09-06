@@ -121,9 +121,9 @@ func TestClaimNextCASSkipsCandidateLostToARace(t *testing.T) {
 	}
 }
 
-// A run stuck in `claimed` past claimReclaimAfter whose claimer left no lease is
-// returned to `pending`; a fresh claim, or one with a live lease, is left alone.
-func TestReconcileClaimsReturnsOrphanedClaimToPending(t *testing.T) {
+// A stale non-terminal run (claimed/working/paused) whose lease is gone is
+// returned to `pending`; a fresh one, or one with a live lease, is left alone.
+func TestReconcileRunsReturnsOrphansToPending(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "w.mh"),
 		[]byte("pipeline P {\n  step S { var x = 1 }\n}\n"), 0o600); err != nil {
@@ -139,14 +139,19 @@ func TestReconcileClaimsReturnsOrphanedClaimToPending(t *testing.T) {
 	ctx := context.Background()
 
 	old := time.Now().Add(-3 * runLockTTL)
-	seedStatus(t, kv, "orphan", RunStatusRec{Tool: "P", State: RunStateClaimed, Holder: "dead", StartedAt: old, UpdatedAt: old})
-	seedStatus(t, kv, "fresh", RunStatusRec{Tool: "P", State: RunStateClaimed, Holder: "r1", StartedAt: time.Now(), UpdatedAt: time.Now()})
-	seedStatus(t, kv, "held", RunStatusRec{Tool: "P", State: RunStateClaimed, Holder: "r2", StartedAt: old, UpdatedAt: old})
+	// Stale + no lease → reclaimed, for each non-terminal state.
+	seedStatus(t, kv, "orphan-claimed", RunStatusRec{Tool: "P", State: RunStateClaimed, Holder: "dead", StartedAt: old, UpdatedAt: old})
+	seedStatus(t, kv, "orphan-working", RunStatusRec{Tool: "P", State: RunStateWorking, Holder: "dead", StartedAt: old, UpdatedAt: old})
+	seedStatus(t, kv, "orphan-paused", RunStatusRec{Tool: "P", State: RunStatePaused, Holder: "dead", StartedAt: old, UpdatedAt: old})
+	// Left alone: fresh status, terminal, and stale-but-lease-held.
+	seedStatus(t, kv, "fresh", RunStatusRec{Tool: "P", State: RunStateWorking, Holder: "r1", StartedAt: time.Now(), UpdatedAt: time.Now()})
+	seedStatus(t, kv, "done", RunStatusRec{Tool: "P", State: RunStateCompleted, Holder: "r1", StartedAt: old, UpdatedAt: old})
+	seedStatus(t, kv, "held", RunStatusRec{Tool: "P", State: RunStateWorking, Holder: "r2", StartedAt: old, UpdatedAt: old})
 	if _, held, _, _ := h.lock.acquire(ctx, "held"); !held {
 		t.Fatal("could not seed a held lease")
 	}
 
-	h.reconcileClaims(ctx)
+	h.reconcileRuns(ctx)
 
 	state := func(id string) RunStatusRec {
 		raw, _, _ := kv.Get(ctx, runKey(id, "status"))
@@ -154,14 +159,129 @@ func TestReconcileClaimsReturnsOrphanedClaimToPending(t *testing.T) {
 		_ = json.Unmarshal(raw, &r)
 		return r
 	}
-	if r := state("orphan"); r.State != RunStatePending || r.Holder != "" {
-		t.Errorf("orphan = state:%q holder:%q, want pending with holder cleared", r.State, r.Holder)
+	for _, id := range []string{"orphan-claimed", "orphan-working", "orphan-paused"} {
+		if r := state(id); r.State != RunStatePending || r.Holder != "" {
+			t.Errorf("%s = state:%q holder:%q, want pending with holder cleared", id, r.State, r.Holder)
+		}
 	}
-	if r := state("fresh"); r.State != RunStateClaimed {
-		t.Errorf("fresh = %q, want left claimed (not yet stale)", r.State)
+	if r := state("fresh"); r.State != RunStateWorking {
+		t.Errorf("fresh = %q, want left working (not yet stale)", r.State)
 	}
-	if r := state("held"); r.State != RunStateClaimed {
-		t.Errorf("held = %q, want left claimed (lease is live)", r.State)
+	if r := state("done"); r.State != RunStateCompleted {
+		t.Errorf("done = %q, want left completed (terminal)", r.State)
+	}
+	if r := state("held"); r.State != RunStateWorking {
+		t.Errorf("held = %q, want left working (lease is live)", r.State)
+	}
+}
+
+// Two replicas over one shared store: replica A accepts a run and dies with it
+// claimed but never leased; replica B's reconcile returns it to `pending` and
+// B's claim loop runs it to completion — A never executed it.
+func TestDurableIntakeReplicaDeathRecoveredByPeer(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "w.mh"),
+		[]byte("pipeline P {\n  input who: string\n  step S { log(who) }\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kv := newFakeLockingKV()
+
+	_, hA, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, Store: kv}, io.Discard)
+	if err != nil {
+		t.Fatalf("buildHTTP A: %v", err)
+	}
+	// A is "dead" from the outset: its claim loop never runs, so run/start
+	// still persists the durable records but A never claims or executes.
+	hA.runsCancel()
+	t.Cleanup(func() { _ = hA.cps.Close() })
+
+	_, hB, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, Store: kv}, io.Discard)
+	if err != nil {
+		t.Fatalf("buildHTTP B: %v", err)
+	}
+	t.Cleanup(func() { hB.runsCancel(); _ = hB.cps.Close() })
+
+	sess := &session{id: "s1"}
+	res := decodeResult(t, hA.runStart(sess, mkMsg("run/start", map[string]any{
+		"name": "P", "arguments": map[string]any{"who": "bob"},
+	})))
+	runID, _ := res["runId"].(string)
+	if runID == "" {
+		t.Fatalf("run/start on A: %v", res)
+	}
+
+	// Pin the run as a stale `claimed` left by dead A (as if A had claimed it
+	// and died before acquiring a lease).
+	old := time.Now().Add(-3 * runLockTTL)
+	seedStatus(t, kv, runID, RunStatusRec{
+		Tool: "P", State: RunStateClaimed, Holder: "replica-A-dead",
+		StartedAt: old, UpdatedAt: old,
+	})
+
+	// B reconciles the orphan back to pending, then drains it.
+	hB.reconcileRuns(context.Background())
+	hB.drainClaims(context.Background())
+
+	var st map[string]any
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		st = decodeResult(t, hB.runStatus(sess, mkMsg("run/status", map[string]any{"runId": runID})))
+		if s, _ := st["state"].(string); s == string(RunStateCompleted) || s == string(RunStateFailed) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if st["state"] != string(RunStateCompleted) {
+		t.Fatalf("run not completed on B: %v", st)
+	}
+	if pm, ok := hA.metrics.(*promMetrics); ok && pm.runsCompleted.Load() != 0 {
+		t.Errorf("replica A completed %d runs, want 0", pm.runsCompleted.Load())
+	}
+	if pm, ok := hB.metrics.(*promMetrics); ok && pm.runsCompleted.Load() != 1 {
+		t.Errorf("replica B completed %d runs, want 1", pm.runsCompleted.Load())
+	}
+}
+
+// fakeClaimNexter is a native-claim backend for the dispatcher test.
+type fakeClaimNexter struct {
+	supported bool
+	id        string
+	calls     int
+}
+
+func (f *fakeClaimNexter) ClaimNext(_ context.Context, holder string) (string, RunStatusRec, bool, error) {
+	f.calls++
+	if !f.supported {
+		return "", RunStatusRec{}, false, ErrClaimNextUnsupported
+	}
+	if f.id == "" {
+		return "", RunStatusRec{}, false, nil
+	}
+	return f.id, RunStatusRec{Tool: "P", State: RunStateClaimed, Holder: holder}, true, nil
+}
+
+// claimNext prefers a native ClaimNexter; ErrClaimNextUnsupported from one makes
+// it fall back to the generic CAS scan.
+func TestClaimNextPrefersNativeThenFallsBack(t *testing.T) {
+	ctx := context.Background()
+
+	// Native, supported → used directly, no CAS scan.
+	native := &fakeClaimNexter{supported: true, id: "n1"}
+	kv := newFakeLockingKV()
+	seedStatus(t, kv, "cas1", RunStatusRec{Tool: "P", State: RunStatePending, StartedAt: time.Now()})
+	id, rec, ok, err := claimNext(ctx, native, kv, "A")
+	if err != nil || !ok || id != "n1" || rec.Holder != "A" {
+		t.Fatalf("native path: id=%q ok=%v holder=%q err=%v", id, ok, rec.Holder, err)
+	}
+
+	// Native, unsupported → falls back to the CAS scan over kv.
+	unsup := &fakeClaimNexter{supported: false}
+	id, _, ok, err = claimNext(ctx, unsup, kv, "A")
+	if err != nil || !ok || id != "cas1" {
+		t.Fatalf("fallback path: id=%q ok=%v err=%v (unsup.calls=%d)", id, ok, err, unsup.calls)
+	}
+	if unsup.calls != 1 {
+		t.Errorf("unsupported ClaimNexter called %d times, want 1", unsup.calls)
 	}
 }
 

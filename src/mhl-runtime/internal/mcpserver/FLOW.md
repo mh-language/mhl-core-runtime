@@ -27,9 +27,11 @@ POST-only (no DELETE); `GET` → 405.
 
 Operational endpoints, unauthenticated: `GET /healthz` (liveness, always 200
 while up), `GET /readyz` (200, or 503 once draining), `GET /metrics`
-(Prometheus text — run counters, duration sum/count, tool-call counters, and
-live `runs_active` / `runs_queued` / `sessions_active` gauges; 404 if a
-non-Prometheus `MetricsSink` is configured). Lifecycle events also go to
+(Prometheus text — run counters, duration sum/count, tool-call counters,
+`intake_claims_total` / `intake_reconciled_total` counters, and live
+`runs_active` / `runs_queued` / `runs_pending` (fleet-wide durable-intake depth,
+a store scan per scrape) / `sessions_active` gauges; 404 if a non-Prometheus
+`MetricsSink` is configured). Lifecycle events also go to
 stderr as JSON (`log/slog`), keyed by `runId` and `owner`.
 
 ---
@@ -226,9 +228,15 @@ is an explicit `run/resume`, never automatic.
 
 Without a `cas`-capable store the lock is `nil`: a configured `Store` then
 refuses to start unless `--single-replica` / `MHL_SERVE_SINGLE_REPLICA`
-acknowledges a one-writer deployment. This is still a coarse lock, not a fenced
-one: a resurrected holder could write a stale checkpoint (a fencing token is a
-later increment).
+acknowledges a one-writer deployment.
+
+Checkpoint writes are **fenced on the lease**: the `extStateStore` `execRun`
+builds carries a `fence` closure that calls `runLock.ownsLease` before every
+`Save` / `Clear`; a replica that stalled past its lease (and was taken over)
+gets `ErrLeaseLost` and fails the write instead of corrupting the state the
+successor drives. It is a check-then-write, so a narrow TOCTOU window remains —
+store-side rejection (a monotonic fence the `Put` itself enforces) is a further
+increment.
 
 ```mermaid
 sequenceDiagram
@@ -327,12 +335,15 @@ record and every state after it. `run/start` / `run/resume` also reject
 arguments that are not JSON-serialisable or exceed 256 KiB (`checkRunInputs`),
 because they travel with the durable run record.
 
-**`ClaimNext` seam:** `claim.go` defines how a replica takes the next `pending`
-run — the optional `ClaimNexter` fast path (a store backs it with
-`SELECT … FOR UPDATE SKIP LOCKED`), else `claimNextCAS`, a compare-and-swap
-scan that flips the oldest `pending` `RunStatusRec` to `claimed` and stamps
-`Holder`. No caller wires it yet (the claim loop is Etapa 1); durable intake
-needs a CAS-capable extension store, like the run lock.
+**`ClaimNext` seam:** `claim.go`'s `claimNext` takes the next `pending` run via a
+native `ClaimNexter` fast path when the store or KV offers one — `mhl-store-postgres`
+backs it with `SELECT … FOR UPDATE SKIP LOCKED` (the `"claim"` capability;
+`extKV.ClaimNext`), returning `ErrClaimNextUnsupported` otherwise so the caller
+falls back to `claimNextCAS`, a compare-and-swap scan that flips the oldest
+`pending` `RunStatusRec` to `claimed` and stamps `Holder`. The per-replica claim
+loop (`claimLoop` / `drainClaims`) drives it, bounded by the concurrency
+semaphore; each claim's store round-trip feeds `mhl_serve_intake_claim_latency_seconds`.
+Durable intake needs a CAS-capable extension store, like the run lock.
 
 `reached` is the ordered list of steps that **started** (fed by `OnStep`);
 on completion it becomes `Result.Skipped ++ Result.Executed` (authoritative,

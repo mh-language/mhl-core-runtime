@@ -120,7 +120,10 @@ func main() {
 				// "cas": atomic put_if_absent / compare_and_swap. The mhl serve
 				// layer enables cross-replica run locking only when a store
 				// advertises this.
-				"capabilities": []string{"cas"},
+				// "claim": native claim_next (SELECT … FOR UPDATE SKIP LOCKED)
+				// for durable-intake — the mhl serve claim loop uses it in place
+				// of the generic CAS scan.
+				"capabilities": []string{"cas", "claim"},
 			}})
 		case "call":
 			// Pin the pool from the first call's props synchronously, in the
@@ -243,6 +246,23 @@ func (s *store) handleCall(msg rpc) rpc {
 			res = fail(err.Error())
 		} else {
 			res = rpc{ID: msg.ID, Result: keys}
+		}
+
+	case "claim_next":
+		holder := p.strArg("holder", 1)
+		logicalKey, val, ok, err := s.pg.claimNext(ctx, prefix, holder)
+		switch {
+		case err != nil:
+			res = fail(err.Error())
+		case !ok:
+			res = rpc{ID: msg.ID, Result: nil} // nothing pending
+		default:
+			var v any
+			if err := json.Unmarshal(val, &v); err != nil {
+				res = fail("corrupt value at " + logicalKey + ": " + err.Error())
+			} else {
+				res = rpc{ID: msg.ID, Result: map[string]any{"key": logicalKey, "value": v}}
+			}
 		}
 
 	default:

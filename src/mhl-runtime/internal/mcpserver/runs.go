@@ -603,8 +603,12 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	// Cross-replica run lock: exactly one replica may drive a given runId. A
 	// confirmed lease is a hard precondition — if the store cannot be reached
 	// to take it, this run does not start (it cannot rule out another writer).
+	var lease leaseHandle // set when h.lock != nil; used to fence checkpoint writes
 	if h.lock != nil {
-		lease, held, holder, err := h.lock.acquire(ctx, rn.id)
+		var held bool
+		var holder string
+		var err error
+		lease, held, holder, err = h.lock.acquire(ctx, rn.id)
 		switch {
 		case err != nil:
 			rn.mu.Lock()
@@ -649,7 +653,23 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 
 	var stateStore runtime.StateStore
 	if h.store != nil {
-		stateStore = newExtStateStore(h.store, rn.id) // checkpoints go to the extension, not disk
+		// Fence checkpoint writes on the execution lease: a replica that stalled
+		// past its lease and was taken over fails its checkpoint writes rather
+		// than corrupting the state the successor now drives.
+		var fence func() error
+		if h.lock != nil {
+			fence = func() error {
+				ok, ferr := h.lock.ownsLease(context.Background(), lease)
+				if ferr != nil {
+					return ferr // fail closed on a store error
+				}
+				if !ok {
+					return ErrLeaseLost
+				}
+				return nil
+			}
+		}
+		stateStore = newExtStateStore(h.store, rn.id, fence) // checkpoints go to the extension, not disk
 	}
 	res, runErr := execsvc.Run(execsvc.Request{
 		Context:    ctx,
