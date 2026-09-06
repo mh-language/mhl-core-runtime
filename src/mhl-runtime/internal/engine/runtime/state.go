@@ -437,7 +437,8 @@ func redactValueForCheckpoint(v any) any {
 // {secretRefKey: ref} placeholder written by RedactVarsForCheckpoint with the
 // value re-resolved from that reference. A reference that no longer resolves
 // (the environment variable is gone) is a hard error: a resumed run must not
-// silently proceed with a missing credential.
+// silently proceed with a missing credential. Ambiguous references recorded
+// when distinct credentials shared a value also fail explicitly on resume.
 func RehydrateVars(vars map[string]any) (map[string]any, error) {
 	out := make(map[string]any, len(vars))
 	for key, value := range vars {

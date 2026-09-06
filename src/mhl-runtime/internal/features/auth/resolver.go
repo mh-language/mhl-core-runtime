@@ -27,35 +27,41 @@ var refs = struct {
 	byValue map[string]string
 }{byValue: map[string]string{}}
 
-// RememberRef records that value was resolved from ref. Subject to the same
-// false-positive guard as Register (short/numeric/keyword values are
-// ignored). Calling it also Registers value so it is masked everywhere a
-// reference cannot be used.
+// ambiguousRef deliberately cannot resolve. It preserves ambiguity in a
+// checkpoint even when it is loaded in another process with an empty registry.
+const ambiguousRef = "ambiguous()"
+
+// RememberRef records an explicitly identified credential, preserving its
+// exact nonempty value regardless of length, whitespace or numeric shape.
+// Distinct references for the same value remain ambiguous for this process.
 func RememberRef(value, ref string) {
-	value = strings.TrimSpace(value)
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		Register(value)
-		return
-	}
-	if len([]rune(value)) < 6 {
-		return
-	}
-	if _, err := strconv.ParseFloat(value, 64); err == nil {
-		return
-	}
-	switch strings.ToLower(value) {
-	case "true", "false", "yes", "no", "null", "none":
+	if value == "" {
 		return
 	}
 	remember(value)
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return
+	}
 	refs.Lock()
-	refs.byValue[value] = ref
-	refs.Unlock()
+	defer refs.Unlock()
+	if prior, ok := refs.byValue[value]; ok && prior != ref {
+		refs.byValue[value] = ambiguousRef
+	} else {
+		refs.byValue[value] = ref
+	}
 }
 
-// RefFor returns the credential reference value was resolved from, if one was
-// recorded through RememberRef.
+// RememberInferredRef applies the ordinary-environment false-positive guard
+// before recording a reference. Explicit credentials must use RememberRef.
+func RememberInferredRef(value, ref string) {
+	if plausibleSecret(value) {
+		RememberRef(value, ref)
+	}
+}
+
+// RefFor returns a checkpoint reference for an exact value. If its provenance
+// is ambiguous, it returns a marker that Resolve rejects explicitly on resume.
 func RefFor(value string) (string, bool) {
 	refs.RLock()
 	defer refs.RUnlock()
@@ -67,6 +73,9 @@ func RefFor(value string) (string, bool) {
 // missing or empty. Vault references are reserved for a future backend.
 func Resolve(ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
+	if ref == ambiguousRef {
+		return "", fmt.Errorf("auth: ambiguous credential reference: distinct references resolved to the same value; start a new run with distinct credentials")
+	}
 	if strings.HasPrefix(ref, "env(\"") && strings.HasSuffix(ref, "\")") {
 		key := strings.TrimSuffix(strings.TrimPrefix(ref, "env(\""), "\")")
 		if key == "" || strings.ContainsAny(key, "\\\"") {
@@ -104,18 +113,24 @@ func remember(value string) {
 // or one that is simply a number or a bool keyword, is ignored, because
 // blanket-replacing "1" or "true" everywhere would corrupt ordinary output.
 func Register(value string) {
+	if plausibleSecret(value) {
+		remember(value)
+	}
+}
+
+func plausibleSecret(value string) bool {
 	value = strings.TrimSpace(value)
 	if len([]rune(value)) < 6 {
-		return
+		return false
 	}
 	if _, err := strconv.ParseFloat(value, 64); err == nil {
-		return
+		return false
 	}
 	switch strings.ToLower(value) {
 	case "true", "false", "yes", "no", "null", "none":
-		return
+		return false
 	}
-	remember(value)
+	return true
 }
 
 // LooksSecretName reports whether an environment-variable name is
@@ -144,10 +159,13 @@ func LooksSecretName(name string) bool {
 func Redact(value string) string {
 	secrets.RLock()
 	defer secrets.RUnlock()
+	// Replace only original input: a short explicit secret must not rewrite
+	// the mask inserted for another secret.
+	pairs := make([]string, 0, 2*len(secrets.values))
 	for _, secret := range secrets.values {
 		if secret != "" {
-			value = strings.ReplaceAll(value, secret, "[REDACTED]")
+			pairs = append(pairs, secret, "[REDACTED]")
 		}
 	}
-	return value
+	return strings.NewReplacer(pairs...).Replace(value)
 }

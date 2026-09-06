@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -139,5 +140,49 @@ func TestRunFormatRejectsUnknownValue(t *testing.T) {
 	err := cli.Run([]string{"run", "p.mh", "--format", "yaml"}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "text or json") {
 		t.Fatalf("want a --format validation error, got: %v", err)
+	}
+}
+
+func TestRunFormatJSONSuccessRedactsNestedSecrets(t *testing.T) {
+	const secret = "synthetic-json-success-secret-8361"
+	for _, projection := range []struct {
+		name   string
+		output string
+	}{
+		{"legacy", ""},
+		{"explicit", "output: { scalar: scalar, object: object, array: array, public: public }"},
+	} {
+		t.Run(projection.name, func(t *testing.T) {
+			t.Setenv("MHL_JSON_SUCCESS_SECRET", secret)
+			obj, err := runJSONOut(t, `
+pipeline Protected {
+    var scalar = env("MHL_JSON_SUCCESS_SECRET")
+    var object = { nested: { token: scalar }, count: 42 }
+    var array = [scalar, { token: scalar }, "visible"]
+    var public = "ordinary result"
+    `+projection.output+`
+    step Done { log("completed " + scalar) }
+}
+`)
+			if err != nil || obj["ok"] != true {
+				t.Fatalf("successful JSON run: err=%v, result=%v", err, obj)
+			}
+			blob, err := json.Marshal(obj)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(blob), secret) {
+				t.Fatal("successful JSON run exposed the registered secret")
+			}
+			want := map[string]any{
+				"scalar": "[REDACTED]",
+				"object": map[string]any{"nested": map[string]any{"token": "[REDACTED]"}, "count": float64(42)},
+				"array":  []any{"[REDACTED]", map[string]any{"token": "[REDACTED]"}, "visible"},
+				"public": "ordinary result",
+			}
+			if !reflect.DeepEqual(obj["vars"], want) {
+				t.Errorf("vars = %#v, want %#v", obj["vars"], want)
+			}
+		})
 	}
 }

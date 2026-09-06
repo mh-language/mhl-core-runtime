@@ -67,8 +67,8 @@ func writeRunJSON(out io.Writer, res *execsvc.Result, runErr error, file, logTex
 		rj.Broke = res.Broke
 		rj.Loop = res.Loop
 		rj.Iterations = res.Iterations
-		rj.TerminalReason = res.TerminalReason
-		rj.Vars = res.Vars
+		rj.TerminalReason = auth.Redact(res.TerminalReason)
+		rj.Vars = runtime.RedactVars(res.Vars)
 	}
 
 	enc := json.NewEncoder(out)
