@@ -53,6 +53,13 @@ type HTTPConfig struct {
 	DrainTimeout time.Duration
 	// MaxConcurrentRuns caps simultaneously executing runs; 0 is unlimited.
 	MaxConcurrentRuns int
+
+	// SingleReplica acknowledges a deployment that runs exactly one writer.
+	// It is required when a Store is configured but cannot coordinate runs
+	// (no "cas" capability): without it, that combination is a startup error
+	// rather than a silent uncoordinated mode where two replicas could drive
+	// the same run.
+	SingleReplica bool
 }
 
 // ServeHTTP loads every .mh file under cfg.Dir and serves the MCP endpoint on
@@ -279,8 +286,13 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 		h.lock = &runLock{kv: lk, replicaID: h.replicaID, now: time.Now}
 		h.srv.logEvent(slog.LevelInfo, "cross-replica run locking enabled", "replicaId", h.replicaID)
 	} else if cfg.Store != nil {
+		if !cfg.SingleReplica {
+			return nil, nil, fmt.Errorf("mcpserver: store extension has no \"cas\" capability, so runs cannot be " +
+				"coordinated across replicas — restart with --single-replica to acknowledge a one-writer deployment, " +
+				"or configure a cas-capable store")
+		}
 		h.srv.logEvent(slog.LevelWarn,
-			"cross-replica run locking disabled: store extension has no \"cas\" capability — keep this to a single replica")
+			"cross-replica run locking disabled (--single-replica): this deployment must run exactly one writer")
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(mcpPath, h.handleMCP)

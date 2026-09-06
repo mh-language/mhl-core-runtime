@@ -18,7 +18,7 @@ import (
 // runServe implements:
 //
 //	mhl serve mcp [dir]
-//	mhl serve mcp --http [--addr host:port] [--token t] [--state-dir path] [dir]
+//	mhl serve mcp --http [--addr host:port] [--token t] [--state-dir path] [--single-replica] [dir]
 //	mhl serve a2a [--addr host:port] [--token t] [--principal-header h] [dir]
 //
 // All expose every pipeline/workflow declared under dir (default ".") to
@@ -50,6 +50,14 @@ func runServeMCP(args []string, out io.Writer) error {
 		principalH = os.Getenv("MHL_SERVE_PRINCIPAL_HEADER")
 		dir        string
 	)
+	singleRepl := false
+	if v := os.Getenv("MHL_SERVE_SINGLE_REPLICA"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("MHL_SERVE_SINGLE_REPLICA %q: want a boolean", v)
+		}
+		singleRepl = b
+	}
 	var drainTimeout time.Duration
 	if v := os.Getenv("MHL_SERVE_DRAIN_TIMEOUT"); v != "" {
 		d, err := time.ParseDuration(v)
@@ -113,6 +121,8 @@ func runServeMCP(args []string, out io.Writer) error {
 			}
 			i++
 			principalH = args[i]
+		case "--single-replica":
+			singleRepl = true
 		default:
 			if dir != "" {
 				return fmt.Errorf("unexpected argument %q", args[i])
@@ -160,6 +170,7 @@ func runServeMCP(args []string, out io.Writer) error {
 			Store:             store,
 			DrainTimeout:      drainTimeout,
 			MaxConcurrentRuns: maxRuns,
+			SingleReplica:     singleRepl,
 		}, os.Stderr)
 	}
 	return mcpserver.Serve(ctx, dir, os.Stdin, os.Stdout, os.Stderr)

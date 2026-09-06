@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -15,12 +16,20 @@ import (
 // `output:` block declared, only these keys leave the run — never the full
 // set of internal `var`s.
 //
+// It runs once, after the run reaches a terminal state (a completion or a
+// `break`) — never for a paused run, whose vars may not be populated yet — and
+// its result is not checkpointed: a `--resume` that finishes the run
+// re-evaluates it. goctx is the run's context, so a mapping expression that
+// blocks (a native op, an agent call) observes the run's cancellation and
+// deadline. Side effects in a mapping expression are discouraged for the same
+// reasons: run-once, not persisted, re-run on resume.
+//
 // vars is the run's final variable environment; a mapping expression reads it
 // by bare identifier exactly as a step body would. mem and cctx (either may
 // be nil) make a pipeline's `mem` declarations and `context.*` readable too,
 // matching EvalCondition. Nothing declared while evaluating the mapping
 // persists anywhere.
-func EvalOutputs(prog *ast.Program, expr *ast.Expr, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, mem *MemContext, cctx *ContextView, vars map[string]any) (map[string]any, error) {
+func EvalOutputs(goctx context.Context, prog *ast.Program, expr *ast.Expr, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, mem *MemContext, cctx *ContextView, vars map[string]any) (map[string]any, error) {
 	env := make(Env, len(vars))
 	for k, v := range vars {
 		env[k] = v
@@ -34,6 +43,7 @@ func EvalOutputs(prog *ast.Program, expr *ast.Expr, file string, out io.Writer, 
 		mem:        mem,
 		cctx:       cctx,
 		file:       file,
+		goctx:      goctx,
 		aliasTypes: aliasTypesFor(prog),
 	}
 	v, err := evalExpr(ctx, expr)

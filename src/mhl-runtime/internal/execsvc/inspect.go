@@ -18,19 +18,24 @@ import (
 // result projection is declared. It executes nothing: no session directory,
 // no agent calls, no memory or state writes.
 type Inspection struct {
-	Pipeline            string             `json:"pipeline"`
-	File                string             `json:"file,omitempty"`
-	Kind                string             `json:"kind"` // "pipeline" | "workflow"
-	Loop                bool               `json:"loop,omitempty"`
-	MaxIterations       int                `json:"max_iterations,omitempty"`
-	Steps               []string           `json:"steps"`
-	Stages              []InspectStage     `json:"stages"`
-	Inputs              []InspectInput     `json:"inputs,omitempty"`
-	MissingInputs       []string           `json:"missing_inputs,omitempty"`
-	UnknownInputs       []string           `json:"unknown_inputs,omitempty"`
-	Checkpoint          InspectCheckpoint  `json:"checkpoint"`
-	StepTimeouts        map[string]string  `json:"step_timeouts,omitempty"`
-	HasOutputProjection bool               `json:"has_output_projection"`
+	Pipeline      string         `json:"pipeline"`
+	File          string         `json:"file,omitempty"`
+	Kind          string         `json:"kind"` // "pipeline" | "workflow"
+	Loop          bool           `json:"loop,omitempty"`
+	MaxIterations int            `json:"max_iterations,omitempty"`
+	Steps         []string       `json:"steps"`
+	Stages        []InspectStage `json:"stages"`
+	Inputs        []InspectInput `json:"inputs,omitempty"`
+	MissingInputs []string       `json:"missing_inputs,omitempty"`
+	UnknownInputs []string       `json:"unknown_inputs,omitempty"`
+	// InvalidInputs lists supplied values that fail their declared `input
+	// name: Type` — the same coercion/type check Run performs, so a dry-run
+	// catches `--input count=abc` for `input count: number` before a real run
+	// would. One human-readable message per bad input.
+	InvalidInputs       []string          `json:"invalid_inputs,omitempty"`
+	Checkpoint          InspectCheckpoint `json:"checkpoint"`
+	StepTimeouts        map[string]string `json:"step_timeouts,omitempty"`
+	HasOutputProjection bool              `json:"has_output_projection"`
 	// Goto lists the `goto <target>` edges declared in the pipeline's step
 	// bodies (a workflow only). Whether each target resolves is a lint
 	// concern; this is the static control-flow graph.
@@ -69,8 +74,10 @@ type InspectCheckpoint struct {
 
 // Inspect parses the program in req (Program or Source), resolves imports,
 // selects the pipeline, and returns its static plan. req.Inputs is checked
-// against the input contract but not coerced; req.Resume/Session/BaseDir and
-// every execution-only field are ignored.
+// against the input contract — presence (MissingInputs/UnknownInputs) and
+// declared value types (InvalidInputs), the same pure check Run runs — but
+// nothing is executed; req.Resume/Session/BaseDir and every execution-only
+// field are ignored.
 func Inspect(req Request) (*Inspection, error) {
 	prog := req.Program
 	file := req.File
@@ -138,6 +145,11 @@ func Inspect(req Request) (*Inspection, error) {
 			ins.UnknownInputs = bad.Unknown
 		} else {
 			return nil, err
+		}
+	}
+	if _, errs := coerceInputs(pipeline, req.Inputs); len(errs) > 0 {
+		for _, e := range errs {
+			ins.InvalidInputs = append(ins.InvalidInputs, e.Error())
 		}
 	}
 	return ins, nil

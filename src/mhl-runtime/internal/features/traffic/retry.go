@@ -115,9 +115,14 @@ func (r Retrier) Execute(ctx context.Context, fn func() (Result, error)) (Result
 }
 
 // backoff is delay * 2^(attempt-1), clamped to maxDelay, with full jitter
-// (a uniform pick in [0, clamped]).
+// (a uniform pick in [0, clamped]). The clamp applies from the first wait: a
+// Delay larger than MaxDelay is capped before any doubling, so `Delay: 2h,
+// MaxDelay: 30s` never sleeps past 30s even on attempt 1.
 func (r Retrier) backoff(delay, maxDelay time.Duration, attempt int) time.Duration {
 	d := delay
+	if d <= 0 || d > maxDelay {
+		d = maxDelay
+	}
 	for i := 1; i < attempt; i++ {
 		d <<= 1
 		if d >= maxDelay || d <= 0 {

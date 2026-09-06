@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -303,6 +304,45 @@ pipeline P {
 	}
 }
 
+// Inspect (dry-run) and Run apply the same input value check: a type mismatch
+// is an InvalidInputs entry in the plan and an error from Run; a valid value
+// passes both. (R8 in PLANO.md.)
+func TestInspectAndRunAgreeOnInputTypes(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline P {
+    input count: number
+    var total = 0
+    step S { total = count + 1 }
+}
+`)
+
+	badReq := execsvc.Request{Source: src, Inputs: map[string]any{"count": "abc"}, BaseDir: t.TempDir()}
+	ins, err := execsvc.Inspect(badReq)
+	if err != nil {
+		t.Fatalf("Inspect errored instead of reporting the bad input: %v", err)
+	}
+	if len(ins.InvalidInputs) != 1 || !strings.Contains(ins.InvalidInputs[0], "count") {
+		t.Fatalf("InvalidInputs = %v, want one entry naming count", ins.InvalidInputs)
+	}
+	if _, err := execsvc.Run(badReq); err == nil {
+		t.Fatal("Run accepted count=abc for `input count: number`")
+	}
+
+	okReq := execsvc.Request{Source: src, Inputs: map[string]any{"count": "41"}, BaseDir: t.TempDir()}
+	ins, err = execsvc.Inspect(okReq)
+	if err != nil || len(ins.InvalidInputs) != 0 {
+		t.Fatalf("Inspect(valid) = err:%v InvalidInputs:%v", err, ins.InvalidInputs)
+	}
+	res, err := execsvc.Run(okReq)
+	if err != nil {
+		t.Fatalf("Run(valid): %v", err)
+	}
+	if res.Vars["total"] != float64(42) {
+		t.Errorf("total = %v, want 42 (count coerced to 41)", res.Vars["total"])
+	}
+}
+
 // The pipeline's InputSchema is enforced before any step runs: a missing
 // required input, or an undeclared one, is an *runtime.InvalidInputsError —
 // never a silent no-op or a late "undefined variable".
@@ -464,6 +504,69 @@ pipeline Gate {
 	}
 	if res2.Vars["done"] != true {
 		t.Errorf("Vars[done] = %v, want true (Finish ran after resume)", res2.Vars)
+	}
+}
+
+// A run that pauses before the vars its `output:` mapping reads are populated
+// must report the suspension, not fail while evaluating a half-built
+// projection. The resume that fills those vars then returns the real output.
+// (R6 in PLANO.md.)
+func TestRunPauseSkipsOutputProjection(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+workflow Ingest {
+    input approved: string
+    checkpoint: { enabled: true, strategy: "per_step" }
+    var payload = ""
+    var parsed = {}
+    output: {
+        parsed: json.parse(payload),
+        note: "done",
+    }
+    step Gate {
+        if (approved != "yes") { pause("need a go-ahead") }
+    }
+    step Load { payload = "{\"k\": 7}" }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{
+		Source: src, Inputs: map[string]any{"approved": "no"}, BaseDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("first run errored instead of pausing: %v", err)
+	}
+	if !res.Paused || res.PauseReason != "need a go-ahead" {
+		t.Fatalf("Paused=%v PauseReason=%v, want true/\"need a go-ahead\"", res.Paused, res.PauseReason)
+	}
+	// Partial state comes back — not the output projection (which would have
+	// failed on json.parse("")).
+	if _, ok := res.Vars["note"]; ok {
+		t.Errorf("paused run ran the output: projection: %#v", res.Vars)
+	}
+	if res.Vars["payload"] != "" {
+		t.Errorf("Vars[payload] = %v, want \"\" at the pause point", res.Vars["payload"])
+	}
+
+	res2, err := execsvc.Run(execsvc.Request{
+		Source: src, Inputs: map[string]any{"approved": "yes"}, BaseDir: dir, Resume: true,
+	})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if res2.Paused {
+		t.Fatalf("resumed run still paused: %+v", res2)
+	}
+	// Now the projection ran: only the declared keys, computed from the state
+	// the resume completed.
+	if res2.Vars["note"] != "done" {
+		t.Errorf("Vars[note] = %v, want \"done\"", res2.Vars["note"])
+	}
+	parsed, ok := res2.Vars["parsed"].(map[string]any)
+	if !ok || parsed["k"] != float64(7) {
+		t.Errorf("Vars[parsed] = %#v, want {k:7}", res2.Vars["parsed"])
+	}
+	if _, leaked := res2.Vars["payload"]; leaked {
+		t.Errorf("internal var payload leaked past the output: projection: %#v", res2.Vars)
 	}
 }
 

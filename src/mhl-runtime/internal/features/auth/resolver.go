@@ -169,3 +169,92 @@ func Redact(value string) string {
 	}
 	return strings.NewReplacer(pairs...).Replace(value)
 }
+
+// MaxLen is the byte length of the longest registered secret, or 0 when none
+// are registered. A streaming redactor uses it as the look-behind/hold-back it
+// must keep so a secret straddling a read or write boundary is still masked as
+// one piece rather than leaking in fragments.
+func MaxLen() int {
+	secrets.RLock()
+	defer secrets.RUnlock()
+	m := 0
+	for _, s := range secrets.values {
+		if len(s) > m {
+			m = len(s)
+		}
+	}
+	return m
+}
+
+// SafeCut returns the largest index c, 0 <= c <= cut, at which splitting s
+// leaves no registered secret occurrence divided between s[:c] and s[c:].
+// It walks the cut back to the start of any secret it lands inside, repeating
+// until the point is clear (a pulled-back cut may land inside another secret).
+func SafeCut(s string, cut int) int {
+	if cut <= 0 {
+		return 0
+	}
+	if cut > len(s) {
+		cut = len(s)
+	}
+	return adjustCut(s, cut, false)
+}
+
+// SafeCutForward is SafeCut in the other direction: the smallest index c,
+// cut <= c <= len(s), that divides no secret occurrence. Used to move a ring
+// buffer's drop point past a secret so its first retained byte is never the
+// middle of one.
+func SafeCutForward(s string, cut int) int {
+	if cut >= len(s) {
+		return len(s)
+	}
+	if cut < 0 {
+		cut = 0
+	}
+	return adjustCut(s, cut, true)
+}
+
+func adjustCut(s string, cut int, forward bool) int {
+	secrets.RLock()
+	defer secrets.RUnlock()
+	for {
+		moved := false
+		for _, sec := range secrets.values {
+			n := len(sec)
+			if n < 2 {
+				continue // a 1-byte secret cannot straddle a boundary
+			}
+			lo := cut - n + 1
+			if lo < 0 {
+				lo = 0
+			}
+			hi := cut + n - 1
+			if hi > len(s) {
+				hi = len(s)
+			}
+			for off := lo; ; {
+				j := strings.Index(s[off:hi], sec)
+				if j < 0 {
+					break
+				}
+				i := off + j // absolute start of this occurrence
+				if i < cut && cut < i+n {
+					if forward {
+						cut = i + n
+					} else {
+						cut = i
+					}
+					moved = true
+					break
+				}
+				off = i + 1
+				if off >= hi {
+					break
+				}
+			}
+		}
+		if !moved {
+			return cut
+		}
+	}
+}

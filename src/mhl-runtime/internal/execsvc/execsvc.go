@@ -31,7 +31,6 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
-	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // Request describes one execution.
@@ -223,25 +222,11 @@ func Run(req Request) (*Result, error) {
 		Vars:      priorVars,
 	}
 
-	declaredInputs := map[string]types.Type{}
-	for _, in := range pipeline.Inputs {
-		declaredInputs[in.Name] = in.Type
-	}
-	coercedInputs := map[string]any{}
-	for k, v := range req.Inputs {
-		label := fmt.Sprintf("input %q", k)
-		if raw, ok := v.(string); ok {
-			cv, err := types.Coerce(label, declaredInputs[k], raw)
-			if err != nil {
-				return nil, err
-			}
-			coercedInputs[k] = cv
-			continue
-		}
-		if err := types.Check(label, declaredInputs[k], v); err != nil {
-			return nil, err
-		}
-		coercedInputs[k] = v
+	// Same pure input type-check dry-run (execsvc.Inspect) runs — a mismatch
+	// here must fail identically there.
+	coercedInputs, inputErrs := coerceInputs(pipeline, req.Inputs)
+	if len(inputErrs) > 0 {
+		return nil, inputErrs[0]
 	}
 
 	memInit, err := interpreter.PipelineMemInit(prog, pipeline.Name)
@@ -252,13 +237,15 @@ func Run(req Request) (*Result, error) {
 	// projectVars decides what a finished run exposes to the caller. With an
 	// `output: { ... }` mapping declared, only those keys leave the run
 	// (evaluated against the final variable state); without one, the legacy
-	// behaviour returns every non-internal `var`.
+	// behaviour returns every non-internal `var`. It is only ever called for a
+	// terminal run — a paused run reports publicVars(partial state) instead,
+	// since its `output:` expressions may read vars that are not set yet.
 	projectVars := func(finalVars map[string]any, instanceID string) (map[string]any, error) {
 		if pipeline.Output == nil {
 			return publicVars(finalVars), nil
 		}
 		mem := memContextFor(memInit, pipeline.Name, instanceID)
-		return interpreter.EvalOutputs(prog, pipeline.Output, file, out, store, jsonStore, mem, contextView, finalVars)
+		return interpreter.EvalOutputs(runCtx, prog, pipeline.Output, file, out, store, jsonStore, mem, contextView, finalVars)
 	}
 
 	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
@@ -316,15 +303,18 @@ func Run(req Request) (*Result, error) {
 			return nil, err
 		}
 		// A paused run is suspended, not finished — don't overwrite the
-		// session's "last completed run" result.json for a `context:` reader.
+		// session's "last completed run" result.json for a `context:` reader,
+		// and don't run the `output:` projection: its expressions may read a
+		// var the run has not reached yet. Surface the partial state; the
+		// resume that completes the run evaluates the real projection.
+		vars := publicVars(res.FinalVars)
 		if !res.Paused {
 			if err := persistContextResult(resultSink, pipeline, res.FinalVars); err != nil {
 				return nil, err
 			}
-		}
-		vars, err := projectVars(res.FinalVars, "default")
-		if err != nil {
-			return nil, err
+			if vars, err = projectVars(res.FinalVars, "default"); err != nil {
+				return nil, err
+			}
 		}
 		return &Result{
 			PipelineName: pipeline.Name,
@@ -363,18 +353,20 @@ func Run(req Request) (*Result, error) {
 		return nil, err
 	}
 	paused := res.TerminalReason == "pause"
-	if !paused {
-		if err := persistContextResult(loopResultSink, pipeline, res.FinalVars); err != nil {
-			return nil, err
-		}
-	}
 	loopInstance := pipeline.InstanceID
 	if loopInstance == "" {
 		loopInstance = "default"
 	}
-	vars, err := projectVars(res.FinalVars, loopInstance)
-	if err != nil {
-		return nil, err
+	// As in the non-loop path: a paused loop reports its partial state, not the
+	// `output:` projection, which is evaluated only once the run terminates.
+	vars := publicVars(res.FinalVars)
+	if !paused {
+		if err := persistContextResult(loopResultSink, pipeline, res.FinalVars); err != nil {
+			return nil, err
+		}
+		if vars, err = projectVars(res.FinalVars, loopInstance); err != nil {
+			return nil, err
+		}
 	}
 	return &Result{
 		PipelineName:   pipeline.Name,

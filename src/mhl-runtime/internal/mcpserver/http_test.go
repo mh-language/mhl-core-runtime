@@ -73,6 +73,18 @@ workflow Approval {
 }
 `
 
+// httpPauseOutputWF pauses before the var its output: mapping reads is set —
+// the projection would fail on json.parse(""); the run must still park paused.
+const httpPauseOutputWF = `
+workflow Ingest {
+    input approved: string
+    var payload = ""
+    output: { parsed: json.parse(payload) }
+    step Gate { if (approved != "yes") { pause("hold for review") } }
+    step Load { payload = "{\"k\": 5}" }
+}
+`
+
 // initHTTPSession runs the legacy handshake and returns the session id.
 func initHTTPSession(t *testing.T, url string) string {
 	t.Helper()
@@ -782,6 +794,47 @@ func TestHTTPRunPauseThenResume(t *testing.T) {
 	}
 	if final["vars"].(map[string]any)["prepared"] != "done" {
 		t.Errorf("resumed vars = %v", final["vars"])
+	}
+}
+
+// An async run that pauses before its output: mapping is evaluable parks as
+// "paused" (not "failed" on a json.parse error), and the resume that completes
+// it returns the real projection. (R6 in PLANO.md.)
+func TestHTTPRunPauseBeforeOutputProjection(t *testing.T) {
+	ts := newHTTPServer(t, "", map[string]string{"pause.mh": httpPauseOutputWF})
+	sid := initHTTPSession(t, ts.URL)
+
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "run/start", map[string]any{
+		"name": "Ingest", "arguments": map[string]any{"approved": "no"},
+	}), nil)
+	runID := body["result"].(map[string]any)["runId"].(string)
+
+	paused := pollRun(t, ts.URL, sid, runID)
+	if paused["state"] != "paused" {
+		t.Fatalf("state = %v, want paused (%v)", paused["state"], paused)
+	}
+	if _, isErr := paused["error"]; isErr {
+		t.Fatalf("paused run carried an error: %v", paused)
+	}
+
+	_, body = postMCP(t, ts.URL, sid, rpcMap(3, "run/resume", map[string]any{
+		"runId": runID, "arguments": map[string]any{"approved": "yes"},
+	}), nil)
+	if body["result"] == nil {
+		t.Fatalf("run/resume failed: %v", body)
+	}
+
+	final := pollRun(t, ts.URL, sid, runID)
+	if final["state"] != "completed" {
+		t.Fatalf("resumed run state = %v (%v)", final["state"], final)
+	}
+	vars := final["vars"].(map[string]any)
+	parsed, ok := vars["parsed"].(map[string]any)
+	if !ok || parsed["k"] != float64(5) {
+		t.Errorf("resumed vars.parsed = %#v, want {k:5}", vars["parsed"])
+	}
+	if _, leaked := vars["payload"]; leaked {
+		t.Errorf("internal var leaked past the output: projection: %#v", vars)
 	}
 }
 

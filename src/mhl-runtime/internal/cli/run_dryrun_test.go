@@ -115,6 +115,44 @@ pipeline P {
 	}
 }
 
+func TestDryRunValidatesInputValueTypes(t *testing.T) {
+	const src = `
+pipeline P {
+    input count: number
+    step S { var x = count }
+}
+`
+	// A value that does not fit the declared type blocks the dry-run.
+	out, err := dryRun(t, src, "--input", "count=abc")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for the bad input value:\n%s", out)
+	}
+	if !strings.Contains(out, "INVALID inputs") || !strings.Contains(out, "count") {
+		t.Errorf("plan did not flag the invalid input:\n%s", out)
+	}
+
+	// JSON carries it in invalid_inputs.
+	jout, jerr := dryRun(t, src, "--format", "json", "--input", "count=abc")
+	if jerr == nil {
+		t.Fatalf("expected non-zero exit (json):\n%s", jout)
+	}
+	var obj map[string]any
+	if e := json.Unmarshal([]byte(jout), &obj); e != nil {
+		t.Fatalf("not one JSON object: %v\n%s", e, jout)
+	}
+	if obj["ok"] != false {
+		t.Errorf("ok = %v, want false", obj["ok"])
+	}
+	if inv, _ := obj["invalid_inputs"].([]any); len(inv) != 1 {
+		t.Errorf("invalid_inputs = %v, want one entry", obj["invalid_inputs"])
+	}
+
+	// A well-typed value passes.
+	if out, err := dryRun(t, src, "--input", "count=7"); err != nil {
+		t.Fatalf("dry-run of a valid input value failed: %v\n%s", err, out)
+	}
+}
+
 func TestDryRunSurfacesLintFindings(t *testing.T) {
 	out, err := dryRun(t, `
 pipeline P {

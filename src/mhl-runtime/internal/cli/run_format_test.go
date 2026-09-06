@@ -186,3 +186,30 @@ pipeline Protected {
 		})
 	}
 }
+
+// A run that pauses before its `output:` mapping can be evaluated is reported
+// as a paused success, not a JSON error. (R6 in PLANO.md.)
+func TestRunFormatJSONPauseBeforeOutputIsNotAnError(t *testing.T) {
+	obj, err := runJSONOut(t, `
+workflow Ingest {
+    input approved: string
+    checkpoint: { enabled: true, strategy: "per_step" }
+    var payload = ""
+    output: { parsed: json.parse(payload) }
+    step Gate { if (approved != "yes") { pause("hold") } }
+    step Load { payload = "{\"k\": 1}" }
+}
+`, "--input", "approved=no")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if obj["ok"] != true {
+		t.Fatalf("ok = %v, want true (paused run is a success): %#v", obj["ok"], obj)
+	}
+	if obj["paused"] != true {
+		t.Fatalf("paused = %v, want true: %#v", obj["paused"], obj)
+	}
+	if _, isErr := obj["error"]; isErr {
+		t.Fatalf("paused run carried an error field: %#v", obj)
+	}
+}

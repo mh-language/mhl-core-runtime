@@ -133,3 +133,43 @@ func TestRetrierClampsBackoffToMaxDelay(t *testing.T) {
 		}
 	}
 }
+
+// The MaxDelay cap applies from the very first wait — a Delay larger than
+// MaxDelay must not produce one giant sleep before the doubling series kicks
+// in. (R7 in PLANO.md.)
+func TestRetrierClampsFirstWaitWhenDelayExceedsMaxDelay(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		delay, maxDelay time.Duration
+	}{
+		{"delay far above max", 2 * time.Hour, 30 * time.Second},
+		{"delay equal to max", 30 * time.Second, 30 * time.Second},
+		{"delay below max", 5 * time.Second, 30 * time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var waits []time.Duration
+			r := traffic.Retrier{
+				MaxAttempts: 5,
+				Delay:       tc.delay,
+				MaxDelay:    tc.maxDelay,
+				Sleep:       func(d time.Duration) { waits = append(waits, d) },
+				Rand:        func() float64 { return 1 }, // full backoff, no jitter shrink
+			}
+			_, _ = r.Execute(context.Background(), func() (traffic.Result, error) {
+				return traffic.Result{}, errors.New("boom")
+			})
+			if len(waits) == 0 {
+				t.Fatal("no backoff waits recorded")
+			}
+			for i, w := range waits {
+				if w > tc.maxDelay {
+					t.Fatalf("wait %d = %v exceeds MaxDelay %v", i, w, tc.maxDelay)
+				}
+			}
+			// The first wait is capped, not skipped, when Delay >= MaxDelay.
+			if tc.delay >= tc.maxDelay && waits[0] != tc.maxDelay {
+				t.Fatalf("first wait = %v, want the cap %v", waits[0], tc.maxDelay)
+			}
+		})
+	}
+}

@@ -12,7 +12,7 @@ import (
 // dryRunScope is the fixed disclaimer every --dry-run output carries: it says
 // what was and was not checked, so nobody reads the plan as a prediction of a
 // model-dependent run.
-const dryRunScope = "dry-run: validated parse, imports, lint and the input contract, and projected the static step plan. No step ran, no agent or tool was called, and any branching that depends on a step's output is not evaluated."
+const dryRunScope = "dry-run: validated parse, imports, lint and the input contract (names and declared value types), and projected the static step plan. No step ran, no agent or tool was called, and any branching that depends on a step's output is not evaluated."
 
 // dryRunPipeline validates file and prints its static plan without executing
 // anything. It exits non-zero when lint finds a problem or the input contract
@@ -38,7 +38,8 @@ func dryRunPipeline(out io.Writer, file string, inputs map[string]any, format st
 			warnings = append(warnings, fmt.Sprintf("%s %s", f.File, f.Message))
 		}
 	}
-	blocked := len(warnings) > 0 || len(ins.MissingInputs) > 0 || len(ins.UnknownInputs) > 0
+	problems := len(warnings) + len(ins.MissingInputs) + len(ins.UnknownInputs) + len(ins.InvalidInputs)
+	blocked := problems > 0
 
 	if format == "json" {
 		enc := json.NewEncoder(out)
@@ -51,14 +52,14 @@ func dryRunPipeline(out io.Writer, file string, inputs map[string]any, format st
 			*execsvc.Inspection
 		}{OK: !blocked, DryRun: true, Warnings: warnings, Note: dryRunScope, Inspection: ins})
 		if blocked {
-			return fmt.Errorf("dry-run found %d problem(s)", len(warnings)+len(ins.MissingInputs)+len(ins.UnknownInputs))
+			return fmt.Errorf("dry-run found %d problem(s)", problems)
 		}
 		return nil
 	}
 
 	printDryRunText(out, ins, warnings)
 	if blocked {
-		return fmt.Errorf("dry-run found %d problem(s)", len(warnings)+len(ins.MissingInputs)+len(ins.UnknownInputs))
+		return fmt.Errorf("dry-run found %d problem(s)", problems)
 	}
 	return nil
 }
@@ -98,6 +99,12 @@ func printDryRunText(out io.Writer, ins *execsvc.Inspection, warnings []string) 
 	}
 	if len(ins.UnknownInputs) > 0 {
 		fmt.Fprintf(out, "  UNKNOWN inputs: %v\n", ins.UnknownInputs)
+	}
+	if len(ins.InvalidInputs) > 0 {
+		fmt.Fprintln(out, "  INVALID inputs:")
+		for _, m := range ins.InvalidInputs {
+			fmt.Fprintf(out, "    ! %s\n", m)
+		}
 	}
 
 	cp := ins.Checkpoint

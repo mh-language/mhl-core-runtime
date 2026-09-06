@@ -77,7 +77,12 @@ func TestMetricsEndpoint404ForNonPromSink(t *testing.T) {
 }
 
 func TestRingLogBoundedAndCursored(t *testing.T) {
+	// This exercises the bounded/cursored mechanics only; the live-run tail
+	// hold-back for a still-arriving secret is covered in runlog_test.go. Seal
+	// so read returns through the last written byte regardless of what secrets
+	// other tests in this package have registered process-wide.
 	r := newRingLog()
+	r.Seal()
 	_, _ = r.Write([]byte("hello\n"))
 	text, next, dropped := r.read(0)
 	if text != "hello\n" || dropped {

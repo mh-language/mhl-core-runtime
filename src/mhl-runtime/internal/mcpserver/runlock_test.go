@@ -121,17 +121,196 @@ func TestRunLockPeek(t *testing.T) {
 	now := time.Now()
 	a := newTestLock(kv, "replica-A", &now)
 
-	if st, _ := a.peek(context.Background(), "r1"); st != lockAbsent {
+	if st, _, _ := a.peek(context.Background(), "r1"); st != lockAbsent {
 		t.Fatalf("peek before acquire = %v, want lockAbsent", st)
 	}
 	a.acquire(context.Background(), "r1")
-	st, holder := a.peek(context.Background(), "r1")
-	if st != lockFresh || holder != "replica-A" {
-		t.Fatalf("peek after acquire = %v/%q, want lockFresh/replica-A", st, holder)
+	st, holder, err := a.peek(context.Background(), "r1")
+	if err != nil || st != lockFresh || holder != "replica-A" {
+		t.Fatalf("peek after acquire = %v/%q err:%v, want lockFresh/replica-A", st, holder, err)
 	}
 	now = now.Add(runLockTTL + time.Second)
-	if st, _ := a.peek(context.Background(), "r1"); st != lockExpired {
+	if st, _, _ := a.peek(context.Background(), "r1"); st != lockExpired {
 		t.Fatalf("peek after TTL = %v, want lockExpired", st)
+	}
+}
+
+// TestAssessmentExpiredHolderCannotDeleteSuccessor is the review probe (R5):
+// A acquires, its lease lapses, B takes over, A releases late — B's live lease
+// must survive and C must still be blocked.
+func TestAssessmentExpiredHolderCannotDeleteSuccessor(t *testing.T) {
+	kv := newFakeLockingKV()
+	now := time.Now()
+	a := newTestLock(kv, "A", &now)
+	b := newTestLock(kv, "B", &now)
+	c := newTestLock(kv, "C", &now)
+	ctx := context.Background()
+
+	if held, _, _ := a.acquire(ctx, "review"); !held {
+		t.Fatal("A did not acquire")
+	}
+	now = now.Add(runLockTTL + time.Second)
+	if held, _, _ := b.acquire(ctx, "review"); !held {
+		t.Fatal("B did not take over the expired lease")
+	}
+	if err := a.release(ctx, "review"); err != nil {
+		t.Fatalf("A.release: %v", err)
+	}
+	if held, _, _ := c.acquire(ctx, "review"); held {
+		t.Fatal("C acquired while B was still the live holder — A's late release wiped B's lease")
+	}
+	// B is still the holder and can renew.
+	if mine, err := b.renew(ctx, "review"); err != nil || !mine {
+		t.Fatalf("B.renew after A's late release = mine:%v err:%v", mine, err)
+	}
+
+	// A may acquire again once B is done — a fresh acquisition, new token.
+	if err := b.release(ctx, "review"); err != nil {
+		t.Fatalf("B.release: %v", err)
+	}
+	if held, _, _ := a.acquire(ctx, "review"); !held {
+		t.Fatal("A could not re-acquire after B released")
+	}
+	if mine, _ := b.renew(ctx, "review"); mine {
+		t.Fatal("B.renew succeeded against A's new acquisition")
+	}
+}
+
+// TestRunLockReleaseIsConditional: a release by a replica that no longer holds
+// the lease is a no-op, and its own stale token does not let it renew.
+func TestRunLockReleaseIsConditional(t *testing.T) {
+	kv := newFakeLockingKV()
+	now := time.Now()
+	a := newTestLock(kv, "A", &now)
+	b := newTestLock(kv, "B", &now)
+	ctx := context.Background()
+
+	a.acquire(ctx, "r1")
+	now = now.Add(runLockTTL + time.Second)
+	b.acquire(ctx, "r1") // takeover
+
+	// A still thinks it holds r1 (token in its map) but must not renew or
+	// release B's lease.
+	if mine, _ := a.renew(ctx, "r1"); mine {
+		t.Fatal("A.renew succeeded after B took over")
+	}
+	if err := a.release(ctx, "r1"); err != nil {
+		t.Fatalf("A.release: %v", err)
+	}
+	if st, holder, _ := b.peek(ctx, "r1"); st != lockFresh || holder != "B" {
+		t.Fatalf("after A's late release, lease = %v/%q, want lockFresh/B", st, holder)
+	}
+}
+
+// TestPeekReportsStoreError: a store failure surfaces as lockUnknown + err, not
+// as "no lease".
+func TestPeekReportsStoreError(t *testing.T) {
+	kv := &errGetKV{fakeLockingKV: newFakeLockingKV()}
+	now := time.Now()
+	l := newTestLock(kv, "A", &now)
+	st, _, err := l.peek(context.Background(), "r1")
+	if err == nil || st != lockUnknown {
+		t.Fatalf("peek with a failing store = %v err:%v, want lockUnknown + error", st, err)
+	}
+}
+
+func TestHeartbeatDecision(t *testing.T) {
+	safe := runLockTTL - runLockHeartbeat
+	errStore := errTest("store down")
+	cases := []struct {
+		name  string
+		mine  bool
+		err   error
+		since time.Duration
+		want  hbAction
+	}{
+		{"renewed", true, nil, time.Second, hbRefreshed},
+		{"lost to another replica", false, nil, time.Second, hbCancel},
+		{"transient error, lease still safe", false, errStore, safe - time.Second, hbContinue},
+		{"error past the safe window", false, errStore, safe + time.Second, hbCancel},
+		{"error exactly at the window", false, errStore, safe, hbCancel},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := heartbeatDecision(tc.mine, tc.err, tc.since); got != tc.want {
+				t.Fatalf("heartbeatDecision(%v,%v,%v) = %v, want %v", tc.mine, tc.err, tc.since, got, tc.want)
+			}
+		})
+	}
+}
+
+type errTest string
+
+func (e errTest) Error() string { return string(e) }
+
+// errGetKV fails every Get; PutIfAbsent/CompareAndSwap still work.
+type errGetKV struct{ *fakeLockingKV }
+
+func (k *errGetKV) Get(context.Context, string) ([]byte, bool, error) {
+	return nil, false, errTest("synthetic store Get failure")
+}
+
+// assessmentBrokenCAS is cas-capable but every acquire attempt errors.
+type assessmentBrokenCAS struct{ *fakeLockingKV }
+
+func (k *assessmentBrokenCAS) PutIfAbsent(context.Context, string, any) (bool, error) {
+	return false, errTest("synthetic store unavailable for acquire")
+}
+
+// TestAssessmentAcquireErrorMustNotExecute is the review probe (R4): a run
+// whose execution lease cannot be acquired must not run a single step.
+func TestAssessmentAcquireErrorMustNotExecute(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "w.mh"),
+		[]byte("pipeline W {\n  step Work { log(\"EXECUTED\") }\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kv := &assessmentBrokenCAS{newFakeLockingKV()}
+	_, h, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, Store: kv}, io.Discard)
+	if err != nil {
+		t.Fatalf("buildHTTP: %v", err)
+	}
+	t.Cleanup(func() { h.runsCancel(); _ = h.cps.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rn := &asyncRun{
+		id: "review", tool: h.srv.tools["W"], args: map[string]any{},
+		state: "working", started: time.Now(), updated: time.Now(),
+		cancel: cancel, done: make(chan struct{}), logs: newRingLog(),
+	}
+	h.runs.Put(rn)
+	h.execRun(ctx, rn, false)
+
+	rn.mu.Lock()
+	state, msg := rn.state, rn.errMsg
+	rn.mu.Unlock()
+	if state == "completed" {
+		t.Fatal("workflow completed despite failing to acquire the execution lease")
+	}
+	if state != "failed" || !strings.Contains(msg, "lease") {
+		t.Fatalf("run state = %q errMsg = %q, want failed + a lease error", state, msg)
+	}
+}
+
+// TestBuildHTTPRefusesNonCASStoreWithoutSingleReplica: a Store that cannot
+// coordinate is a startup error unless the operator sets SingleReplica.
+func TestBuildHTTPRefusesNonCASStoreWithoutSingleReplica(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "w.mh"),
+		[]byte("pipeline W {\n  step S { log(\"x\") }\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, Store: newFakeKV()}, io.Discard); err == nil {
+		t.Fatal("buildHTTP accepted a non-cas Store without SingleReplica")
+	}
+	_, h, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, Store: newFakeKV(), SingleReplica: true}, io.Discard)
+	if err != nil {
+		t.Fatalf("buildHTTP with SingleReplica: %v", err)
+	}
+	t.Cleanup(func() { h.runsCancel(); _ = h.cps.Close() })
+	if h.lock != nil {
+		t.Fatal("run lock must be nil for a non-cas Store")
 	}
 }
 
@@ -191,21 +370,20 @@ func TestRunResumeRefusedWhileLockedElsewhere(t *testing.T) {
 	}
 }
 
-// A store without the cas capability leaves run locking off — buildHTTP must
-// not build a runLock, and behaviour is exactly as before.
-func TestRunLockDisabledWithoutCAS(t *testing.T) {
+// A cas-capable store enables the run lock; TestBuildHTTPRefusesNonCASStore...
+// covers the non-cas Store paths (error without SingleReplica, lock nil with it).
+func TestRunLockEnabledWithCAS(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "w.mh"),
 		[]byte("pipeline W {\n  step S { log(\"x\") }\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// plain fakeKV: no PutIfAbsent/CompareAndSwap ⇒ not a LockingKVStore.
-	_, h, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, Store: newFakeKV()}, io.Discard)
+	_, h, err := buildHTTP(context.Background(), HTTPConfig{Dir: dir, Store: newFakeLockingKV()}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { h.runsCancel(); _ = h.cps.Close() })
-	if h.lock != nil {
-		t.Fatal("run lock must be nil for a store without the cas capability")
+	if h.lock == nil {
+		t.Fatal("run lock must be enabled for a cas-capable store")
 	}
 }

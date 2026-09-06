@@ -226,36 +226,66 @@ func (h *httpServer) watchRemoteCancel(rn *asyncRun, stop <-chan struct{}) {
 	}
 }
 
-// heartbeatLock renews this replica's run lock while the run executes. If a
-// renew reports the lease is gone (another replica took it over after this one
-// stalled past the TTL), it cancels the run so this process stops working on
-// it. Store errors are tolerated up to a few consecutive failures. Stops when
-// stop is closed (execRun returning).
+// hbAction is what one heartbeat tick decides to do.
+type hbAction int
+
+const (
+	hbContinue  hbAction = iota // keep going (renew failed transiently, lease still has time)
+	hbRefreshed                 // lease renewed, reset the safety clock
+	hbCancel                    // the lease is lost or about to expire — stop working on this run
+)
+
+// heartbeatDecision maps a renew result to an action. A store error is only
+// tolerated while the lease still has a safe margin left (renewTTL minus one
+// heartbeat interval): past that a takeover could already be starting elsewhere,
+// so the worker must stop rather than risk two writers.
+func heartbeatDecision(stillMine bool, err error, sinceLastRenew time.Duration) hbAction {
+	switch {
+	case err == nil && stillMine:
+		return hbRefreshed
+	case err == nil && !stillMine:
+		return hbCancel
+	default:
+		if sinceLastRenew >= runLockTTL-runLockHeartbeat {
+			return hbCancel
+		}
+		return hbContinue
+	}
+}
+
+// heartbeatLock renews this replica's run lock while the run executes. It
+// cancels the run when the lease is lost (another replica took it over) or when
+// renews have been failing long enough that the lease is about to expire —
+// stopping before the safe window closes, not merely after N failures. Stops
+// when stop is closed (execRun returning).
 func (h *httpServer) heartbeatLock(rn *asyncRun, stop <-chan struct{}) {
 	if h.lock == nil {
 		return
 	}
 	t := time.NewTicker(runLockHeartbeat)
 	defer t.Stop()
-	fails := 0
+	lastRenew := time.Now()
 	for {
 		select {
 		case <-stop:
 			return
 		case <-t.C:
 			stillMine, err := h.lock.renew(context.Background(), rn.id)
-			if err != nil {
-				if fails++; fails >= 3 {
-					h.srv.logEvent(slog.LevelWarn, "run lock renew failing — abandoning the lock",
-						"runId", rn.id, "err", err.Error())
-					return
+			switch heartbeatDecision(stillMine, err, time.Since(lastRenew)) {
+			case hbRefreshed:
+				lastRenew = time.Now()
+			case hbContinue:
+				h.srv.logEvent(slog.LevelWarn, "run lock renew failed — retrying before the lease expires",
+					"runId", rn.id, "err", err.Error(), "sinceLastRenew", time.Since(lastRenew).String())
+			case hbCancel:
+				if err != nil {
+					h.srv.logEvent(slog.LevelError,
+						"run lock renew failing and the lease is about to expire — cancelling to avoid two writers",
+						"runId", rn.id, "err", err.Error(), "sinceLastRenew", time.Since(lastRenew).String())
+				} else {
+					h.srv.logEvent(slog.LevelWarn, "run lock lost — another replica took over; cancelling",
+						"runId", rn.id)
 				}
-				continue
-			}
-			fails = 0
-			if !stillMine {
-				h.srv.logEvent(slog.LevelWarn, "run lock lost — another replica took over; cancelling",
-					"runId", rn.id)
 				rn.cancel()
 				return
 			}
@@ -309,7 +339,9 @@ func (h *httpServer) markIfLeaseExpired(rn *asyncRun) {
 	if !working {
 		return
 	}
-	if st, _ := h.lock.peek(context.Background(), rn.id); st == lockFresh {
+	// Only downgrade when we can positively read that the lease is gone/stale.
+	// A store error (lockUnknown) is not proof the worker died.
+	if st, _, err := h.lock.peek(context.Background(), rn.id); err != nil || st == lockFresh || st == lockUnknown {
 		return
 	}
 	rn.mu.Lock()
@@ -430,7 +462,12 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	// acquire is the authoritative gate; this is the fast, clear error.
 	lockAlive := false
 	if h.lock != nil {
-		st, holder := h.lock.peek(context.Background(), rn.id)
+		st, holder, err := h.lock.peek(context.Background(), rn.id)
+		if err != nil {
+			// Cannot read the lease: refuse rather than risk relaunching a run
+			// that is genuinely executing elsewhere.
+			return errMsg(msg.ID, -32603, fmt.Sprintf("cannot verify run %q execution lease: %v", p.RunID, err))
+		}
 		if st == lockFresh {
 			if holder != h.replicaID {
 				return errMsg(msg.ID, -32602, fmt.Sprintf("run %q is executing on another replica (%s)", p.RunID, holder))
@@ -472,15 +509,24 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	defer close(rn.done)
 	defer rn.cancel()
 
-	// Cross-replica run lock: exactly one replica may drive a given runId.
-	// Best-effort — a store error does not block a run (a transiently degraded
-	// store must not wedge a legitimately single-replica deployment).
+	// Cross-replica run lock: exactly one replica may drive a given runId. A
+	// confirmed lease is a hard precondition — if the store cannot be reached
+	// to take it, this run does not start (it cannot rule out another writer).
 	if h.lock != nil {
 		held, holder, err := h.lock.acquire(ctx, rn.id)
-		if err != nil {
-			h.srv.logEvent(slog.LevelWarn, "run lock acquire failed — proceeding uncoordinated",
+		switch {
+		case err != nil:
+			rn.mu.Lock()
+			rn.state = "failed"
+			rn.errMsg = fmt.Sprintf("could not acquire run execution lease: %v", err)
+			rn.updated = time.Now()
+			rn.resumable = h.cps.Exists(rn.id)
+			rn.mu.Unlock()
+			h.srv.logEvent(slog.LevelError, "run lock acquire failed — refusing to run",
 				"runId", rn.id, "err", err.Error())
-		} else if !held {
+			h.publishRunStatus(rn)
+			return
+		case !held:
 			rn.mu.Lock()
 			rn.state = "failed"
 			rn.errMsg = fmt.Sprintf("run is executing on another replica (%s)", holder)
@@ -492,12 +538,10 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 			h.publishRunStatus(rn)
 			return
 		}
-		if err == nil {
-			stopHB := make(chan struct{})
-			defer close(stopHB)
-			go h.heartbeatLock(rn, stopHB)
-			defer func() { _ = h.lock.release(context.WithoutCancel(ctx), rn.id) }()
-		}
+		stopHB := make(chan struct{})
+		defer close(stopHB)
+		go h.heartbeatLock(rn, stopHB)
+		defer func() { _ = h.lock.release(context.WithoutCancel(ctx), rn.id) }()
 	}
 
 	// A cancel issued at another replica lands as a flag in the shared store;
@@ -592,6 +636,13 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	terminal := rn.state
 	steps := len(rn.reached)
 	rn.mu.Unlock()
+
+	// No more output can arrive for a run that has stopped for good, so run/logs
+	// can stop holding back the secret-length tail it keeps while writes are
+	// still possible. A paused run may yet resume and write more, so leave it.
+	if terminal != "paused" {
+		rn.logs.Seal()
+	}
 
 	dur := time.Since(start)
 	h.metrics.ObserveRun(terminal, dur)
