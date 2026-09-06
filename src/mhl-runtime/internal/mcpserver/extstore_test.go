@@ -12,33 +12,72 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 )
 
-// A fenced extStateStore fails mutating writes once the fence reports the lease
-// is lost, and leaves earlier checkpoints untouched.
+// A fenced extStateStore fails mutating writes once the lease is lost, and
+// leaves earlier checkpoints untouched — both on the check-then-write path and
+// the atomic store-side path.
 func TestExtStateStoreFencesWritesOnLostLease(t *testing.T) {
-	kv := newFakeKV()
-	lost := false
-	ss := newExtStateStore(kv, "r1", func() error {
-		if lost {
-			return ErrLeaseLost
+	cp := &runtime.Checkpoint{Pipeline: "P", NextStep: "S2", Variables: map[string]any{}}
+
+	t.Run("check-then-write", func(t *testing.T) {
+		kv := newFakeKV()
+		lost := false
+		ss := newExtStateStore(kv, "r1", &stateFence{check: func() error {
+			if lost {
+				return ErrLeaseLost
+			}
+			return nil
+		}})
+		if err := ss.Save(cp); err != nil {
+			t.Fatalf("Save while lease held: %v", err)
 		}
-		return nil
+		lost = true
+		if err := ss.Save(cp); !errors.Is(err, ErrLeaseLost) {
+			t.Fatalf("Save after lease lost = %v, want ErrLeaseLost", err)
+		}
+		if err := ss.Clear("P"); !errors.Is(err, ErrLeaseLost) {
+			t.Fatalf("Clear after lease lost = %v, want ErrLeaseLost", err)
+		}
+		if _, found, _ := ss.Load("P"); !found {
+			t.Error("checkpoint from the pre-loss Save was lost")
+		}
 	})
 
-	cp := &runtime.Checkpoint{Pipeline: "P", NextStep: "S2", Variables: map[string]any{}}
-	if err := ss.Save(cp); err != nil {
-		t.Fatalf("Save while lease held: %v", err)
-	}
+	t.Run("atomic store-side", func(t *testing.T) {
+		fw := &fakeFencedWriter{fakeKV: newFakeKV(), ownsLease: true}
+		ss := newExtStateStore(fw, "r1", &stateFence{fw: fw, lockKey: "run/r1/lock", holder: "A", token: "t1"})
+		if err := ss.Save(cp); err != nil {
+			t.Fatalf("Save while lease held: %v", err)
+		}
+		fw.ownsLease = false
+		if err := ss.Save(cp); !errors.Is(err, ErrLeaseLost) {
+			t.Fatalf("Save after takeover = %v, want ErrLeaseLost", err)
+		}
+		if err := ss.Clear("P"); !errors.Is(err, ErrLeaseLost) {
+			t.Fatalf("Clear after takeover = %v, want ErrLeaseLost", err)
+		}
+	})
+}
 
-	lost = true
-	if err := ss.Save(cp); !errors.Is(err, ErrLeaseLost) {
-		t.Fatalf("Save after lease lost = %v, want ErrLeaseLost", err)
+// fakeFencedWriter is a FencedWriter whose lease ownership is toggled directly.
+type fakeFencedWriter struct {
+	*fakeKV
+	ownsLease bool
+}
+
+func (f *fakeFencedWriter) FenceCapable() bool { return true }
+
+func (f *fakeFencedWriter) PutFenced(ctx context.Context, key string, value any, _, _, _ string) (bool, error) {
+	if !f.ownsLease {
+		return false, nil
 	}
-	if err := ss.Clear("P"); !errors.Is(err, ErrLeaseLost) {
-		t.Fatalf("Clear after lease lost = %v, want ErrLeaseLost", err)
+	return true, f.Put(ctx, key, value)
+}
+
+func (f *fakeFencedWriter) DeleteFenced(ctx context.Context, key, _, _, _ string) (bool, error) {
+	if !f.ownsLease {
+		return false, nil
 	}
-	if _, found, _ := ss.Load("P"); !found {
-		t.Error("checkpoint from the pre-loss Save was lost")
-	}
+	return true, f.Delete(ctx, key)
 }
 
 // fakeKV is an in-process KVStore for exercising the ext* adapters without a

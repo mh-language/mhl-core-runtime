@@ -1,0 +1,70 @@
+name: release
+
+# Publishes the prebuilt archives that are committed under dist/release/ as
+# assets on a GitHub Release. Nothing is compiled here — the archives are the
+# source of truth. Push a semver tag to cut a release:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# or run this workflow manually against an existing tag.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)publish a release for, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.name }}
+
+      - name: Verify release archives
+        run: |
+          # official extension list — single source: EXTENSIONS in src/Makefile
+          exts="$(sed -n 's/^EXTENSIONS *:= *//p' src/Makefile)"
+          [ -n "$exts" ] || { echo "::error::could not read EXTENSIONS from src/Makefile"; exit 1; }
+          cd dist/release
+          test -f SHA256SUMS
+          for ext in $exts; do
+            test -f "$ext.tar.gz" || { echo "::error::missing dist/release/$ext.tar.gz"; exit 1; }
+          done
+          sha256sum -c SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          exts="$(sed -n 's/^EXTENSIONS *:= *//p' src/Makefile)"
+          assets=(dist/release/SHA256SUMS)
+          for ext in $exts; do
+            assets+=("dist/release/$ext.tar.gz")
+          done
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              "${assets[@]}"
+          fi

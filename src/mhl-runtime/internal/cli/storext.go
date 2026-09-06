@@ -68,18 +68,19 @@ func discoverStoreExtension(dir string, logw io.Writer) (mcpserver.KVStore, func
 	// A store that advertises the "cas" capability in its handshake unlocks
 	// cross-replica run locking (mcpserver.LockingKVStore). Absent it, the
 	// server runs uncoordinated (single-writer) and says so.
-	cas, claim := false, false
+	cas, claim, fence := false, false, false
 	if cr, ok := chosen.(interface {
 		Capabilities(context.Context) ([]string, error)
 	}); ok {
 		if caps, cerr := cr.Capabilities(context.Background()); cerr == nil {
 			cas = slices.Contains(caps, "cas")
 			claim = slices.Contains(caps, "claim")
+			fence = slices.Contains(caps, "fence")
 		} else {
 			fmt.Fprintf(logw, "warning: store extension %q capability probe failed: %v\n", chosen.ID(), cerr)
 		}
 	}
-	return &extKV{inst: inst, decl: decl, cas: cas, claim: claim}, set.CloseAll, nil
+	return &extKV{inst: inst, decl: decl, cas: cas, claim: claim, fence: fence}, set.CloseAll, nil
 }
 
 // scanStoreDecl walks dir's .mh files for exactly one `extension store` block
@@ -182,6 +183,7 @@ type extKV struct {
 	decl  extension.Declaration
 	cas   bool
 	claim bool // extension advertised "claim" (native claim_next)
+	fence bool // extension advertised "fence" (atomic put_fenced / delete_fenced)
 }
 
 func (k *extKV) call(ctx context.Context, method string, named map[string]extension.Value) (extension.Value, error) {
@@ -279,4 +281,33 @@ func (k *extKV) ClaimNext(ctx context.Context, holder string) (string, mcpserver
 		return "", mcpserver.RunStatusRec{}, false, fmt.Errorf("claim_next returned an unparseable key %q", keyStr)
 	}
 	return id, rec, true, nil
+}
+
+// FenceCapable reports whether the extension advertised "fence".
+func (k *extKV) FenceCapable() bool { return k.fence }
+
+// PutFenced implements mcpserver.FencedWriter over the extension's optional
+// `put_fenced(key, value, lock_key, holder, token)` — one atomic statement that
+// writes only while the lease record at lock_key still names this holder+token.
+func (k *extKV) PutFenced(ctx context.Context, key string, value any, lockKey, holder, token string) (bool, error) {
+	v, err := k.call(ctx, "put_fenced", map[string]extension.Value{
+		"key": key, "value": value, "lock_key": lockKey, "holder": holder, "token": token,
+	})
+	if err != nil {
+		return false, err
+	}
+	written, _ := v.(bool)
+	return written, nil
+}
+
+// DeleteFenced is PutFenced's counterpart for removing a key.
+func (k *extKV) DeleteFenced(ctx context.Context, key, lockKey, holder, token string) (bool, error) {
+	v, err := k.call(ctx, "delete_fenced", map[string]extension.Value{
+		"key": key, "lock_key": lockKey, "holder": holder, "token": token,
+	})
+	if err != nil {
+		return false, err
+	}
+	deleted, _ := v.(bool)
+	return deleted, nil
 }

@@ -655,18 +655,30 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	if h.store != nil {
 		// Fence checkpoint writes on the execution lease: a replica that stalled
 		// past its lease and was taken over fails its checkpoint writes rather
-		// than corrupting the state the successor now drives.
-		var fence func() error
+		// than corrupting the state the successor now drives. Atomic store-side
+		// when the store implements FencedWriter, else a local check-then-write.
+		var fence *stateFence
 		if h.lock != nil {
-			fence = func() error {
-				ok, ferr := h.lock.ownsLease(context.Background(), lease)
-				if ferr != nil {
-					return ferr // fail closed on a store error
-				}
-				if !ok {
-					return ErrLeaseLost
-				}
-				return nil
+			lz := lease
+			var fw FencedWriter
+			if cand, ok := h.store.(FencedWriter); ok && cand.FenceCapable() {
+				fw = cand
+			}
+			fence = &stateFence{
+				fw:      fw,
+				lockKey: runLockKey(rn.id),
+				holder:  h.replicaID,
+				token:   lz.token,
+				check: func() error {
+					ok, ferr := h.lock.ownsLease(context.Background(), lz)
+					if ferr != nil {
+						return ferr // fail closed on a store error
+					}
+					if !ok {
+						return ErrLeaseLost
+					}
+					return nil
+				},
 			}
 		}
 		stateStore = newExtStateStore(h.store, rn.id, fence) // checkpoints go to the extension, not disk

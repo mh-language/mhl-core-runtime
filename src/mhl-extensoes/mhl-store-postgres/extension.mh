@@ -41,4 +41,7 @@ extensible store {
     compare_and_swap(key: string, expected: any, value: any) -> bool /// Replace value at key with `value` only when the current value equals `expected` under jsonb equality. Returns whether the swap happened. `expected` is typically the exact result of a prior `get`. Part of the "cas" capability.
 
     claim_next(prefix: string, holder: string) -> any /// Atomically move one `run/<id>/status` row under `prefix` whose value ->>'state' is "pending" (oldest by ->>'startedAt') to "claimed" with ->>'holder' = holder, using SELECT ... FOR UPDATE SKIP LOCKED. Returns {key, value} of the updated row, or null when nothing is pending. Part of the "claim" capability — the mhl serve durable-intake claim loop uses it in place of the generic CAS scan.
+
+    put_fenced(key: string, value: any, lock_key: string, holder: string, token: string) -> bool /// Upsert value at key in one atomic statement, only while the lease row at lock_key still has value->>'holder' = holder AND value->>'token' = token AND is unexpired. Returns whether the lease was still ours (the write landed). Part of the "fence" capability — mhl serve fences checkpoint writes so a replica taken over after a stall cannot corrupt the successor's state.
+    delete_fenced(key: string, lock_key: string, holder: string, token: string) -> bool /// Delete key under the same lease condition as put_fenced. Returns whether the lease was still ours (an absent key with the lease held is still a success). Part of the "fence" capability.
 }

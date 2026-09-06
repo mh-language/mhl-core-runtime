@@ -254,22 +254,42 @@ func (c *extCheckpointStore) CancelRequested(runID string) bool {
 
 // --- per-step checkpoints / result (runtime.StateStore) -----------------
 
+// FencedWriter is an optional KVStore capability: a write conditioned, in one
+// atomic store operation, on the run's lease record at lockKey still naming
+// this holder and token and being unexpired. It closes the check-then-write
+// TOCTOU window — a replica whose lease was taken over has its checkpoint
+// writes rejected by the store itself, not merely by a prior local check.
+type FencedWriter interface {
+	// FenceCapable reports whether the backing store actually implements the
+	// atomic fenced writes below (the "fence" capability was advertised).
+	FenceCapable() bool
+	PutFenced(ctx context.Context, key string, value any, lockKey, holder, token string) (written bool, err error)
+	DeleteFenced(ctx context.Context, key, lockKey, holder, token string) (deleted bool, err error)
+}
+
+// stateFence carries what a fenced write needs. When fw is non-nil the write is
+// atomic store-side; otherwise check() runs first (check-then-write, a narrow
+// TOCTOU window). nil *stateFence ⇒ writes are unfenced (no run lock).
+type stateFence struct {
+	fw      FencedWriter
+	check   func() error
+	lockKey string
+	holder  string
+	token   string
+}
+
 // extStateStore is the runtime.StateStore a run's Runner writes through
-// (injected via execsvc.Request.StateStore). It is scoped to one runID.
-//
-// fence, when set, is checked before every mutating write: it returns a non-nil
-// error (ErrLeaseLost) when this replica no longer holds the run's execution
-// lease. A replica that stalled past its lease and was taken over then fails
-// its checkpoint writes instead of corrupting the state the successor is
-// driving. It is a check-then-write, so a narrow TOCTOU window remains — true
-// store-side fencing is a further increment (P1-10).
+// (injected via execsvc.Request.StateStore). It is scoped to one runID. When
+// fence is set, every mutating write (Save / Clear) is gated on this replica
+// still holding the run's execution lease — a replica taken over after a stall
+// fails its writes (ErrLeaseLost) instead of corrupting the successor's state.
 type extStateStore struct {
 	kv    KVStore
 	runID string
-	fence func() error
+	fence *stateFence
 }
 
-func newExtStateStore(kv KVStore, runID string, fence func() error) *extStateStore {
+func newExtStateStore(kv KVStore, runID string, fence *stateFence) *extStateStore {
 	return &extStateStore{kv: kv, runID: runID, fence: fence}
 }
 
@@ -277,11 +297,46 @@ func newExtStateStore(kv KVStore, runID string, fence func() error) *extStateSto
 // longer holds the run's execution lease.
 var ErrLeaseLost = errors.New("mcpserver: run execution lease lost — refusing checkpoint write")
 
-func (s *extStateStore) checkFence() error {
+// fencedPut writes value at key subject to the lease fence.
+func (s *extStateStore) fencedPut(key string, value any) error {
 	if s.fence == nil {
+		return s.kv.Put(context.Background(), key, value)
+	}
+	if s.fence.fw != nil {
+		ok, err := s.fence.fw.PutFenced(context.Background(), key, value, s.fence.lockKey, s.fence.holder, s.fence.token)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrLeaseLost
+		}
 		return nil
 	}
-	return s.fence()
+	if err := s.fence.check(); err != nil {
+		return err
+	}
+	return s.kv.Put(context.Background(), key, value)
+}
+
+// fencedDelete removes key subject to the lease fence.
+func (s *extStateStore) fencedDelete(key string) error {
+	if s.fence == nil {
+		return s.kv.Delete(context.Background(), key)
+	}
+	if s.fence.fw != nil {
+		ok, err := s.fence.fw.DeleteFenced(context.Background(), key, s.fence.lockKey, s.fence.holder, s.fence.token)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrLeaseLost
+		}
+		return nil
+	}
+	if err := s.fence.check(); err != nil {
+		return err
+	}
+	return s.kv.Delete(context.Background(), key)
 }
 
 func (s *extStateStore) key(pipeline string) string {
@@ -312,23 +367,17 @@ func (s *extStateStore) Load(pipeline string) (*runtime.Checkpoint, bool, error)
 }
 
 func (s *extStateStore) Save(cp *runtime.Checkpoint) error {
-	if err := s.checkFence(); err != nil {
-		return err
-	}
 	stamped := *cp
 	stamped.SavedAt = time.Now()
 	// Never persist resolved secrets; a secret with a known credential
 	// reference is stored as a re-resolvable placeholder (rehydrated in Load),
 	// everything else is masked.
 	stamped.Variables = runtime.RedactVarsForCheckpoint(cp.Variables)
-	return s.kv.Put(context.Background(), s.key(cp.Pipeline), &stamped)
+	return s.fencedPut(s.key(cp.Pipeline), &stamped)
 }
 
 func (s *extStateStore) Clear(pipeline string) error {
-	if err := s.checkFence(); err != nil {
-		return err
-	}
-	return s.kv.Delete(context.Background(), s.key(pipeline))
+	return s.fencedDelete(s.key(pipeline))
 }
 
 func (s *extStateStore) WriteResult(pipeline string, vars map[string]any) error {

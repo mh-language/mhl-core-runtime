@@ -197,4 +197,40 @@ func TestRoundTripAgainstRealPostgres(t *testing.T) {
 	for _, k := range []string{"run/c-new/status", "run/c-old/status", "run/c-run/status"} {
 		_ = s.del(ctx, k)
 	}
+
+	// --- fence capability (atomic put_fenced / delete_fenced) ---------
+	lk := "run/fx/lock"
+	_ = s.put(ctx, lk, []byte(`{"holder":"A","token":"t1","expires":"2999-01-01T00:00:00Z"}`))
+	ckKey := "run/fx/checkpoint/P"
+
+	// Lease held by A/t1 → the write lands.
+	if w, err := s.putFenced(ctx, ckKey, []byte(`{"step":"S1"}`), lk, "A", "t1"); err != nil || !w {
+		t.Fatalf("put_fenced with the lease held: written=%v err=%v", w, err)
+	}
+	// Wrong token → rejected, and the checkpoint is unchanged.
+	if w, err := s.putFenced(ctx, ckKey, []byte(`{"step":"ZOMBIE"}`), lk, "A", "stale"); err != nil || w {
+		t.Fatalf("put_fenced with a stale token must not write: written=%v err=%v", w, err)
+	}
+	if raw, _, _ := s.get(ctx, ckKey); string(raw) != `{"step": "S1"}` && string(raw) != `{"step":"S1"}` {
+		t.Fatalf("checkpoint mutated by a fenced-out write: %s", raw)
+	}
+	// After takeover (lease now B/t2) A's writes are rejected; B's land.
+	_ = s.put(ctx, lk, []byte(`{"holder":"B","token":"t2","expires":"2999-01-01T00:00:00Z"}`))
+	if w, _ := s.putFenced(ctx, ckKey, []byte(`{"step":"ZOMBIE"}`), lk, "A", "t1"); w {
+		t.Fatal("deposed A still wrote a checkpoint")
+	}
+	if w, err := s.putFenced(ctx, ckKey, []byte(`{"step":"S2"}`), lk, "B", "t2"); err != nil || !w {
+		t.Fatalf("B (the new holder) put_fenced: written=%v err=%v", w, err)
+	}
+	// delete_fenced: A rejected, B ok (idempotent even once the key is gone).
+	if d, _ := s.deleteFenced(ctx, ckKey, lk, "A", "t1"); d {
+		t.Fatal("deposed A deleted a checkpoint")
+	}
+	if d, err := s.deleteFenced(ctx, ckKey, lk, "B", "t2"); err != nil || !d {
+		t.Fatalf("B delete_fenced: deleted=%v err=%v", d, err)
+	}
+	if d, err := s.deleteFenced(ctx, ckKey, lk, "B", "t2"); err != nil || !d {
+		t.Fatalf("B delete_fenced on an absent key (lease held) must still be ok: %v %v", d, err)
+	}
+	_ = s.del(ctx, lk)
 }

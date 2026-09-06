@@ -218,6 +218,62 @@ func (s *pgStore) claimNext(ctx context.Context, logicalPrefix, holder string) (
 	return strings.TrimPrefix(key, s.prefix), val, true, nil
 }
 
+// putFenced upserts value at key in one atomic statement, conditioned on the
+// lease row at lockKey still naming holder+token and being unexpired. written
+// is true when the lease was ours and the write landed; false (nil error) when
+// a takeover has occurred — the caller fails the run. Closes the check-then-
+// write TOCTOU window ("fence" capability).
+func (s *pgStore) putFenced(ctx context.Context, logical string, value []byte, lockKey, holder, token string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	var leaseOK bool
+	err := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		WITH lease AS (
+			SELECT 1 FROM %[1]s
+			WHERE key = $3
+			  AND value->>'holder' = $4
+			  AND value->>'token' = $5
+			  AND (value->>'expires')::timestamptz > now()
+		), ins AS (
+			INSERT INTO %[1]s (key, value, updated_at)
+			SELECT $1, $2::jsonb, now() FROM lease
+			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+			RETURNING 1
+		)
+		SELECT EXISTS (SELECT 1 FROM lease)`, s.table),
+		s.key(logical), string(value), s.key(lockKey), holder, token).Scan(&leaseOK)
+	if err != nil {
+		return false, fmt.Errorf("store-postgres: put_fenced %q: %w", logical, err)
+	}
+	return leaseOK, nil
+}
+
+// deleteFenced removes key subject to the same lease condition as putFenced.
+// deleted is true when the lease was ours (whether or not a row existed);
+// false when a takeover has occurred.
+func (s *pgStore) deleteFenced(ctx context.Context, logical, lockKey, holder, token string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	var leaseOK bool
+	err := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		WITH lease AS (
+			SELECT 1 FROM %[1]s
+			WHERE key = $2
+			  AND value->>'holder' = $3
+			  AND value->>'token' = $4
+			  AND (value->>'expires')::timestamptz > now()
+		), del AS (
+			DELETE FROM %[1]s WHERE key = $1 AND EXISTS (SELECT 1 FROM lease)
+			RETURNING 1
+		)
+		SELECT EXISTS (SELECT 1 FROM lease)`, s.table),
+		s.key(logical), s.key(lockKey), holder, token).Scan(&leaseOK)
+	if err != nil {
+		return false, fmt.Errorf("store-postgres: delete_fenced %q: %w", logical, err)
+	}
+	return leaseOK, nil
+}
+
 func (s *pgStore) del(ctx context.Context, logical string) error {
 	ctx, cancel := context.WithTimeout(ctx, opTimeout)
 	defer cancel()

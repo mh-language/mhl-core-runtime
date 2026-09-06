@@ -183,8 +183,9 @@ trabalho dobrado é inofensivo). A cada ciclo:
 
 **Dependência:** um `working` que voltou a `pending` e foi reclamado por outra
 réplica, com a réplica antiga (zumbi) ainda gravando checkpoint, é coberto pelo
-**fencing check-then-write** (Etapa 2 — `extStateStore.fence` → `ErrLeaseLost`);
-a rejeição store-side monótona fecha a janela TOCTOU restante.
+**fencing atômico no store** (Etapa 2 — `put_fenced`/`delete_fenced` no Postgres
+recusam a escrita cujo lease foi tomado; check-then-write como fallback para
+stores sem `"fence"`).
 
 ## 8. A camada de admissão (fora do runtime)
 
@@ -261,12 +262,15 @@ runlock+2-réplicas+resume verdes pelo novo caminho.
       independente em `heartbeatLock` que cancela o run se nenhum `renew` tiver
       sucesso dentro da janela segura. Testes migrados para a API de handle +
       `TestRunLock{StaleHandleCannotReleaseLaterAcquisition,RenewRespectsContextDeadline}`.
-- [~] Fencing de escrita de checkpoint (P1-10). **Feito (check-then-write):**
-      `extStateStore` recebe uma closure `fence` → `runLock.ownsLease` antes de
-      cada `Save`/`Clear`; réplica que passou do lease e foi substituída recebe
-      `ErrLeaseLost` e falha a escrita. `TestExtStateStoreFencesWritesOnLostLease`,
-      `TestRunLockOwnsLease`. **Falta:** rejeição no lado do store (fence
-      monótono que o `Put` impõe) fecha a janela TOCTOU restante.
+- [x] Fencing de escrita de checkpoint (P1-10) — **rejeição atômica no store**.
+      `FencedWriter` (`FenceCapable`/`PutFenced`/`DeleteFenced`); `stateFence` em
+      `extStateStore` usa o caminho atômico quando o store anuncia `"fence"`,
+      senão check-then-write (`ownsLease`). `mhl-store-postgres`
+      `put_fenced`/`delete_fenced`: uma statement `WITH lease AS (SELECT … WHERE
+      holder=$ AND token=$ AND expires>now()) …` — a gravação do zumbi cujo lease
+      foi tomado é recusada pelo Postgres, sem janela TOCTOU.
+      `TestExtStateStoreFencesWritesOnLostLease` (ambos os caminhos), `pg_test.go`
+      bloco fence (live).
 - [x] `mhl-store-postgres.ClaimNext` com `SELECT … FOR UPDATE SKIP LOCKED`
       (`pg.go` `claimNext`, capacidade `"claim"`, op `claim_next`). Runtime:
       `ClaimNexter` + `ErrClaimNextUnsupported`, `claimNext` tenta o nativo
@@ -288,17 +292,20 @@ runlock+2-réplicas+resume verdes pelo novo caminho.
 - [ ] `architecture.html` refeito sem admissor / `admission_queue` (runtime ↔
       store CAS direto; rate-limit no nginx) — quando a Etapa 1 estabilizar.
 
-## 10. Questões abertas
+## 10. Decisões (autor, 06/09/2026)
 
-- **Prioridade entre `pending`:** FIFO por `created_at` basta na Etapa 1;
-  prioridade real precisa de campo no record + `ClaimNext` ordenado (Etapa 2, já
-  previsto no override PG).
-- **Política de reconcile:** back-to-`pending` (at-least-once, exige idempotência
-  no workflow) como default vs `failed + resumable`. Proposta: default
-  configurável.
-- **Owner na fase `pending`:** persistir o principal no `run/start`
-  (`CheckpointStore.WriteOwner` já existe) e barrar `run/status`/`cancel` de
-  quem não é dono.
+- **Prioridade entre `pending`:** decidido **FIFO por `startedAt`**, sem campo de
+  prioridade. `claimNextCAS` e `claim_next` (PG) ordenam só por `startedAt`.
+- **Política de reconcile:** decidido **at-least-once, sem knob**. O reconcile
+  devolve o órfão a `pending` e ele re-executa do checkpoint. O runtime **não**
+  tenta exactly-once nem oferece "não recuperar" — a idempotência é
+  responsabilidade do DEV na fronteira do efeito (chave de idempotência no
+  destino, ou dedupe no receptor); é decisão do DEV aceitar ou descartar o
+  efeito redelivered.
+- **Teto de input:** decidido **manter 256 KiB**; payload grande vai por
+  referência (URL/chave). Sem spill-para-blob.
+- **Owner na fase `pending`:** feito — principal persistido no `run/start`,
+  `reconstructRun` barra não-dono.
 
 ## 11. Critérios de aceite
 
@@ -319,4 +326,4 @@ runlock+2-réplicas+resume verdes pelo novo caminho.
   verde; o real contra Postgres + pods pendente.
 - R4/R5 fechados (`TestRunLockRenewRespectsContextDeadline`,
   `TestRunLockStaleHandleCannotReleaseLaterAcquisition`, `TestHeartbeatDecision`),
-  fencing check-then-write (`TestExtStateStoreFencesWritesOnLostLease`); `-race` limpo.
+  fencing atômico no store (`TestExtStateStoreFencesWritesOnLostLease`); `-race` limpo.

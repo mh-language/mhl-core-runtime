@@ -123,7 +123,10 @@ func main() {
 				// "claim": native claim_next (SELECT … FOR UPDATE SKIP LOCKED)
 				// for durable-intake — the mhl serve claim loop uses it in place
 				// of the generic CAS scan.
-				"capabilities": []string{"cas", "claim"},
+				// "fence": atomic put_fenced / delete_fenced — a checkpoint write
+				// conditioned in one statement on the run's lease still being
+				// this holder's, closing the check-then-write TOCTOU window.
+				"capabilities": []string{"cas", "claim", "fence"},
 			}})
 		case "call":
 			// Pin the pool from the first call's props synchronously, in the
@@ -263,6 +266,29 @@ func (s *store) handleCall(msg rpc) rpc {
 			} else {
 				res = rpc{ID: msg.ID, Result: map[string]any{"key": logicalKey, "value": v}}
 			}
+		}
+
+	case "put_fenced":
+		b, err := json.Marshal(p.arg("value", 1))
+		if err != nil {
+			res = fail(err.Error())
+			break
+		}
+		written, err := s.pg.putFenced(ctx, key,
+			b, p.strArg("lock_key", 2), p.strArg("holder", 3), p.strArg("token", 4))
+		if err != nil {
+			res = fail(err.Error())
+		} else {
+			res = rpc{ID: msg.ID, Result: written}
+		}
+
+	case "delete_fenced":
+		deleted, err := s.pg.deleteFenced(ctx, key,
+			p.strArg("lock_key", 1), p.strArg("holder", 2), p.strArg("token", 3))
+		if err != nil {
+			res = fail(err.Error())
+		} else {
+			res = rpc{ID: msg.ID, Result: deleted}
 		}
 
 	default:

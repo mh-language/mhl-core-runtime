@@ -231,12 +231,14 @@ refuses to start unless `--single-replica` / `MHL_SERVE_SINGLE_REPLICA`
 acknowledges a one-writer deployment.
 
 Checkpoint writes are **fenced on the lease**: the `extStateStore` `execRun`
-builds carries a `fence` closure that calls `runLock.ownsLease` before every
-`Save` / `Clear`; a replica that stalled past its lease (and was taken over)
-gets `ErrLeaseLost` and fails the write instead of corrupting the state the
-successor drives. It is a check-then-write, so a narrow TOCTOU window remains —
-store-side rejection (a monotonic fence the `Put` itself enforces) is a further
-increment.
+builds carries a `stateFence` with the run's lock key, this replica's holder id
+and the lease token. When the store advertises `"fence"` (`FencedWriter` —
+`mhl-store-postgres` `put_fenced` / `delete_fenced`), each `Save` / `Clear` is
+one atomic statement conditioned on the lease record still naming this
+holder+token — a replica that stalled past its lease and was taken over has the
+write **rejected by the store**, no TOCTOU window. Without `"fence"` it degrades
+to a check-then-write via `runLock.ownsLease` (a narrow window). Either way the
+loser gets `ErrLeaseLost`.
 
 ```mermaid
 sequenceDiagram
