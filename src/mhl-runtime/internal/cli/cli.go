@@ -7,6 +7,7 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/a2aserver"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
+	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	_ "github.com/mh-language/mhl-core-runtime/internal/extbuiltin" // registers the built-in MCP/A2A extensions
 	"github.com/mh-language/mhl-core-runtime/internal/extension/external"
@@ -51,6 +53,7 @@ func init() {
 	external.SetHostVersion(Version)
 	mcpserver.ServerVersion = Version
 	a2aserver.ServerVersion = Version
+	runtime.Version = Version
 }
 
 // Run dispatches a mhl subcommand. It writes user-facing output to out and
@@ -97,23 +100,46 @@ func runLSP(out io.Writer) error {
 
 // runPipeline implements:
 //
-//	mhl run <pipeline.mh> [--input key=value ...] [--resume] [--session <id>]
+//	mhl run <pipeline.mh> [--input key=value ...] [--resume [--force]] [--session <id>] [--format text|json] [--dry-run]
 //
 // It executes a pipeline from the start, or resumes it from the last saved
-// checkpoint when --resume is given (IF-1).
+// checkpoint when --resume is given (IF-1). --resume refuses a checkpoint
+// written for a structurally different version of the pipeline; --force
+// downgrades that to a warning. --format json writes one machine-readable
+// object (result on success, a typed error with kind/step/hint on failure)
+// and captures the run's own output into its `log` field. --dry-run validates
+// the file (parse, imports, lint, input contract) and prints the static plan
+// — step order, parallel groups, checkpoint policy — without executing any
+// step or calling any agent.
 func runPipeline(args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl run <pipeline.mh> [--input key=value ...] [--resume]")
+		return fmt.Errorf("usage: mhl run <pipeline.mh> [--input key=value ...] [--resume [--force]] [--format text|json] [--dry-run]")
 	}
 	defer loadSessionExtensions(out)()
 	file := args[0]
 	resume := false
+	force := false
+	dryRun := false
+	format := "text"
 	sessionFlag := ""
 	inputs := map[string]any{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--resume":
 			resume = true
+		case "--force":
+			force = true
+		case "--dry-run":
+			dryRun = true
+		case "--format":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--format requires a value (text|json)")
+			}
+			i++
+			format = args[i]
+			if format != "text" && format != "json" {
+				return fmt.Errorf("--format must be text or json, got %q", format)
+			}
 		case "--session":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--session requires an id argument")
@@ -135,14 +161,39 @@ func runPipeline(args []string, out io.Writer) error {
 		}
 	}
 
+	if force && !resume {
+		return fmt.Errorf("--force only applies with --resume")
+	}
+	if dryRun {
+		if resume {
+			return fmt.Errorf("--dry-run cannot be combined with --resume")
+		}
+		return dryRunPipeline(out, file, inputs, format)
+	}
+
+	// In json mode the run's own progress / log() output is captured instead
+	// of printed, so stdout carries exactly one JSON object.
+	runOut := out
+	var jsonLog bytes.Buffer
+	if format == "json" {
+		runOut = &jsonLog
+	}
+
 	res, err := execsvc.Run(execsvc.Request{
-		Source:  file,
-		Inputs:  inputs,
-		BaseDir: ".",
-		Session: sessionFlag,
-		Resume:  resume,
-		Out:     out,
+		Source:      file,
+		Inputs:      inputs,
+		BaseDir:     ".",
+		Session:     sessionFlag,
+		Resume:      resume,
+		ForceResume: force,
+		Out:         runOut,
 	})
+
+	if format == "json" {
+		writeRunJSON(out, res, err, file, jsonLog.String())
+		return err
+	}
+
 	if err != nil {
 		return err
 	}

@@ -15,6 +15,54 @@ var secrets = struct {
 	values []string
 }{}
 
+// refs maps a resolved secret value back to the credential reference it came
+// from (e.g. `env("API_TOKEN")`), for the one value that equals it exactly.
+// It lets checkpoint persistence store a re-resolvable reference instead of a
+// dead `[REDACTED]` mask, so a `--resume` in a fresh process can recover the
+// live value. Only whole-value references are tracked; a secret spliced into
+// a larger string (a URL with an embedded password) has no reference and
+// still falls back to masking.
+var refs = struct {
+	sync.RWMutex
+	byValue map[string]string
+}{byValue: map[string]string{}}
+
+// RememberRef records that value was resolved from ref. Subject to the same
+// false-positive guard as Register (short/numeric/keyword values are
+// ignored). Calling it also Registers value so it is masked everywhere a
+// reference cannot be used.
+func RememberRef(value, ref string) {
+	value = strings.TrimSpace(value)
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		Register(value)
+		return
+	}
+	if len([]rune(value)) < 6 {
+		return
+	}
+	if _, err := strconv.ParseFloat(value, 64); err == nil {
+		return
+	}
+	switch strings.ToLower(value) {
+	case "true", "false", "yes", "no", "null", "none":
+		return
+	}
+	remember(value)
+	refs.Lock()
+	refs.byValue[value] = ref
+	refs.Unlock()
+}
+
+// RefFor returns the credential reference value was resolved from, if one was
+// recorded through RememberRef.
+func RefFor(value string) (string, bool) {
+	refs.RLock()
+	defer refs.RUnlock()
+	ref, ok := refs.byValue[value]
+	return ref, ok
+}
+
 // Resolve resolves an env("KEY") reference and fails closed when it is
 // missing or empty. Vault references are reserved for a future backend.
 func Resolve(ref string) (string, error) {
@@ -28,7 +76,7 @@ func Resolve(ref string) (string, error) {
 		if !ok || value == "" {
 			return "", fmt.Errorf("auth: environment variable %q is missing or empty", key)
 		}
-		remember(value)
+		RememberRef(value, fmt.Sprintf("env(%q)", key))
 		return value, nil
 	}
 	if strings.HasPrefix(ref, "vault(") {

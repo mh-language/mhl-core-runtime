@@ -158,3 +158,54 @@ export agent Echo {
 		t.Fatalf("agentLogPath reported a log path for an agent with no log property (hasLog=%v err=%v)", hasLog, err)
 	}
 }
+
+// TestRunAgentAttemptDiskCacheKeyIncludesInvocationIdentity is the V2
+// regression from the technical assessment: two agents that share the
+// on-disk cache directory (`storage: "disk"`) but differ only in their
+// `command`/`args` must not collide on one cache entry. Before the fix the
+// key folded only engine+prompt+schema, so B's first call returned A's
+// cached response.
+func TestRunAgentAttemptDiskCacheKeyIncludesInvocationIdentity(t *testing.T) {
+	t.Chdir(t.TempDir()) // isolate the relative .mhl-cache directory
+
+	src := `
+export agent A {
+    command: "echo"
+    args: ["response-A"]
+    cache: { ttl: 1h, storage: "disk" }
+}
+export agent B {
+    command: "echo"
+    args: ["response-B"]
+    cache: { ttl: 1h, storage: "disk" }
+}
+`
+	prog, err := parser.Parse(src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	agentA, ok := findAgent(prog, "A")
+	if !ok {
+		t.Fatal("agent A not found")
+	}
+	agentB, ok := findAgent(prog, "B")
+	if !ok {
+		t.Fatal("agent B not found")
+	}
+
+	gotA, err := runAgentAttempt(nil, "A", agentA, "same-prompt", "")
+	if err != nil {
+		t.Fatalf("A.run: %v", err)
+	}
+	if gotA != "response-A same-prompt" {
+		t.Fatalf("A returned %q, want %q", gotA, "response-A same-prompt")
+	}
+
+	gotB, err := runAgentAttempt(nil, "B", agentB, "same-prompt", "")
+	if err != nil {
+		t.Fatalf("B.run: %v", err)
+	}
+	if gotB != "response-B same-prompt" {
+		t.Fatalf("B returned %q (want %q) — cache key collided with agent A", gotB, "response-B same-prompt")
+	}
+}

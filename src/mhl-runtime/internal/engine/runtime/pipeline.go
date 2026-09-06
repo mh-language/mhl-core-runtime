@@ -108,6 +108,13 @@ type Pipeline struct {
 	// Context is the resolved `context:` block, or nil when the pipeline
 	// declares none — see ContextConfig.
 	Context *ContextConfig
+	// Output is the optional `output: { name: expr, ... }` mapping expression,
+	// or nil when the pipeline declares none. When set, it is the sole
+	// projection a run exposes to a caller (execsvc evaluates it via
+	// interpreter.EvalOutputs against the final variable state); when nil, the
+	// legacy behaviour applies and every non-internal `var` is returned. The
+	// runner never touches this — it is evaluated one level up, in execsvc.
+	Output *ast.Expr
 	// Inputs lists this pipeline's declared `input name: Type` members, in
 	// declaration order. A malformed/unrecognized Type text resolves to
 	// types.Any here (best-effort, same as every other reader in this
@@ -137,6 +144,11 @@ type PipelineInputSpec struct {
 // Checkpoint starts at DefaultCheckpointConfig (per-step, enabled) and is
 // only replaced when a `checkpoint: { ... }` block is present, so omitting the
 // block leaves a pipeline resumable rather than un-resumable.
+//
+// The `m.Prop.Name` cases below must stay a subset of
+// ast.PipelineBodyProperties (the shared allow-list lint and the LSP also
+// read); adding a body property means adding both its entry there and its
+// case here.
 func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 	out := Pipeline{Name: p.Name, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
 	// `max <N>` header clause — shorthand for `repeat { max_iterations: N }`.
@@ -177,6 +189,8 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 			}
 		case m.Prop != nil && m.Prop.Name == "context":
 			out.Context = contextConfigFromExpr(m.Prop.Value)
+		case m.Prop != nil && m.Prop.Name == "output":
+			out.Output = m.Prop.Value
 		case m.Prop != nil && m.Prop.Name == "description":
 			out.Description, _ = ast.StringValue(m.Prop.Value)
 		case m.Input != nil:

@@ -1,5 +1,7 @@
 package lsp
 
+import "github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+
 // propertyItem builds a plain `name: ` completion (matching methodItems'
 // `m + "("` convention for its own InsertText) for a property that isn't a
 // grammar keyword — checkpoint/repeat/retry/... are all just an ordinary
@@ -11,25 +13,25 @@ func propertyItem(name, detail string) completionItem {
 
 // pipelinePropertyItems/loopPipelineExtraPropertyItems are what's valid
 // directly inside a `pipeline { ... }` body beyond the Step/PipelineInput/
-// VarDecl keywords already in the `keywords` list (input/var/step) —
-// mirrors runtime.PipelineFromAST's own Prop.Name switch. `repeat` only
-// makes sense on a `loop pipeline` (a plain pipeline runs once regardless of
-// what it declares), so it's offered as an addition on top of the shared
-// list rather than folded into it.
-var pipelinePropertyItems = []completionItem{
-	propertyItem("description", `"..." — human-readable summary; surfaced as the MCP tool / A2A skill description by "mhl serve"`),
-	propertyItem("checkpoint", "{ enabled, strategy, storage, ttl } — optional; per-step checkpointing is on by default, declare enabled: false to opt out"),
-	propertyItem("spawn", "{ max_concurrency } — run-wide ceiling on concurrent spawned agent calls"),
-	propertyItem("context", "{ source, require } — populate context.vars from a prior run (context.session_id / .started_at / .resumed / .principal need no block)"),
-}
+// VarDecl keywords already in the `keywords` list (input/var/step). Both are
+// derived from ast.PipelineBodyProperties — the single source of truth also
+// used by runtime.PipelineFromAST and lint — so a new body property is one
+// edit in `ast`, never here. `repeat` (LoopOnly) is offered only under a
+// `loop` pipeline, where it actually takes effect.
+var pipelinePropertyItems, loopPipelineExtraPropertyItems = func() (base, loopOnly []completionItem) {
+	for _, p := range ast.PipelineBodyProperties {
+		if p.LoopOnly {
+			loopOnly = append(loopOnly, propertyItem(p.Name, p.Doc))
+		} else {
+			base = append(base, propertyItem(p.Name, p.Doc))
+		}
+	}
+	return base, loopOnly
+}()
 
 // spawnFieldItems mirrors runtime.spawnConfigFromExpr's field switch.
 var spawnFieldItems = []completionItem{
 	propertyItem("max_concurrency", "integer > 0; default 4"),
-}
-
-var loopPipelineExtraPropertyItems = []completionItem{
-	propertyItem("repeat", "{ stop_when, max_iterations } — the `max <N>` header clause is shorthand for just max_iterations"),
 }
 
 // checkpointFieldItems mirrors runtime.checkpointFromExpr's field switch.

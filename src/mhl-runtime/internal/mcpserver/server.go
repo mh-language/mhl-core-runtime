@@ -37,6 +37,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -44,7 +45,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 )
 
 // ServerVersion is reported as serverInfo.version. internal/cli overwrites
@@ -473,9 +476,16 @@ func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage
 		Out: s.logw,
 	})
 	if runErr != nil {
-		return s.replyResult(sess, id, toolResult(runErr.Error(), nil, true))
+		// An error string can echo a resolved secret (a failed HTTP call
+		// quoting its Authorization header, a shell op's argv); mask it on
+		// the same policy as the variable payload below, and — for a typed
+		// runtime.StepError — attach which step failed and how as
+		// structuredContent so a client need not parse the message.
+		return s.replyResult(sess, id, toolErrorResult(runErr))
 	}
-	vars := res.Vars
+	// Resolved credentials must not cross the protocol boundary in `content`
+	// or `structuredContent`; redact recursively (nested objects/arrays too).
+	vars := runtime.RedactVars(res.Vars)
 	if vars == nil {
 		vars = map[string]any{}
 	}
@@ -511,6 +521,30 @@ func (s *server) readResource(sess *session, msg rpcMsg) *rpcMsg {
 // toolResult builds a CallToolResult body. structured, when non-nil, is
 // echoed as `structuredContent` alongside the text block (the spec's
 // backward-compat guidance: a structured result SHOULD also appear as text).
+// toolErrorResult renders a failed run as a CallToolResult: the message
+// redacted, plus — when the cause is a typed runtime.StepError or
+// InvalidInputsError — a structuredContent object a client can branch on
+// ({error, kind, step} / {error, kind, missing, unknown}).
+func toolErrorResult(err error) map[string]any {
+	msg := auth.Redact(err.Error())
+	var stepErr *runtime.StepError
+	if errors.As(err, &stepErr) {
+		kind := "step_failed"
+		if stepErr.Kind == "timeout" {
+			kind = "step_timeout"
+		}
+		return toolResult(msg, map[string]any{"error": msg, "kind": kind, "step": stepErr.Step}, true)
+	}
+	var badInputs *runtime.InvalidInputsError
+	if errors.As(err, &badInputs) {
+		return toolResult(msg, map[string]any{
+			"error": msg, "kind": "invalid_inputs",
+			"missing": badInputs.Missing, "unknown": badInputs.Unknown,
+		}, true)
+	}
+	return toolResult(msg, nil, true)
+}
+
 func toolResult(text string, structured any, isError bool) map[string]any {
 	r := map[string]any{
 		"content": []map[string]any{{"type": "text", "text": text}},

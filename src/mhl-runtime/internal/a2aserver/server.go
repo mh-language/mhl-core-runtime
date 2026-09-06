@@ -32,6 +32,7 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 )
 
 // ServerVersion is reported in the Agent Card. internal/cli overwrites it
@@ -54,16 +55,22 @@ const taskTTL = time.Hour
 const blockingWait = 30 * time.Second
 
 // Serve loads every .mh file under dir and serves the A2A agent on addr
-// until ctx is done. logw receives startup and per-request diagnostics. The
-// caller registers session extensions (interpreter.SetSessionExtensions)
-// beforehand.
+// until ctx is done, unauthenticated. It is ServeConfig with a zero Config.
 func Serve(ctx context.Context, addr, dir string, logw io.Writer) error {
+	return ServeConfig(ctx, addr, dir, Config{}, logw)
+}
+
+// ServeConfig is Serve with the operational hardening in cfg applied — a
+// shared bearer token, an optional trusted principal header, and a body cap
+// (see Config). logw receives startup and per-request diagnostics. The caller
+// registers session extensions (interpreter.SetSessionExtensions) beforehand.
+func ServeConfig(ctx context.Context, addr, dir string, cfg Config, logw io.Writer) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 	baseURL := "http://" + ln.Addr().String() + "/"
-	handler, s, err := build(dir, baseURL, logw)
+	handler, s, err := buildConfig(dir, baseURL, cfg, logw)
 	if err != nil {
 		return err
 	}
@@ -87,6 +94,7 @@ type server struct {
 	workflows map[string]execsvc.Workflow
 	baseURL   string
 	logw      io.Writer
+	guard     guard
 
 	mu    sync.Mutex
 	tasks map[string]*task
@@ -96,11 +104,15 @@ type server struct {
 // tests via Handler). baseURL is what the Agent Card advertises as its
 // endpoint.
 func build(dir, baseURL string, logw io.Writer) (http.Handler, *server, error) {
+	return buildConfig(dir, baseURL, Config{}, logw)
+}
+
+func buildConfig(dir, baseURL string, cfg Config, logw io.Writer) (http.Handler, *server, error) {
 	wf, err := execsvc.Load(dir)
 	if err != nil {
 		return nil, nil, err
 	}
-	s := &server{workflows: wf, baseURL: baseURL, logw: logw, tasks: map[string]*task{}}
+	s := &server{workflows: wf, baseURL: baseURL, logw: logw, tasks: map[string]*task{}, guard: newGuard(cfg)}
 	mux := http.NewServeMux()
 	// Current convention is /.well-known/agent-card.json; earlier 0.2.x
 	// clients look for /.well-known/agent.json — serve both.
@@ -115,6 +127,13 @@ func build(dir, baseURL string, logw io.Writer) (http.Handler, *server, error) {
 // http.Server and signal handling.
 func Handler(dir, baseURL string, logw io.Writer) (http.Handler, error) {
 	h, _, err := build(dir, baseURL, logw)
+	return h, err
+}
+
+// HandlerConfig is Handler with the hardening in cfg applied (bearer token,
+// principal header, body cap).
+func HandlerConfig(dir, baseURL string, cfg Config, logw io.Writer) (http.Handler, error) {
+	h, _, err := buildConfig(dir, baseURL, cfg, logw)
 	return h, err
 }
 
@@ -179,6 +198,9 @@ func (s *server) agentCard() map[string]any {
 func (s *server) handleRPC(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST JSON-RPC only", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := s.guard.check(w, r); !ok {
 		return
 	}
 	var req rpcReq
@@ -390,7 +412,7 @@ func (s *server) taskView(t *task) map[string]any {
 	if t.errMsg != "" {
 		status["message"] = map[string]any{
 			"role":  "agent",
-			"parts": []map[string]any{{"kind": "text", "text": t.errMsg}},
+			"parts": []map[string]any{{"kind": "text", "text": auth.Redact(t.errMsg)}},
 		}
 	}
 	view := map[string]any{
@@ -400,7 +422,9 @@ func (s *server) taskView(t *task) map[string]any {
 		"status":    status,
 	}
 	if t.state == "completed" && t.result != nil {
-		text, _ := json.MarshalIndent(t.result.Vars, "", "  ")
+		// Redact resolved credentials before the result artifact leaves the
+		// process (recurses into nested objects/arrays).
+		text, _ := json.MarshalIndent(runtime.RedactVars(t.result.Vars), "", "  ")
 		if t.result.Vars == nil {
 			text = []byte("{}")
 		}

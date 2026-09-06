@@ -72,6 +72,11 @@ type initializeResult struct {
 		Version string `json:"version"`
 	} `json:"extension"`
 	Declarations []extension.DeclarationSpec `json:"declarations,omitempty"`
+	// Capabilities are optional, additive protocol features the extension
+	// implements beyond its declared methods — e.g. "cas" for a `store`
+	// extension that supports put_if_absent / compare_and_swap. The host
+	// degrades gracefully when one it wanted is absent.
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 // callParams carries one method invocation. It mirrors extension.CallRequest

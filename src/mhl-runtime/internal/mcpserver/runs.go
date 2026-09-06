@@ -12,6 +12,7 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 )
 
 // asyncRun is one workflow execution started by `run/start` and tracked
@@ -183,7 +184,7 @@ func (h *httpServer) publishRunStatus(rn *asyncRun) {
 		Tool: rn.tool.Name, State: rn.state, Step: rn.step,
 		StepIndex: rn.stepIndex, StepTotal: rn.stepTotal,
 		Reached:   append([]string(nil), rn.reached...),
-		Resumable: rn.resumable, Error: rn.errMsg,
+		Resumable: rn.resumable, Error: auth.Redact(rn.errMsg),
 		StartedAt: rn.started, UpdatedAt: rn.updated,
 	}
 	// Final vars (set only once the run reaches a terminal state) travel with
@@ -225,6 +226,43 @@ func (h *httpServer) watchRemoteCancel(rn *asyncRun, stop <-chan struct{}) {
 	}
 }
 
+// heartbeatLock renews this replica's run lock while the run executes. If a
+// renew reports the lease is gone (another replica took it over after this one
+// stalled past the TTL), it cancels the run so this process stops working on
+// it. Store errors are tolerated up to a few consecutive failures. Stops when
+// stop is closed (execRun returning).
+func (h *httpServer) heartbeatLock(rn *asyncRun, stop <-chan struct{}) {
+	if h.lock == nil {
+		return
+	}
+	t := time.NewTicker(runLockHeartbeat)
+	defer t.Stop()
+	fails := 0
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			stillMine, err := h.lock.renew(context.Background(), rn.id)
+			if err != nil {
+				if fails++; fails >= 3 {
+					h.srv.logEvent(slog.LevelWarn, "run lock renew failing — abandoning the lock",
+						"runId", rn.id, "err", err.Error())
+					return
+				}
+				continue
+			}
+			fails = 0
+			if !stillMine {
+				h.srv.logEvent(slog.LevelWarn, "run lock lost — another replica took over; cancelling",
+					"runId", rn.id)
+				rn.cancel()
+				return
+			}
+		}
+	}
+}
+
 // refreshRemote re-reads a reconstructed run's published status so repeated
 // run/status polls reflect progress made on the owning replica. A local
 // run/cancel already recorded on this replica wins over a stale "working".
@@ -252,6 +290,33 @@ func (h *httpServer) refreshRemote(rn *asyncRun) {
 	if !rec.UpdatedAt.IsZero() {
 		rn.updated = rec.UpdatedAt
 	}
+	rn.mu.Unlock()
+
+	h.markIfLeaseExpired(rn)
+}
+
+// markIfLeaseExpired downgrades a reconstructed run that the shared status
+// says is "working" but whose run lock is gone or stale: the worker that was
+// driving it is presumed dead, so the run is reported failed-but-resumable
+// (a takeover is an explicit run/resume). A no-op without a run lock.
+func (h *httpServer) markIfLeaseExpired(rn *asyncRun) {
+	if h.lock == nil || rn == nil || !rn.remote {
+		return
+	}
+	rn.mu.Lock()
+	working := rn.state == "working"
+	rn.mu.Unlock()
+	if !working {
+		return
+	}
+	if st, _ := h.lock.peek(context.Background(), rn.id); st == lockFresh {
+		return
+	}
+	rn.mu.Lock()
+	rn.state = "failed"
+	rn.errMsg = "worker lease expired — resumable on another replica"
+	rn.resumable = h.cps.Exists(rn.id)
+	rn.updated = time.Now()
 	rn.mu.Unlock()
 }
 
@@ -359,8 +424,23 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q has no checkpoint on disk to resume from", p.RunID))
 	}
 
+	// A fresh run lock held by another replica means the run is genuinely
+	// executing there — refuse. An absent/expired lock means the worker is
+	// gone, so a "working" run is actually resumable (takeover). execRun's own
+	// acquire is the authoritative gate; this is the fast, clear error.
+	lockAlive := false
+	if h.lock != nil {
+		st, holder := h.lock.peek(context.Background(), rn.id)
+		if st == lockFresh {
+			if holder != h.replicaID {
+				return errMsg(msg.ID, -32602, fmt.Sprintf("run %q is executing on another replica (%s)", p.RunID, holder))
+			}
+			lockAlive = true
+		}
+	}
+
 	rn.mu.Lock()
-	if rn.state == "working" {
+	if rn.state == "working" && (h.lock == nil || lockAlive) {
 		rn.mu.Unlock()
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q is still working", p.RunID))
 	}
@@ -391,6 +471,34 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	defer close(rn.done)
 	defer rn.cancel()
+
+	// Cross-replica run lock: exactly one replica may drive a given runId.
+	// Best-effort — a store error does not block a run (a transiently degraded
+	// store must not wedge a legitimately single-replica deployment).
+	if h.lock != nil {
+		held, holder, err := h.lock.acquire(ctx, rn.id)
+		if err != nil {
+			h.srv.logEvent(slog.LevelWarn, "run lock acquire failed — proceeding uncoordinated",
+				"runId", rn.id, "err", err.Error())
+		} else if !held {
+			rn.mu.Lock()
+			rn.state = "failed"
+			rn.errMsg = fmt.Sprintf("run is executing on another replica (%s)", holder)
+			rn.updated = time.Now()
+			rn.resumable = h.cps.Exists(rn.id)
+			rn.mu.Unlock()
+			h.srv.logEvent(slog.LevelInfo, "run lock held elsewhere — refusing to run",
+				"runId", rn.id, "holder", holder)
+			h.publishRunStatus(rn)
+			return
+		}
+		if err == nil {
+			stopHB := make(chan struct{})
+			defer close(stopHB)
+			go h.heartbeatLock(rn, stopHB)
+			defer func() { _ = h.lock.release(context.WithoutCancel(ctx), rn.id) }()
+		}
+	}
 
 	// A cancel issued at another replica lands as a flag in the shared store;
 	// this goroutine is what turns it into a ctx cancel here.
@@ -669,6 +777,7 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 		rn.state = "working"
 	}
 	h.runs.Put(rn)
+	h.markIfLeaseExpired(rn)
 	return rn
 }
 
@@ -700,10 +809,12 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 		v["vars"] = runtime.RedactVars(rn.vars)
 	}
 	if rn.errMsg != "" {
+		// A failure/pause message can quote a resolved credential; mask it on
+		// the same policy as vars above.
 		if rn.state == "paused" {
-			v["reason"] = rn.errMsg
+			v["reason"] = auth.Redact(rn.errMsg)
 		} else {
-			v["error"] = rn.errMsg
+			v["error"] = auth.Redact(rn.errMsg)
 		}
 	}
 	return v

@@ -13,6 +13,7 @@ harness*.json
 specs/
 dotnet/
 /output/
+/tmp
 /dist/
 /out/
 logs/
@@ -32,5 +33,6 @@ sample/mhl
 
 # scripts
 release.sh
+PLANO.md
 
 

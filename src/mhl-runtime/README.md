@@ -5,9 +5,12 @@ declarative language for describing AI agent pipelines: agents, tools, memory,
 extensions (MCP, A2A), prompts and the pipelines that wire them together.
 
 ```
-mhl run <pipeline.mh> [--input key=value ...] [--resume]
+mhl run <pipeline.mh> [--input key=value ...] [--resume [--force]]
 mhl test <file.mh|dir>
 mhl lint [dir]
+mhl lsp                                    # language server over stdio (used by vscode-mhl)
+mhl serve mcp [--http] [dir]               # workflows as MCP tools
+mhl serve a2a [--addr h:p] [--token t] [dir]  # workflows as A2A skills
 mhl extension <list|doctor|init|test|package|install>
 ```
 
@@ -60,6 +63,9 @@ internal/
 ├── lang/            language core: grammar, AST, parser, type vocabulary, static analysis (lint)
 ├── engine/          executes a parsed program: the interpreter + pipeline checkpointing
 ├── features/        the building blocks a .mh program can declare and call into
+├── execsvc/         reusable "run a pipeline, get a structured result" core (cli + serve share it)
+├── mcpserver/       `mhl serve mcp` — workflows as MCP tools (stdio + Streamable HTTP)
+├── a2aserver/       `mhl serve a2a` — workflows as A2A skills (HTTP JSON-RPC)
 ├── extension/       host↔extension contract + the out-of-process (external/) transport
 ├── extbuiltin/      registers the built-in MCP / A2A adapters into extension
 ├── lsp/             the `mhl lsp` language server
@@ -124,9 +130,12 @@ call into that single copy instead of each keeping their own.
   control flow too, with no separate execution path. This package is the one place the language
   (`lang`), the features (`features`) and the extension contract (`extension`) meet.
 - **`runtime`** — pipeline checkpointing and `--resume`: `Runner.Run` executes a pipeline's
-  steps in order, persisting a `Checkpoint` after each step when the pipeline declares
-  `checkpoint { strategy: "per_step" }`, and resuming from the step after the last completed
-  one. Independent of the interpreter — it only knows step *names*, not what a step does.
+  steps in order, persisting a `Checkpoint` after each step. Per-step checkpointing is **on by
+  default** (`DefaultCheckpointConfig`, applied in `PipelineFromAST`); a `checkpoint { ... }`
+  block only overrides a field (`ttl`) or opts out (`checkpoint: { enabled: false }`). Resume
+  continues from the step after the last completed one, and refuses a checkpoint whose pipeline
+  definition digested differently (unless `--resume --force`). Independent of the interpreter —
+  it only knows step *names*, not what a step does.
 
 ## `internal/features` — what a `.mh` program can use
 
@@ -145,8 +154,9 @@ back into the interpreter.
   `extension mcp` declarations. `extension.go` wraps it as a built-in extension adapter,
   registered through `internal/extbuiltin`.
 - **`a2a`** — a client for the Agent-to-Agent (A2A) protocol (JSON-RPC over HTTP) backing
-  `extension a2a` declarations. Client-only, and wrapped as a built-in adapter the same way
-  `mcp` is.
+  `extension a2a` declarations, wrapped as a built-in adapter the same way `mcp` is. This
+  package is the *client* (calling out); serving this runtime's own workflows as A2A skills is
+  `internal/a2aserver` (and MCP tools are `internal/mcpserver`), both on top of `internal/execsvc`.
 - **`nativeops`** — implements the fixed native operations a `tool` method body (or any
   expression position) can call: `cmd.*`, `git.*`, `fs.*`, `http.*`, `json.*`, `log.*` and
   `time.*`. Deliberately thin and MHL-agnostic (no AST): the interpreter's `tool.go` is what
@@ -164,10 +174,11 @@ back into the interpreter.
 ## `internal/cli`
 
 Argument parsing and dispatch for the subcommands (`init`, `run`, `test`, `lint`, `lsp`,
-`extension`, `version`). Kept deliberately thin: it parses flags, reads files, and hands off to
-`lang/parser`, `engine/interpreter`, `engine/runtime`, `lang/lint` and `internal/extension` for
-the actual work. `mhl extension` manages external extensions (`list`, `doctor`, `init`, `test`,
-`package`, `install`).
+`serve`, `extension`, `version`). Kept deliberately thin: it parses flags, reads files, and
+hands off to `lang/parser`, `engine/interpreter`, `engine/runtime`, `execsvc`, `lang/lint` and
+`internal/extension` for the actual work. `mhl serve mcp` / `mhl serve a2a` hand off to
+`internal/mcpserver` / `internal/a2aserver` (both on top of `execsvc`). `mhl extension` manages
+external extensions (`list`, `doctor`, `init`, `test`, `package`, `install`).
 `test` prints each assertion's PASS/FAIL/SKIP and a summary line, and exits non-zero when any
 assertion failed (an `incomplete(...)` assertion never counts as a failure). If you're looking
 for *how* a pipeline executes, you want `internal/engine/interpreter`, not here.

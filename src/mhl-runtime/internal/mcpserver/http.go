@@ -187,6 +187,15 @@ type httpServer struct {
 	// so execRun can build a per-run runtime.StateStore over it.
 	store KVStore
 
+	// replicaID identifies this process among a fleet sharing one external
+	// store — the run-lock holder name. os.Hostname()+random, or
+	// MHL_SERVE_REPLICA_ID.
+	replicaID string
+	// lock coordinates run execution across replicas: non-nil only when the
+	// store is an extension store that advertised the "cas" capability. nil ⇒
+	// no cross-replica locking (the operator must keep to one writer).
+	lock *runLock
+
 	// State seams — see store.go. Each has one implementation today (a
 	// process-local map, or the on-disk .mhl/state tree); Phase 3 swaps in
 	// extension-backed ones for a fleet of replicas.
@@ -261,6 +270,17 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 		sessions:     sessions,
 		runs:         newMemRunRegistry(),
 		cps:          cps,
+		replicaID:    resolveReplicaID(),
+	}
+	// Cross-replica run locking is available only when the store extension
+	// implements atomic compare-and-swap (the "cas" capability). Without it a
+	// fleet must be kept to a single writer.
+	if lk, ok := cfg.Store.(LockingKVStore); ok && lk.CASCapable() {
+		h.lock = &runLock{kv: lk, replicaID: h.replicaID, now: time.Now}
+		h.srv.logEvent(slog.LevelInfo, "cross-replica run locking enabled", "replicaId", h.replicaID)
+	} else if cfg.Store != nil {
+		h.srv.logEvent(slog.LevelWarn,
+			"cross-replica run locking disabled: store extension has no \"cas\" capability — keep this to a single replica")
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(mcpPath, h.handleMCP)

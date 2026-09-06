@@ -4,8 +4,10 @@
 // from the step following the last successfully completed/saved step.
 //
 // Scope: checkpoint persistence and resume continuation only. Parsing of the
-// pipeline syntax is consumed from internal/ast and not implemented here, and
-// secret redaction of persisted state is out of scope (feature 5).
+// pipeline syntax is consumed from internal/ast and not implemented here.
+// Resolved secrets in persisted state are masked recursively on the way out
+// (RedactVars / redactValue), shared with every other run-variable output
+// boundary.
 package runtime
 
 import (
@@ -43,6 +45,56 @@ type Checkpoint struct {
 	Variables      map[string]any `json:"variables"`
 	SavedAt        time.Time      `json:"saved_at"`
 	TTLSeconds     int64          `json:"ttl_seconds"`
+
+	// DefinitionDigest binds this checkpoint to the exact program structure it
+	// was written for (DefinitionDigest of the resolved AST). A --resume whose
+	// current definition digests differently is refused — resuming would run
+	// the persisted variable state through changed control flow. Empty on a
+	// checkpoint written before this field existed (resume is then allowed,
+	// for backward compatibility).
+	DefinitionDigest string `json:"definition_digest,omitempty"`
+	// RuntimeVersion is the build that wrote the checkpoint — informational,
+	// surfaced on a resume; never a resume gate on its own.
+	RuntimeVersion string `json:"runtime_version,omitempty"`
+	// StateSchema is the Checkpoint on-disk format version (StateSchemaVersion).
+	// A checkpoint from a newer schema than this build knows is refused. 0 (the
+	// zero value, from a pre-versioning checkpoint) is treated as compatible.
+	StateSchema int `json:"state_schema,omitempty"`
+}
+
+// ErrCheckpointDefinitionMismatch is returned by a resume whose current
+// pipeline definition no longer matches the one the checkpoint was written
+// for. It is deliberately not recoverable automatically: the operator either
+// restores the original .mh or re-runs without --resume.
+var ErrCheckpointDefinitionMismatch = fmt.Errorf("runtime: checkpoint was written for a different pipeline definition")
+
+// ErrCheckpointSchemaTooNew is returned when a checkpoint's StateSchema is
+// higher than this build's StateSchemaVersion — a newer mhl wrote it.
+var ErrCheckpointSchemaTooNew = fmt.Errorf("runtime: checkpoint state schema is newer than this runtime supports")
+
+// CompatibleWith reports whether this checkpoint may be resumed by a build
+// whose current definition digest is wantDigest. An empty stored digest (a
+// pre-versioning checkpoint) or an empty wantDigest (the caller opted out of
+// the check) passes. A newer state schema always fails.
+func (c *Checkpoint) CompatibleWith(wantDigest string) error {
+	if c.StateSchema > StateSchemaVersion {
+		return fmt.Errorf("%w (%d > %d)", ErrCheckpointSchemaTooNew, c.StateSchema, StateSchemaVersion)
+	}
+	if wantDigest == "" || c.DefinitionDigest == "" {
+		return nil
+	}
+	if c.DefinitionDigest != wantDigest {
+		return fmt.Errorf("%w (checkpoint %s..., current %s...); restore the original .mh or re-run without --resume",
+			ErrCheckpointDefinitionMismatch, short(c.DefinitionDigest), short(wantDigest))
+	}
+	return nil
+}
+
+func short(s string) string {
+	if len(s) > 8 {
+		return s[:8]
+	}
+	return s
 }
 
 // Expired reports whether the checkpoint is older than its TTL as of now. A
@@ -128,7 +180,10 @@ func (s *Store) Save(cp *Checkpoint) error {
 	}
 	cp.SavedAt = s.now()
 	redacted := *cp
-	redacted.Variables = RedactVars(cp.Variables)
+	// Checkpoint state is resumed, so a secret with a known credential
+	// reference is stored as a re-resolvable placeholder rather than a dead
+	// mask (RehydrateVars restores it on Load).
+	redacted.Variables = RedactVarsForCheckpoint(cp.Variables)
 	data, err := json.MarshalIndent(&redacted, "", "  ")
 	if err != nil {
 		return fmt.Errorf("runtime: encoding checkpoint: %w", err)
@@ -172,6 +227,13 @@ func (s *Store) Load(pipeline string) (*Checkpoint, bool, error) {
 		_ = s.Clear(pipeline)
 		return nil, false, nil
 	}
+	if cp.Variables != nil {
+		vars, err := RehydrateVars(cp.Variables)
+		if err != nil {
+			return nil, false, err
+		}
+		cp.Variables = vars
+	}
 	return &cp, true, nil
 }
 
@@ -195,22 +257,247 @@ func (s *Store) Clear(pipeline string) error {
 	return nil
 }
 
-// RedactVars returns a copy of vars with every string value scrubbed through
-// auth.Redact. A number, bool, array or object passes through unredacted —
-// the same coarse-grained treatment a logged array/object already gets. It
-// is shared by checkpoint Save and result.json WriteResult so both persist
-// resolved secrets the same way; an alternative StateStore implementation
-// (an extension-backed store) must call it before persisting too.
+// RedactVars returns a deep copy of vars with every string value scrubbed
+// through auth.Redact, recursing into nested objects and arrays so a secret
+// stored one level down (`{"creds": {"token": "…"}}`, `["…"]`) is masked too.
+// Numbers and bools pass through untouched. It is shared by checkpoint Save
+// and result.json WriteResult so both persist resolved secrets the same way;
+// an alternative StateStore implementation (an extension-backed store) must
+// call it before persisting too, and any other output boundary that returns
+// run variables (protocol replies, run logs) should route through
+// redactValue as well.
 func RedactVars(vars map[string]any) map[string]any {
 	out := make(map[string]any, len(vars))
 	for key, value := range vars {
-		if s, ok := value.(string); ok {
-			out[key] = auth.Redact(s)
-		} else {
-			out[key] = value
-		}
+		out[key] = redactValue(value)
 	}
 	return out
+}
+
+// redactValue applies auth.Redact to every string reachable from v, copying
+// any map or slice it descends into so the caller's structure is left
+// unmodified. Map shapes other than map[string]any (map[any]any from a
+// decoded literal) and []any are both handled; unknown types pass through.
+func redactValue(v any) any {
+	switch t := v.(type) {
+	case string:
+		return auth.Redact(t)
+	case map[string]any:
+		m := make(map[string]any, len(t))
+		for k, val := range t {
+			m[k] = redactValue(val)
+		}
+		return m
+	case map[any]any:
+		m := make(map[any]any, len(t))
+		for k, val := range t {
+			m[k] = redactValue(val)
+		}
+		return m
+	case []any:
+		s := make([]any, len(t))
+		for i, val := range t {
+			s[i] = redactValue(val)
+		}
+		return s
+	case []string:
+		s := make([]string, len(t))
+		for i, val := range t {
+			s[i] = auth.Redact(val)
+		}
+		return s
+	default:
+		return v
+	}
+}
+
+// RedactValue is the exported entry point for redacting an arbitrary value
+// (a single variable, a protocol result payload) with the same recursive
+// policy RedactVars applies to a checkpoint's variable map.
+func RedactValue(v any) any { return redactValue(v) }
+
+// secretRefKey is the sole field of the placeholder object a checkpoint
+// stores in place of a resolved secret whose credential reference is known.
+// RehydrateVars re-resolves it on load, so a fresh-process --resume recovers
+// the live value instead of a dead mask.
+const secretRefKey = "__mhl_secret_ref__"
+
+// ErrNonSerializableVar is wrapped by the error CheckpointableVars returns
+// for a pipeline variable holding a value a checkpoint cannot faithfully
+// round-trip through JSON (a closure, a function, a channel, an opaque
+// handle). Persisting it would silently drop the value to `{}` and a
+// --resume would then fail far from the cause, so the run fails here instead.
+var ErrNonSerializableVar = fmt.Errorf("runtime: pipeline variable is not checkpointable")
+
+// CheckpointableVars reports the first pipeline variable whose value cannot
+// be checkpointed. Checkpoint state is JSON: only nil, strings, numbers,
+// bools, and arrays/objects of those survive a Save/Load round-trip
+// (resolved secrets are additionally stored as re-resolvable references, see
+// RedactVarsForCheckpoint). A value of any other kind — most often a closure
+// assigned to a pipeline-scoped `var` — is rejected up front.
+func CheckpointableVars(vars map[string]any) error {
+	for key, value := range vars {
+		if t, ok := firstUnserializable(value); ok {
+			return fmt.Errorf("%w: %q holds a %s — assign only strings, numbers, bools, arrays and objects to a pipeline-scoped var (a closure or handle cannot be resumed)", ErrNonSerializableVar, key, t)
+		}
+	}
+	return nil
+}
+
+// firstUnserializable returns the type description of the first value
+// reachable from v that JSON cannot represent, or ok=false when the whole
+// structure is checkpoint-safe.
+func firstUnserializable(v any) (string, bool) {
+	switch t := v.(type) {
+	case nil, string, bool,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64,
+		json.Number:
+		return "", false
+	case []any:
+		for _, e := range t {
+			if d, bad := firstUnserializable(e); bad {
+				return d, true
+			}
+		}
+		return "", false
+	case []string:
+		return "", false
+	case map[string]any:
+		for _, e := range t {
+			if d, bad := firstUnserializable(e); bad {
+				return d, true
+			}
+		}
+		return "", false
+	case map[any]any:
+		for _, e := range t {
+			if d, bad := firstUnserializable(e); bad {
+				return d, true
+			}
+		}
+		return "", false
+	default:
+		return fmt.Sprintf("%T", v), true
+	}
+}
+
+// RedactVarsForCheckpoint is RedactVars for state that will be resumed: a
+// string that is exactly a resolved secret with a known reference
+// (auth.RefFor) is replaced by a {secretRefKey: ref} placeholder rather than
+// the "[REDACTED]" mask, so RehydrateVars can restore it. Every other string
+// (including a secret only embedded as a substring) is masked exactly as
+// RedactVars does.
+func RedactVarsForCheckpoint(vars map[string]any) map[string]any {
+	out := make(map[string]any, len(vars))
+	for key, value := range vars {
+		out[key] = redactValueForCheckpoint(value)
+	}
+	return out
+}
+
+func redactValueForCheckpoint(v any) any {
+	switch t := v.(type) {
+	case string:
+		if ref, ok := auth.RefFor(t); ok {
+			return map[string]any{secretRefKey: ref}
+		}
+		return auth.Redact(t)
+	case map[string]any:
+		m := make(map[string]any, len(t))
+		for k, val := range t {
+			m[k] = redactValueForCheckpoint(val)
+		}
+		return m
+	case map[any]any:
+		m := make(map[any]any, len(t))
+		for k, val := range t {
+			m[k] = redactValueForCheckpoint(val)
+		}
+		return m
+	case []any:
+		s := make([]any, len(t))
+		for i, val := range t {
+			s[i] = redactValueForCheckpoint(val)
+		}
+		return s
+	case []string:
+		s := make([]any, len(t))
+		for i, val := range t {
+			s[i] = redactValueForCheckpoint(val)
+		}
+		return s
+	default:
+		return v
+	}
+}
+
+// RehydrateVars walks a checkpoint's decoded variables and replaces every
+// {secretRefKey: ref} placeholder written by RedactVarsForCheckpoint with the
+// value re-resolved from that reference. A reference that no longer resolves
+// (the environment variable is gone) is a hard error: a resumed run must not
+// silently proceed with a missing credential.
+func RehydrateVars(vars map[string]any) (map[string]any, error) {
+	out := make(map[string]any, len(vars))
+	for key, value := range vars {
+		rv, err := rehydrateValue(value)
+		if err != nil {
+			return nil, fmt.Errorf("runtime: restoring checkpoint variable %q: %w", key, err)
+		}
+		out[key] = rv
+	}
+	return out, nil
+}
+
+func rehydrateValue(v any) (any, error) {
+	switch t := v.(type) {
+	case map[string]any:
+		if ref, ok := placeholderRef(t); ok {
+			return auth.Resolve(ref)
+		}
+		m := make(map[string]any, len(t))
+		for k, val := range t {
+			rv, err := rehydrateValue(val)
+			if err != nil {
+				return nil, err
+			}
+			m[k] = rv
+		}
+		return m, nil
+	case map[any]any:
+		m := make(map[any]any, len(t))
+		for k, val := range t {
+			rv, err := rehydrateValue(val)
+			if err != nil {
+				return nil, err
+			}
+			m[k] = rv
+		}
+		return m, nil
+	case []any:
+		s := make([]any, len(t))
+		for i, val := range t {
+			rv, err := rehydrateValue(val)
+			if err != nil {
+				return nil, err
+			}
+			s[i] = rv
+		}
+		return s, nil
+	default:
+		return v, nil
+	}
+}
+
+// placeholderRef reports whether m is exactly a {secretRefKey: "<ref>"}
+// placeholder and returns the reference string.
+func placeholderRef(m map[string]any) (string, bool) {
+	if len(m) != 1 {
+		return "", false
+	}
+	ref, ok := m[secretRefKey].(string)
+	return ref, ok && ref != ""
 }
 
 // WriteResult persists a completed run's final variable state as result.json

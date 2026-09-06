@@ -93,6 +93,78 @@ func TestRunFromSource(t *testing.T) {
 	}
 }
 
+// An `output: { name: expr }` mapping is the sole projection a run exposes:
+// only the mapped keys come back, never the workflow's internal vars, and a
+// key can be renamed / computed from the final state. (P0-3 in PLANO.md.)
+func TestRunProjectsDeclaredOutputsOnly(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+workflow Deploy {
+    input env: string
+    var url = ""
+    var debug_token = ""
+    var code = 0
+    output: {
+        endpoint: url,
+        status: code,
+        target: env,
+    }
+    step S {
+        url = "https://" + env + ".example.com"
+        debug_token = "SECRET-nonpublic"
+        code = 200
+    }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{
+		Source:  src,
+		Inputs:  map[string]any{"env": "staging"},
+		BaseDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	want := map[string]any{
+		"endpoint": "https://staging.example.com",
+		"status":   float64(200),
+		"target":   "staging",
+	}
+	if len(res.Vars) != len(want) {
+		t.Fatalf("Vars = %#v, want exactly %#v", res.Vars, want)
+	}
+	for k, v := range want {
+		if res.Vars[k] != v {
+			t.Errorf("Vars[%q] = %v, want %v", k, res.Vars[k], v)
+		}
+	}
+	if _, leaked := res.Vars["debug_token"]; leaked {
+		t.Errorf("undeclared var debug_token leaked into the result: %#v", res.Vars)
+	}
+	if _, leaked := res.Vars["url"]; leaked {
+		t.Errorf("internal var url leaked into the result: %#v", res.Vars)
+	}
+}
+
+// Without an `output:` block, the legacy behaviour is unchanged: every
+// non-internal var is returned.
+func TestRunWithoutOutputReturnsAllVars(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+workflow Plain {
+    var a = 0
+    var b = 0
+    step S { a = 1 b = 2 }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{Source: src, BaseDir: dir})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if res.Vars["a"] != float64(1) || res.Vars["b"] != float64(2) {
+		t.Errorf("Vars = %#v, want a=1 b=2", res.Vars)
+	}
+}
+
 // Workflow selects a declaration by name, and a workflow's `goto` still
 // drives the step sequence.
 func TestRunSelectsWorkflowByName(t *testing.T) {

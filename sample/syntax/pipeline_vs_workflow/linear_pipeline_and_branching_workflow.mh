@@ -57,6 +57,26 @@ loop workflow Refine max 3 {
     }
 }
 
+// `output: { name: expr, ... }` — an explicit result projection. With it
+// declared, a `mhl run` / `mhl serve` caller receives only these keys
+// (renamed and computed from the final state as needed), never the
+// workflow's internal `var`s.
+workflow PublishRelease {
+    input environment: string
+    var artifact_url = ""
+    var internal_token = ""
+
+    output: {
+        url: artifact_url,
+        environment: environment,
+    }
+
+    step Ship {
+        artifact_url = "https://releases.example.com/" + environment
+        internal_token = "not-exported"
+    }
+}
+
 test pipeline_vs_workflow {
     describe both_keywords_parse_and_lint {
         // Control flow is declaration-level, not expression-level, so there

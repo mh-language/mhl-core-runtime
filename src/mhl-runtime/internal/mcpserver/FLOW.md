@@ -190,6 +190,22 @@ that ran it and 404 everywhere else — it is kept for `sessionTTL` and then
 retired by `sweepRuns` (see below). The `h.runs` registry itself stays
 process-local.
 
+**Run lock** (`h.lock != nil` — only when the store is an extension store that
+advertised the `cas` capability, i.e. implements `PutIfAbsent` /
+`CompareAndSwap`; see `runlock.go`): before `execRun` drives a run it
+`acquire`s `run/<id>/lock` = `{holder, expires}` and renews it on a
+`runLockHeartbeat` (`runLockTTL/3`). A second replica's `execRun` for the same
+`runId` finds a fresh lock and marks the run `failed` ("executing on another
+replica"); `runResume` does the same `peek` up front for a clean `-32602`. If
+the holder stalls past `runLockTTL`, another replica's `acquire` takes the
+lapsed lock over via `CompareAndSwap`, and `heartbeatLock` on the stalled
+replica sees `renew` return `stillMine=false` and `cancel()`s its own run.
+`reconstructRun` / `refreshRemote` run `markIfLeaseExpired`: a `remote` run the
+status says is `working` but whose lock is absent/expired is reported `failed` +
+`resumable` — takeover is an explicit `run/resume`, never automatic. This is a
+coarse lock, not a fenced one: a resurrected holder could still write a stale
+checkpoint (a fencing token is a later increment).
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -313,7 +329,7 @@ pair) plus the URI constants.
 (the historical `Authorization: Bearer <--token>` check, principal `""`) or —
 with `--principal-header` — `trustedHeader`, which requires that bearer check to
 pass *and then* reads the principal from the named header (set by an upstream
-authorizer; see `tests/cloud/README.md`). serve.go refuses `--principal-header`
+authorizer; see `tests_e2e/cloud/README.md`). serve.go refuses `--principal-header`
 without `--token`.
 
 `rn.owner` = `httpServer.ownerOf(session)` — `sha256("principal:"+p)` when the

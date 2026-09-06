@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"time"
@@ -25,6 +26,31 @@ type KVStore interface {
 	Delete(ctx context.Context, key string) error
 	// List returns every key with the given prefix.
 	List(ctx context.Context, prefix string) ([]string, error)
+}
+
+// ErrCASUnsupported is returned by a LockingKVStore's PutIfAbsent /
+// CompareAndSwap when the backing extension did not advertise the "cas"
+// capability. The caller treats it the same as a nil lock — no cross-replica
+// coordination.
+var ErrCASUnsupported = errors.New("mcpserver: store does not support compare-and-swap")
+
+// LockingKVStore is a KVStore that also offers the two atomic primitives the
+// per-run execution lock (runlock.go) needs. An extension store provides them
+// when it advertises the "cas" capability in its initialize handshake;
+// without it, CASCapable() reports false and the server disables cross-replica
+// run locking (a single writer is then the operator's responsibility).
+type LockingKVStore interface {
+	KVStore
+	// CASCapable reports whether the backing store actually implements the
+	// atomic primitives below (the "cas" capability was advertised).
+	CASCapable() bool
+	// PutIfAbsent stores value at key only if key does not already exist.
+	// acquired is false (nil error) when the key is already present.
+	PutIfAbsent(ctx context.Context, key string, value any) (acquired bool, err error)
+	// CompareAndSwap replaces the value at key with newValue only if its
+	// current raw bytes equal expected. swapped is false (nil error) on a
+	// value mismatch or a missing key.
+	CompareAndSwap(ctx context.Context, key string, expected []byte, newValue any) (swapped bool, err error)
 }
 
 // Key layout. Every run's durable state is under run/<id>/…; sessions under
@@ -256,13 +282,23 @@ func (s *extStateStore) Load(pipeline string) (*runtime.Checkpoint, bool, error)
 		_ = s.Clear(pipeline)
 		return nil, false, nil
 	}
+	if cp.Variables != nil {
+		vars, err := runtime.RehydrateVars(cp.Variables)
+		if err != nil {
+			return nil, false, err
+		}
+		cp.Variables = vars
+	}
 	return &cp, true, nil
 }
 
 func (s *extStateStore) Save(cp *runtime.Checkpoint) error {
 	stamped := *cp
 	stamped.SavedAt = time.Now()
-	stamped.Variables = runtime.RedactVars(cp.Variables) // never persist resolved secrets
+	// Never persist resolved secrets; a secret with a known credential
+	// reference is stored as a re-resolvable placeholder (rehydrated in Load),
+	// everything else is masked.
+	stamped.Variables = runtime.RedactVarsForCheckpoint(cp.Variables)
 	return s.kv.Put(context.Background(), s.key(cp.Pipeline), &stamped)
 }
 

@@ -40,6 +40,46 @@ type Pipeline struct {
 // (rather than `pipeline`), which is what permits `goto` in its steps.
 func (p *Pipeline) IsWorkflow() bool { return p.Kind == "workflow" }
 
+// PipelineBodyProperty is one `name: <expr>` property allowed directly in a
+// pipeline/workflow body — a Property node (bare `Ident ':' expr`), not a
+// grammar keyword. PipelineBodyProperties below is the single source of truth
+// three packages share, so adding one property is one edit here plus wiring
+// its value into runtime.PipelineFromAST:
+//
+//   - internal/engine/runtime.PipelineFromAST — reads the value
+//   - internal/lang/lint.checkPipelineProperties — rejects an unknown name
+//   - internal/lsp — offers it in body completion
+type PipelineBodyProperty struct {
+	Name string
+	// Doc is the one-line detail shown in editor completion.
+	Doc string
+	// LoopOnly marks a property that only takes effect on a `loop`
+	// pipeline/workflow (today: repeat) — lint still accepts it on a plain
+	// pipeline, but completion only offers it under `loop`.
+	LoopOnly bool
+}
+
+// PipelineBodyProperties is the allow-list of pipeline/workflow body
+// properties. Keep runtime.PipelineFromAST's Prop.Name switch in step with it.
+var PipelineBodyProperties = []PipelineBodyProperty{
+	{Name: "description", Doc: `"..." — human-readable summary; surfaced as the MCP tool / A2A skill description by "mhl serve"`},
+	{Name: "checkpoint", Doc: "{ enabled, strategy, storage, ttl } — optional; per-step checkpointing is on by default, declare enabled: false to opt out"},
+	{Name: "spawn", Doc: "{ max_concurrency } — run-wide ceiling on concurrent spawned agent calls"},
+	{Name: "context", Doc: "{ source, require } — populate context.vars from a prior run (context.session_id / .started_at / .resumed / .principal need no block)"},
+	{Name: "output", Doc: "{ name: expr, ... } — explicit result projection; with it declared, only these keys are returned to a caller (and over MCP / A2A) instead of every var"},
+	{Name: "repeat", Doc: "{ stop_when, max_iterations } — the `max <N>` header clause is shorthand for just max_iterations", LoopOnly: true},
+}
+
+// PipelineBodyPropertyNames returns the allow-list as a set, for a membership
+// check.
+func PipelineBodyPropertyNames() map[string]bool {
+	m := make(map[string]bool, len(PipelineBodyProperties))
+	for _, p := range PipelineBodyProperties {
+		m[p.Name] = true
+	}
+	return m
+}
+
 // PipelineMember is one entry of a pipeline body. Var (reusing the same
 // VarDecl a step body's `var x = expr` already is) declares a
 // pipeline-scoped variable: evaluated once per run (see

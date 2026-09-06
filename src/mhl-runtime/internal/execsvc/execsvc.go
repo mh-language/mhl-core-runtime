@@ -77,6 +77,13 @@ type Request struct {
 	Session string
 	Resume  bool
 
+	// ForceResume, with Resume, downgrades a checkpoint definition-digest
+	// mismatch from a hard error to a warning — the operator asserting the
+	// edit since the checkpoint was written is safe to resume through. It does
+	// not override an incompatible state-schema (that state is genuinely
+	// unreadable).
+	ForceResume bool
+
 	// Principal is the verified caller identity, surfaced to a pipeline that
 	// declares a `context:` block as read-only `context.principal`. "" for a
 	// plain `mhl run` or when the serving layer has no token verifier.
@@ -242,6 +249,18 @@ func Run(req Request) (*Result, error) {
 		return nil, err
 	}
 
+	// projectVars decides what a finished run exposes to the caller. With an
+	// `output: { ... }` mapping declared, only those keys leave the run
+	// (evaluated against the final variable state); without one, the legacy
+	// behaviour returns every non-internal `var`.
+	projectVars := func(finalVars map[string]any, instanceID string) (map[string]any, error) {
+		if pipeline.Output == nil {
+			return publicVars(finalVars), nil
+		}
+		mem := memContextFor(memInit, pipeline.Name, instanceID)
+		return interpreter.EvalOutputs(prog, pipeline.Output, file, out, store, jsonStore, mem, contextView, finalVars)
+	}
+
 	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
 
 	stepTotal := len(pipeline.Steps)
@@ -276,8 +295,16 @@ func Run(req Request) (*Result, error) {
 
 	init := pipelineVarsInit(prog, pipeline.Name, file, out, store, jsonStore, contextView)
 
+	// Bind every checkpoint this run writes to the structure of the pipeline
+	// it came from (its own declaration plus the shared decls it can
+	// reference), so a later --resume refuses a checkpoint written for a
+	// definition that has since changed shape (P1-9). --force downgrades that
+	// to a warning.
+	defDigest := runtime.DefinitionDigest(prog, pipeline.Name)
+
 	if !pipeline.Loop {
-		runner := runtime.NewRunner(base).Session(sessionID)
+		runner := runtime.NewRunner(base).Session(sessionID).
+			WithDefinition(defDigest).WithForceResume(req.ForceResume)
 		runner.Out = out
 		resultSink := runtime.StateStore(runner.Store)
 		if req.StateStore != nil {
@@ -295,6 +322,10 @@ func Run(req Request) (*Result, error) {
 				return nil, err
 			}
 		}
+		vars, err := projectVars(res.FinalVars, "default")
+		if err != nil {
+			return nil, err
+		}
 		return &Result{
 			PipelineName: pipeline.Name,
 			SessionID:    sessionID,
@@ -305,7 +336,7 @@ func Run(req Request) (*Result, error) {
 			BreakReason:  res.BreakReason,
 			Paused:       res.Paused,
 			PauseReason:  res.PauseReason,
-			Vars:         publicVars(res.FinalVars),
+			Vars:         vars,
 		}, nil
 	}
 
@@ -317,6 +348,7 @@ func Run(req Request) (*Result, error) {
 		return interpreter.EvalCondition(prog, pipeline.StopWhen, file, out, store, jsonStore, mem, contextView)
 	}
 	loopRunner := runtime.NewLoopRunner(base).Session(sessionID)
+	loopRunner.Runner.WithDefinition(defDigest).WithForceResume(req.ForceResume)
 	loopRunner.Runner.Out = out
 	loopResultSink := runtime.StateStore(loopRunner.Runner.Store)
 	if req.StateStore != nil {
@@ -336,6 +368,14 @@ func Run(req Request) (*Result, error) {
 			return nil, err
 		}
 	}
+	loopInstance := pipeline.InstanceID
+	if loopInstance == "" {
+		loopInstance = "default"
+	}
+	vars, err := projectVars(res.FinalVars, loopInstance)
+	if err != nil {
+		return nil, err
+	}
 	return &Result{
 		PipelineName:   pipeline.Name,
 		SessionID:      sessionID,
@@ -344,7 +384,7 @@ func Run(req Request) (*Result, error) {
 		BreakReason:    res.BreakReason,
 		Paused:         paused,
 		PauseReason:    res.PauseReason,
-		Vars:           publicVars(res.FinalVars),
+		Vars:           vars,
 		Loop:           true,
 		Iterations:     res.Iterations,
 		TerminalReason: res.TerminalReason,

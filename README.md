@@ -67,12 +67,9 @@ feature — run any of them directly with `mhl test <file>`:
 
 - [`src/mhl-runtime/`](src/mhl-runtime) — the Go implementation of the `mhl` CLI (parser,
   interpreter, runtime, LSP)
-- [`src/mhl-extensions/`](src/mhl-extensions) — the official external extensions (S3/Postgres
-  `store`, Postgres `sql`, Redis `cache`), each its own Go module, installed with
-  `mhl extension install`
 - [`vscode-mhl/`](vscode-mhl) — the VS Code extension (syntax highlighting, diagnostics,
   completion), a thin wrapper around `mhl lsp`
 - [`docs/site/`](docs/site) — the canonical language reference, deployed to GitHub Pages
 - [`sample/`](sample) — worked `.mh` examples, doubling as the docs-facing test suite
-- [`tests/`](tests) — scenario suites that aren't `go test`: `mhl serve mcp` across a pod fleet
-  (`tests/cloud/`) and external-extension behavior (`tests/extensions/`)
+- [`tests_e2e/`](tests_e2e) — scenario suites that aren't `go test`: `mhl serve mcp` across a
+  pod fleet (`tests_e2e/cloud/`) and external-extension behavior (`tests_e2e/extensions/`)

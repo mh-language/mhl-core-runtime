@@ -19,17 +19,11 @@ editor support, and runtime changes.
 
 - `src/mhl-runtime/` contains the Go implementation of the CLI, parser, interpreter, runtime, LSP,
   and built-in features.
-- `src/mhl-extensions/` contains the official external extensions (`mhl-store-s3`,
-  `mhl-store-postgres`, `mhl-sql-postgres`, `mhl-cache-redis`), each its own Go module and installed
-  with `mhl extension install`. Per module: `make build`/`make test` for the host; `make dist`
-  is the metadata-only tree (manifest + README); `make release` adds a binary per platform
-  (`bin/<name>-<goos>-<goarch>`, `CGO_ENABLED=0`) and tars it. `make -C src/mhl-extensions release`
-  does all four plus a `SHA256SUMS`.
 - `sample/` contains executable `.mh` examples under `syntax/` and `features/`. These double as the
   documentation-facing functional test suite (`make functional-test`).
-- `tests/` contains scenario suites that are not `go test`: `tests/cloud/` exercises
-  `mhl serve mcp` across a pod fleet (and `tests/cloud/k8s/` under a real cluster), and
-  `tests/extensions/` exercises external extensions plus the `store-fs` / `store-probe` reference
+- `tests_e2e/` contains scenario suites that are not `go test`: `tests_e2e/cloud/` exercises
+  `mhl serve mcp` across a pod fleet (and `tests_e2e/cloud/k8s/` under a real cluster), and
+  `tests_e2e/extensions/` exercises external extensions plus the `store-fs` / `store-probe` reference
   adapters. Each subdirectory has a `run-all.sh` regression runner.
 - `vscode-mhl/` contains the VS Code extension.
 - `docs/` contains the public documentation: the language reference and guides under `docs/site/`,
@@ -133,9 +127,8 @@ make functional-test
 ```
 
 CI (`.github/workflows/ci.yml`) runs exactly those four, in that order, and only on changes under
-`src/mhl-runtime/`. Changes to `src/mhl-extensions/`, the `tests/` scenario suites, or `docs/` are
-not CI-gated: run the affected `tests/**/run-all.sh` (and `go test ./...` in a touched extension
-module) yourself, and report the result in the pull request.
+`src/mhl-runtime/`. Changes to the `tests_e2e/` scenario suites or `docs/` are not CI-gated: run
+the affected `tests_e2e/**/run-all.sh` yourself, and report the result in the pull request.
 
 For VS Code extension changes, also run:
 
