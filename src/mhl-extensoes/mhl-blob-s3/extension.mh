@@ -1,0 +1,49 @@
+/**
+General-purpose object storage backed by Amazon S3 (or any S3-compatible
+endpoint — MinIO, Cloudflare R2, Ceph RGW). A plain `blob`-kind capability a
+`.mh` workflow reaches for: upload/download/list objects, server-side copy,
+metadata, and presigned URLs. NOT the `store` KV backend for `mhl serve` —
+use `mhl-store-postgres` / `mhl-store-redis` for that.
+**/
+extensible blob {
+    manifest: {
+        id: "dev.mhl.blob-s3",
+        version: "0.1.0",
+        api_version: "1",
+        executable: "bin/mhl-blob-s3",
+        permissions: {
+            network: ["*"],
+            secrets: []
+        }
+    }
+
+    properties: {
+        provider: string /// Object-store provider. Optional; only "s3" is implemented. Reserved so a future mhl-blob-gcs/azure can share the contract.
+        bucket: string /// Target bucket. Required.
+        endpoint: string /// S3 endpoint URL, e.g. http://localhost:9000 for MinIO. Omit for real AWS S3. Setting it implies path-style addressing.
+        region: string /// AWS region for SigV4 signing. Default "us-east-1".
+        prefix: string /// Key namespace prepended to (and stripped from) every key. Default "". A trailing slash is added if missing.
+        access_key_id: string /// Static access key id. Use env("AWS_ACCESS_KEY_ID"); the host resolves and redacts it.
+        secret_access_key: string /// Static secret access key. Use env("AWS_SECRET_ACCESS_KEY").
+        session_token: string /// Optional STS session token for static credentials. Use env("AWS_SESSION_TOKEN").
+        web_identity_token_file: string /// EKS IRSA / Pod Identity: path to the projected service-account token. With `role_arn`, the extension calls STS AssumeRoleWithWebIdentity and refreshes before expiry.
+        role_arn: string /// IRSA: the role to assume. Required together with `web_identity_token_file`.
+        role_session_name: string /// IRSA: STS session name. Default "mhl-blob-s3".
+        use_imds: bool /// Fetch credentials from the EC2/EKS node instance role via IMDSv2. Used only when no static and no web-identity credentials are set.
+        force_path_style: bool /// Force path-style addressing. Implied true when `endpoint` is set.
+        max_retries: number /// Retries for transient failures (transport errors, HTTP 429/5xx), exponential backoff + full jitter. Default 3; 0 disables.
+        log: string /// Optional path to append a JSON-lines wire trace (op + key, never bodies).
+    }
+
+    put(key: string, body: string, content_type: string) -> void /// Upload `body` (UTF-8 text) to key, overwriting. `content_type` is optional.
+    put_bytes(key: string, base64: string, content_type: string) -> void /// Upload binary content given base64-encoded. `content_type` is optional.
+    get(key: string) -> any /// The object body as a string, or null when the object is absent.
+    get_bytes(key: string) -> any /// The object body base64-encoded, or null when absent. Use for binary content.
+    head(key: string) -> any /// { key, size, etag, content_type, last_modified } for the object, or null when absent — no body downloaded.
+    exists(key: string) -> bool /// Whether the object exists (a HEAD).
+    delete(key: string) -> void /// Remove the object. An absent key is not an error.
+    list(prefix: string, delimiter: string) -> any /// { keys: [{ key, size, etag, last_modified }], common_prefixes: [string] }. A non-empty `delimiter` (e.g. "/") rolls sub-"folders" into common_prefixes.
+    copy(src: string, dst: string) -> void /// Server-side copy src to dst within the same bucket (no download).
+    presign_get(key: string, expires: any) -> string /// A time-limited GET URL for key. `expires` is "15m"/"1h" or a number of seconds (max 7 days).
+    presign_put(key: string, expires: any, content_type: string) -> string /// A time-limited PUT URL. If `content_type` is given, the uploader must send exactly that Content-Type header.
+}

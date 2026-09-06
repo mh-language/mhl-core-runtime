@@ -1,0 +1,41 @@
+/**
+Key/value backend for `mhl serve mcp --http` durable state (sessions + run
+checkpoints + owners + run locks), stored one Redis key per key. Values are
+JSON strings; no TTL. Dependency-free RESP2 client. Implements the optional
+`cas` capability (put_if_absent / compare_and_swap) that `mhl serve` uses to
+coordinate run execution across replicas.
+**/
+extensible store {
+    manifest: {
+        id: "dev.mhl.store-redis",
+        version: "0.1.0",
+        api_version: "1",
+        executable: "bin/mhl-store-redis",
+        permissions: {
+            network: ["*"],
+            secrets: []
+        }
+    }
+
+    properties: {
+        url: string /// redis://[user:pass@]host:port/db (rediss:// for TLS). Use env("REDIS_URL"). Fills addr/username/password/db/tls; wins over the discrete fields.
+        addr: string /// host:port (used when `url` is unset). Default localhost:6379.
+        username: string /// ACL username (Redis 6+). Use env(...).
+        password: string /// AUTH password. Use env("REDIS_PASSWORD"); the host resolves and redacts it.
+        db: number /// Logical database index (SELECT). Default 0.
+        tls: bool /// Connect over TLS (managed Redis: ElastiCache in-transit, Upstash, …). Implied by a rediss:// url.
+        tls_skip_verify: bool /// Skip TLS certificate verification (dev only).
+        key_prefix: string /// Namespace prepended to every key (stored/stripped transparently). Default "" — `mhl serve` already namespaces run/… and session/….
+        pool_size: number /// Max idle pooled connections. Default 8.
+        dial_timeout: string /// Connect timeout as a Go duration. Default 5s.
+        read_timeout: string /// Per-command read/write timeout as a Go duration. Default 3s.
+        log: string /// Optional path to append a JSON-lines wire trace (op + key, never values).
+    }
+
+    get(key: string) -> any /// The JSON-decoded value at key, or null when there is no key.
+    put(key: string, value: any) -> void /// Store value (JSON) at key, overwriting (SET).
+    delete(key: string) -> void /// Remove the key. An absent key is not an error.
+    list(prefix: string) -> string[] /// Every key with the given prefix, sorted (SCAN MATCH prefix* in a cursor loop).
+    put_if_absent(key: string, value: any) -> bool /// Store value only when the key does not exist (SET … NX). Returns whether the key was created — part of the "cas" capability.
+    compare_and_swap(key: string, expected: any, value: any) -> bool /// Replace value with `value` only when the current value is byte-equal to `expected` (one atomic Lua EVAL). Returns whether it swapped. `expected` is typically the exact result of a prior `get` — part of the "cas" capability.
+}

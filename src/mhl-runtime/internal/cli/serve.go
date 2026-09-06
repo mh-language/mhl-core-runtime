@@ -18,8 +18,8 @@ import (
 // runServe implements:
 //
 //	mhl serve mcp [dir]
-//	mhl serve mcp --http [--addr host:port] [--token t] [--state-dir path] [dir]
-//	mhl serve a2a [--addr host:port] [dir]
+//	mhl serve mcp --http [--addr host:port] [--token t] [--state-dir path] [--single-replica] [dir]
+//	mhl serve a2a [--addr host:port] [--token t] [--principal-header h] [dir]
 //
 // All expose every pipeline/workflow declared under dir (default ".") to
 // another agent: `mcp` as MCP tools over newline-delimited JSON-RPC on
@@ -50,6 +50,14 @@ func runServeMCP(args []string, out io.Writer) error {
 		principalH = os.Getenv("MHL_SERVE_PRINCIPAL_HEADER")
 		dir        string
 	)
+	singleRepl := false
+	if v := os.Getenv("MHL_SERVE_SINGLE_REPLICA"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("MHL_SERVE_SINGLE_REPLICA %q: want a boolean", v)
+		}
+		singleRepl = b
+	}
 	var drainTimeout time.Duration
 	if v := os.Getenv("MHL_SERVE_DRAIN_TIMEOUT"); v != "" {
 		d, err := time.ParseDuration(v)
@@ -113,6 +121,8 @@ func runServeMCP(args []string, out io.Writer) error {
 			}
 			i++
 			principalH = args[i]
+		case "--single-replica":
+			singleRepl = true
 		default:
 			if dir != "" {
 				return fmt.Errorf("unexpected argument %q", args[i])
@@ -160,6 +170,7 @@ func runServeMCP(args []string, out io.Writer) error {
 			Store:             store,
 			DrainTimeout:      drainTimeout,
 			MaxConcurrentRuns: maxRuns,
+			SingleReplica:     singleRepl,
 		}, os.Stderr)
 	}
 	return mcpserver.Serve(ctx, dir, os.Stdin, os.Stdout, os.Stderr)
@@ -181,6 +192,8 @@ func isLoopbackAddr(addr string) bool {
 
 func runServeA2A(args []string, out io.Writer) error {
 	addr := "127.0.0.1:8710"
+	token := os.Getenv("MHL_SERVE_TOKEN")
+	principalH := os.Getenv("MHL_SERVE_PRINCIPAL_HEADER")
 	var dir string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -190,6 +203,18 @@ func runServeA2A(args []string, out io.Writer) error {
 			}
 			i++
 			addr = args[i]
+		case "--token":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--token requires an argument")
+			}
+			i++
+			token = args[i]
+		case "--principal-header":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--principal-header requires a header name (e.g. X-Mhl-Principal)")
+			}
+			i++
+			principalH = args[i]
 		default:
 			if dir != "" {
 				return fmt.Errorf("unexpected argument %q", args[i])
@@ -200,11 +225,20 @@ func runServeA2A(args []string, out io.Writer) error {
 	if dir == "" {
 		dir = "."
 	}
+	if principalH != "" && token == "" {
+		return fmt.Errorf("--principal-header needs --token / MHL_SERVE_TOKEN: without the shared gateway↔mhl secret the header is client-spoofable")
+	}
+	if token == "" && !isLoopbackAddr(addr) {
+		fmt.Fprintf(os.Stderr, "mhl serve a2a: warning: binding %s with no --token/MHL_SERVE_TOKEN — the endpoint is unauthenticated\n", addr)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	defer loadSessionExtensions(out)()
 
-	return a2aserver.Serve(ctx, addr, dir, out)
+	return a2aserver.ServeConfig(ctx, addr, dir, a2aserver.Config{
+		Token:           token,
+		PrincipalHeader: principalH,
+	}, out)
 }

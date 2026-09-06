@@ -770,7 +770,10 @@ func evalEnvCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 	// output and persisted checkpoints even when the .mh author never went
 	// through a declared credential reference.
 	if value != "" && auth.LooksSecretName(name) {
-		auth.Register(value)
+		// Record the reference, not just the value: checkpoint persistence can
+		// then store `env("NAME")` and re-resolve it on a fresh-process
+		// --resume instead of restoring a dead [REDACTED] mask.
+		auth.RememberInferredRef(value, fmt.Sprintf("env(%q)", name))
 	}
 	return value, nil
 }

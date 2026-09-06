@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/extension"
@@ -63,7 +64,21 @@ func discoverStoreExtension(dir string, logw io.Writer) (mcpserver.KVStore, func
 		set.CloseAll()
 		return nil, func() {}, fmt.Errorf("binding store extension %q: %w", chosen.ID(), err)
 	}
-	return &extKV{inst: inst, decl: decl}, set.CloseAll, nil
+
+	// A store that advertises the "cas" capability in its handshake unlocks
+	// cross-replica run locking (mcpserver.LockingKVStore). Absent it, the
+	// server runs uncoordinated (single-writer) and says so.
+	cas := false
+	if cr, ok := chosen.(interface {
+		Capabilities(context.Context) ([]string, error)
+	}); ok {
+		if caps, cerr := cr.Capabilities(context.Background()); cerr == nil {
+			cas = slices.Contains(caps, "cas")
+		} else {
+			fmt.Fprintf(logw, "warning: store extension %q capability probe failed: %v\n", chosen.ID(), cerr)
+		}
+	}
+	return &extKV{inst: inst, decl: decl, cas: cas}, set.CloseAll, nil
 }
 
 // scanStoreDecl walks dir's .mh files for exactly one `extension store` block
@@ -159,10 +174,12 @@ func (h serveHost) Logf(format string, args ...any) {
 }
 func (h serveHost) Redact(s string) string { return auth.Redact(s) }
 
-// extKV adapts a bound `store` extension.Instance to mcpserver.KVStore.
+// extKV adapts a bound `store` extension.Instance to mcpserver.KVStore (and,
+// when the extension advertised the "cas" capability, mcpserver.LockingKVStore).
 type extKV struct {
 	inst extension.Instance
 	decl extension.Declaration
+	cas  bool
 }
 
 func (k *extKV) call(ctx context.Context, method string, named map[string]extension.Value) (extension.Value, error) {
@@ -204,4 +221,32 @@ func (k *extKV) List(ctx context.Context, prefix string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+func (k *extKV) CASCapable() bool { return k.cas }
+
+func (k *extKV) PutIfAbsent(ctx context.Context, key string, value any) (bool, error) {
+	if !k.cas {
+		return false, mcpserver.ErrCASUnsupported
+	}
+	v, err := k.call(ctx, "put_if_absent", map[string]extension.Value{"key": key, "value": value})
+	if err != nil {
+		return false, err
+	}
+	acquired, _ := v.(bool)
+	return acquired, nil
+}
+
+func (k *extKV) CompareAndSwap(ctx context.Context, key string, expected []byte, newValue any) (bool, error) {
+	if !k.cas {
+		return false, mcpserver.ErrCASUnsupported
+	}
+	v, err := k.call(ctx, "compare_and_swap", map[string]extension.Value{
+		"key": key, "expected": string(expected), "value": newValue,
+	})
+	if err != nil {
+		return false, err
+	}
+	swapped, _ := v.(bool)
+	return swapped, nil
 }

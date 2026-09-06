@@ -130,6 +130,15 @@ type Runner struct {
 	// does). nil is tolerated (output is discarded); a pipeline with no
 	// `parallel` group never reaches this path at all.
 	Out io.Writer
+
+	// definitionDigest binds checkpoints this runner writes to the program
+	// structure they came from (DefinitionDigest). Set via WithDefinition;
+	// empty disables the resume-time compatibility check (tests that build a
+	// Pipeline literal have no AST to digest).
+	definitionDigest string
+	// forceResume downgrades a resume-time definition-digest mismatch from an
+	// error to a logged warning (the operator asserting the edit is safe).
+	forceResume bool
 }
 
 // NewRunner returns a Runner backed by a Store rooted at root. It is
@@ -144,7 +153,7 @@ func NewRunner(root string) *Runner {
 // clobber each other's checkpoint. An empty id returns an unscoped runner.
 func (r *Runner) Session(id string) *Runner {
 	s := r.Store.Session(id)
-	return &Runner{Store: s, cp: s, SessionID: id, Out: r.Out}
+	return &Runner{Store: s, cp: s, SessionID: id, Out: r.Out, definitionDigest: r.definitionDigest, forceResume: r.forceResume}
 }
 
 // WithStateStore routes this runner's checkpoint and result persistence
@@ -154,6 +163,37 @@ func (r *Runner) Session(id string) *Runner {
 func (r *Runner) WithStateStore(cp StateStore) *Runner {
 	r.cp = cp
 	return r
+}
+
+// WithDefinition records the digest of the program this run is executing, so
+// every checkpoint written carries it and a later --resume refuses a
+// checkpoint written for a structurally different definition. An empty digest
+// is a no-op (the check is skipped). Returns r for chaining.
+func (r *Runner) WithDefinition(digest string) *Runner {
+	r.definitionDigest = digest
+	return r
+}
+
+// WithForceResume makes a resume-time definition-digest mismatch a logged
+// warning instead of a hard error. It does not affect an incompatible state
+// schema. Returns r for chaining.
+func (r *Runner) WithForceResume(force bool) *Runner {
+	r.forceResume = force
+	return r
+}
+
+// save stamps version/digest provenance onto cp and persists it. Every
+// checkpoint the Runner writes goes through here. A pipeline variable that
+// cannot be JSON round-tripped (a closure, a handle) fails the save rather
+// than being silently persisted as `{}`.
+func (r *Runner) save(cp *Checkpoint) error {
+	if err := CheckpointableVars(cp.Variables); err != nil {
+		return err
+	}
+	cp.DefinitionDigest = r.definitionDigest
+	cp.RuntimeVersion = Version
+	cp.StateSchema = StateSchemaVersion
+	return r.checkpoints().Save(cp)
 }
 
 // checkpoints returns the StateStore this runner persists through — cp when
@@ -221,6 +261,15 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 			return result, err
 		}
 		if found {
+			if err := cp.CompatibleWith(r.definitionDigest); err != nil {
+				if r.forceResume && errors.Is(err, ErrCheckpointDefinitionMismatch) {
+					if r.Out != nil {
+						fmt.Fprintf(r.Out, "warning: resuming across a changed pipeline definition (--force): %v\n", err)
+					}
+				} else {
+					return result, err
+				}
+			}
 			if cp.NextStep == "" {
 				// The prior run had already reached its final step.
 				return result, nil
@@ -277,7 +326,7 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 				Variables:      copyVars(ctx.Vars),
 				TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
 			}
-			if saveErr := r.checkpoints().Save(cp); saveErr != nil {
+			if saveErr := r.save(cp); saveErr != nil {
 				return result, saveErr
 			}
 			result.Paused, result.PauseReason = true, pause.Reason
@@ -294,7 +343,7 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 					Variables:      copyVars(ctx.Vars),
 					TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
 				}
-				if saveErr := r.checkpoints().Save(cp); saveErr != nil {
+				if saveErr := r.save(cp); saveErr != nil {
 					return result, saveErr
 				}
 			}
@@ -328,11 +377,11 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 				r.saveCancelCheckpoint(p, perStep, current, result.Executed[:len(result.Executed)-len(stage.Steps)], ctx)
 			}
 			if timedOut {
-				return result, fmt.Errorf("runtime: step %q exceeded its timeout: %w", current, ErrStepTimeout)
+				return result, &StepError{Pipeline: p.Name, Step: current, Kind: "timeout", Err: ErrStepTimeout}
 			}
 			// The prior stage's checkpoint (if any) is already persisted;
 			// surface the failure so a later --resume can continue here.
-			return result, fmt.Errorf("runtime: step %q failed: %w", current, err)
+			return result, &StepError{Pipeline: p.Name, Step: current, Kind: "failed", Err: err}
 
 		default:
 			next, hasNext := p.stageAfter(current)
@@ -372,7 +421,7 @@ func (r *Runner) saveCancelCheckpoint(p Pipeline, perStep bool, current string, 
 	if perStep || !p.Checkpoint.Enabled {
 		return
 	}
-	_ = r.checkpoints().Save(&Checkpoint{
+	_ = r.save(&Checkpoint{
 		Pipeline:       p.Name,
 		LastStep:       "",
 		NextStep:       current,
@@ -394,7 +443,7 @@ func (r *Runner) checkpointStep(p Pipeline, perStep bool, current, next string, 
 		Variables:      copyVars(ctx.Vars),
 		TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
 	}
-	return r.checkpoints().Save(cp)
+	return r.save(cp)
 }
 
 func copyVars(in map[string]any) map[string]any {

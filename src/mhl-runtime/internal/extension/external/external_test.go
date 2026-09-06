@@ -399,6 +399,42 @@ func TestExternalForwardsExtensionLogs(t *testing.T) {
 	}
 }
 
+// A manifest that declares OS-level permissions the host does not enforce
+// gets a one-time notice on the host log so an operator is not lulled into a
+// false sense of isolation. A manifest with no such perms stays silent.
+func TestExternalWarnsOnUnenforcedOSPermissions(t *testing.T) {
+	host := &recordingHost{}
+	_, inst := bindFake(t, fakeManifest(t, Permissions{Network: []string{"api.example.com"}, Subprocess: true}, nil), host)
+	if _, err := callFake(t, inst, "echo", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := callFake(t, inst, "echo", "y"); err != nil {
+		t.Fatal(err)
+	}
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	joined := strings.Join(host.logs, "\n")
+	if !strings.Contains(joined, "does not enforce") {
+		t.Fatalf("expected an unenforced-permissions notice, got: %q", joined)
+	}
+	if n := strings.Count(joined, "does not enforce"); n != 1 {
+		t.Fatalf("notice emitted %d times, want exactly 1", n)
+	}
+}
+
+func TestExternalNoWarningWithoutOSPermissions(t *testing.T) {
+	host := &recordingHost{}
+	_, inst := bindFake(t, fakeManifest(t, Permissions{}, nil), host)
+	if _, err := callFake(t, inst, "echo", "x"); err != nil {
+		t.Fatal(err)
+	}
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	if strings.Contains(strings.Join(host.logs, "\n"), "does not enforce") {
+		t.Fatalf("unexpected unenforced-permissions notice for a manifest with no OS perms")
+	}
+}
+
 func TestManifestValidation(t *testing.T) {
 	base := func() *Manifest {
 		return &Manifest{ID: "x", APIVersion: APIVersion, Executable: "bin/x", Declares: []extension.DeclarationSpec{{Kind: "k"}}}

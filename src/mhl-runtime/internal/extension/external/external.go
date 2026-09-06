@@ -36,10 +36,13 @@ const maxRestarts = 3
 type External struct {
 	manifest *Manifest
 
-	mu       sync.Mutex
-	host     extension.HostContext
-	proc     *process
-	restarts int
+	mu          sync.Mutex
+	host        extension.HostContext
+	proc        *process
+	restarts    int
+	warnedPerms bool     // OS-perms-not-enforced notice emitted once
+	caps        []string // optional capabilities from the last handshake
+	capsKnown   bool
 }
 
 // New builds an External from a loaded manifest.
@@ -133,6 +136,7 @@ func (e *External) process(ctx context.Context) (*process, error) {
 	if _, rerr := e.manifest.HostExecutableRel(); rerr != nil {
 		return nil, fmt.Errorf("starting extension %q: %w", e.manifest.ID, rerr)
 	}
+	e.warnUnenforcedPerms()
 	p, err := startProcess(e.manifest.ExecutablePath(), e.manifest.Args, e.childEnv(), &hostBridge{
 		host:     e.host,
 		manifest: e.manifest,
@@ -140,18 +144,60 @@ func (e *External) process(ctx context.Context) (*process, error) {
 	if err != nil {
 		return nil, fmt.Errorf("starting extension %q: %w", e.manifest.ID, err)
 	}
-	if _, err := handshake(ctx, p); err != nil {
+	res, err := handshake(ctx, p)
+	if err != nil {
 		p.kill()
 		return nil, fmt.Errorf("extension %q handshake: %w", e.manifest.ID, err)
 	}
+	e.caps, e.capsKnown = res.Capabilities, true
 	e.proc = p
 	return p, nil
+}
+
+// Capabilities returns the optional capabilities the extension advertised in
+// its initialize handshake (e.g. "cas" for a `store` extension that supports
+// atomic compare-and-swap). It starts the child process if it is not already
+// running. An extension that advertises none returns an empty slice.
+func (e *External) Capabilities(ctx context.Context) ([]string, error) {
+	e.mu.Lock()
+	known, caps := e.capsKnown, e.caps
+	e.mu.Unlock()
+	if known {
+		return caps, nil
+	}
+	if _, err := e.process(ctx); err != nil {
+		return nil, err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.caps, nil
 }
 
 // childEnv is the environment the extension process runs with. Bloc A keeps
 // it minimal on purpose — no ambient secrets; the extension asks for
 // credentials through secret.resolve, which the manifest gates.
 func (e *External) childEnv() []string { return e.manifest.launchEnv() }
+
+// warnUnenforcedPerms emits a one-time notice (via the host log) when a
+// manifest declares OS-level permissions — `network`, `filesystem`, or
+// `subprocess` — that the host does NOT enforce today. The extension runs as
+// an ordinary child process with the host's own privileges; those fields are
+// advisory, for an external policy layer or a future OS sandbox. `secrets`
+// IS enforced (Manifest.AllowsSecret), so it is deliberately not named here.
+// The caller holds e.mu.
+func (e *External) warnUnenforcedPerms() {
+	if e.warnedPerms || e.host == nil {
+		return
+	}
+	p := e.manifest.Perms
+	if len(p.Network) == 0 && len(p.Filesystem) == 0 && !p.Subprocess {
+		return
+	}
+	e.warnedPerms = true
+	e.host.Logf("extension %q: manifest declares OS-level permissions (network/filesystem/subprocess) "+
+		"that the mhl host does not enforce — the extension runs with this process's privileges; "+
+		"isolate untrusted extensions with a container or an unprivileged user", e.manifest.ID)
+}
 
 func handshake(ctx context.Context, p *process) (initializeResult, error) {
 	raw, err := p.call(ctx, "initialize", initializeParams{

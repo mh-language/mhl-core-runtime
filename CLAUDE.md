@@ -51,13 +51,13 @@ The built CLI itself:
 
 ```sh
 mhl init [dir]  # scaffolds an immediately-runnable main.mh; never overwrites
-mhl run <pipeline.mh> [--input key=value ...] [--resume]
+mhl run <pipeline.mh> [--input key=value ...] [--resume [--force]] [--format text|json] [--dry-run]  # --resume refuses a checkpoint whose pipeline definition changed shape (digest), --force downgrades to warning; --format json emits one typed result/error object (runtime.StepError / InvalidInputsError feed its kind/step/hint), run output → its `log` field; --dry-run = validate (parse/imports/lint/input contract — presence *and* declared value types, via the shared `execsvc.coerceInputs`) + print static plan via execsvc.Inspect, executes nothing
 mhl test <file.mh|dir>
 mhl lint [dir]
 mhl lsp        # LSP server over stdio, used by vscode-mhl
 mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
-mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics)
-mhl serve a2a [--addr h:p] [dir]    # workflows as A2A skills (HTTP JSON-RPC)
+mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [--single-replica] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics); --single-replica (or MHL_SERVE_SINGLE_REPLICA) is required to start with a non-cas `extension store`
+mhl serve a2a [--addr h:p] [--token t] [--principal-header h] [dir]  # workflows as A2A skills (HTTP JSON-RPC); same bearer/principal-header/Origin/body-cap guard as `serve mcp --http` (a2aserver.Config, security.go)
 mhl version    # or --version / -v
 ```
 
@@ -117,7 +117,27 @@ extension store), `execRun` publishes a `RunStatusRec` per `OnStep` and `reconst
 falls back to it (no checkpoint yet) so another replica's `run/status` sees a `working` run
 it never started (marked `remote`, re-read each poll); `run/cancel` for a `remote` run writes
 a `cancel` flag the owning replica polls (1s `watchRemoteCancel` + step boundary) →
-distributed cancel. Each run is owned by its caller (`httpServer.ownerOf` —
+distributed cancel. When the shared store is an `extension store` that advertised the `cas`
+capability (`LockingKVStore`: `PutIfAbsent`/`CompareAndSwap`), `httpServer.lock` (`runlock.go`)
+is a coarse per-run lease — `execRun` `acquire`s `run/<id>/lock` and heartbeats it
+(`runLockTTL` 30s, renew at `/3`). Each acquisition carries a random `token` in the lease
+record (kept per-runID in `runLock.tokens`); `renew`/`release` act only on that exact
+acquisition, so a stale holder that lost the lease cannot renew or delete a successor's — and
+`release` is a conditional `CompareAndSwap` to an expired tombstone, never an unconditional
+`Delete`. A confirmed lease is a hard precondition: an `acquire` **error** fails the run
+("could not acquire run execution lease"), it does not proceed uncoordinated; `heartbeatLock`
+(`heartbeatDecision`) `cancel()`s the run when the lease is lost **or** when renews have failed
+long enough that it is within one heartbeat of expiry (stop before, not after, two writers
+become possible). `peek` returns `lockUnknown`+err on a store read failure, distinct from
+absent/expired: `runResume` refuses ("cannot verify … lease"), `markIfLeaseExpired` leaves the
+run `working`. A second replica's `execRun`/`runResume` for the same `runId` is refused
+("executing on another replica"); a genuinely lapsed lock is taken over by `CompareAndSwap`;
+`markIfLeaseExpired` makes a `remote` `working` run with an absent/expired lock report
+`failed`+`resumable` (takeover is an explicit `run/resume`, never auto). A `Store` without
+`cas` is a startup **error** unless `--single-replica` / `MHL_SERVE_SINGLE_REPLICA`
+acknowledges a one-writer deployment (`h.lock == nil` then); plain `--state-dir` (no `Store`)
+is unchanged. Still not fenced (a stale holder can write a checkpoint — a later increment).
+Each run is owned by its caller (`httpServer.ownerOf` —
 the `--principal-header` principal hashed, else sha256 of the Mcp-Session-Id);
 `run/{status,resume,cancel,list,logs}` only act for that caller — a non-owner gets "unknown
 runId". A principal-owned run persists its owner (`CheckpointStore.WriteOwner`), so after a
@@ -128,9 +148,10 @@ modes (stdio, HTTP sync, HTTP async, resume) with sequence diagrams:
 puts one A2A skill per workflow on top
 (`message/send` starts a task, `tasks/get`/`tasks/cancel` drive it; skill + inputs are named
 explicitly in `message.metadata.skill` / `.input`). Both dispatched from `internal/cli/serve.go`.
-A pipeline/workflow body property (`checkpoint`, `spawn`, `repeat`, `context`, `description`) is
-allowlisted by `lint.checkPipelineProperties` — mirror `internal/lsp/properties.go`'s
-`pipelinePropertyItems` when adding one.
+A pipeline/workflow body property (`checkpoint`, `spawn`, `repeat`, `context`, `description`,
+`output`) is declared once in `ast.PipelineBodyProperties` (`internal/lang/ast/pipeline.go`);
+`lint.checkPipelineProperties` and `internal/lsp/properties.go` both derive from it, so adding
+one is that entry plus its value-reading case in `runtime.PipelineFromAST`.
 
 VS Code extension, from `vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
 `mhl` on `PATH`):

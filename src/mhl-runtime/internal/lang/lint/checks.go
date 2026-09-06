@@ -190,19 +190,22 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 	return findings
 }
 
-// knownPipelineProperties is the set of bare `name: ...` properties a
-// `pipeline` / `workflow` body may carry (runtime.PipelineFromAST's Prop.Name
-// switch), plus `description` (read by the serve adapters, not the runner).
+// knownPipelineProperties is the allow-list of bare `name: ...` properties a
+// `pipeline` / `workflow` body may carry, shared with runtime.PipelineFromAST
+// and the LSP via ast.PipelineBodyProperties (the single source of truth).
 // `input` / `var` / `mem` / `const` / `step` / `parallel` are distinct body
-// members, not Property nodes, so they never reach here. Keep in sync with
-// internal/lsp/properties.go's pipelinePropertyItems.
-var knownPipelineProperties = map[string]bool{
-	"description": true,
-	"checkpoint":  true,
-	"spawn":       true,
-	"repeat":      true,
-	"context":     true,
-}
+// members, not Property nodes, so they never reach here.
+var knownPipelineProperties = ast.PipelineBodyPropertyNames()
+
+// knownPipelinePropertyList is the same set as a stable, comma-joined string
+// for the diagnostic message.
+var knownPipelinePropertyList = func() string {
+	names := make([]string, len(ast.PipelineBodyProperties))
+	for i, p := range ast.PipelineBodyProperties {
+		names[i] = p.Name
+	}
+	return strings.Join(names, ", ")
+}()
 
 // checkPipelineProperties flags a bare property in a pipeline/workflow body
 // whose name nothing reads — a typo (`checkpont:`) or a docs-only field —
@@ -218,7 +221,7 @@ func checkPipelineProperties(file string, prog *ast.Program) []Finding {
 				continue
 			}
 			findings = append(findings, Finding{File: file, Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column,
-				Message: fmt.Sprintf("%s %q: unknown property %q — the body reads only description, checkpoint, spawn, repeat, context", pipelineKind(decl.Pipeline), decl.Pipeline.Name, m.Prop.Name)})
+				Message: fmt.Sprintf("%s %q: unknown property %q — the body reads only %s", pipelineKind(decl.Pipeline), decl.Pipeline.Name, m.Prop.Name, knownPipelinePropertyList)})
 		}
 	}
 	return findings

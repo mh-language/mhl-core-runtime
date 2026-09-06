@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
 )
 
@@ -98,6 +99,77 @@ pipeline Greet {
 	text := callRes["content"].([]any)[0].(map[string]any)["text"].(string)
 	if !strings.Contains(text, "hello ana") {
 		t.Errorf("tool result text = %q, want it to contain %q", text, "hello ana")
+	}
+}
+
+// A resolved secret stored one level down in a workflow variable must not
+// cross the tools/call boundary in `content` or `structuredContent` — the
+// V1 output-boundary regression from the technical assessment.
+func TestServeToolCallRedactsNestedSecret(t *testing.T) {
+	const secret = "SYNTHETIC_MCP_ASSESSMENT_SECRET_123"
+	auth.Register(secret)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(`
+pipeline Leak {
+    var out = {}
+    step Build { out = {"creds": {"token": "`+secret+`"}, "list": ["`+secret+`"]} }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	in := strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Leak","arguments":{}}}`,
+	}, "\n") + "\n")
+
+	var out bytes.Buffer
+	if err := mcpserver.Serve(context.Background(), dir, in, &out, io.Discard); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if strings.Contains(out.String(), secret) {
+		t.Fatalf("tools/call response leaked a nested secret:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "[REDACTED]") {
+		t.Fatalf("expected [REDACTED] mask in response:\n%s", out.String())
+	}
+}
+
+// A failing step comes back as a CallToolResult with isError=true and a
+// structuredContent object naming the step and failure kind (M-14 follow-up).
+func TestServeToolCallReportsStructuredStepError(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(`
+pipeline Flow {
+    step One { var x = 1 }
+    step Two { fail("boom") }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	in := strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Flow","arguments":{}}}`,
+	}, "\n") + "\n")
+
+	var out bytes.Buffer
+	if err := mcpserver.Serve(context.Background(), dir, in, &out, io.Discard); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	msgs := decodeLines(t, out.String())
+	res := msgs[len(msgs)-1]["result"].(map[string]any)
+	if res["isError"] != true {
+		t.Fatalf("isError = %v, want true: %v", res["isError"], res)
+	}
+	sc, ok := res["structuredContent"].(map[string]any)
+	if !ok {
+		t.Fatalf("no structuredContent on the error result: %v", res)
+	}
+	if sc["kind"] != "step_failed" || sc["step"] != "Two" {
+		t.Fatalf("structuredContent = %v, want kind=step_failed step=Two", sc)
 	}
 }
 

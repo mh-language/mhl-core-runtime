@@ -1,10 +1,12 @@
 package lint_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
 )
 
@@ -35,12 +37,35 @@ loop workflow W {
     spawn: { max_concurrency: 2 }
     repeat: { max_iterations: 3 }
     context: { source: "latest" }
-    step S { var x = 1 }
+    output: { x: x }
+    var x = 0
+    step S { x = 1 }
 }
 `)
 	for _, f := range lint.File(main) {
 		if strings.Contains(f.Message, "unknown property") {
 			t.Fatalf("unexpected unknown-property finding: %+v", f)
+		}
+	}
+}
+
+// Every entry of the shared ast.PipelineBodyProperties allow-list must be
+// accepted by lint (so the list stays the single source of truth — adding one
+// there is enough, no lint edit needed).
+func TestEveryDeclaredBodyPropertyIsAccepted(t *testing.T) {
+	dir := t.TempDir()
+	for _, p := range ast.PipelineBodyProperties {
+		main := filepath.Join(dir, p.Name+".mh")
+		write(t, main, fmt.Sprintf(`
+loop workflow W {
+    %s: { }
+    step S { var x = 1 }
+}
+`, p.Name))
+		for _, f := range lint.File(main) {
+			if strings.Contains(f.Message, fmt.Sprintf("unknown property %q", p.Name)) {
+				t.Errorf("lint rejects declared body property %q: %s", p.Name, f.Message)
+			}
 		}
 	}
 }

@@ -190,6 +190,39 @@ that ran it and 404 everywhere else — it is kept for `sessionTTL` and then
 retired by `sweepRuns` (see below). The `h.runs` registry itself stays
 process-local.
 
+**Run lock** (`h.lock != nil` — only when the store is an extension store that
+advertised the `cas` capability, i.e. implements `PutIfAbsent` /
+`CompareAndSwap`; see `runlock.go`): before `execRun` drives a run it
+`acquire`s `run/<id>/lock` = `{holder, token, expires}` and renews it on a
+`runLockHeartbeat` (`runLockTTL/3`). Each `acquire` mints a random `token`,
+stored per-runID in `runLock.tokens`; `renew` and `release` compare-and-swap
+only against a record that still carries this replica's `holder` **and**
+`token`, so a stale holder cannot renew or wipe a successor's lease. `release`
+is a conditional `CompareAndSwap` to an expired tombstone (the next `acquire`
+overwrites it; `Remove` sweeps it) — never an unconditional `Delete`.
+
+A confirmed lease is a hard precondition. An `acquire` that returns an **error**
+(store unreachable) fails the run — `execRun` does not fall back to running
+uncoordinated. A second replica's `acquire` that finds a fresh lock marks the
+run `failed` ("executing on another replica"); `runResume` does the same `peek`
+up front for a clean `-32602`, and refuses with `-32603` when `peek` itself
+errors (`lockUnknown` — it cannot rule out a live worker). `heartbeatLock`
+(`heartbeatDecision`) `cancel()`s the run when `renew` reports the lease is gone
+**or** when renews have been failing long enough that the lease is within one
+heartbeat of expiring — it stops *before* a takeover elsewhere could begin, not
+merely after N failures. If the holder simply stalls past `runLockTTL`, another
+replica's `acquire` takes the lapsed lock over via `CompareAndSwap`.
+`reconstructRun` / `refreshRemote` run `markIfLeaseExpired`: a `remote` run the
+status says is `working` but whose lock is positively absent/expired is reported
+`failed` + `resumable` — a store read error leaves it `working` — and takeover
+is an explicit `run/resume`, never automatic.
+
+Without a `cas`-capable store the lock is `nil`: a configured `Store` then
+refuses to start unless `--single-replica` / `MHL_SERVE_SINGLE_REPLICA`
+acknowledges a one-writer deployment. This is still a coarse lock, not a fenced
+one: a resurrected holder could write a stale checkpoint (a fencing token is a
+later increment).
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -283,6 +316,14 @@ byte offset (poll with the previous `nextSince`). Owner-gated like
 buffer (its output happened in the previous process). The same output is also
 written to the server's stderr diagnostics sink.
 
+`text` is redacted as a stream, not per-response: a resolved credential is
+masked even when it is split across two writes or lands on a poll boundary.
+While the run is still producing output, `run/logs` withholds a trailing
+window the length of the longest registered secret (a secret could still be
+arriving) and never advances `nextSince` into the middle of a masked value;
+the tail is released once the run reaches a terminal state. A poll that
+returns no new `text` leaves `nextSince` unchanged.
+
 ### Resources (`resources.go`)
 
 Read-only detail, addressed by `mhl://` URI, behind the `resources` capability
@@ -313,7 +354,7 @@ pair) plus the URI constants.
 (the historical `Authorization: Bearer <--token>` check, principal `""`) or —
 with `--principal-header` — `trustedHeader`, which requires that bearer check to
 pass *and then* reads the principal from the named header (set by an upstream
-authorizer; see `tests/cloud/README.md`). serve.go refuses `--principal-header`
+authorizer; see `tests_e2e/cloud/README.md`). serve.go refuses `--principal-header`
 without `--token`.
 
 `rn.owner` = `httpServer.ownerOf(session)` — `sha256("principal:"+p)` when the

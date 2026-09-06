@@ -134,6 +134,21 @@ func resolveAgentStringArg(ctx *evalCtx, call *ast.Call, name string, depth int)
 	return "", false, nil
 }
 
+// agentCacheParams is the invocation identity folded into an agent response
+// cache key (via traffic.RequestKey's `parameters`). It captures every input
+// that can change the response for a given engine+prompt, so two agents that
+// share a cache directory (`storage: "disk"`) but differ in how they call out
+// resolve to different keys. Field order/names are part of the on-disk key —
+// changing them invalidates existing cache entries.
+type agentCacheParams struct {
+	Command     string   `json:"command,omitempty"`
+	Args        []string `json:"args,omitempty"`
+	Endpoint    string   `json:"endpoint,omitempty"`
+	Model       string   `json:"model,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
+	Schema      string   `json:"schema,omitempty"`
+}
+
 // runAgentAttempt executes a single agent (primary or one fallback leg)
 // against its own cache and retry policy, without considering fallback —
 // that's runAgent's job, since a fallback agent has its own independent
@@ -169,13 +184,19 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 	}
 	var cacheKey string
 	if hasCache {
-		var params any
-		if schemaText != "" {
-			// A cache key must vary with schema — the same prompt against
-			// two different schemas is two different requests, not a hit
-			// on whichever one ran first (traffic.RequestKey folds this
-			// straight into the SHA-256 alongside engine+prompt).
-			params = schemaText
+		// The cache key must vary with everything that changes the response,
+		// not just engine+prompt+schema: two `cli/*` agents differing only in
+		// `command`/`args` (or two `ollama/*` agents differing in endpoint,
+		// model or temperature) are distinct requests and must never hit each
+		// other's entry on disk. traffic.RequestKey folds this whole struct
+		// into the SHA-256 alongside engine and prompt.
+		params := agentCacheParams{
+			Command:     command,
+			Args:        cmdArgs,
+			Endpoint:    endpoint,
+			Model:       model,
+			Temperature: temperature,
+			Schema:      schemaText,
 		}
 		cacheKey = traffic.RequestKey(engine, promptText, params)
 		if cached, hit := cache.Get(cacheKey); hit {
@@ -257,7 +278,7 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 		return traffic.Result{Value: response}, nil
 	}
 
-	result, err := retrier.Execute(call)
+	result, err := retrier.Execute(goctxOf(ctx), call)
 	if err != nil {
 		return "", err
 	}

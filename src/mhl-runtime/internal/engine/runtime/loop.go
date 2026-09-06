@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,32 @@ type LoopCheckpoint struct {
 	// in-progress one (TerminalReason == ""), but never carried over into a
 	// fresh, non-resumed run: see Run's resolution of instanceID below.
 	InstanceID string `json:"instance_id,omitempty"`
+
+	// DefinitionDigest / RuntimeVersion / StateSchema mirror the per-step
+	// Checkpoint fields: they bind a resumable loop checkpoint (TerminalReason
+	// "" or "pause") to the program structure it was written for, so a
+	// --resume of an edited loop is refused up front — before the per-step
+	// checkpoint check even runs. Empty on a checkpoint from an older mhl.
+	DefinitionDigest string `json:"definition_digest,omitempty"`
+	RuntimeVersion   string `json:"runtime_version,omitempty"`
+	StateSchema      int    `json:"state_schema,omitempty"`
+}
+
+// CompatibleWith reports whether this loop checkpoint may be resumed by a
+// build whose current definition digest is wantDigest — same policy as
+// Checkpoint.CompatibleWith.
+func (c *LoopCheckpoint) CompatibleWith(wantDigest string) error {
+	if c.StateSchema > StateSchemaVersion {
+		return fmt.Errorf("%w (%d > %d)", ErrCheckpointSchemaTooNew, c.StateSchema, StateSchemaVersion)
+	}
+	if wantDigest == "" || c.DefinitionDigest == "" {
+		return nil
+	}
+	if c.DefinitionDigest != wantDigest {
+		return fmt.Errorf("%w (loop checkpoint %s..., current %s...); restore the original .mh or re-run without --resume",
+			ErrCheckpointDefinitionMismatch, short(c.DefinitionDigest), short(wantDigest))
+	}
+	return nil
 }
 
 // newInstanceID returns a fresh random hex id for a new (non-resumed) loop
@@ -204,6 +231,16 @@ func (lr *LoopRunner) loopCheckpoints() LoopStateStore {
 	return lr.Store
 }
 
+// saveLoop stamps version/digest provenance (from the embedded Runner, set by
+// execsvc via WithDefinition) onto cp and persists it. Every LoopCheckpoint
+// the LoopRunner writes goes through here.
+func (lr *LoopRunner) saveLoop(cp *LoopCheckpoint) error {
+	cp.DefinitionDigest = lr.Runner.definitionDigest
+	cp.RuntimeVersion = Version
+	cp.StateSchema = StateSchemaVersion
+	return lr.loopCheckpoints().Save(cp)
+}
+
 // Run repeats p, once per iteration via exec, until evalStopWhen reports
 // true (checked only after a full iteration completes, never mid-iteration)
 // or p.MaxIterations is reached — whichever comes first. A step's `break`
@@ -244,6 +281,15 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			return nil, err
 		}
 		if ok && (cp.TerminalReason == "" || cp.TerminalReason == "pause") {
+			if cerr := cp.CompatibleWith(lr.Runner.definitionDigest); cerr != nil {
+				if lr.Runner.forceResume && errors.Is(cerr, ErrCheckpointDefinitionMismatch) {
+					if lr.Runner.Out != nil {
+						fmt.Fprintf(lr.Runner.Out, "warning: resuming across a changed loop definition (--force): %v\n", cerr)
+					}
+				} else {
+					return nil, cerr
+				}
+			}
 			iteration = cp.NextIteration
 			instanceID = cp.InstanceID
 			resumed = true
@@ -259,7 +305,7 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			return nil, fmt.Errorf("runtime: loop %q cancelled before iteration %d: %w", p.Name, iteration, err)
 		}
 		if p.MaxIterations > 0 && iteration >= p.MaxIterations {
-			if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "max_iterations", InstanceID: instanceID}); err != nil {
+			if err := lr.saveLoop(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "max_iterations", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			return &LoopResult{Iterations: iteration, TerminalReason: "max_iterations", Resumed: resumed, FinalVars: finalVars}, nil
@@ -270,7 +316,7 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			return nil, err
 		}
 		if result.Broke {
-			if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "break", InstanceID: instanceID}); err != nil {
+			if err := lr.saveLoop(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "break", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			// A break keeps the state built up in the iteration it fired in —
@@ -279,7 +325,7 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 		}
 		if result.Paused {
 			// Suspend the loop at this iteration; a later --resume re-runs it.
-			if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "pause", InstanceID: instanceID}); err != nil {
+			if err := lr.saveLoop(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "pause", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			return &LoopResult{Iterations: iteration + 1, TerminalReason: "pause", PauseReason: result.PauseReason, Resumed: resumed, FinalVars: result.FinalVars}, nil
@@ -292,13 +338,13 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			return nil, err
 		}
 		if done {
-			if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "stop_when", InstanceID: instanceID}); err != nil {
+			if err := lr.saveLoop(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "stop_when", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
 			return &LoopResult{Iterations: iteration, TerminalReason: "stop_when", Resumed: resumed, FinalVars: finalVars}, nil
 		}
 
-		if err := lr.loopCheckpoints().Save(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "", InstanceID: instanceID}); err != nil {
+		if err := lr.saveLoop(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "", InstanceID: instanceID}); err != nil {
 			return nil, err
 		}
 	}
