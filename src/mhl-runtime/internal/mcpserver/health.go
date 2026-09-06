@@ -46,9 +46,9 @@ func (h *httpServer) liveGauges() liveGauges {
 	for _, rn := range h.runs.List() {
 		rn.mu.Lock()
 		switch rn.state {
-		case "working":
+		case RunStateWorking:
 			g.runsActive++
-		case "queued":
+		case RunStateQueued, RunStatePending, RunStateClaimed:
 			g.runsQueued++
 		}
 		rn.mu.Unlock()

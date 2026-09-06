@@ -1,0 +1,533 @@
+<title>«Título curto e específico da rodada»</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f1f4f7; --surface: #ffffff; --surface-2: #e8edf2;
+    --ink: #0d141b; --ink-2: #4c5a67; --ink-3: #7a8893;
+    --rule: #d6dee6; --rule-strong: #b9c5d0; --grid: #e4e9ee;
+    --accent: #2a78d6; --r1: #8494a3; --r2: #2a78d6;
+    --queue: #eb6834; --tail: #e34948; --ok: #1baf7a;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f141a; --surface: #161d24; --surface-2: #1d252d;
+      --ink: #eef3f8; --ink-2: #a6b2be; --ink-3: #7b8792;
+      --rule: #29323b; --rule-strong: #3a454f; --grid: #222a32;
+      --accent: #3987e5; --r1: #8d9dab; --r2: #4a95ee;
+      --queue: #d95926; --tail: #e66767; --ok: #199e70;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0f141a; --surface: #161d24; --surface-2: #1d252d;
+    --ink: #eef3f8; --ink-2: #a6b2be; --ink-3: #7b8792;
+    --rule: #29323b; --rule-strong: #3a454f; --grid: #222a32;
+    --accent: #3987e5; --r1: #8d9dab; --r2: #4a95ee;
+    --queue: #d95926; --tail: #e66767; --ok: #199e70;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 56px 24px 96px;
+          display: flex; flex-direction: column; gap: 56px; }
+  .prose { max-width: 68ch; }
+  p { margin: 0 0 1em; } p:last-child { margin-bottom: 0; }
+  b, strong { font-weight: 600; }
+  code { font-family: var(--mono); font-size: 0.9em; background: var(--surface-2);
+         padding: 1px 5px; border-radius: 2px; }
+
+  header { display: flex; flex-direction: column; gap: 18px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; font-weight: 500;
+             letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
+  h1 { font-family: var(--cond); font-weight: 700; font-size: clamp(34px, 5.5vw, 52px);
+       line-height: 1.04; letter-spacing: -0.015em; margin: 0; text-wrap: balance; }
+  .dek { font-size: 19px; line-height: 1.5; color: var(--ink-2); max-width: 62ch; margin: 0; }
+  .facts { display: flex; flex-wrap: wrap; gap: 4px 28px; font-family: var(--mono);
+           font-size: 12.5px; color: var(--ink-2); padding-top: 14px;
+           border-top: 1px solid var(--rule); }
+  .facts b { color: var(--ink); font-weight: 500; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface);
+          border: 1px solid var(--rule); border-radius: 3px; }
+  .kpi { padding: 18px 16px 16px; border-left: 1px solid var(--rule);
+         display: flex; flex-direction: column; gap: 3px; }
+  .kpi:first-child { border-left: 0; }
+  .kpi-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.09em;
+               text-transform: uppercase; color: var(--ink-3); }
+  .kpi-value { font-family: var(--cond); font-weight: 600; font-size: 28px; line-height: 1.05;
+               letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .kpi-value small { font-size: 14px; font-weight: 500; color: var(--ink-2); }
+  .kpi-note { font-size: 12px; color: var(--ink-3); line-height: 1.35; }
+  .kpi.good .kpi-value { color: var(--ok); }
+  .kpi.warn .kpi-value { color: var(--queue); }
+  @media (max-width: 720px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .kpi:nth-child(2n+1) { border-left: 0; }
+    .kpi:nth-child(n+3) { border-top: 1px solid var(--rule); }
+  }
+
+  section { display: flex; flex-direction: column; gap: 20px; }
+  .q-tag { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em;
+           text-transform: uppercase; color: var(--accent); }
+  h2 { font-family: var(--cond); font-weight: 600; font-size: 27px; line-height: 1.15;
+       letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+  .sec-head { display: flex; flex-direction: column; gap: 6px; }
+  h3 { font-family: var(--cond); font-weight: 600; font-size: 17px; margin: 0; }
+
+  .panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px;
+           padding: 18px 18px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .panel-head { display: flex; flex-direction: column; gap: 2px; }
+  .panel-title { font-family: var(--cond); font-weight: 600; font-size: 16px; }
+  .panel-sub { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+  .plot { width: 100%; overflow-x: auto; }
+  .plot svg { display: block; width: 100%; height: auto; min-width: 560px; }
+  .plot .tk { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-3); }
+  .plot .an { font-family: var(--mono); font-size: 11px; font-weight: 500; fill: var(--ink); }
+  .plot .bs { font-family: var(--sans); font-size: 12px; fill: var(--ink); }
+  .plot .lb { font-family: var(--mono); font-size: 10px; fill: var(--ink-3); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--mono);
+            font-size: 11.5px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 3px;
+              background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px;
+          font-variant-numeric: tabular-nums; font-size: 13.5px; }
+  caption { text-align: left; padding: 14px 16px 10px; font-family: var(--cond);
+            font-weight: 600; font-size: 16px; }
+  thead th { font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+             letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3);
+             text-align: right; padding: 8px 12px; border-bottom: 1px solid var(--rule-strong);
+             white-space: nowrap; }
+  thead th.lead, tbody th { text-align: left; }
+  tbody th { font-weight: 500; font-family: var(--mono); font-size: 12px;
+             padding: 7px 12px; color: var(--ink-2); white-space: nowrap; }
+  tbody td { text-align: right; padding: 7px 12px; }
+  tbody tr + tr th, tbody tr + tr td { border-top: 1px solid var(--grid); }
+  tbody td.flag { color: var(--tail); font-weight: 600; }
+  tbody td.ok { color: var(--ok); font-weight: 600; }
+  tbody td.obs { text-align: left; color: var(--ink-3); font-size: 12.5px; }
+
+  .note { border-left: 2px solid var(--rule-strong); padding-left: 18px;
+          display: flex; flex-direction: column; gap: 10px; }
+  .note.flag { border-left-color: var(--tail); }
+  .note.good { border-left-color: var(--ok); }
+  .note.warn { border-left-color: var(--queue); }
+  .note h3 { color: var(--ink); }
+
+  .checklist { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--rule);
+               border-radius: 3px; background: var(--surface); overflow: hidden; }
+  .check-item { display: grid; grid-template-columns: 22px 1fr auto; gap: 12px;
+                align-items: start; padding: 12px 16px; border-top: 1px solid var(--grid); }
+  .check-item:first-child { border-top: 0; }
+  .check-icon { width: 18px; height: 18px; border-radius: 50%; display: flex;
+                align-items: center; justify-content: center; font-size: 11px;
+                font-weight: 700; margin-top: 1px; }
+  .check-icon.done { background: var(--ok); color: #fff; }
+  .check-icon.pending { background: var(--surface-2); color: var(--ink-3); border: 1px solid var(--rule-strong); }
+  .check-body { display: flex; flex-direction: column; gap: 2px; }
+  .check-title { font-size: 13.5px; }
+  .check-detail { font-size: 12px; color: var(--ink-3); line-height: 1.4; }
+  .check-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em;
+               text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+               padding-top: 2px; }
+
+  pre { font-family: var(--mono); font-size: 12.5px; line-height: 1.65; margin: 0;
+        background: var(--surface); border: 1px solid var(--rule); border-radius: 3px;
+        padding: 16px 18px; overflow-x: auto; color: var(--ink); }
+  pre .c { color: var(--ink-3); }
+
+  footer { border-top: 1px solid var(--rule); padding-top: 20px; font-family: var(--mono);
+           font-size: 12px; color: var(--ink-3); line-height: 1.6; }
+</style>
+
+<!--
+  ============================================================================
+  TEMPLATE DO RELATÓRIO DE CARGA / USO / PERFORMANCE — mhl.prod.sample
+  ============================================================================
+  Preencha os marcadores «...» com dados REAIS de uma rodada. Regra de ouro:
+  nenhum número entra num gráfico ou tabela sem sair de um arquivo bruto em
+  src/scripts/.load/ (samples.txt, watch-<runid>.csv, fila-<runid>.csv,
+  sweep-<runid>/resultado.csv, stdout do load-test.sh).
+
+  Os <svg> abaixo são ESQUELETOS: eixos + 1 ou 2 <polyline>/<rect> de exemplo.
+  Gere os pontos a partir dos CSV (ver "Construção dos SVG" no prompt) e troque
+  os atributos points="..." / as <rect> pelos valores da rodada. Mantenha o
+  viewBox, as classes (tk/an/bs/lb) e as variáveis de cor (var(--r2), etc.).
+
+  NÃO use JavaScript. NÃO troque a paleta. NÃO use framework.
+  Os painéis de CPU e de memória ficam UM ABAIXO DO OUTRO (cada um full-width,
+  o <svg> tem min-width:560px e rola sozinho) — nunca lado a lado, senão a
+  página inteira ganha scroll horizontal.
+  ============================================================================
+-->
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Laboratório MHL de seguros · «contexto» · «DD/MM/AAAA HH:MM:SS da rodada»</div>
+  <h1>«Título-chave da rodada, 3–5 palavras»</h1>
+  <p class="dek">«2–4 frases: o que foi medido, sob quais condições, e por que esta
+  rodada existe. Ex.: ambiente reconstruído do zero, carga de N s, CPU/memória/filas
+  medidas lado a lado.»</p>
+  <div class="facts">
+    <span>Runtime <b>«mhl version»</b> («origem: frozen / release / build local»)</span>
+    <span>Carga <b>SCENARIO=start · «N» VUs · RATE=«R»/s · «D»s</b></span>
+    <span>Identificador da rodada <b>«YYYYMMDD-HHMMSS»</b></span>
+  </div>
+</header>
+
+<!-- 4 números de capa. .kpi.good = resultado bom · .kpi.warn = atenção -->
+<div class="kpis">
+  <div class="kpi good">
+    <div class="kpi-label">«rótulo»</div>
+    <div class="kpi-value">«valor»<small>«unid»</small></div>
+    <div class="kpi-note">«nota curta»</div>
+  </div>
+  <div class="kpi good">
+    <div class="kpi-label">Cases funcionais</div>
+    <div class="kpi-value">«6/6»</div>
+    <div class="kpi-note">«suíte, ambiente novo»</div>
+  </div>
+  <div class="kpi good">
+    <div class="kpi-label">Taxa de erro na carga</div>
+    <div class="kpi-value">«0,00%»</div>
+    <div class="kpi-note">«N chamadas, todas HTTP 200»</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">CPU de pico · runtime</div>
+    <div class="kpi-value">«6,5»<small>%</small></div>
+    <div class="kpi-note">de 1 core; «leitura»</div>
+  </div>
+</div>
+
+<section>
+  <div class="sec-head">
+    <span class="q-tag">Passo a passo</span>
+    <h2>«O que a rodada fez»</h2>
+  </div>
+  <div class="prose">
+    <p>«Descrição em prosa do procedimento: limpeza, reconstrução, subida,
+    validação funcional, e a bateria de carga. Se NÃO partiu de ambiente limpo,
+    diga aqui explicitamente.»</p>
+  </div>
+  <pre><span class="c"># limpeza</span>
+kubectl delete -k .
+docker compose --profile runtime --profile observability down -v
+docker rmi -f mhl-runtime:local mhl-authorizer:local mhl-admissor:local
+
+<span class="c"># reconstrucao (runtime = binarios congelados de src/frozen/)</span>
+./runtime/build.sh --no-cache
+docker build --no-cache -f authorizer/Dockerfile -t mhl-authorizer:local authorizer
+docker build --no-cache -f admissor/Dockerfile  -t mhl-admissor:local  admissor
+
+<span class="c"># subida + validacao</span>
+docker compose --env-file .env -f docker-compose.yml --profile observability up -d
+kubectl apply -k .
+kubectl -n mhl-insurance-lab rollout status deployment/mhl-runtime --timeout=180s
+for c in scripts.mh/case-0*.mh; do mhl run "$c"; done      <span class="c"># «6/6»</span>
+
+<span class="c"># carga</span>
+INTERVAL=2 ./load-watch.sh
+SEGUNDOS=«D+70» ./queue-probe.sh
+VUS=«N» DURATION=«D» SCENARIO=start RATE=«R» ./load-test.sh</pre>
+  <div class="prose">
+    <p>«Confirmações: mhl version, admission_queue recriada, borda 401/200.»</p>
+  </div>
+</section>
+
+<!-- Seção de ressalvas / tropeços de ferramental. Se nada tropeçou, uma frase e siga.
+     .note.warn (laranja) para diferença de config/versão · .note.flag (vermelho) para bug -->
+<section>
+  <div class="sec-head">
+    <span class="q-tag">«Ressalvas / diferenças em relação à baseline»</span>
+    <h2>«…»</h2>
+  </div>
+  <div class="note warn">
+    <h3>«O que mudou / o que chamou atenção»</h3>
+    <div class="prose"><p>«Explicação. Registre a pendência.»</p></div>
+  </div>
+  <div class="note flag">
+    <h3>«Bug de ferramental, se houver»</h3>
+    <div class="prose"><p>«…»</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="q-tag">A rodada válida</span>
+    <h2>«Carga controlada, CPU, memória e as duas filas»</h2>
+    <p class="panel-sub">«N» VUs, <code>SCENARIO=start</code>, taxa alvo «R» chamadas/s
+    agregadas, «D»s, mocks com latência uniforme 200–500 ms.
+    <code>ADMIT_RATE=«4,5»/s</code>, <code>MHL_SERVE_MAX_CONCURRENT_RUNS=«5»</code>
+    por réplica («2» réplicas).</p>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi good">
+      <div class="kpi-label">Chamadas / vazão</div>
+      <div class="kpi-value">«N» <small>/ «rps» rps</small></div>
+      <div class="kpi-note">alvo era «R»/s — «%» do pedido</div>
+    </div>
+    <div class="kpi good">
+      <div class="kpi-label">Erros</div>
+      <div class="kpi-value">«0»</div>
+      <div class="kpi-note">«0,00% em N chamadas»</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Runs completados</div>
+      <div class="kpi-value">«1.083»</div>
+      <div class="kpi-note">«1,785s de duração média (fila excluída)»</div>
+    </div>
+    <div class="kpi good">
+      <div class="kpi-label">Fila de admissão ao fim</div>
+      <div class="kpi-value">«0» <small>pendentes</small></div>
+      <div class="kpi-note">«drenou ~Ns após o fim da carga»</div>
+    </div>
+  </div>
+
+  <!-- LATÊNCIA: uma <rect> por estatística. Escala até ~p99*1,15; se o max
+       estourar, barra em altura cheia + rótulo com ↑. base_y=186, topo=20. -->
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Latência da chamada ao admissor (não do run completo)</div>
+      <div class="panel-sub">tempo de <code>mhl_run_start</code> responder — aceitar e
+      gravar na fila durável, não executar o workflow; valores em milissegundos.
+      Média «X» ms. Barras escaladas até o p99; «se aplicável: o máx de Y ms estoura e aparece com ↑».</div>
+    </div>
+    <div class="plot"><svg viewBox="0 0 730 220" xmlns="http://www.w3.org/2000/svg">
+<line x1="50" y1="186" x2="720" y2="186" stroke="var(--rule-strong)" stroke-width="1"/>
+<!-- min / p50 → var(--r2) · p90 / p95 → var(--queue) · p99 / max → var(--tail) -->
+<rect x="60"  y="150" width="90" height="36"  rx="2" fill="var(--r2)"/>
+<text class="an" x="105" y="144" text-anchor="middle">«min»</text>
+<text class="bs" x="105" y="204" text-anchor="middle">min</text>
+<rect x="170" y="140" width="90" height="46"  rx="2" fill="var(--r2)"/>
+<text class="an" x="215" y="134" text-anchor="middle">«p50»</text>
+<text class="bs" x="215" y="204" text-anchor="middle">p50</text>
+<rect x="280" y="110" width="90" height="76"  rx="2" fill="var(--queue)"/>
+<text class="an" x="325" y="104" text-anchor="middle">«p90»</text>
+<text class="bs" x="325" y="204" text-anchor="middle">p90</text>
+<rect x="390" y="96"  width="90" height="90"  rx="2" fill="var(--queue)"/>
+<text class="an" x="435" y="90"  text-anchor="middle">«p95»</text>
+<text class="bs" x="435" y="204" text-anchor="middle">p95</text>
+<rect x="500" y="40"  width="90" height="146" rx="2" fill="var(--tail)"/>
+<text class="an" x="545" y="34"  text-anchor="middle">«p99»</text>
+<text class="bs" x="545" y="204" text-anchor="middle">p99</text>
+<rect x="610" y="20"  width="90" height="166" rx="2" fill="var(--tail)"/>
+<text class="an" x="655" y="14"  text-anchor="middle">«max» ↑</text>
+<text class="bs" x="655" y="204" text-anchor="middle">max</text>
+</svg></div>
+  </div>
+
+  <div class="prose">
+    <p>«Leitura do resultado: por que a maioria voltou state=queued (limitador de
+    taxa, não perda), quanto a admission_queue acumulou e em quanto tempo drenou.»</p>
+  </div>
+
+  <!-- CPU e MEMÓRIA: um painel ABAIXO do outro (nunca .grid2). Cada <svg> tem
+       viewBox 0 0 860 300, plot x 46..844 / y 16..272, ticks de tempo a cada 60s
+       cobrindo ceil(D/60)*60. Uma <polyline> por container. Réplica B = #7ab0e8
+       + stroke-dasharray="4 3". -->
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">CPU por componente, ao longo do teste</div>
+      <div class="panel-sub">% de 1 core (docker stats), janela de carga</div>
+    </div>
+    <div class="plot"><svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg">
+<line x1="46" y1="272" x2="844" y2="272" stroke="var(--grid)" stroke-width="1"/>
+<text class="tk" x="38" y="275" text-anchor="end">0%</text>
+<line x1="46" y1="144" x2="844" y2="144" stroke="var(--grid)" stroke-width="1"/>
+<text class="tk" x="38" y="147" text-anchor="end">4%</text>
+<line x1="46" y1="16"  x2="844" y2="16"  stroke="var(--grid)" stroke-width="1"/>
+<text class="tk" x="38" y="19"  text-anchor="end">8%</text>
+<text class="tk" x="46"  y="288" text-anchor="middle">0s</text>
+<text class="tk" x="445" y="288" text-anchor="middle">«…»s</text>
+<text class="tk" x="844" y="288" text-anchor="middle">«D→60»s</text>
+<line x1="46" y1="272" x2="844" y2="272" stroke="var(--rule-strong)" stroke-width="1"/>
+<polyline points="46,120 445,110 844,90" fill="none" stroke="var(--r2)" stroke-width="1.6" opacity="0.92"/>
+<polyline points="46,140 445,135 844,130" fill="none" stroke="#7ab0e8" stroke-width="1.6" opacity="0.92" stroke-dasharray="4 3"/>
+<polyline points="46,230 445,210 844,235" fill="none" stroke="var(--queue)" stroke-width="1.6" opacity="0.92"/>
+<polyline points="46,260 445,255 844,262" fill="none" stroke="var(--r1)" stroke-width="1.6" opacity="0.92"/>
+<polyline points="46,268 445,266 844,268" fill="none" stroke="var(--tail)" stroke-width="1.6" opacity="0.92"/>
+</svg></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Memória por componente, ao longo do teste</div>
+      <div class="panel-sub">MiB residentes (docker stats), janela de carga</div>
+    </div>
+    <div class="plot"><svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg">
+<line x1="46" y1="272" x2="844" y2="272" stroke="var(--grid)" stroke-width="1"/>
+<text class="tk" x="38" y="275" text-anchor="end">0 MiB</text>
+<line x1="46" y1="144" x2="844" y2="144" stroke="var(--grid)" stroke-width="1"/>
+<text class="tk" x="38" y="147" text-anchor="end">20 MiB</text>
+<line x1="46" y1="16"  x2="844" y2="16"  stroke="var(--grid)" stroke-width="1"/>
+<text class="tk" x="38" y="19"  text-anchor="end">40 MiB</text>
+<text class="tk" x="46"  y="288" text-anchor="middle">0s</text>
+<text class="tk" x="445" y="288" text-anchor="middle">«…»s</text>
+<text class="tk" x="844" y="288" text-anchor="middle">«D→60»s</text>
+<line x1="46" y1="272" x2="844" y2="272" stroke="var(--rule-strong)" stroke-width="1"/>
+<polyline points="46,150 445,140 844,110" fill="none" stroke="var(--r2)" stroke-width="1.6" opacity="0.92"/>
+<polyline points="46,152 445,145 844,120" fill="none" stroke="#7ab0e8" stroke-width="1.6" opacity="0.92" stroke-dasharray="4 3"/>
+<polyline points="46,205 445,205 844,205" fill="none" stroke="var(--queue)" stroke-width="1.6" opacity="0.92"/>
+<polyline points="46,206 445,206 844,206" fill="none" stroke="var(--r1)" stroke-width="1.6" opacity="0.92"/>
+<polyline points="46,258 445,258 844,258" fill="none" stroke="var(--tail)" stroke-width="1.6" opacity="0.92"/>
+</svg></div>
+  </div>
+
+  <div class="legend"><span><span class="swatch" style="background:var(--r2)"></span>mhl-runtime (réplica A)</span><span><span style="display:inline-block;width:11px;height:0;border-bottom:2px dashed #7ab0e8;margin-right:2px;vertical-align:middle;"></span>mhl-runtime (réplica B)</span><span><span class="swatch" style="background:var(--queue)"></span>admissor</span><span><span class="swatch" style="background:var(--r1)"></span>authorizer</span><span><span class="swatch" style="background:var(--tail)"></span>gateway</span></div>
+
+  <div class="tbl-wrap">
+    <table>
+      <caption>CPU e memória, resumo por componente (janela de carga, «N» amostras)</caption>
+      <thead>
+        <tr><th class="lead">Componente</th><th>CPU médio</th><th>CPU máx</th><th>Mem média</th><th>Mem máx</th><th class="lead">Requests/limits</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">runtime réplica A</th><td>«%»</td><td>«%»</td><td>«MiB»</td><td>«MiB»</td><td class="obs">100m/1 · 128Mi/512Mi</td></tr>
+        <tr><th scope="row">runtime réplica B</th><td>«%»</td><td>«%»</td><td>«MiB»</td><td>«MiB»</td><td class="obs">100m/1 · 128Mi/512Mi</td></tr>
+        <tr><th scope="row">admissor</th><td>«%»</td><td>«%»</td><td>«MiB»</td><td>«MiB»</td><td class="obs">25m/250m · 64Mi/256Mi</td></tr>
+        <tr><th scope="row">authorizer</th><td>«%»</td><td>«%»</td><td>«MiB»</td><td>«MiB»</td><td class="obs">25m/250m · 64Mi/256Mi</td></tr>
+        <tr><th scope="row">gateway</th><td>«%»</td><td>«%»</td><td>«MiB»</td><td>«MiB»</td><td class="obs">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FILA INTERNA DO RUNTIME: mesma geometria dos gráficos de tempo. Duas
+       <polyline>: runs_active (var(--r2)) e runs_queued (var(--queue)), do fila-<runid>.csv -->
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Fila interna do runtime, ao longo do teste</div>
+      <div class="panel-sub"><code>mhl_serve_runs_active</code> e
+      <code>mhl_serve_runs_queued</code> somados nas «2» réplicas, sonda a 1 Hz
+      («N» amostras)</div>
+    </div>
+    <div class="plot"><svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg">
+<line x1="46" y1="272" x2="844" y2="272" stroke="var(--grid)" stroke-width="1"/>
+<text class="tk" x="38" y="275" text-anchor="end">0</text>
+<line x1="46" y1="144" x2="844" y2="144" stroke="var(--grid)" stroke-width="1"/>
+<text class="tk" x="38" y="147" text-anchor="end">7</text>
+<line x1="46" y1="16"  x2="844" y2="16"  stroke="var(--grid)" stroke-width="1"/>
+<text class="tk" x="38" y="19"  text-anchor="end">14</text>
+<text class="tk" x="46"  y="288" text-anchor="middle">0s</text>
+<text class="tk" x="844" y="288" text-anchor="middle">«…»s</text>
+<line x1="46" y1="272" x2="844" y2="272" stroke="var(--rule-strong)" stroke-width="1"/>
+<polyline points="46,110 445,110 844,110" fill="none" stroke="var(--r2)" stroke-width="1.8"/>
+<polyline points="46,250 445,240 844,250" fill="none" stroke="var(--queue)" stroke-width="1.8"/>
+</svg></div>
+    <div class="legend"><span><span class="swatch" style="background:var(--r2)"></span>runs_active (em execução)</span><span><span class="swatch" style="background:var(--queue)"></span>runs_queued (fila interna do runtime)</span></div>
+  </div>
+
+  <div class="prose">
+    <p>«Fechamento: picos de fila/CPU/memória contra os limites configurados. Se
+    houver tendência (ex.: memória subindo na janela), aponte e diga que um soak
+    precisa confirmar.»</p>
+  </div>
+</section>
+
+<!-- SEÇÃO OPCIONAL — só se a varredura de capacidade rodou (capacity-sweep.sh) -->
+<section>
+  <div class="sec-head">
+    <span class="q-tag">Varredura de capacidade</span>
+    <h2>«Conclusão da varredura»</h2>
+    <p class="panel-sub"><code>capacity-sweep.sh</code>: para cada taxa de chegada,
+    «SWEEP_DURATION»s de carga, «VUS» VUs, mocks 200–500 ms; profundidade média da
+    <code>admission_queue</code> comparada entre o terço inicial e o final.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <caption>Fila de admissão: início → meio → fim de cada janela</caption>
+      <thead>
+        <tr><th class="lead">Taxa alvo</th><th>Fila início</th><th>Fila meio</th><th>Fila fim</th><th>Pico</th><th class="lead">Veredito</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">«2»/s</th><td>0</td><td>0</td><td>0</td><td>«0»</td><td class="ok">estável (sustentável)</td></tr>
+        <tr><th scope="row">«…»/s</th><td>«…»</td><td>«…»</td><td>«…»</td><td>«…»</td><td class="flag">CRESCE (insustentável)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>«A maior taxa marcada estável é a capacidade sustentável estimada — OU, se
+    nenhuma saturou, diga que a janela é curta demais e o teto não foi achado.
+    Dados brutos em src/scripts/.load/sweep-<runid>/.»</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>O que este relatório NÃO responde</h2>
+  </div>
+  <div class="checklist">
+    <div class="check-item">
+      <div class="check-icon done">✓</div>
+      <div class="check-body">
+        <div class="check-title">«o que ESTA rodada cobriu»</div>
+        <div class="check-detail">«como»</div>
+      </div>
+      <div class="check-tag">feito</div>
+    </div>
+    <div class="check-item">
+      <div class="check-icon pending">·</div>
+      <div class="check-body">
+        <div class="check-title">HPA nunca validado de verdade</div>
+        <div class="check-detail"><code>kubectl top pod</code> falha ("Metrics API not available") — sem metrics-server no Docker Desktop, o HPA roda cego e não escalou</div>
+      </div>
+      <div class="check-tag">pendente</div>
+    </div>
+    <div class="check-item">
+      <div class="check-icon pending">·</div>
+      <div class="check-body">
+        <div class="check-title">Soak de janela longa</div>
+        <div class="check-detail">«esta rodada foi Ns; um soak de 1h no RATE sustentável (deriva de memória, conexões que vazam) não foi executado»</div>
+      </div>
+      <div class="check-tag">pendente</div>
+    </div>
+    <div class="check-item">
+      <div class="check-icon pending">·</div>
+      <div class="check-body">
+        <div class="check-title">«outras lacunas: cauda de latência, ferramental, etc.»</div>
+        <div class="check-detail">«…»</div>
+      </div>
+      <div class="check-tag">pendente</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Esta é a base — próximas execuções partem daqui</h2>
+  </div>
+  <div class="prose">
+    <p>«Estado gravado: versão do runtime, ADMIT_RATE / RECONCILE_*, estado dos
+    volumes, estado da admission_queue ao final. Exigência: qualquer comparação
+    futura parte do mesmo procedimento de limpeza da primeira seção.» Omita/adapte
+    esta seção se a rodada não é uma nova baseline.</p>
+  </div>
+</section>
+
+<footer>
+  Rodada «YYYYMMDD-HHMMSS» · runtime «mhl version» ·
+  Kubernetes do Docker Desktop, namespace mhl-insurance-lab, «reconstruído do zero / a partir do estado X».<br>
+  «Uma linha situando na série de relatórios.»<br>
+  Dados brutos: src/scripts/.load/loadperf-«runid»/samples.txt ·
+  src/scripts/.load/watch-«runid».csv ·
+  src/scripts/.load/fila-«runid».csv ·
+  src/scripts/.load/sweep-«runid»/resultado.csv
+</footer>
+
+</div>

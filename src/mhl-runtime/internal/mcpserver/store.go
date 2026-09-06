@@ -299,8 +299,12 @@ func (r *memRunRegistry) List() []*asyncRun {
 // Vars is stored through runtime.RedactVars so resolved credentials never land
 // in the shared store.
 type RunStatusRec struct {
-	Tool      string         `json:"tool"`
-	State     string         `json:"state"`
+	Tool string `json:"tool"`
+	// State is the run's lifecycle state; see runstate.go.
+	State RunState `json:"state"`
+	// Holder is the replica id that claimed the run (set on the pending →
+	// claimed transition by durable intake; empty otherwise).
+	Holder    string         `json:"holder,omitempty"`
 	Step      string         `json:"step,omitempty"`
 	StepIndex int            `json:"stepIndex,omitempty"`
 	StepTotal int            `json:"stepTotal,omitempty"`

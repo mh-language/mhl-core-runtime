@@ -275,7 +275,18 @@ sequenceDiagram
 
 ### `asyncRun` states
 
+`RunState` (`runstate.go`) is the typed enum. Its underlying type is `string`,
+so the wire JSON is unchanged. `IsTerminal()` = completed/failed/canceled;
+`IsPreExecution()` = pending/claimed/queued (safe to cancel with no goroutine
+to stop and no external effect yet).
+
 ```
+pending ──▶ claimed ──▶ working    (durable intake — Etapa 1, no producer yet:
+        │            │              run/start writes a `pending` record to a CAS
+        │            │              store, a per-replica claim loop flips it to
+        │            │              `claimed` then acquires the lease)
+        └────────────┴─▶ canceled  (run/cancel on a pre-execution run)
+
 queued  ──▶ working           (a concurrency slot freed — see --max-concurrent-runs)
         └─▶ canceled          (run/cancel or shutdown while still waiting for a slot)
 
@@ -301,6 +312,20 @@ O(n^2) inside `run/list`), so aggregate queue depth lives in `/metrics` as
 `mhl_serve_runs_queued` instead. A synchronous `tools/call` does not queue: it
 holds the client connection while it waits up to ~5s for a slot, then either
 runs or returns `-32000` "server at capacity".
+
+**`runId` contract:** `run/start` returns a `runId` that is durable from that
+call — it is not a placeholder that a later step upgrades. There is no separate
+`claim_id`. When durable intake lands, that same `runId` names the `pending`
+record and every state after it. `run/start` / `run/resume` also reject
+arguments that are not JSON-serialisable or exceed 256 KiB (`checkRunInputs`),
+because they travel with the durable run record.
+
+**`ClaimNext` seam:** `claim.go` defines how a replica takes the next `pending`
+run — the optional `ClaimNexter` fast path (a store backs it with
+`SELECT … FOR UPDATE SKIP LOCKED`), else `claimNextCAS`, a compare-and-swap
+scan that flips the oldest `pending` `RunStatusRec` to `claimed` and stamps
+`Holder`. No caller wires it yet (the claim loop is Etapa 1); durable intake
+needs a CAS-capable extension store, like the run lock.
 
 `reached` is the ordered list of steps that **started** (fed by `OnStep`);
 on completion it becomes `Result.Skipped ++ Result.Executed` (authoritative,

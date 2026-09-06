@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arquitetura MHL — Insurance Lab</title>
+<meta name="description" content="Arquitetura de referência do laboratório MHL de regulação de sinistros: caminho da requisição, identidade, workflow e modos de execução.">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f4f7fb; --panel:#ffffff; --panel-2:#f7fafd;
+  --ink:#12233a; --ink-2:#37506d; --muted:#647a92;
+  --line:#dce6f1; --line-2:#c3d4e6;
+  --accent:#1264a3; --accent-bg:#e9f3ff;
+  --ok:#0b7a58; --ok-bg:#e6f7f0;
+  --warn:#9a5406; --warn-bg:#fff3e2;
+  --alt:#6941c6; --alt-bg:#f2edff;
+  --dang:#b42318; --dang-bg:#fff1ef;
+  --shadow:0 10px 30px rgba(18,42,72,.07);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    color-scheme:dark;
+    --bg:#0d151f; --panel:#141e2b; --panel-2:#1a2634;
+    --ink:#e8eff8; --ink-2:#bccbdd; --muted:#93a6bb;
+    --line:#26364a; --line-2:#3a4f68;
+    --accent:#6cb6ff; --accent-bg:#12293e;
+    --ok:#4fd1a5; --ok-bg:#0f2a23;
+    --warn:#f0b06a; --warn-bg:#2d2113;
+    --alt:#b39cf5; --alt-bg:#211d38;
+    --dang:#ff8f83; --dang-bg:#2e1714;
+    --shadow:0 10px 30px rgba(0,0,0,.45);
+  }
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.page{max-width:1180px;margin:auto;padding:0 22px 72px}
+h1,h2,h3{margin:0;line-height:1.15;letter-spacing:-.02em}
+h1{max-width:20ch;font-size:clamp(2rem,4.2vw,3.4rem)}
+h2{font-size:clamp(1.3rem,2.2vw,1.75rem)}
+h3{font-size:1rem}
+p{margin:0;color:var(--ink-2)}
+a{color:var(--accent)}
+code{color:var(--ink);background:var(--panel-2);border:1px solid var(--line);
+  padding:.08em .35em;border-radius:5px;font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
+.mono{font:700 11px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase}
+
+/* ---------- hero ---------- */
+.hero{padding:56px 0 34px}
+.hero .mono{color:var(--accent)}
+.hero p.lede{max-width:70ch;margin-top:16px;font-size:1.06rem}
+.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:30px}
+.fact{padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.fact span{display:block;color:var(--muted);font:700 10px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+.fact strong{display:block;margin-top:6px;font-size:14px;font-weight:600}
+
+/* ---------- nav ---------- */
+.toc{position:sticky;top:0;z-index:5;display:flex;gap:6px;flex-wrap:wrap;
+  margin:0 -22px;padding:12px 22px;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.toc a{padding:7px 13px;border:1px solid var(--line);border-radius:999px;background:var(--panel);
+  color:var(--ink-2);font-size:13px;font-weight:600;text-decoration:none}
+.toc a:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ---------- sections ---------- */
+section{scroll-margin-top:74px;padding-top:52px}
+.sec-head{display:flex;gap:16px;align-items:baseline;margin-bottom:8px}
+.sec-num{color:var(--accent);font:700 13px ui-monospace,monospace}
+.sec-head p{flex:1 1 100%}
+section > p.sec-intro{max-width:75ch;margin-top:10px}
+
+figure{margin:26px 0 0;padding:20px 20px 16px;border:1px solid var(--line);
+  border-radius:18px;background:var(--panel);box-shadow:var(--shadow)}
+.fig-scroll{overflow-x:auto}
+figure svg{display:block;width:100%;min-width:820px;height:auto}
+figcaption{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);
+  color:var(--muted);font-size:13px;line-height:1.5}
+
+.callout{margin-top:20px;padding:16px 18px;border-left:3px solid var(--accent);
+  border-radius:0 12px 12px 0;background:var(--accent-bg);color:var(--ink-2);font-size:14px}
+.callout strong{color:var(--accent)}
+.callout.risk{border-left-color:var(--dang);background:var(--dang-bg)}
+.callout.risk strong{color:var(--dang)}
+
+.tbl-wrap{margin-top:22px;overflow-x:auto;border:1px solid var(--line);
+  border-radius:16px;background:var(--panel)}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
+th,td{padding:12px 16px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{color:var(--muted);font:700 10px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;
+  background:var(--panel-2)}
+td strong{font-weight:600}
+td.num{color:var(--accent);font:700 12px ui-monospace,monospace;white-space:nowrap}
+
+.steps-list{display:grid;gap:10px;margin:22px 0 0;padding:0;list-style:none;
+  grid-template-columns:repeat(2,minmax(0,1fr))}
+.steps-list li{display:grid;grid-template-columns:26px 1fr;gap:12px;align-items:start;
+  padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  color:var(--ink-2);font-size:13.5px}
+.steps-list b{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;
+  background:var(--accent-bg);color:var(--accent);font:700 12px ui-monospace,monospace}
+.steps-list em{font-style:normal;color:var(--ink);font-weight:600}
+
+footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  margin-top:56px;padding-top:20px;border-top:1px solid var(--line);
+  color:var(--muted);font-size:13px}
+
+@media(max-width:860px){
+  .facts{grid-template-columns:1fr 1fr}
+  .steps-list{grid-template-columns:1fr}
+}
+@media print{
+  body{background:#fff}
+  .page{max-width:none;padding:0}
+  .toc{display:none}
+  figure,.tbl-wrap{box-shadow:none;break-inside:avoid}
+  section{break-inside:avoid;padding-top:26px}
+}
+
+/* ---------- diagram primitives ---------- */
+.d{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.d text{fill:var(--ink)}
+.d .t{font-size:14px;font-weight:700}
+.d .s{font-size:11px;fill:var(--muted)}
+.d .lbl{font-size:10.5px;fill:var(--muted);font-weight:600}
+.d .grp{font-size:10px;font-weight:700;letter-spacing:.12em;fill:var(--muted)}
+.d .box{fill:var(--panel-2);stroke:var(--line-2);stroke-width:1.4}
+.d .box-a{fill:var(--accent-bg);stroke:var(--accent);stroke-width:1.6}
+.d .box-k{fill:var(--ok-bg);stroke:var(--ok);stroke-width:1.6}
+.d .box-w{fill:var(--warn-bg);stroke:var(--warn);stroke-width:1.6}
+.d .box-p{fill:var(--alt-bg);stroke:var(--alt);stroke-width:1.6}
+.d .zone{fill:none;stroke:var(--line-2);stroke-width:1.2;stroke-dasharray:6 5}
+.d .e{stroke:var(--muted);stroke-width:1.5;fill:none}
+.d .e-a{stroke:var(--accent);stroke-width:1.6;fill:none}
+.d .e-w{stroke:var(--warn);stroke-width:1.6;fill:none}
+.d .e-k{stroke:var(--ok);stroke-width:1.6;fill:none}
+.d .e-p{stroke:var(--alt);stroke-width:1.5;fill:none;stroke-dasharray:5 4}
+.d .num{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}
+.d .num-t{font-size:11px;font-weight:700;fill:var(--accent)}
+</style>
+</head>
+<body>
+<main class="page">
+
+<header class="hero">
+  <div class="mono">MHL · Insurance Lab · Arquitetura de referência</div>
+  <h1>Regulação de sinistros, do evento à decisão.</h1>
+  <p class="lede">O runtime MHL publica um workflow declarativo por MCP sobre HTTP. Um gateway NGINX valida o JWT do cliente na borda, o workflow consulta sistemas de seguros simulados, os checkpoints vivem no PostgreSQL e a decisão pode parar para revisão humana e ser retomada depois — inclusive em outra réplica.</p>
+  <div class="facts">
+    <div class="fact"><span>Entrada única</span><strong>localhost:8711 · POST /mcp</strong></div>
+    <div class="fact"><span>Identidade</span><strong>Keycloak + authorizer (JWKS)</strong></div>
+    <div class="fact"><span>Estado durável</span><strong>PostgreSQL · mhl_store + admission_queue</strong></div>
+    <div class="fact"><span>Fonte do workflow</span><strong>workflows/regulate-claim.mh</strong></div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Seções">
+  <a href="#fluxo">1 · Caminho da requisição</a>
+  <a href="#camadas">2 · Camadas</a>
+  <a href="#workflow">3 · Workflow</a>
+  <a href="#modos">4 · Compose × Kubernetes</a>
+  <a href="#artefatos">5 · Artefatos</a>
+  <a href="#limites">6 · Limites</a>
+</nav>
+
+<!-- ============ 1 ============ -->
+<section id="fluxo">
+  <div class="sec-head"><span class="sec-num">01</span><h2>Caminho de uma requisição</h2></div>
+  <p class="sec-intro">O JWT do usuário só existe na borda. O NGINX pergunta ao authorizer se o token é válido, recebe de volta o principal derivado e só então fala com o admissor — usando uma credencial interna que o cliente nunca vê. O admissor é quem fala com o runtime, e só ele.</p>
+
+  <figure>
+    <div class="fig-scroll">
+    <svg class="d" viewBox="0 0 1240 500" role="img" aria-label="O cliente obtém um JWT no Keycloak e chama POST /mcp no gateway NGINX. O gateway faz um auth_request ao authorizer Python, que valida o token pelo JWKS do Keycloak e devolve 200 com o header X-Mhl-Principal. O gateway entao chama o admissor com um Bearer interno mais o principal. O admissor grava o pedido em admission_queue no PostgreSQL antes de chamar o runtime MHL, taxa-limitando a admissao pela capacidade sustentavel medida. O runtime grava checkpoints no mesmo PostgreSQL, chama as APIs WireMock, usa servicos AWS simulados no Floci e emite telemetria OTLP.">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+        <marker id="a1w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--warn)"/></marker>
+        <marker id="a1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+        <marker id="a1p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--alt)"/></marker>
+        <marker id="a2k7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--ok)"/></marker>
+      </defs>
+
+      <!-- zona identidade -->
+      <rect class="zone" x="170" y="20" width="520" height="132" rx="14"/>
+      <text class="grp" x="186" y="42">IDENTIDADE · OIDC</text>
+      <rect class="box-w" x="195" y="56" width="180" height="80" rx="10"/>
+      <text class="t" x="285" y="90" text-anchor="middle">Keycloak</text>
+      <text class="s" x="285" y="112" text-anchor="middle">realm · emite JWT</text>
+      <rect class="box-w" x="455" y="56" width="210" height="80" rx="10"/>
+      <text class="t" x="560" y="90" text-anchor="middle">Authorizer</text>
+      <text class="s" x="560" y="112" text-anchor="middle">iss · aud · exp · assinatura</text>
+
+      <!-- 4: authorizer -> keycloak (jwks) -->
+      <path class="e-w" d="M451 96 L379 96" marker-end="url(#a1w)"/>
+      <text class="lbl" x="415" y="80" text-anchor="middle">JWKS</text>
+      <circle class="num" cx="415" cy="96" r="10"/>
+      <text class="num-t" x="415" y="100" text-anchor="middle">4</text>
+
+      <!-- 1: keycloak -> cliente -->
+      <path class="e-w" d="M195 116 L120 116 L120 194" marker-end="url(#a1w)"/>
+      <text class="lbl" x="112" y="176" text-anchor="end">token do usuário</text>
+      <circle class="num" cx="120" cy="160" r="10"/>
+      <text class="num-t" x="120" y="164" text-anchor="middle">1</text>
+
+      <!-- linha principal -->
+      <rect class="box" x="30" y="200" width="180" height="104" rx="12"/>
+      <text class="t" x="120" y="242" text-anchor="middle">Cliente MCP</text>
+      <text class="s" x="120" y="264" text-anchor="middle">agente · participante</text>
+      <text class="s" x="120" y="282" text-anchor="middle">do workshop</text>
+
+      <rect class="box-a" x="350" y="200" width="210" height="104" rx="12"/>
+      <text class="t" x="455" y="242" text-anchor="middle">Gateway NGINX</text>
+      <text class="s" x="455" y="264" text-anchor="middle">auth_request · proxy</text>
+      <text class="s" x="455" y="282" text-anchor="middle">porta 8711</text>
+
+      <rect class="box-p" x="655" y="200" width="195" height="104" rx="12"/>
+      <text class="t" x="752" y="232" text-anchor="middle">Admissor</text>
+      <text class="s" x="752" y="252" text-anchor="middle">admission_queue durável</text>
+      <text class="s" x="752" y="268" text-anchor="middle">só run_start / run_status</text>
+      <text class="s" x="752" y="284" text-anchor="middle">worker drena · reconcilia</text>
+
+      <rect class="box-k" x="935" y="200" width="270" height="104" rx="12"/>
+      <text class="t" x="1070" y="238" text-anchor="middle">Runtime MHL</text>
+      <text class="s" x="1070" y="260" text-anchor="middle">serve mcp --http · state-dir</text>
+      <text class="s" x="1070" y="278" text-anchor="middle">run/start · run/status · run/resume</text>
+      <text class="s" x="1070" y="296" text-anchor="middle">máx. 5 runs simultâneas / réplica</text>
+
+      <!-- 2 -->
+      <path class="e" d="M214 252 L344 252" marker-end="url(#a1)"/>
+      <text class="lbl" x="279" y="226" text-anchor="middle">POST /mcp</text>
+      <text class="lbl" x="279" y="240" text-anchor="middle">Bearer JWT</text>
+      <circle class="num" cx="279" cy="252" r="10"/>
+      <text class="num-t" x="279" y="256" text-anchor="middle">2</text>
+
+      <!-- 3 e 5 : gateway <-> authorizer -->
+      <path class="e-a" d="M488 196 L488 142" marker-end="url(#a1a)"/>
+      <circle class="num" cx="488" cy="155" r="10"/>
+      <text class="num-t" x="488" y="159" text-anchor="middle">3</text>
+      <text class="lbl" x="476" y="186" text-anchor="end">auth_request /_auth</text>
+
+      <path class="e-a" d="M528 142 L528 196" marker-end="url(#a1a)"/>
+      <circle class="num" cx="528" cy="155" r="10"/>
+      <text class="num-t" x="528" y="159" text-anchor="middle">5</text>
+      <text class="lbl" x="540" y="186">200 + X-Mhl-Principal</text>
+
+      <!-- 6: gateway -> admissor -->
+      <path class="e-a" d="M564 252 L649 252" marker-end="url(#a1a)"/>
+      <text class="lbl" x="606" y="226" text-anchor="middle">MHL_TOKEN</text>
+      <circle class="num" cx="606" cy="252" r="10"/>
+      <text class="num-t" x="606" y="256" text-anchor="middle">6</text>
+
+      <!-- 7: admissor -> runtime (só quando admite) -->
+      <path class="e-k" d="M854 252 L929 252" marker-end="url(#a2k7)"/>
+      <text class="lbl" x="891" y="230" text-anchor="middle">admite</text>
+      <text class="lbl" x="891" y="242" text-anchor="middle">≤ 4,5/s</text>
+      <circle class="num" cx="891" cy="252" r="10"/>
+      <text class="num-t" x="891" y="256" text-anchor="middle">7</text>
+
+      <!-- barramento de persistência e integração -->
+      <path class="e-p" d="M1055 306 L1055 348"/>
+      <path class="e-p" d="M145 348 L1055 348"/>
+      <path class="e-p" d="M145 348 L145 384" marker-end="url(#a1p)"/>
+      <path class="e-p" d="M417 348 L417 384" marker-end="url(#a1p)"/>
+      <path class="e-p" d="M687 348 L687 384" marker-end="url(#a1p)"/>
+      <path class="e-p" d="M1055 348 L1055 384" marker-end="url(#a1p)"/>
+      <text class="lbl" x="153" y="372">checkpoints</text>
+      <text class="lbl" x="425" y="372">http.get / http.post</text>
+      <text class="lbl" x="695" y="372">AWS SDK</text>
+      <text class="lbl" x="1063" y="372">OTLP</text>
+
+      <!-- admissor <-> Postgres: grava a fila antes do passo 7; o reconciliador lê o status do run e reenfileira órfãos -->
+      <path class="e-p" d="M752 305 L752 348" marker-start="url(#a1p)" marker-end="url(#a1p)"/>
+      <text class="lbl" x="763" y="328">grava a fila · lê status p/ reconciliar</text>
+
+      <rect class="box-p" x="30" y="390" width="230" height="86" rx="11"/>
+      <text class="t" x="145" y="418" text-anchor="middle">PostgreSQL</text>
+      <text class="s" x="145" y="438" text-anchor="middle">mhl_store · sessões</text>
+      <text class="s" x="145" y="454" text-anchor="middle">runs e checkpoints</text>
+      <text class="s" x="145" y="470" text-anchor="middle">+ admission_queue</text>
+
+      <rect class="box-p" x="305" y="390" width="225" height="86" rx="11"/>
+      <text class="t" x="417" y="424" text-anchor="middle">WireMock</text>
+      <text class="s" x="417" y="446" text-anchor="middle">apólice · documentos</text>
+      <text class="s" x="417" y="464" text-anchor="middle">antifraude · pagamento</text>
+
+      <rect class="box-p" x="580" y="390" width="215" height="86" rx="11"/>
+      <text class="t" x="687" y="424" text-anchor="middle">Floci</text>
+      <text class="s" x="687" y="446" text-anchor="middle">S3 · Secrets · STS</text>
+      <text class="s" x="687" y="464" text-anchor="middle">Step Functions simulados</text>
+
+      <rect class="box" x="920" y="390" width="270" height="86" rx="11"/>
+      <text class="t" x="1055" y="424" text-anchor="middle">Observabilidade</text>
+      <text class="s" x="1055" y="446" text-anchor="middle">OTel · Prometheus</text>
+      <text class="s" x="1055" y="464" text-anchor="middle">Grafana · Jaeger (opcional)</text>
+    </svg>
+    </div>
+    <figcaption>Figura 1 — O JWT do cliente para na borda: depois do <code>auth_request</code>, o admissor recebe apenas o token interno e o principal derivado, e é ele quem fala com o runtime nas chamadas MCP — o gateway só encosta no runtime para <code>/healthz</code> e <code>/readyz</code>. Laranja é identidade, azul é borda, verde é runtime, roxo tracejado é persistência e integração. O passo 7 é liberado a <code>ADMIT_RATE</code> (4,5/s por padrão); acima disso a chamada fica em <code>admission_queue</code> e o worker de admissão a drena depois, sem o cliente esperar. O admissor roda ainda um segundo loop, o reconciliador: lê o status dos runs já admitidos direto do <code>mhl_store</code> e, quando um deles está <code>queued</code>/<code>working</code> parado além de <code>STALE_NONTERMINAL_SECONDS</code>, devolve a linha para <code>pending</code> — o worker então readmite com um <code>runId</code> novo.</figcaption>
+  </figure>
+
+  <ol class="steps-list">
+    <li><b>1</b><span><em>Login</em> — o participante pega um JWT do usuário sintético no realm do Keycloak.</span></li>
+    <li><b>2</b><span><em>Chamada</em> — <code>POST /mcp</code> no gateway com <code>Authorization: Bearer &lt;jwt&gt;</code>.</span></li>
+    <li><b>3</b><span><em>Subrequest</em> — o NGINX chama <code>/_auth</code> (interno) sem repassar o corpo.</span></li>
+    <li><b>4</b><span><em>Validação</em> — o authorizer confere assinatura, <code>iss</code>, <code>aud</code> e <code>exp</code> com o JWKS em cache.</span></li>
+    <li><b>5</b><span><em>Principal</em> — resposta 200 devolve <code>X-Mhl-Principal</code> e, quando existe, <code>X-Mhl-Lob</code>.</span></li>
+    <li><b>6</b><span><em>Proxy</em> — o gateway troca o Authorization pelo <code>MHL_TOKEN</code> interno e injeta o principal, e passa a falar com o admissor, não mais com o runtime.</span></li>
+    <li><b>7</b><span><em>Admissão</em> — <code>mhl_run_start</code> é gravado em <code>admission_queue</code> antes de qualquer tentativa no runtime, e admitido a <code>ADMIT_RATE</code>; <code>mhl_run_status</code> aceita <code>claim_id</code> e responde da fila enquanto não há <code>runId</code>. Todo o resto passa pelo admissor sem alteração.</span></li>
+  </ol>
+
+  <div class="callout"><strong>Regra de confiança:</strong> o cliente não escolhe sua identidade. Qualquer <code>X-Mhl-Principal</code> enviado por ele é descartado e substituído pelo valor que o authorizer devolveu, e o <code>MHL_TOKEN</code> nunca sai da rede interna — é a credencial que o admissor e o runtime exigem. O worker de admissão em segundo plano tem a sua própria cópia do <code>MHL_TOKEN</code> (mesmo segredo, <code>mhl-runtime</code>) porque retenta sem uma requisição de cliente por perto; mesmo assim o dono do run continua sendo o principal de quem pediu.</div>
+
+  <div class="callout risk"><strong>Por que o admissor existe:</strong> testes de chaos em 2026-09-05 mostraram que um run aceito (HTTP 200, com <code>runId</code>) mas ainda não puxado da fila interna some se o pod que o aceitou morrer — 436 runs perdidos num crash abrupto, 1.844 num rolling restart (o caminho de deploy recomendado no próprio RUNBOOK). <code>mhl_serve_runs_queued</code> é estado em memória, por pod; não sobrevive à réplica que o guarda. O admissor grava a intenção em <code>admission_queue</code> (Postgres) <em>antes</em> de tentar admitir. Um reconciliador roda a cada <code>RECONCILE_INTERVAL</code> (15&nbsp;s) e, para um run <code>admitted</code> parado em <code>queued</code>/<code>working</code> há mais de <code>STALE_NONTERMINAL_SECONDS</code> (120&nbsp;s), devolve a linha para <code>pending</code> — com um novo <code>runId</code> na próxima tentativa. Ver <code>src/docker/admissor/admissor.py</code>.</div>
+
+  <div class="callout"><strong>Um bug que moldou o desenho — <code>mhl_run_status</code> de run completado, com 2+ réplicas:</strong> na versão anterior, um run que <em>completava</em> tinha o registro em memória <em>e</em> o status publicado apagados na hora. Perguntar pelo Service balanceado <code>mhl-runtime</code> tinha 1/N de chance de cair na réplica que executou o run; as outras N−1/N respondiam "unknown runId" para um run perfeitamente bem-sucedido — confirmado ao vivo, pod a pod, com o mesmo <code>runId</code>. O patch de 2026-09-05 no runtime resolveu na origem: o status de um run terminal fica no store até um sweep por TTL, então qualquer réplica responde "completed" de forma consistente. Um Service headless (<code>mhl-runtime-headless</code>, <code>clusterIP: None</code>) foi o paliativo enquanto o patch não existia — viveu um dia e foi removido (ver o comentário em <code>k8s/mhl-service.yaml</code>). O que o patch <em>não</em> cobre — um run <code>queued</code>/<code>working</code> cujo pod morre e mantém essa string para sempre — é justamente o que o reconciliador do admissor trata por obsolescência.</div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="camadas">
+  <div class="sec-head"><span class="sec-num">02</span><h2>Camadas e responsabilidades</h2></div>
+  <p class="sec-intro">Cada camada tem um dono claro e um contrato com a vizinha. O que muda entre Compose e Kubernetes está na seção 4 — aqui as responsabilidades são as mesmas nos dois modos.</p>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>#</th><th>Camada</th><th>Responsabilidade</th><th>Componentes</th><th>Artefato</th></tr></thead>
+    <tbody>
+      <tr><td class="num">01</td><td><strong>Experiência</strong></td><td>Entrada única e ciclo de vida observável do caso.</td><td>Cliente MCP, health e readiness</td><td><code>POST /mcp</code> · <code>/healthz</code> · <code>/readyz</code></td></tr>
+      <tr><td class="num">02</td><td><strong>Identidade</strong></td><td>Emitir, validar e derivar o principal antes de qualquer execução.</td><td>Keycloak, authorizer Python</td><td><code>docker/keycloak/realm.json</code> · <code>docker/authorizer/</code></td></tr>
+      <tr><td class="num">03</td><td><strong>Borda</strong></td><td>Auth subrequest, troca de credencial e proxy para o admissor (e <code>/healthz</code>·<code>/readyz</code> direto ao runtime).</td><td>NGINX</td><td><code>docker/gateway/nginx.conf.template</code></td></tr>
+      <tr><td class="num">04</td><td><strong>Admissão</strong></td><td>Persistir <code>mhl_run_start</code> antes de admitir, taxa-limitar e reconciliar runs órfãos.</td><td>Admissor Python · 1 réplica</td><td><code>docker/admissor/admissor.py</code> · <code>ADMIT_RATE=4.5</code></td></tr>
+      <tr><td class="num">05</td><td><strong>Runtime</strong></td><td>Publicar ferramentas MCP, executar runs, pausar, retomar e drenar.</td><td>MHL Server · máx. 5 runs/réplica</td><td><code>serve mcp --http</code> · <code>--state-dir</code></td></tr>
+      <tr><td class="num">06</td><td><strong>Domínio</strong></td><td>Regras do sinistro: triagem, rota automática ou humana, registro.</td><td>Workflow RegulateClaim</td><td><code>workflows/regulate-claim.mh</code></td></tr>
+      <tr><td class="num">07</td><td><strong>Dados e integrações</strong></td><td>Estado durável, sistemas de seguros e serviços AWS simulados.</td><td>PostgreSQL, WireMock, Floci</td><td><code>mhl_store</code> + <code>admission_queue</code> · <code>mock-apis:8080</code> · <code>floci:4566</code></td></tr>
+      <tr><td class="num">08</td><td><strong>Plataforma</strong></td><td>Hospedagem, escala didática e telemetria.</td><td>Docker Compose, Kubernetes, OTel</td><td><code>docker/docker-compose.yml</code> · <code>k8s/</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="workflow">
+  <div class="sec-head"><span class="sec-num">03</span><h2>Workflow RegulateClaim</h2></div>
+  <p class="sec-intro">Quatro passos de apuração, uma decisão e dois desfechos. A rota humana é o motivo de existir o store: o run para em <code>pause()</code>, o estado sobrevive e a retomada pode acontecer em outro processo.</p>
+
+  <figure>
+    <div class="fig-scroll">
+    <svg class="d" viewBox="0 0 1040 400" role="img" aria-label="O workflow executa Intake, ExtractEvidence e AntiFraud em sequência e chega ao passo Route. Se o valor é no máximo cinco mil, a confiança é pelo menos zero vírgula nove e a fraude é menor que zero vírgula dois, a rota é automática e vai direto para Register. Caso contrário, a rota é humana: o passo HumanReview chama pause, o estado é gravado no PostgreSQL, e run resume restaura o estado e segue para Register.">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+        <marker id="a2k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--ok)"/></marker>
+        <marker id="a2w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--warn)"/></marker>
+        <marker id="a2p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--alt)"/></marker>
+      </defs>
+
+      <!-- trilha de apuração -->
+      <rect class="box" x="30" y="76" width="160" height="76" rx="11"/>
+      <text class="t" x="110" y="108" text-anchor="middle">Intake</text>
+      <text class="s" x="110" y="130" text-anchor="middle">sinistro + apólice</text>
+
+      <rect class="box" x="215" y="76" width="180" height="76" rx="11"/>
+      <text class="t" x="305" y="108" text-anchor="middle">ExtractEvidence</text>
+      <text class="s" x="305" y="130" text-anchor="middle">documentos · agente</text>
+
+      <rect class="box" x="420" y="76" width="160" height="76" rx="11"/>
+      <text class="t" x="500" y="108" text-anchor="middle">AntiFraud</text>
+      <text class="s" x="500" y="130" text-anchor="middle">score de fraude</text>
+
+      <rect class="box-a" x="605" y="76" width="150" height="76" rx="11"/>
+      <text class="t" x="680" y="108" text-anchor="middle">Route</text>
+      <text class="s" x="680" y="130" text-anchor="middle">decide a rota</text>
+
+      <rect class="box-k" x="830" y="76" width="180" height="76" rx="11"/>
+      <text class="t" x="920" y="104" text-anchor="middle">Register</text>
+      <text class="s" x="920" y="124" text-anchor="middle">POST /payments</text>
+      <text class="s" x="920" y="142" text-anchor="middle">X-Idempotency-Key</text>
+
+      <path class="e" d="M194 114 L211 114" marker-end="url(#a2)"/>
+      <path class="e" d="M399 114 L416 114" marker-end="url(#a2)"/>
+      <path class="e" d="M584 114 L601 114" marker-end="url(#a2)"/>
+
+      <!-- rota automática: seta lateral direta Route -> Register -->
+      <path class="e-k" d="M756 114 L826 114" marker-end="url(#a2k)"/>
+      <text class="lbl" x="791" y="52" text-anchor="middle">rota automática · decision = approved</text>
+      <text class="lbl" x="791" y="66" text-anchor="middle">valor ≤ 5.000 · confiança ≥ 0,9 · fraude &lt; 0,2</text>
+      <circle class="num" cx="791" cy="114" r="10"/>
+      <text class="num-t" x="791" y="118" text-anchor="middle">A</text>
+
+      <!-- rota humana -->
+      <path class="e-w" d="M680 156 L680 214" marker-end="url(#a2w)"/>
+      <text class="lbl" x="696" y="184">rota humana · demais casos</text>
+      <circle class="num" cx="680" cy="180" r="10"/>
+      <text class="num-t" x="680" y="184" text-anchor="middle">B</text>
+
+      <rect class="box-w" x="605" y="218" width="170" height="76" rx="11"/>
+      <text class="t" x="690" y="250" text-anchor="middle">HumanReview</text>
+      <text class="s" x="690" y="272" text-anchor="middle">pause() · run parada</text>
+
+      <rect class="box-w" x="820" y="218" width="190" height="76" rx="11"/>
+      <text class="t" x="915" y="250" text-anchor="middle">run/resume</text>
+      <text class="s" x="915" y="272" text-anchor="middle">regulador aprova</text>
+
+      <path class="e-w" d="M779 256 L816 256" marker-end="url(#a2w)"/>
+
+      <path class="e-w" d="M920 214 L920 156" marker-end="url(#a2w)"/>
+      <text class="lbl" x="932" y="190">retoma o run</text>
+
+      <!-- store: centrado sob a rota humana, edges curtos -->
+      <rect class="box-p" x="676" y="330" width="248" height="56" rx="10"/>
+      <text class="t" x="800" y="356" text-anchor="middle">PostgreSQL</text>
+      <text class="s" x="800" y="374" text-anchor="middle">mhl_store · checkpoint da run</text>
+
+      <path class="e-p" d="M705 296 L705 328" marker-end="url(#a2p)"/>
+      <text class="lbl" x="697" y="316" text-anchor="end">grava estado</text>
+      <path class="e-p" d="M895 328 L895 296" marker-end="url(#a2p)"/>
+      <text class="lbl" x="903" y="316">restaura estado</text>
+    </svg>
+    </div>
+    <figcaption>Figura 2 — A rota automática (verde) nunca toca o store para decidir; a rota humana (laranja) atravessa uma pausa, e é o checkpoint no PostgreSQL que permite retomar o mesmo run depois — em outro pod, se preciso.</figcaption>
+  </figure>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Passo</th><th>O que faz</th><th>Chamada externa</th><th>Detalhe</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Intake</strong></td><td>Carrega o sinistro e a apólice.</td><td><code>GET /claims/{id}</code> · <code>GET /policy/{id}</code></td><td>timeout do passo: 15s</td></tr>
+      <tr><td><strong>ExtractEvidence</strong></td><td>Resume as evidências dos documentos via agente.</td><td><code>GET /documents/{id}</code></td><td>timeout 30s · cache de agente 10min</td></tr>
+      <tr><td><strong>AntiFraud</strong></td><td>Obtém o score de fraude do caso.</td><td><code>GET /antifraud/{id}</code></td><td>timeout 15s</td></tr>
+      <tr><td><strong>Route</strong></td><td>Escolhe entre liberar direto ou mandar para revisão.</td><td>—</td><td><code>claim_amount ≤ 5000 &amp;&amp; confidence ≥ 0.9 &amp;&amp; fraud_score &lt; 0.2</code></td></tr>
+      <tr><td><strong>HumanReview</strong></td><td>Pausa o run até o regulador aprovar.</td><td>—</td><td><code>pause()</code> quando <code>approved != "yes"</code></td></tr>
+      <tr><td><strong>Register</strong></td><td>Registra o pagamento e grava a trilha de auditoria.</td><td><code>POST /payments</code></td><td><code>X-Idempotency-Key: claim:{id}</code> · <code>ClaimsAudit</code> jsonl</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout"><strong>Por que idempotência importa aqui:</strong> a mesma run pode ser retomada mais de uma vez depois de uma pausa ou de uma troca de réplica. A chave <code>claim:{claim_id}</code> é o que impede o laboratório de pagar o mesmo sinistro duas vezes — o mock <code>payment-missing-idempotency.json</code> existe para demonstrar a falha quando ela some.</div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="modos">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Compose × Kubernetes: o que realmente muda</h2></div>
+  <p class="sec-intro">O modo Kubernetes não recria o laboratório: ele reaproveita as mesmas dependências do Compose e troca três coisas — quantas instâncias do runtime existem, como o workflow chega até elas e por onde elas alcançam banco e mocks.</p>
+
+  <figure>
+    <div class="fig-scroll">
+    <svg class="d" viewBox="0 0 1040 420" role="img" aria-label="Comparação lado a lado. No Docker Compose: entrada pelo container gateway na porta 8711, um container do runtime MHL, workflow montado como bind mount e dependências na rede lab. No Kubernetes sobre Docker Desktop: entrada pelo Service mhl-gateway na mesma porta, Deployment gateway, duas réplicas do runtime com HPA e PDB, workflow entregue por ConfigMap gerado pelo Kustomize e dependências alcançadas por host.docker.internal — as mesmas do Compose.">
+      <defs>
+        <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+      </defs>
+
+      <rect class="zone" x="20" y="16" width="460" height="388" rx="16"/>
+      <text class="grp" x="44" y="42">DOCKER COMPOSE</text>
+      <rect class="zone" x="560" y="16" width="460" height="388" rx="16"/>
+      <text class="grp" x="584" y="42" style="fill:var(--accent)">KUBERNETES · DOCKER DESKTOP</text>
+
+      <!-- espinha compartilhada -->
+      <text class="grp" x="520" y="86" text-anchor="middle">ENTRADA</text>
+      <text class="grp" x="520" y="152" text-anchor="middle">BORDA</text>
+      <text class="grp" x="520" y="226" text-anchor="middle">RUNTIME</text>
+      <text class="grp" x="520" y="302" text-anchor="middle">WORKFLOW</text>
+      <text class="grp" x="520" y="372" text-anchor="middle">DEPS</text>
+
+      <!-- coluna A -->
+      <rect class="box" x="44" y="58" width="412" height="48" rx="10"/>
+      <text class="s" x="250" y="88" text-anchor="middle">localhost:8711 → porta publicada do container</text>
+      <path class="e" d="M250 106 L250 120" marker-end="url(#a3)"/>
+      <rect class="box-a" x="44" y="124" width="412" height="48" rx="10"/>
+      <text class="s" x="250" y="154" text-anchor="middle">container gateway · nginx:alpine</text>
+      <path class="e" d="M250 172 L250 186" marker-end="url(#a3)"/>
+      <rect class="box-k" x="44" y="190" width="412" height="64" rx="10"/>
+      <text class="t" x="250" y="218" text-anchor="middle">1 container mhl</text>
+      <text class="s" x="250" y="240" text-anchor="middle">state-dir em volume · MAX_CONCURRENT_RUNS 5</text>
+      <path class="e" d="M250 254 L250 268" marker-end="url(#a3)"/>
+      <rect class="box" x="44" y="274" width="412" height="48" rx="10"/>
+      <text class="s" x="250" y="304" text-anchor="middle">bind mount read-only de regulate-claim.mh</text>
+      <path class="e" d="M250 322 L250 336" marker-end="url(#a3)"/>
+      <rect class="box-p" x="44" y="342" width="412" height="52" rx="10"/>
+      <text class="s" x="250" y="366" text-anchor="middle">rede lab: postgres · wiremock · keycloak · floci</text>
+      <text class="s" x="250" y="384" text-anchor="middle">resolução por nome de serviço</text>
+
+      <!-- coluna B -->
+      <rect class="box" x="584" y="58" width="412" height="48" rx="10"/>
+      <text class="s" x="790" y="88" text-anchor="middle">localhost:8711 → Service mhl-gateway</text>
+      <path class="e" d="M790 106 L790 120" marker-end="url(#a3)"/>
+      <rect class="box-a" x="584" y="124" width="412" height="48" rx="10"/>
+      <text class="s" x="790" y="154" text-anchor="middle">Deployment gateway · mesma nginx.conf via ConfigMap</text>
+      <path class="e" d="M790 172 L790 186" marker-end="url(#a3)"/>
+      <rect class="box-k" x="584" y="188" width="200" height="46" rx="10"/>
+      <text class="t" x="684" y="208" text-anchor="middle">Pod A</text>
+      <text class="s" x="684" y="224" text-anchor="middle">mhl-runtime</text>
+      <rect class="box-k" x="796" y="188" width="200" height="46" rx="10"/>
+      <text class="t" x="896" y="208" text-anchor="middle">Pod B</text>
+      <text class="s" x="896" y="224" text-anchor="middle">mhl-runtime</text>
+      <text class="s" x="790" y="250" text-anchor="middle">replicas 2 · HPA 2→4 @ 70% CPU · PDB minAvailable 1</text>
+      <path class="e" d="M790 256 L790 268" marker-end="url(#a3)"/>
+      <rect class="box-a" x="584" y="274" width="412" height="48" rx="10"/>
+      <text class="s" x="790" y="304" text-anchor="middle">ConfigMap mhl-workflows · hash gerado pelo Kustomize</text>
+      <path class="e" d="M790 322 L790 336" marker-end="url(#a3)"/>
+      <rect class="box-p" x="584" y="342" width="412" height="52" rx="10"/>
+      <text class="s" x="790" y="366" text-anchor="middle">host.docker.internal:5432 · :8090 · :8080</text>
+      <text class="s" x="790" y="384" text-anchor="middle">as mesmas dependências do Compose</text>
+    </svg>
+    </div>
+    <figcaption>Figura 3 — Mesma espinha nos dois modos. As diferenças estão em três linhas: <strong>runtime</strong> (uma instância × duas réplicas com HPA e PDB), <strong>workflow</strong> (bind mount × ConfigMap versionado por hash) e <strong>deps</strong> (rede interna × host.docker.internal).</figcaption>
+  </figure>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Aspecto</th><th>Docker Compose</th><th>Kubernetes (Docker Desktop)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Entrada</strong></td><td>Porta publicada do gateway em <code>8711</code></td><td><code>Service mhl-gateway</code> na mesma porta</td></tr>
+      <tr><td><strong>Runtime</strong></td><td>1 container do serviço <code>mhl</code></td><td><code>replicas: 2</code> · HPA 2–4 @ 70% CPU · PDB <code>minAvailable: 1</code></td></tr>
+      <tr><td><strong>Workflow</strong></td><td>Bind mount de <code>workflows/regulate-claim.mh</code></td><td>ConfigMap gerado pelo Kustomize a partir do mesmo arquivo</td></tr>
+      <tr><td><strong>Dependências</strong></td><td>Rede <code>lab</code>, resolução por nome de serviço</td><td><code>host.docker.internal</code> apontando para o Compose já em pé</td></tr>
+      <tr><td><strong>Estado</strong></td><td>Volume <code>mhl_state</code> + PostgreSQL</td><td>PVC de scratch + o mesmo PostgreSQL</td></tr>
+      <tr><td><strong>Saúde</strong></td><td><code>healthcheck</code> do Compose</td><td><code>readinessProbe /readyz</code> · <code>livenessProbe /healthz</code> · drain 20s</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout"><strong>Fonte única:</strong> <code>src/workflows/regulate-claim.mh</code> alimenta os dois modos. No Compose ele é montado; no Kubernetes o Kustomize gera o ConfigMap com hash de conteúdo, então editar o arquivo produz um novo ConfigMap e dispara rollout — sem edição manual de YAML.</div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="artefatos">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Artefatos do repositório</h2></div>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Caminho</th><th>O que é</th></tr></thead>
+    <tbody>
+      <tr><td><code>src/workflows/regulate-claim.mh</code></td><td>Workflow declarativo: passos, rota, <code>pause()</code> e registro do pagamento.</td></tr>
+      <tr><td><code>src/docker/docker-compose.yml</code></td><td>Laboratório completo em perfis: base, <code>runtime</code> e <code>observability</code>.</td></tr>
+      <tr><td><code>src/docker/gateway/nginx.conf.template</code></td><td><code>auth_request</code>, troca de credencial e injeção do principal.</td></tr>
+      <tr><td><code>src/docker/authorizer/authorizer.py</code></td><td>Validação OIDC com JWKS em cache e derivação do principal.</td></tr>
+      <tr><td><code>src/docker/admissor/admissor.py</code> · <code>schema.sql</code></td><td>Fila de admissão durável, taxa-limitação e reconciliador; DDL de <code>admission_queue</code>.</td></tr>
+      <tr><td><code>src/docker/keycloak/realm.json</code></td><td>Realm, cliente e usuários sintéticos do laboratório.</td></tr>
+      <tr><td><code>src/docker/mocks/mappings/</code></td><td>Respostas WireMock de apólice, documentos, antifraude e pagamento.</td></tr>
+      <tr><td><code>src/k8s/</code> · <code>src/kustomization.yaml</code></td><td>Deployments, Service, HPA, PDB, PVC e o ConfigMap gerado do workflow.</td></tr>
+      <tr><td><code>src/RUNBOOK.md</code></td><td>Roteiro de execução dos dois modos, passo a passo.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="limites">
+  <div class="sec-head"><span class="sec-num">06</span><h2>Limites da simulação</h2></div>
+  <p class="sec-intro">O laboratório é fiel no formato das decisões, não na infraestrutura que as sustentaria em produção.</p>
+  <div class="callout risk"><strong>O que não está representado:</strong> EKS multi-AZ, IAM/IRSA, KMS, VPC, ALB, alta disponibilidade regional e requisitos de compliance. Keycloak, authorizer, NGINX, WireMock, Floci e PostgreSQL existem para tornar o treinamento executável em um notebook. A autorização de quem pode aprovar um sinistro também está simplificada: em produção ela pertence ao gateway ou ao mesh, não ao workflow.</div>
+  <div class="callout risk"><strong>O HPA é decorativo no Docker Desktop:</strong> sem <code>metrics-server</code>, <code>kubectl top pod</code> responde "Metrics API not available" e o HPA fica em <code>cpu: &lt;unknown&gt;/70%</code> — nunca escalou em nenhuma rodada de carga. As <code>replicas: 2</code> são fixas na prática; o objeto HPA está no manifesto para mostrar a forma, não para exercê-la. O rate-limit real da vazão é o <code>ADMIT_RATE</code> de uma única réplica do admissor (token bucket em memória — daí <code>replicas: 1</code> e <code>strategy: Recreate</code>).</div>
+</section>
+
+<footer>
+  <span>MHL Insurance Lab · arquitetura de referência</span>
+  <span>Documento standalone · Docker Compose + Kubernetes</span>
+</footer>
+</main>
+</body>
+</html>

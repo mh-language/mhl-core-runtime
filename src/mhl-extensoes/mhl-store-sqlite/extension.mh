@@ -1,0 +1,38 @@
+/**
+Key/value backend for durable state (sessions + run checkpoints + owners),
+stored one row per key in a local SQLite file
+`(key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMP)`. `put` is an
+atomic INSERT ... ON CONFLICT DO UPDATE. Pure Go (modernc.org/sqlite) — no
+CGO, no server. Single-host: the file is local, so state is not shared
+between machines (use mhl-store-postgres or mhl-store-redis for that).
+**/
+extensible store {
+    manifest: {
+        id: "dev.mhl.store-sqlite",
+        version: "0.1.0",
+        api_version: "1",
+        executable: "bin/mhl-store-sqlite",
+        permissions: {
+            network: [],
+            secrets: []
+        }
+    }
+
+    properties: {
+        path: string /// Path of the SQLite database file (created on first use, along with any parent directories). Required. env(...) is resolved host-side by the runtime.
+        table: string /// Target table. Default "mhl_store". Identifier characters only.
+        prefix: string /// Optional key namespace within the table (stored/stripped transparently). Default "" — the table already isolates state.
+        busy_timeout_ms: number /// How long a writer waits on a locked database before SQLITE_BUSY. Default 5000.
+        journal_mode: string /// SQLite journal mode: WAL (default) | DELETE | TRUNCATE | PERSIST | MEMORY | OFF.
+        auto_migrate: bool /// Run CREATE TABLE IF NOT EXISTS on first use. Default true. Set false when the schema is managed externally.
+        log: string /// Optional path to append a JSON-lines wire trace (one line per handled message) for debugging.
+    }
+
+    get(key: string) -> any /// The value at key, or null when no row.
+    put(key: string, value: any) -> void /// Upsert value at key (INSERT ... ON CONFLICT DO UPDATE).
+    delete(key: string) -> void /// Delete the row. An absent key is not an error.
+    list(prefix: string) -> string[] /// Every key with the given prefix (key LIKE prefix || '%', ordered).
+
+    put_if_absent(key: string, value: any) -> bool /// Insert value at key only when no row exists (INSERT ... ON CONFLICT DO NOTHING). Returns whether the row was created. Part of the "cas" capability the mhl serve layer uses for cross-replica run locking.
+    compare_and_swap(key: string, expected: any, value: any) -> bool /// Replace value at key with `value` only when the current value equals `expected` (compared as canonical JSON text). Returns whether the swap happened. `expected` is typically the exact result of a prior `get`. Part of the "cas" capability.
+}

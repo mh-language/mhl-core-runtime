@@ -14,7 +14,7 @@
 # convention) and vendors only that one; the lock pins its sha256:
 #   mhl extension install <asset-url>/<name>.tar.gz#sha256=<hex from SHA256SUMS>
 
-EXTENSIONS := mhl-blob-s3 mhl-cache-redis mhl-store-postgres mhl-store-redis
+EXTENSIONS := mhl-blob-s3 mhl-cache-redis mhl-store-postgres mhl-store-redis mhl-store-sqlite
 DIST       := dist
 
 .PHONY: dist release test clean $(EXTENSIONS)

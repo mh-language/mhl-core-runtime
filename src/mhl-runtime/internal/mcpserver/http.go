@@ -132,7 +132,7 @@ func (h *httpServer) workingRuns() int {
 	n := 0
 	for _, rn := range h.runs.List() {
 		rn.mu.Lock()
-		working := rn.state == "working"
+		working := rn.state == RunStateWorking
 		rn.mu.Unlock()
 		if working {
 			n++
@@ -202,6 +202,12 @@ type httpServer struct {
 	// store is an extension store that advertised the "cas" capability. nil ⇒
 	// no cross-replica locking (the operator must keep to one writer).
 	lock *runLock
+
+	// claimKV is the same cas-capable store as lock.kv, held for durable
+	// intake: run/start persists an intake record through it and a claim loop
+	// (Etapa 1) takes pending runs from it. nil ⇒ no durable intake, run/start
+	// keeps the in-memory registry path.
+	claimKV LockingKVStore
 
 	// State seams — see store.go. Each has one implementation today (a
 	// process-local map, or the on-disk .mhl/state tree); Phase 3 swaps in
@@ -284,6 +290,7 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 	// fleet must be kept to a single writer.
 	if lk, ok := cfg.Store.(LockingKVStore); ok && lk.CASCapable() {
 		h.lock = &runLock{kv: lk, replicaID: h.replicaID, now: time.Now}
+		h.claimKV = lk
 		h.srv.logEvent(slog.LevelInfo, "cross-replica run locking enabled", "replicaId", h.replicaID)
 	} else if cfg.Store != nil {
 		if !cfg.SingleReplica {
