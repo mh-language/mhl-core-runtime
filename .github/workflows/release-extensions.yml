@@ -1,0 +1,91 @@
+name: Release official extensions
+
+on:
+  push:
+    tags: ["extensions-v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish, e.g. extensions-v0.1.0"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-extensions-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate and resolve existing tag
+        id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python3 src/mhl-extensions/scripts/package_release.py check-tag "$RELEASE_TAG"
+          commit=$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: resolve
+    uses: ./.github/workflows/extensions.yml
+    with:
+      ref: ${{ needs.resolve.outputs.commit }}
+      tag: ${{ needs.resolve.outputs.tag }}
+
+  publish:
+    needs: [resolve, validate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: official-extensions
+          path: src/mhl-extensions/dist/release/
+      - name: Verify downloaded assets
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: python3 src/mhl-extensions/scripts/package_release.py verify --tag "$RELEASE_TAG"
+      - name: Publish new release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: |
+          # Ensure the remote tag still identifies the commit we tested.
+          git fetch origin "refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$RELEASE_COMMIT"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Release already exists; publish a new tag instead of replacing assets."
+            exit 1
+          fi
+          args=(--verify-tag --latest=false --title "Official extensions $RELEASE_TAG")
+          version="${RELEASE_TAG#extensions-v}"
+          if [[ "${version%%+*}" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          python3 src/mhl-extensions/scripts/package_release.py notes > "$RUNNER_TEMP/extensions-notes.md"
+          gh release create "$RELEASE_TAG" "${args[@]}" \
+            --notes-file "$RUNNER_TEMP/extensions-notes.md" \
+            src/mhl-extensions/dist/release/*.tar.gz \
+            src/mhl-extensions/dist/release/SHA256SUMS \
+            src/mhl-extensions/dist/release/release.json
