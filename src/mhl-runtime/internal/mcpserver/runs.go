@@ -1029,7 +1029,27 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 	return v
 }
 
-// sweepRuns is opportunistic registry housekeeping, called on `initialize`.
+// housekeepLoop sweeps idle sessions and terminal run-status records on a
+// timer, independently of `initialize` — a client that keeps one session alive
+// and never re-initialises would otherwise let both accumulate (sessions in the
+// gauge, terminal status rows in a shared store). Started by buildHTTP; stops
+// with runsCtx.
+func (h *httpServer) housekeepLoop(ctx context.Context) {
+	t := time.NewTicker(housekeepInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			h.sessions.SweepIdle(sessionTTL)
+			h.sweepRuns()
+		}
+	}
+}
+
+// sweepRuns is opportunistic registry housekeeping, called on `initialize` and
+// on housekeepLoop's timer.
 // A completed run older than sessionTTL is dropped and its (already-cleared)
 // state dir removed. A stopped run with no checkpoint on disk can never be
 // resumed and is dropped too. A *resumable* run (failed/canceled with a
@@ -1038,10 +1058,11 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 // once its TTL passes.
 //
 // When the store is shared between replicas it also retires terminal-run
-// status records the shared store keeps: execRun no longer deletes a completed
-// run's record on the spot (that made the same runId resolve on the replica
-// that ran it and 404 everywhere else), so this is what bounds the store's
-// growth — same sessionTTL window the in-memory registry uses.
+// records the shared store keeps: execRun no longer deletes a completed run's
+// record on the spot (that made the same runId resolve on the replica that ran
+// it and 404 everywhere else), so this walk is what bounds the store's growth.
+// It runs on the shorter terminalRunTTL, not sessionTTL — a shared store's size,
+// and every reconcile / sweep scan's cost, tracks how long dead run rows linger.
 func (h *httpServer) sweepRuns() {
 	cut := time.Now().Add(-sessionTTL)
 	for _, rn := range h.runs.List() {
@@ -1072,17 +1093,18 @@ func (h *httpServer) sweepRuns() {
 	if err != nil {
 		return
 	}
+	termCut := time.Now().Add(-terminalRunTTL)
 	for id, rec := range statuses {
 		if !rec.State.IsTerminal() {
 			continue // pending / claimed / queued / working / paused — still live
 		}
-		if rec.UpdatedAt.IsZero() || !rec.UpdatedAt.Before(cut) {
+		if rec.UpdatedAt.IsZero() || !rec.UpdatedAt.Before(termCut) {
 			continue // inside the retention window (or undatable)
 		}
 		if h.cps.Exists(id) {
 			continue // a resumable checkpoint is still there — leave it for run/resume
 		}
-		_ = h.cps.Remove(id)
+		_ = h.cps.Remove(id) // deletes the whole run/<id>/ subtree
 	}
 }
 

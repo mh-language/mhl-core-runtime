@@ -238,6 +238,24 @@ func TestRunLockStaleHandleCannotReleaseLaterAcquisition(t *testing.T) {
 	}
 }
 
+// setRunLockTiming re-derives every lease timing from one TTL, with a floor.
+func TestSetRunLockTiming(t *testing.T) {
+	ttl0, hb0, rb0, rsa0 := runLockTTL, runLockHeartbeat, renewBudget, reconcileStaleAfter
+	t.Cleanup(func() {
+		runLockTTL, runLockHeartbeat, renewBudget, reconcileStaleAfter = ttl0, hb0, rb0, rsa0
+	})
+
+	setRunLockTiming(90 * time.Second)
+	if runLockTTL != 90*time.Second || runLockHeartbeat != 30*time.Second ||
+		renewBudget != 15*time.Second || reconcileStaleAfter != 150*time.Second {
+		t.Fatalf("90s: ttl=%v hb=%v rb=%v rsa=%v", runLockTTL, runLockHeartbeat, renewBudget, reconcileStaleAfter)
+	}
+	setRunLockTiming(time.Second) // below the floor
+	if runLockTTL != 10*time.Second {
+		t.Fatalf("floor: ttl=%v, want 10s", runLockTTL)
+	}
+}
+
 // ownsLease is the checkpoint-write fence: true only for the exact live
 // acquisition, false after takeover or expiry.
 func TestRunLockOwnsLease(t *testing.T) {

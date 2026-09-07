@@ -56,13 +56,30 @@ type leaseHandle struct {
 
 func (h leaseHandle) held() bool { return h.token != "" }
 
-const (
-	runLockTTL       = 30 * time.Second
-	runLockHeartbeat = runLockTTL / 3
+// Run-lock timing. These are var, not const: a deployment on a CPU-contended
+// host widens them via HTTPConfig.RunLockTTL (setRunLockTiming, applied in
+// buildHTTP) so a slow renew on a starved node does not read as a dead replica
+// to another replica's reconcile. Defaults chosen more generously than the
+// original 30s after load testing showed reconcile churn under saturation.
+var (
+	runLockTTL       = 45 * time.Second
+	runLockHeartbeat = 15 * time.Second // ~ runLockTTL/3
 	// renewBudget bounds one renew call so a wedged store cannot stall the
 	// heartbeat loop past the point a takeover could begin elsewhere.
-	renewBudget = 5 * time.Second
+	renewBudget = 8 * time.Second
 )
+
+// setRunLockTiming re-derives all lease timing from a single TTL. Called once
+// at server construction; not safe to call while runs are executing.
+func setRunLockTiming(ttl time.Duration) {
+	if ttl < 10*time.Second {
+		ttl = 10 * time.Second
+	}
+	runLockTTL = ttl
+	runLockHeartbeat = ttl / 3
+	renewBudget = ttl / 6
+	reconcileStaleAfter = ttl + 60*time.Second
+}
 
 func runLockKey(runID string) string { return kvRunPrefix + runID + "/lock" }
 

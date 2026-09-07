@@ -44,4 +44,7 @@ extensible store {
 
     put_fenced(key: string, value: any, lock_key: string, holder: string, token: string) -> bool /// Upsert value at key in one atomic statement, only while the lease row at lock_key still has value->>'holder' = holder AND value->>'token' = token AND is unexpired. Returns whether the lease was still ours (the write landed). Part of the "fence" capability — mhl serve fences checkpoint writes so a replica taken over after a stall cannot corrupt the successor's state.
     delete_fenced(key: string, lock_key: string, holder: string, token: string) -> bool /// Delete key under the same lease condition as put_fenced. Returns whether the lease was still ours (an absent key with the lease held is still a success). Part of the "fence" capability.
+
+    list_statuses(prefix: string) -> any /// Every `run/<id>/status` row under `prefix` as an array of {key, value}, in one query — the mhl serve durable-intake reconcile and sweep loops use this instead of `list` + a `get` per run. Part of the "scan" capability.
+    count_pending(prefix: string) -> number /// How many `run/<id>/status` rows under `prefix` have value->>'state' = "pending" — the fleet-wide durable-intake queue depth, served by the pending partial index. Part of the "scan" capability.
 }

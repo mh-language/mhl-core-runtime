@@ -10,14 +10,18 @@ Drop-in replacement for [`store-fs`](../../../tests/extensions/store-fs/) and
 / `put` / `delete` / `list` over newline-delimited JSON-RPC on stdin/stdout).
 `put` is an atomic `INSERT ... ON CONFLICT (key) DO UPDATE`, so a
 `mhl serve mcp --http` checkpoint write can never leave a half-written row —
-the property `store-fs` and `mhl-store-s3` can't offer. It also implements the
-**`cas` capability** (`put_if_absent` / `compare_and_swap`), which lets
-`mhl serve mcp --http` coordinate `run/*` execution across replicas.
+the property `store-fs` and `mhl-store-s3` can't offer. It also implements the **`cas`** (`put_if_absent` / `compare_and_swap`),
+**`claim`** (`claim_next` — `SELECT … FOR UPDATE SKIP LOCKED`), **`fence`**
+(`put_fenced` / `delete_fenced` — a checkpoint write atomic on the lease) and
+**`scan`** (`list_statuses` / `count_pending` — the durable-intake hot loops in
+one indexed query instead of a per-run scan) capabilities, so
+`mhl serve mcp --http` coordinates `run/*` execution, durable intake and fenced
+state across replicas with PostgreSQL as the only coordinator.
 
 The whole extension is one [`extension.mh`](extension.mh): a `manifest` block
 (`id: "dev.mhl.store-postgres"`, `api_version: "1"`, `executable`,
 `permissions` — `network: ["*"]`, `secrets: []`), the `properties` schema, and
-the six method declarations below.
+the method declarations below.
 
 ## Methods
 
@@ -29,8 +33,13 @@ the six method declarations below.
 | `list(prefix) -> [string]` | every key with that prefix (`key LIKE prefix \|\| '%'`, ordered, index-backed) |
 | `put_if_absent(key, value) -> bool` | insert only when no row exists (`INSERT ... ON CONFLICT DO NOTHING`); returns whether the row was created — **`cas`** |
 | `compare_and_swap(key, expected, value) -> bool` | replace `value` only when the current value equals `expected` under jsonb equality; returns whether it swapped — **`cas`** |
+| `claim_next(prefix, holder) -> any` | atomically move the oldest `run/<id>/status` under `prefix` whose `state` is `"pending"` to `"claimed"` for `holder` (`SELECT … FOR UPDATE SKIP LOCKED`); `{key, value}` or `null` — **`claim`** |
+| `put_fenced(key, value, lock_key, holder, token) -> bool` | upsert only while the lease row at `lock_key` still names `holder`+`token` and is unexpired, in one statement; returns whether the lease was ours — **`fence`** |
+| `delete_fenced(key, lock_key, holder, token) -> bool` | delete under the same lease condition as `put_fenced` — **`fence`** |
+| `list_statuses(prefix) -> any` | every `run/<id>/status` row under `prefix` as `[{key, value}]`, one query — the reconcile / sweep loops use this instead of `list` + a `get` per run — **`scan`** |
+| `count_pending(prefix) -> number` | how many `run/<id>/status` rows under `prefix` have `state = "pending"`, served by the pending partial index — the `mhl_serve_runs_pending` gauge — **`scan`** |
 
-The handshake advertises `"capabilities": ["cas"]`. A `store` extension without
+The handshake advertises `"capabilities": ["cas", "claim", "fence", "scan"]`. A `store` extension without
 it disables cross-replica run locking in `mhl serve` (single-writer only).
 
 `store` is the KV kind `mhl serve mcp --http` routes durable state to, so you
@@ -153,10 +162,17 @@ CREATE TABLE IF NOT EXISTS mhl_store (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS mhl_store_key_pattern_idx ON mhl_store (key text_pattern_ops);
+CREATE INDEX IF NOT EXISTS mhl_store_pending_idx
+    ON mhl_store ((value->>'startedAt')) WHERE value->>'state' = 'pending';
 ```
 
 The `text_pattern_ops` index makes `list(prefix)` (`key LIKE prefix || '%'`)
-indexable regardless of the database collation.
+indexable regardless of the database collation. The partial `_pending_idx`
+keeps `claim_next` and `count_pending` O(queue depth) as the shared table
+grows — its predicate is exactly the durable-intake `state = 'pending'` filter.
+The whole migration runs inside one transaction holding
+`pg_advisory_xact_lock`, so replicas booting against a cold database serialise
+here instead of colliding on the catalog (`23505` is then treated as success).
 
 ## Semantics & limits
 
@@ -173,6 +189,12 @@ indexable regardless of the database collation.
   lives in the JSON value and is enforced by the runtime; and there is **no
   fencing token yet** (a resurrected holder that lost the lock could still
   write a checkpoint — a later `store` addition).
+- **`scan`** — `list_statuses(prefix)` is one
+  `SELECT key, value ... WHERE key LIKE $1 AND key LIKE '%/status'`, so the
+  `mhl serve` reconcile and sweep loops fetch every run status in a single
+  round-trip rather than a `list` followed by a `get` per run (the round-trip
+  storm, not the scan, was the load-test cost). `count_pending(prefix)` is a
+  `COUNT` the planner serves straight from `_pending_idx`. Both are pure reads.
 - One long-lived pool is shared by every declaration of kind `store`; config is
   pinned from the first call. `mhl serve` refuses more than one `extension store`
   declaration in a workflow directory.

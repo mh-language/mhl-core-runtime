@@ -74,6 +74,28 @@ func runServeMCP(args []string, out io.Writer) error {
 		}
 		maxRuns = n
 	}
+	var runLockTTL, sessionTTL, terminalRunTTL time.Duration
+	if v := os.Getenv("MHL_SERVE_RUN_LOCK_TTL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("MHL_SERVE_RUN_LOCK_TTL %q: %w", v, err)
+		}
+		runLockTTL = d
+	}
+	if v := os.Getenv("MHL_SERVE_SESSION_TTL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("MHL_SERVE_SESSION_TTL %q: %w", v, err)
+		}
+		sessionTTL = d
+	}
+	if v := os.Getenv("MHL_SERVE_TERMINAL_RUN_TTL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("MHL_SERVE_TERMINAL_RUN_TTL %q: %w", v, err)
+		}
+		terminalRunTTL = d
+	}
 	var err error
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -171,6 +193,9 @@ func runServeMCP(args []string, out io.Writer) error {
 			DrainTimeout:      drainTimeout,
 			MaxConcurrentRuns: maxRuns,
 			SingleReplica:     singleRepl,
+			RunLockTTL:        runLockTTL,
+			SessionTTL:        sessionTTL,
+			TerminalRunTTL:    terminalRunTTL,
 		}, os.Stderr)
 	}
 	return mcpserver.Serve(ctx, dir, os.Stdin, os.Stdout, os.Stderr)

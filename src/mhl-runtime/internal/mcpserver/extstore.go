@@ -60,6 +60,20 @@ const (
 	kvRunPrefix     = "run/"
 )
 
+// statusScanner is an optional KVStore fast path for the durable-intake hot
+// loops: fetch every run/<id>/status record in one round-trip, and count the
+// pending ones through a store-side index. An extension store advertising the
+// "scan" capability implements it (see internal/cli/storext.go); without it the
+// extCheckpointStore falls back to a list + a get per run.
+type statusScanner interface {
+	// ListStatusRecs returns every run/<id>/status record keyed by runID.
+	// supported is false when the backing store has no native scan.
+	ListStatusRecs(ctx context.Context) (recs map[string]RunStatusRec, supported bool, err error)
+	// CountPendingRuns returns how many status records are in the pending
+	// state. supported is false when the store cannot count without a scan.
+	CountPendingRuns(ctx context.Context) (n int, supported bool, err error)
+}
+
 func runKey(runID, suffix string) string { return kvRunPrefix + runID + "/" + suffix }
 
 // --- sessions ---------------------------------------------------------------
@@ -221,6 +235,13 @@ func (c *extCheckpointStore) ReadStatus(runID string) (RunStatusRec, bool) {
 }
 
 func (c *extCheckpointStore) ListStatuses() (map[string]RunStatusRec, error) {
+	// Fast path: an extension with the "scan" capability returns every status
+	// record in one query, sparing the reconcile / sweep loops a get per run.
+	if sc, ok := c.kv.(statusScanner); ok {
+		if recs, supported, err := sc.ListStatusRecs(context.Background()); supported {
+			return recs, err
+		}
+	}
 	keys, err := c.kv.List(context.Background(), kvRunPrefix)
 	if err != nil {
 		return nil, err
@@ -237,6 +258,17 @@ func (c *extCheckpointStore) ListStatuses() (map[string]RunStatusRec, error) {
 		}
 	}
 	return out, nil
+}
+
+// CountPending uses the extension's "scan" fast path (a COUNT served by the
+// pending partial index) when available; ok=false otherwise, so the caller
+// counts from ListStatuses.
+func (c *extCheckpointStore) CountPending() (int, bool, error) {
+	sc, ok := c.kv.(statusScanner)
+	if !ok {
+		return 0, false, nil
+	}
+	return sc.CountPendingRuns(context.Background())
 }
 
 func (c *extCheckpointStore) RequestCancel(runID string) error {

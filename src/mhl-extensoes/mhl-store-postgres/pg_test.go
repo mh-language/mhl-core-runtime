@@ -233,4 +233,38 @@ func TestRoundTripAgainstRealPostgres(t *testing.T) {
 		t.Fatalf("B delete_fenced on an absent key (lease held) must still be ok: %v %v", d, err)
 	}
 	_ = s.del(ctx, lk)
+
+	// --- scan capability (list_statuses / count_pending) --------------
+	_ = s.put(ctx, "run/s-a/status", []byte(`{"tool":"P","state":"pending","startedAt":"2026-09-06T10:00:00Z"}`))
+	_ = s.put(ctx, "run/s-b/status", []byte(`{"tool":"P","state":"working","startedAt":"2026-09-06T10:01:00Z"}`))
+	_ = s.put(ctx, "run/s-c/status", []byte(`{"tool":"P","state":"pending","startedAt":"2026-09-06T10:02:00Z"}`))
+	_ = s.put(ctx, "run/s-a/owner", []byte(`"owner-hash"`))
+	_ = s.put(ctx, "run/s-a/checkpoint/P", []byte(`{"pipeline":"P"}`))
+
+	recs, err := s.listStatuses(ctx, "run/")
+	if err != nil {
+		t.Fatalf("list_statuses: %v", err)
+	}
+	if len(recs) != 3 || recs["run/s-a/status"] == nil || recs["run/s-b/status"] == nil {
+		t.Fatalf("list_statuses returned %d rows: %v", len(recs), keysOf(recs))
+	}
+	if _, leaked := recs["run/s-a/owner"]; leaked {
+		t.Fatal("list_statuses leaked a non-status row")
+	}
+
+	n, err := s.countPending(ctx, "run/")
+	if err != nil || n != 2 {
+		t.Fatalf("count_pending = %d, err=%v (want 2)", n, err)
+	}
+	for _, k := range []string{"run/s-a/status", "run/s-b/status", "run/s-c/status", "run/s-a/owner", "run/s-a/checkpoint/P"} {
+		_ = s.del(ctx, k)
+	}
+}
+
+func keysOf(m map[string][]byte) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

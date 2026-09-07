@@ -14,11 +14,17 @@ import (
 // nudges it so an accepted run normally starts without waiting a full tick.
 const claimPollInterval = time.Second
 
+// reconcileInterval throttles reconcileRuns to well under the claim loop's 1s
+// tick: it scans the shared status set, and a dead worker is only actionable
+// after reconcileStaleAfter (~100s) has elapsed anyway, so checking every ~15s
+// costs a fraction of the scans with no meaningful loss of recovery latency.
+const reconcileInterval = 15 * time.Second
+
 // reconcileStaleAfter is how long a non-terminal run may go without a status
-// update before reconcile checks its lease. Two lock TTLs — a live run renews
-// its lease well inside this, so the lease peek (authoritative) still gates the
-// reclaim; this is only a cheap pre-filter to avoid peeking every run.
-const reconcileStaleAfter = 2 * runLockTTL
+// update before reconcile checks its lease. Comfortably past the lock TTL so a
+// live-but-slow replica whose renews (and OnStep publishes) are lagging under
+// load is not reclaimed. A var: setRunLockTiming re-derives it from the TTL.
+var reconcileStaleAfter = runLockTTL + 60*time.Second
 
 // nudgeClaim wakes the claim loop now (non-blocking; a pending nudge is enough).
 func (h *httpServer) nudgeClaim() {
@@ -37,6 +43,7 @@ func (h *httpServer) nudgeClaim() {
 func (h *httpServer) claimLoop(ctx context.Context) {
 	t := time.NewTicker(claimPollInterval)
 	defer t.Stop()
+	var lastReconcile time.Time
 	for {
 		tick := false
 		select {
@@ -46,8 +53,11 @@ func (h *httpServer) claimLoop(ctx context.Context) {
 			tick = true
 		case <-h.claimNudge:
 		}
-		if tick {
-			// Reconcile only on the safety tick, not on a run/start nudge.
+		// Reconcile only on the safety tick (not a run/start nudge) and only
+		// every reconcileInterval — its scan is far more expensive than a claim
+		// and recovery latency is bounded by reconcileStaleAfter regardless.
+		if tick && time.Since(lastReconcile) >= reconcileInterval {
+			lastReconcile = time.Now()
 			h.reconcileRuns(ctx)
 		}
 		h.drainClaims(ctx)

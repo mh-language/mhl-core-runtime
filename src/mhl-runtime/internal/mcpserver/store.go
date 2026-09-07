@@ -356,7 +356,16 @@ type CheckpointStore interface {
 	// keyed by runID. It lets sweepRuns retire the status of a terminal run
 	// this replica never held in memory, so the shared store does not keep
 	// completed runs forever. Empty (not an error) for a non-shared store.
+	// A shared store backed by an extension that advertises the "scan"
+	// capability serves this in one round-trip instead of a list + a get per
+	// run — the reconcile / sweep loops call it every tick.
 	ListStatuses() (map[string]RunStatusRec, error)
+	// CountPending returns the fleet-wide count of runs in the `pending`
+	// state for the /metrics gauge. ok is false when the store cannot count
+	// without a full ListStatuses scan (the disk store, or an extension
+	// without the "scan" capability) — the caller then falls back to
+	// ListStatuses. A store-side error is returned with ok true.
+	CountPending() (n int, ok bool, err error)
 	// RequestCancel marks runID for cancellation; the replica executing it
 	// observes CancelRequested (poll + step boundary) and stops its goroutine.
 	RequestCancel(runID string) error
@@ -531,6 +540,11 @@ func (d *diskCheckpointStore) ListStatuses() (map[string]RunStatusRec, error) {
 	}
 	return out, nil
 }
+
+// CountPending always reports ok=false: the disk store has no index, so the
+// caller counts from ListStatuses. (A non-shared disk store has no durable
+// intake anyway, so the gauge stays zero there.)
+func (d *diskCheckpointStore) CountPending() (int, bool, error) { return 0, false, nil }
 
 func (d *diskCheckpointStore) RequestCancel(runID string) error {
 	dir := d.stateDir(runID)

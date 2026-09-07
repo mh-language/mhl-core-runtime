@@ -126,7 +126,11 @@ func main() {
 				// "fence": atomic put_fenced / delete_fenced — a checkpoint write
 				// conditioned in one statement on the run's lease still being
 				// this holder's, closing the check-then-write TOCTOU window.
-				"capabilities": []string{"cas", "claim", "fence"},
+				// "scan": list_statuses (every run/<id>/status row in one query)
+				// and count_pending (a COUNT served by the pending partial index)
+				// — the mhl serve reconcile / sweep loops and the pending gauge
+				// use these instead of scanning the shared table per tick.
+				"capabilities": []string{"cas", "claim", "fence", "scan"},
 			}})
 		case "call":
 			// Pin the pool from the first call's props synchronously, in the
@@ -135,6 +139,18 @@ func main() {
 			var p callParams
 			_ = json.Unmarshal(msg.Params, &p)
 			s.config(p)
+
+			// A store that cannot initialise (bad config, unreachable DB, a
+			// migration that lost a race) is not something to serve errors from
+			// forever: answer this one call, then exit non-zero. The host then
+			// treats the store as unavailable and the orchestrator restarts us —
+			// e.g. against a database another replica has already migrated.
+			if s.cfgErr != nil {
+				send(rpc{ID: msg.ID, Error: &rpcErr{Message: s.cfgErr.Error()}})
+				fmt.Fprintf(os.Stderr, "mhl-store-postgres: init failed, exiting: %v\n", s.cfgErr)
+				s.shutdown("init-failed")
+				os.Exit(1)
+			}
 
 			wg.Add(1)
 			go func() {
@@ -289,6 +305,36 @@ func (s *store) handleCall(msg rpc) rpc {
 			res = fail(err.Error())
 		} else {
 			res = rpc{ID: msg.ID, Result: deleted}
+		}
+
+	case "list_statuses":
+		m, err := s.pg.listStatuses(ctx, prefix)
+		if err != nil {
+			res = fail(err.Error())
+			break
+		}
+		out := make([]any, 0, len(m))
+		bad := ""
+		for k, v := range m {
+			var val any
+			if uerr := json.Unmarshal(v, &val); uerr != nil {
+				bad = "corrupt value at " + k + ": " + uerr.Error()
+				break
+			}
+			out = append(out, map[string]any{"key": k, "value": val})
+		}
+		if bad != "" {
+			res = fail(bad)
+		} else {
+			res = rpc{ID: msg.ID, Result: out}
+		}
+
+	case "count_pending":
+		n, err := s.pg.countPending(ctx, prefix)
+		if err != nil {
+			res = fail(err.Error())
+		} else {
+			res = rpc{ID: msg.ID, Result: n}
 		}
 
 	default:

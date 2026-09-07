@@ -243,6 +243,77 @@ func TestExtCheckpointStoreListStatuses(t *testing.T) {
 	}
 }
 
+// scanKV is a fakeKV that also implements the optional statusScanner fast path,
+// counting how often it is used so a test can prove the adapter prefers it.
+type scanKV struct {
+	*fakeKV
+	listCalls, countCalls int
+}
+
+func (s *scanKV) statusRecs() map[string]RunStatusRec {
+	s.fakeKV.mu.Lock()
+	defer s.fakeKV.mu.Unlock()
+	out := map[string]RunStatusRec{}
+	for k, raw := range s.fakeKV.m {
+		id, ok := strings.CutSuffix(strings.TrimPrefix(k, "run/"), "/status")
+		if !ok || strings.Contains(id, "/") {
+			continue
+		}
+		var rec RunStatusRec
+		if json.Unmarshal(raw, &rec) == nil {
+			out[id] = rec
+		}
+	}
+	return out
+}
+
+func (s *scanKV) ListStatusRecs(context.Context) (map[string]RunStatusRec, bool, error) {
+	s.listCalls++
+	return s.statusRecs(), true, nil
+}
+
+func (s *scanKV) CountPendingRuns(context.Context) (int, bool, error) {
+	s.countCalls++
+	n := 0
+	for _, rec := range s.statusRecs() {
+		if rec.State == RunStatePending {
+			n++
+		}
+	}
+	return n, true, nil
+}
+
+// TestExtCheckpointStoreStatusScanFastPath: when the KV implements
+// statusScanner, ListStatuses and CountPending route through it (one
+// round-trip) instead of the list-plus-get fallback.
+func TestExtCheckpointStoreStatusScanFastPath(t *testing.T) {
+	kv := &scanKV{fakeKV: newFakeKV()}
+	cps, _ := newExtCheckpointStore(kv)
+	t.Cleanup(func() { _ = cps.Close() })
+
+	now := time.Now()
+	_ = cps.WriteStatus("r1", RunStatusRec{Tool: "A", State: RunStatePending, StartedAt: now, UpdatedAt: now})
+	_ = cps.WriteStatus("r2", RunStatusRec{Tool: "B", State: RunStateWorking, UpdatedAt: now})
+	_ = cps.WriteStatus("r3", RunStatusRec{Tool: "C", State: RunStatePending, StartedAt: now, UpdatedAt: now})
+	_ = cps.WriteOwner("r1", Owner("o"))
+
+	m, err := cps.ListStatuses()
+	if err != nil || len(m) != 3 {
+		t.Fatalf("ListStatuses = %+v, %v", m, err)
+	}
+	if kv.listCalls != 1 {
+		t.Fatalf("expected 1 scan call, got %d", kv.listCalls)
+	}
+
+	n, ok, err := cps.CountPending()
+	if err != nil || !ok || n != 2 {
+		t.Fatalf("CountPending = %d, ok=%v, err=%v (want 2, true, nil)", n, ok, err)
+	}
+	if kv.countCalls != 1 {
+		t.Fatalf("expected 1 count call, got %d", kv.countCalls)
+	}
+}
+
 // The extension store is Shared, and its status record / cancel flag
 // round-trip through the KV without tripping Exists/Load.
 func TestExtCheckpointStoreLiveStatusAndCancel(t *testing.T) {

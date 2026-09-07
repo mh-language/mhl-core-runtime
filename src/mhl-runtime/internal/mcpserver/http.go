@@ -18,9 +18,26 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 )
 
-// sessionTTL bounds how long an idle HTTP session stays resolvable; an
-// `initialize` sweeps anything older (mirrors a2aserver.taskTTL).
-const sessionTTL = time.Hour
+// sessionTTL bounds how long an idle HTTP session stays resolvable. A var, not
+// a const, so a deployment can shorten it (HTTPConfig.SessionTTL /
+// MHL_SERVE_SESSION_TTL) when many short-lived sessions would otherwise pile up
+// for the full hour. housekeepLoop and every `initialize` sweep anything older.
+var sessionTTL = time.Hour
+
+// terminalRunTTL bounds how long a *terminal* run's records (status, owner,
+// lock, result) linger in a shared store before sweepRuns deletes the whole
+// run/<id>/ subtree. Split from sessionTTL because a shared store's growth —
+// and every reconcile / sweep scan's cost — tracks this directly: at a few
+// runs per second an hour of retention is thousands of dead rows. Long enough
+// that a cross-replica poller still sees the final state; shorten it further
+// (HTTPConfig.TerminalRunTTL / MHL_SERVE_TERMINAL_RUN_TTL) for a load test.
+// The in-memory registry still uses sessionTTL.
+var terminalRunTTL = 10 * time.Minute
+
+// housekeepInterval is how often idle sessions and terminal run-status records
+// are swept independently of an `initialize` — a client that keeps one session
+// alive and never re-initialises would otherwise let them accumulate.
+const housekeepInterval = time.Minute
 
 // mcpPath is the single Streamable-HTTP endpoint.
 const mcpPath = "/mcp"
@@ -60,6 +77,20 @@ type HTTPConfig struct {
 	// rather than a silent uncoordinated mode where two replicas could drive
 	// the same run.
 	SingleReplica bool
+
+	// RunLockTTL widens the per-run execution lease (default 45s) and the
+	// values derived from it — heartbeat, renew budget, and how stale a
+	// non-terminal run may look before reconcile reclaims it. On a
+	// CPU-contended host a slow renew must not read as a dead replica. 0 keeps
+	// the default.
+	RunLockTTL time.Duration
+	// SessionTTL overrides the idle-session lifetime (default 1h). 0 keeps it.
+	SessionTTL time.Duration
+	// TerminalRunTTL overrides how long a terminal run's records stay in a
+	// shared store before sweepRuns deletes them (default 10m). Lower it on a
+	// high-throughput deployment — or a load test — where the shared table
+	// (and every reconcile / sweep scan) would otherwise bloat. 0 keeps it.
+	TerminalRunTTL time.Duration
 }
 
 // ServeHTTP loads every .mh file under cfg.Dir and serves the MCP endpoint on
@@ -232,6 +263,18 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 		return nil, nil, err
 	}
 
+	// Process-wide timing knobs. Set before anything reads runLockTTL /
+	// sessionTTL. buildHTTP is the single server per process.
+	if cfg.RunLockTTL > 0 {
+		setRunLockTiming(cfg.RunLockTTL)
+	}
+	if cfg.SessionTTL > 0 {
+		sessionTTL = cfg.SessionTTL
+	}
+	if cfg.TerminalRunTTL > 0 {
+		terminalRunTTL = cfg.TerminalRunTTL
+	}
+
 	// Durable state: an external store extension when configured, else the
 	// on-disk .mhl/state tree. The run registry stays in-memory either way.
 	var (
@@ -307,6 +350,11 @@ func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handle
 		h.srv.logEvent(slog.LevelWarn,
 			"cross-replica run locking disabled (--single-replica): this deployment must run exactly one writer")
 	}
+
+	// Periodic housekeeping (idle sessions + terminal run-status records),
+	// independent of `initialize`.
+	go h.housekeepLoop(runsCtx)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc(mcpPath, h.handleMCP)
 	// Per-method paths: POST /mcp/run/resume, /mcp/tools/call, … run the exact

@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -101,19 +102,57 @@ func newPGStore(ctx context.Context, cfg pgConfig) (*pgStore, error) {
 	return s, nil
 }
 
+// migrateAdvisoryKey serialises the first migration across replicas booting
+// against a cold database. `CREATE TABLE / CREATE INDEX IF NOT EXISTS` are not
+// atomic on the pg catalog, so two concurrent creators can collide with 23505
+// on pg_type_typname_nsp_index and one replica is left permanently broken. A
+// transaction-scoped advisory lock makes the second replica wait here instead.
+// Any fixed 64-bit value works; this one spells "mhlstore".
+const migrateAdvisoryKey int64 = 0x6d686c73746f7265
+
 func (s *pgStore) migrate(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store-postgres: migrate: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrateAdvisoryKey); err != nil {
+		return fmt.Errorf("store-postgres: migrate: advisory lock: %w", err)
+	}
+
 	// s.table passed validIdent, so interpolation here is safe.
-	create := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-		key        text PRIMARY KEY,
-		value      jsonb NOT NULL,
-		updated_at timestamptz NOT NULL DEFAULT now()
-	)`, s.table)
-	index := fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_key_pattern_idx ON %s (key text_pattern_ops)`,
-		unqualify(s.table), s.table)
-	for _, q := range []string{create, index} {
-		if _, err := s.pool.Exec(ctx, q); err != nil {
+	stmts := []string{
+		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+			key        text PRIMARY KEY,
+			value      jsonb NOT NULL,
+			updated_at timestamptz NOT NULL DEFAULT now()
+		)`, s.table),
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_key_pattern_idx ON %s (key text_pattern_ops)`,
+			unqualify(s.table), s.table),
+		// Partial index for the durable-intake claim loop: claim_next filters
+		// value->>'state' = 'pending' and orders by value->>'startedAt'. Without
+		// it, every poll Seq Scans the whole (shared) mhl_store table.
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_pending_idx ON %s ((value->>'startedAt')) WHERE value->>'state' = 'pending'`,
+			unqualify(s.table), s.table),
+	}
+	for _, q := range stmts {
+		if _, err := tx.Exec(ctx, q); err != nil {
+			// Belt & braces: a concurrent creator that slipped past the lock
+			// surfaces as unique_violation on the catalog — "already there",
+			// not a real failure.
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				continue
+			}
 			return fmt.Errorf("store-postgres: migrate: %w", err)
 		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store-postgres: migrate: commit: %w", err)
 	}
 	return nil
 }
@@ -304,6 +343,54 @@ func (s *pgStore) list(ctx context.Context, logicalPrefix string) ([]string, err
 		out = append(out, strings.TrimPrefix(k, s.prefix))
 	}
 	return out, rows.Err()
+}
+
+// listStatuses returns every run-status row under logicalPrefix
+// (`<prefix><id>/status`) as key → raw JSON in one query. `mhl serve`'s
+// durable-intake reconcile and sweep loops call this instead of a `list`
+// followed by a `get` per run — the round-trip storm, not the scan, was the
+// cost. The `key LIKE '%/status'` narrowing keeps owner / lock / checkpoint
+// rows out of the result. ("scan" capability.)
+func (s *pgStore) listStatuses(ctx context.Context, logicalPrefix string) (map[string][]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	pattern := likeEscape(s.prefix+logicalPrefix) + "%"
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(
+		`SELECT key, value FROM %s WHERE key LIKE $1 ESCAPE '\' AND key LIKE '%%/status'`, s.table), pattern)
+	if err != nil {
+		return nil, fmt.Errorf("store-postgres: list_statuses: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string][]byte{}
+	for rows.Next() {
+		var k string
+		var v []byte
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, fmt.Errorf("store-postgres: list_statuses: %w", err)
+		}
+		out[strings.TrimPrefix(k, s.prefix)] = v
+	}
+	return out, rows.Err()
+}
+
+// countPending returns how many run-status rows under logicalPrefix are in the
+// `pending` state — the fleet-wide durable-intake queue depth for the
+// `mhl_serve_runs_pending` gauge. Served by the `<table>_pending_idx` partial
+// index (its predicate is exactly `value->>'state' = 'pending'`), so it stays
+// O(queue depth) as the shared table grows. ("scan" capability.)
+func (s *pgStore) countPending(ctx context.Context, logicalPrefix string) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	pattern := likeEscape(s.prefix+logicalPrefix) + "%"
+	var n int
+	err := s.pool.QueryRow(ctx, fmt.Sprintf(
+		`SELECT count(*) FROM %s WHERE key LIKE $1 ESCAPE '\' AND key LIKE '%%/status' AND value->>'state' = 'pending'`,
+		s.table), pattern).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store-postgres: count_pending: %w", err)
+	}
+	return n, nil
 }
 
 func (s *pgStore) close() {
