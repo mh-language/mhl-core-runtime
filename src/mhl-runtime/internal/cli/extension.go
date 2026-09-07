@@ -239,24 +239,29 @@ func extensionInstall(args []string, out io.Writer) error {
 	}
 
 	dest := filepath.Join(".mhl", "extensions", m.ID)
-	if err := os.RemoveAll(dest); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
+	stage, err := os.MkdirTemp(filepath.Join(".mhl", "extensions"), "."+m.ID+"-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
 	if exeRel == m.Executable {
 		// Single-platform (or a dev dir): copy it all, as before.
-		if err := copyTree(src, dest); err != nil {
-			return fmt.Errorf("copying into %s: %w", dest, err)
+		if err := copyTree(src, stage); err != nil {
+			return fmt.Errorf("copying into %s: %w", stage, err)
 		}
 	} else {
 		// Multi-platform package (bin/<name>-<goos>-<goarch>): vendor only
 		// this host's binary plus the metadata the runtime reads.
-		if err := installHostBinary(src, dest, m, exeRel); err != nil {
-			return fmt.Errorf("installing into %s: %w", dest, err)
+		if err := installHostBinary(src, stage, m, exeRel); err != nil {
+			return fmt.Errorf("installing into %s: %w", stage, err)
 		}
 		fmt.Fprintf(out, "selected %s/%s binary: %s\n", runtime.GOOS, runtime.GOARCH, filepath.Base(exeRel))
 	}
 
-	destManifest, ok := external.FindManifestFile(dest)
+	destManifest, ok := external.FindManifestFile(stage)
 	if !ok {
 		return fmt.Errorf("no extension.json or extension.mh in %s after install", dest)
 	}
@@ -268,6 +273,10 @@ func extensionInstall(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	packageSum, err := external.HashPackage(stage)
+	if err != nil {
+		return err
+	}
 
 	lockPath := external.LockPath
 	lock, err := external.LoadLock(lockPath)
@@ -275,9 +284,28 @@ func extensionInstall(args []string, out io.Writer) error {
 		return err
 	}
 	lock.Extensions[m.ID] = external.LockEntry{
-		Version: m.Version, SHA256: sum, Source: srcRef, Commit: srcCommit,
+		Version: m.Version, SHA256: sum, PackageSHA256: packageSum, Source: srcRef, Commit: srcCommit,
+	}
+	lock.NormalizeVersion()
+	backup := dest + ".previous"
+	if err := os.RemoveAll(backup); err != nil {
+		return err
+	}
+	if _, err := os.Stat(dest); err == nil {
+		if err := os.Rename(dest, backup); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(stage, dest); err != nil {
+		_ = os.Rename(backup, dest)
+		return err
 	}
 	if err := lock.Save(lockPath); err != nil {
+		_ = os.RemoveAll(dest)
+		_ = os.Rename(backup, dest)
+		return err
+	}
+	if err := os.RemoveAll(backup); err != nil {
 		return err
 	}
 
@@ -317,6 +345,9 @@ func copyTree(src, dst string) error {
 		target := filepath.Join(dst, rel)
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing symlink %s", p)
 		}
 		info, err := d.Info()
 		if err != nil {
