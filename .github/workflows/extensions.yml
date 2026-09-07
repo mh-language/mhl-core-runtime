@@ -90,6 +90,18 @@ jobs:
           MHL_REDIS_TEST_ADDR=localhost:6380 make -C src/mhl-extensions/mhl-cache-redis test
           MHL_REDIS_TEST_ADDR=localhost:6381 make -C src/mhl-extensions/mhl-store-redis test
 
+      - name: Reset seeded databases before smoke
+        run: |
+          # The live-DB tests above run write paths against these shared
+          # containers; recreate the volumes so smoke sees a pristine
+          # initdb/seed.sql state, not test residue.
+          for ext in $(make -s -C src/mhl-extensions list); do
+            if test -f "src/mhl-extensions/$ext/docker-compose.yml"; then
+              docker compose -f "src/mhl-extensions/$ext/docker-compose.yml" down --volumes
+              make -C "src/mhl-extensions/$ext" up
+            fi
+          done
+
       - name: Install archives and exercise extensions through runtime
         timeout-minutes: 5
         run: make -C src/mhl-extensions smoke-release MHL="$GITHUB_WORKSPACE/src/mhl-runtime/dist/mhl"

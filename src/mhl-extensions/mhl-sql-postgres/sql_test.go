@@ -140,7 +140,17 @@ func TestLiveDQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rw.close()
+	// Everything below mutates the database that `make smoke` runs against
+	// later in the same CI job. Register teardown up front (and close the pool
+	// here, not via defer, so it outlives the test body) — a mid-test t.Fatalf
+	// must not leave a 'tmp' people row or a stray ddl_probe table behind, or
+	// smoke's "4 active" / seed assertions fail on residue.
+	t.Cleanup(func() {
+		bg := context.Background()
+		_, _ = rw.exec(bg, "DELETE FROM people WHERE org = 'tmp'", nil)
+		_, _ = rw.exec(bg, "DROP TABLE IF EXISTS ddl_probe", nil)
+		rw.close()
+	})
 	if aff, err := rw.exec(ctx, "INSERT INTO people(name, org) VALUES ('tmp','tmp')", nil); err != nil || aff != 1 {
 		t.Fatalf("exec insert: aff=%d err=%v", aff, err)
 	}
@@ -171,7 +181,7 @@ func TestLiveDQL(t *testing.T) {
 		"SELECT count(*) FROM information_schema.columns WHERE table_name='ddl_probe' AND column_name='note'", nil); col.(int64) != 0 {
 		t.Fatal("execScript did not roll back the ADD COLUMN")
 	}
-	if _, err := rw.exec(ctx, "DROP TABLE ddl_probe", nil); err != nil {
+	if _, err := rw.exec(ctx, "DROP TABLE IF EXISTS ddl_probe", nil); err != nil {
 		t.Fatal(err)
 	}
 }
