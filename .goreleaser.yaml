@@ -46,6 +46,10 @@ changelog:
 
 release:
   draft: false
+  # Tags with a prerelease suffix (vX.Y.Z-beta.N) must publish as GitHub
+  # prereleases, never as "Latest" — install.sh resolves the newest v* tag,
+  # and users of the stable channel must not be handed a beta.
+  prerelease: auto
   # Upload the pre-built .vsix as a release asset in the same GoReleaser pass
   # that writes checksums.txt (see checksum.extra_files above) — one atomic
   # step instead of the workflow's separate `gh release upload` afterward,
