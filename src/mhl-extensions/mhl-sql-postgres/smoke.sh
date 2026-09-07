@@ -5,6 +5,7 @@
 #   ./smoke.sh          # assumes `make build` + `make up` already ran
 #
 # Override the runtime with:  MHL=/path/to/mhl ./smoke.sh
+# EXTENSION_SOURCE can select a release archive URL (including #sha256=...).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +18,10 @@ if [[ -z "$MHL" ]]; then
   done
 fi
 [[ -x "$MHL" ]] || { echo "no mhl binary found — build it or set MHL=" >&2; exit 1; }
-[[ -x "$HERE/bin/mhl-sql-postgres" ]] || { echo "bin/mhl-sql-postgres missing — run: make build" >&2; exit 1; }
+if [[ -z "${EXTENSION_SOURCE:-}" ]]; then
+  [[ -x "$HERE/bin/mhl-sql-postgres" ]] || { echo "bin/mhl-sql-postgres missing — run: make build" >&2; exit 1; }
+fi
+EXTENSION_SOURCE="${EXTENSION_SOURCE:-$HERE}"
 
 export SQL_PG_DSN="${SQL_PG_DSN:-postgres://mhl:mhl-secret-pw@localhost:5434/demo?sslmode=disable}"
 
@@ -61,7 +65,7 @@ pipeline W {
 EOF
 
 echo "==> project: $PROJ"
-( cd "$PROJ" && "$MHL" extension install "$HERE" )
+( cd "$PROJ" && "$MHL" extension install "$EXTENSION_SOURCE" )
 ( cd "$PROJ" && "$MHL" extension doctor )
 
 diagnose() {
