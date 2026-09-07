@@ -100,7 +100,10 @@ jobs:
             if test -f "src/mhl-extensions/$ext/docker-compose.yml"; then
               compose="src/mhl-extensions/$ext/docker-compose.yml"
               docker compose -f "$compose" down --volumes
-              docker compose -f "$compose" up -d --wait
+              # Use each extension's target: mhl-blob-s3 has a successful
+              # one-shot createbucket service that `compose up --wait` treats
+              # as a failed project even when it exits with status 0.
+              make -C "src/mhl-extensions/$ext" up
             fi
           done
           SQLPG_COMPOSE=src/mhl-extensions/mhl-sql-postgres/docker-compose.yml
