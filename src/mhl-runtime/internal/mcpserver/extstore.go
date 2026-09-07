@@ -60,6 +60,20 @@ const (
 	kvRunPrefix     = "run/"
 )
 
+// statusScanner is an optional KVStore fast path for the durable-intake hot
+// loops: fetch every run/<id>/status record in one round-trip, and count the
+// pending ones through a store-side index. An extension store advertising the
+// "scan" capability implements it (see internal/cli/storext.go); without it the
+// extCheckpointStore falls back to a list + a get per run.
+type statusScanner interface {
+	// ListStatusRecs returns every run/<id>/status record keyed by runID.
+	// supported is false when the backing store has no native scan.
+	ListStatusRecs(ctx context.Context) (recs map[string]RunStatusRec, supported bool, err error)
+	// CountPendingRuns returns how many status records are in the pending
+	// state. supported is false when the store cannot count without a scan.
+	CountPendingRuns(ctx context.Context) (n int, supported bool, err error)
+}
+
 func runKey(runID, suffix string) string { return kvRunPrefix + runID + "/" + suffix }
 
 // --- sessions ---------------------------------------------------------------
@@ -221,6 +235,13 @@ func (c *extCheckpointStore) ReadStatus(runID string) (RunStatusRec, bool) {
 }
 
 func (c *extCheckpointStore) ListStatuses() (map[string]RunStatusRec, error) {
+	// Fast path: an extension with the "scan" capability returns every status
+	// record in one query, sparing the reconcile / sweep loops a get per run.
+	if sc, ok := c.kv.(statusScanner); ok {
+		if recs, supported, err := sc.ListStatusRecs(context.Background()); supported {
+			return recs, err
+		}
+	}
 	keys, err := c.kv.List(context.Background(), kvRunPrefix)
 	if err != nil {
 		return nil, err
@@ -239,6 +260,17 @@ func (c *extCheckpointStore) ListStatuses() (map[string]RunStatusRec, error) {
 	return out, nil
 }
 
+// CountPending uses the extension's "scan" fast path (a COUNT served by the
+// pending partial index) when available; ok=false otherwise, so the caller
+// counts from ListStatuses.
+func (c *extCheckpointStore) CountPending() (int, bool, error) {
+	sc, ok := c.kv.(statusScanner)
+	if !ok {
+		return 0, false, nil
+	}
+	return sc.CountPendingRuns(context.Background())
+}
+
 func (c *extCheckpointStore) RequestCancel(runID string) error {
 	return c.kv.Put(context.Background(), runKey(runID, "cancel"), true)
 }
@@ -254,15 +286,89 @@ func (c *extCheckpointStore) CancelRequested(runID string) bool {
 
 // --- per-step checkpoints / result (runtime.StateStore) -----------------
 
+// FencedWriter is an optional KVStore capability: a write conditioned, in one
+// atomic store operation, on the run's lease record at lockKey still naming
+// this holder and token and being unexpired. It closes the check-then-write
+// TOCTOU window — a replica whose lease was taken over has its checkpoint
+// writes rejected by the store itself, not merely by a prior local check.
+type FencedWriter interface {
+	// FenceCapable reports whether the backing store actually implements the
+	// atomic fenced writes below (the "fence" capability was advertised).
+	FenceCapable() bool
+	PutFenced(ctx context.Context, key string, value any, lockKey, holder, token string) (written bool, err error)
+	DeleteFenced(ctx context.Context, key, lockKey, holder, token string) (deleted bool, err error)
+}
+
+// stateFence carries what a fenced write needs. When fw is non-nil the write is
+// atomic store-side; otherwise check() runs first (check-then-write, a narrow
+// TOCTOU window). nil *stateFence ⇒ writes are unfenced (no run lock).
+type stateFence struct {
+	fw      FencedWriter
+	check   func() error
+	lockKey string
+	holder  string
+	token   string
+}
+
 // extStateStore is the runtime.StateStore a run's Runner writes through
-// (injected via execsvc.Request.StateStore). It is scoped to one runID.
+// (injected via execsvc.Request.StateStore). It is scoped to one runID. When
+// fence is set, every mutating write (Save / Clear) is gated on this replica
+// still holding the run's execution lease — a replica taken over after a stall
+// fails its writes (ErrLeaseLost) instead of corrupting the successor's state.
 type extStateStore struct {
 	kv    KVStore
 	runID string
+	fence *stateFence
 }
 
-func newExtStateStore(kv KVStore, runID string) *extStateStore {
-	return &extStateStore{kv: kv, runID: runID}
+func newExtStateStore(kv KVStore, runID string, fence *stateFence) *extStateStore {
+	return &extStateStore{kv: kv, runID: runID, fence: fence}
+}
+
+// ErrLeaseLost is returned by a fenced extStateStore write when this replica no
+// longer holds the run's execution lease.
+var ErrLeaseLost = errors.New("mcpserver: run execution lease lost — refusing checkpoint write")
+
+// fencedPut writes value at key subject to the lease fence.
+func (s *extStateStore) fencedPut(key string, value any) error {
+	if s.fence == nil {
+		return s.kv.Put(context.Background(), key, value)
+	}
+	if s.fence.fw != nil {
+		ok, err := s.fence.fw.PutFenced(context.Background(), key, value, s.fence.lockKey, s.fence.holder, s.fence.token)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrLeaseLost
+		}
+		return nil
+	}
+	if err := s.fence.check(); err != nil {
+		return err
+	}
+	return s.kv.Put(context.Background(), key, value)
+}
+
+// fencedDelete removes key subject to the lease fence.
+func (s *extStateStore) fencedDelete(key string) error {
+	if s.fence == nil {
+		return s.kv.Delete(context.Background(), key)
+	}
+	if s.fence.fw != nil {
+		ok, err := s.fence.fw.DeleteFenced(context.Background(), key, s.fence.lockKey, s.fence.holder, s.fence.token)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrLeaseLost
+		}
+		return nil
+	}
+	if err := s.fence.check(); err != nil {
+		return err
+	}
+	return s.kv.Delete(context.Background(), key)
 }
 
 func (s *extStateStore) key(pipeline string) string {
@@ -299,11 +405,11 @@ func (s *extStateStore) Save(cp *runtime.Checkpoint) error {
 	// reference is stored as a re-resolvable placeholder (rehydrated in Load),
 	// everything else is masked.
 	stamped.Variables = runtime.RedactVarsForCheckpoint(cp.Variables)
-	return s.kv.Put(context.Background(), s.key(cp.Pipeline), &stamped)
+	return s.fencedPut(s.key(cp.Pipeline), &stamped)
 }
 
 func (s *extStateStore) Clear(pipeline string) error {
-	return s.kv.Delete(context.Background(), s.key(pipeline))
+	return s.fencedDelete(s.key(pipeline))
 }
 
 func (s *extStateStore) WriteResult(pipeline string, vars map[string]any) error {

@@ -68,17 +68,20 @@ func discoverStoreExtension(dir string, logw io.Writer) (mcpserver.KVStore, func
 	// A store that advertises the "cas" capability in its handshake unlocks
 	// cross-replica run locking (mcpserver.LockingKVStore). Absent it, the
 	// server runs uncoordinated (single-writer) and says so.
-	cas := false
+	cas, claim, fence, scan := false, false, false, false
 	if cr, ok := chosen.(interface {
 		Capabilities(context.Context) ([]string, error)
 	}); ok {
 		if caps, cerr := cr.Capabilities(context.Background()); cerr == nil {
 			cas = slices.Contains(caps, "cas")
+			claim = slices.Contains(caps, "claim")
+			fence = slices.Contains(caps, "fence")
+			scan = slices.Contains(caps, "scan")
 		} else {
 			fmt.Fprintf(logw, "warning: store extension %q capability probe failed: %v\n", chosen.ID(), cerr)
 		}
 	}
-	return &extKV{inst: inst, decl: decl, cas: cas}, set.CloseAll, nil
+	return &extKV{inst: inst, decl: decl, cas: cas, claim: claim, fence: fence, scan: scan}, set.CloseAll, nil
 }
 
 // scanStoreDecl walks dir's .mh files for exactly one `extension store` block
@@ -177,9 +180,12 @@ func (h serveHost) Redact(s string) string { return auth.Redact(s) }
 // extKV adapts a bound `store` extension.Instance to mcpserver.KVStore (and,
 // when the extension advertised the "cas" capability, mcpserver.LockingKVStore).
 type extKV struct {
-	inst extension.Instance
-	decl extension.Declaration
-	cas  bool
+	inst  extension.Instance
+	decl  extension.Declaration
+	cas   bool
+	claim bool // extension advertised "claim" (native claim_next)
+	fence bool // extension advertised "fence" (atomic put_fenced / delete_fenced)
+	scan  bool // extension advertised "scan" (list_statuses / count_pending)
 }
 
 func (k *extKV) call(ctx context.Context, method string, named map[string]extension.Value) (extension.Value, error) {
@@ -249,4 +255,126 @@ func (k *extKV) CompareAndSwap(ctx context.Context, key string, expected []byte,
 	}
 	swapped, _ := v.(bool)
 	return swapped, nil
+}
+
+// ClaimNext implements mcpserver.ClaimNexter over the extension's optional
+// `claim_next(prefix, holder)` method (e.g. Postgres `SELECT … FOR UPDATE SKIP
+// LOCKED`). Returns ErrClaimNextUnsupported when the extension did not advertise
+// "claim", so the caller falls back to the generic CAS scan.
+func (k *extKV) ClaimNext(ctx context.Context, holder string) (string, mcpserver.RunStatusRec, bool, error) {
+	if !k.claim {
+		return "", mcpserver.RunStatusRec{}, false, mcpserver.ErrClaimNextUnsupported
+	}
+	v, err := k.call(ctx, "claim_next", map[string]extension.Value{"prefix": "run/", "holder": holder})
+	if err != nil {
+		return "", mcpserver.RunStatusRec{}, false, err
+	}
+	obj, ok := v.(map[string]any)
+	if !ok || obj == nil {
+		return "", mcpserver.RunStatusRec{}, false, nil // no pending run
+	}
+	keyStr, _ := obj["key"].(string)
+	id := strings.TrimSuffix(strings.TrimPrefix(keyStr, "run/"), "/status")
+	var rec mcpserver.RunStatusRec
+	if raw, mErr := json.Marshal(obj["value"]); mErr == nil {
+		_ = json.Unmarshal(raw, &rec)
+	}
+	if id == "" {
+		return "", mcpserver.RunStatusRec{}, false, fmt.Errorf("claim_next returned an unparseable key %q", keyStr)
+	}
+	return id, rec, true, nil
+}
+
+// FenceCapable reports whether the extension advertised "fence".
+func (k *extKV) FenceCapable() bool { return k.fence }
+
+// PutFenced implements mcpserver.FencedWriter over the extension's optional
+// `put_fenced(key, value, lock_key, holder, token)` — one atomic statement that
+// writes only while the lease record at lock_key still names this holder+token.
+func (k *extKV) PutFenced(ctx context.Context, key string, value any, lockKey, holder, token string) (bool, error) {
+	v, err := k.call(ctx, "put_fenced", map[string]extension.Value{
+		"key": key, "value": value, "lock_key": lockKey, "holder": holder, "token": token,
+	})
+	if err != nil {
+		return false, err
+	}
+	written, _ := v.(bool)
+	return written, nil
+}
+
+// DeleteFenced is PutFenced's counterpart for removing a key.
+func (k *extKV) DeleteFenced(ctx context.Context, key, lockKey, holder, token string) (bool, error) {
+	v, err := k.call(ctx, "delete_fenced", map[string]extension.Value{
+		"key": key, "lock_key": lockKey, "holder": holder, "token": token,
+	})
+	if err != nil {
+		return false, err
+	}
+	deleted, _ := v.(bool)
+	return deleted, nil
+}
+
+// ListStatusRecs implements the mcpserver status-scan fast path: every
+// run/<id>/status record in one round-trip (Postgres: a single SELECT), so the
+// durable-intake reconcile / sweep loops do not do a list plus a get per run.
+// supported is false when the extension did not advertise "scan".
+func (k *extKV) ListStatusRecs(ctx context.Context) (map[string]mcpserver.RunStatusRec, bool, error) {
+	if !k.scan {
+		return nil, false, nil
+	}
+	v, err := k.call(ctx, "list_statuses", map[string]extension.Value{"prefix": "run/"})
+	if err != nil {
+		return nil, true, err
+	}
+	arr, _ := v.([]any)
+	out := make(map[string]mcpserver.RunStatusRec, len(arr))
+	for _, x := range arr {
+		obj, ok := x.(map[string]any)
+		if !ok {
+			continue
+		}
+		keyStr, _ := obj["key"].(string)
+		id := strings.TrimSuffix(strings.TrimPrefix(keyStr, "run/"), "/status")
+		if id == "" || strings.Contains(id, "/") {
+			continue
+		}
+		var rec mcpserver.RunStatusRec
+		if raw, mErr := json.Marshal(obj["value"]); mErr == nil {
+			_ = json.Unmarshal(raw, &rec)
+		}
+		out[id] = rec
+	}
+	return out, true, nil
+}
+
+// CountPendingRuns implements the pending-depth fast path: a COUNT the store
+// serves from its partial index on pending status rows, so the /metrics gauge
+// never scans the whole run set. supported is false without the "scan"
+// capability.
+func (k *extKV) CountPendingRuns(ctx context.Context) (int, bool, error) {
+	if !k.scan {
+		return 0, false, nil
+	}
+	v, err := k.call(ctx, "count_pending", map[string]extension.Value{"prefix": "run/"})
+	if err != nil {
+		return 0, true, err
+	}
+	return extValueInt(v), true, nil
+}
+
+// extValueInt coerces a JSON-decoded extension result to an int (numbers arrive
+// as float64 over the wire; json.Number when a decoder keeps them).
+func extValueInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case json.Number:
+		i, _ := n.Int64()
+		return int(i)
+	}
+	return 0
 }

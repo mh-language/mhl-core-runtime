@@ -60,12 +60,16 @@ type asyncRun struct {
 	// it from the store on each poll; run/cancel signals through the store
 	// instead of calling a local cancel func.
 	remote bool
+	// holder is the replica id that claimed this run from durable intake
+	// (RunStatusRec.Holder). "" for the in-memory-only path. Published with the
+	// status so another replica's run/status can tell it was claimed here.
+	holder string
 
 	mu        sync.Mutex
-	state     string // "queued" | "working" | "completed" | "failed" | "canceled" | "paused"
-	step      string // last step reached
-	stepIndex int    // 1-based position of step
-	stepTotal int    // pipeline's declared step count
+	state     RunState // see runstate.go for the full state machine
+	step      string   // last step reached
+	stepIndex int      // 1-based position of step
+	stepTotal int      // pipeline's declared step count
 	reached   []string
 	resumable bool // a checkpoint exists that run/resume can continue from
 	vars      map[string]any
@@ -126,7 +130,7 @@ func (h *httpServer) acquireSlotWait(ctx context.Context, wait time.Duration) (r
 func (h *httpServer) launch(ctx context.Context, rn *asyncRun, resume bool) {
 	if release, ok := h.tryAcquireSlot(); ok {
 		rn.mu.Lock()
-		rn.state, rn.updated = "working", time.Now()
+		rn.state, rn.updated = RunStateWorking, time.Now()
 		rn.mu.Unlock()
 		h.publishRunStatus(rn)
 		go func() {
@@ -136,7 +140,7 @@ func (h *httpServer) launch(ctx context.Context, rn *asyncRun, resume bool) {
 		return
 	}
 	rn.mu.Lock()
-	rn.state, rn.updated = "queued", time.Now()
+	rn.state, rn.updated = RunStateQueued, time.Now()
 	rn.mu.Unlock()
 	h.publishRunStatus(rn)
 	h.srv.logEvent(slog.LevelInfo, "run queued",
@@ -151,21 +155,21 @@ func (h *httpServer) waitAndRun(ctx context.Context, rn *asyncRun, resume bool) 
 	release, ok := h.acquireSlot(ctx)
 	if !ok {
 		rn.mu.Lock()
-		if rn.state == "queued" {
-			rn.state, rn.updated = "canceled", time.Now()
+		if rn.state == RunStateQueued {
+			rn.state, rn.updated = RunStateCanceled, time.Now()
 		}
 		rn.mu.Unlock()
 		close(rn.done)
 		return
 	}
 	rn.mu.Lock()
-	if rn.state != "queued" { // cancelled between the select and here
+	if rn.state != RunStateQueued { // cancelled between the select and here
 		rn.mu.Unlock()
 		release()
 		close(rn.done)
 		return
 	}
-	rn.state, rn.updated = "working", time.Now()
+	rn.state, rn.updated = RunStateWorking, time.Now()
 	rn.mu.Unlock()
 	h.publishRunStatus(rn)
 	defer release()
@@ -181,7 +185,7 @@ func (h *httpServer) publishRunStatus(rn *asyncRun) {
 	}
 	rn.mu.Lock()
 	rec := RunStatusRec{
-		Tool: rn.tool.Name, State: rn.state, Step: rn.step,
+		Tool: rn.tool.Name, State: rn.state, Holder: rn.holder, Step: rn.step,
 		StepIndex: rn.stepIndex, StepTotal: rn.stepTotal,
 		Reached:   append([]string(nil), rn.reached...),
 		Resumable: rn.resumable, Error: auth.Redact(rn.errMsg),
@@ -216,8 +220,8 @@ func (h *httpServer) watchRemoteCancel(rn *asyncRun, stop <-chan struct{}) {
 				continue
 			}
 			rn.mu.Lock()
-			if rn.state == "working" {
-				rn.state, rn.updated = "canceled", time.Now()
+			if rn.state == RunStateWorking {
+				rn.state, rn.updated = RunStateCanceled, time.Now()
 			}
 			rn.mu.Unlock()
 			rn.cancel()
@@ -253,27 +257,50 @@ func heartbeatDecision(stillMine bool, err error, sinceLastRenew time.Duration) 
 	}
 }
 
-// heartbeatLock renews this replica's run lock while the run executes. It
-// cancels the run when the lease is lost (another replica took it over) or when
-// renews have been failing long enough that the lease is about to expire —
-// stopping before the safe window closes, not merely after N failures. Stops
-// when stop is closed (execRun returning).
-func (h *httpServer) heartbeatLock(rn *asyncRun, stop <-chan struct{}) {
+// heartbeatLock renews lease while the run executes. It cancels the run when the
+// lease is lost (another replica took it over) or when renews have failed long
+// enough that the lease is about to expire — stopping before the safe window
+// closes, not after N failures. Each renew is bounded by renewBudget so a wedged
+// store cannot stall the loop, and an independent watchdog cancels the run if no
+// renew succeeds within the safe window even if a renew call never returns.
+// Stops when stop is closed (execRun returning).
+func (h *httpServer) heartbeatLock(rn *asyncRun, lease leaseHandle, stop <-chan struct{}) {
 	if h.lock == nil {
 		return
 	}
 	t := time.NewTicker(runLockHeartbeat)
 	defer t.Stop()
+	safeWindow := runLockTTL - runLockHeartbeat
+	watchdog := time.NewTimer(safeWindow)
+	defer watchdog.Stop()
+	resetWatchdog := func() {
+		if !watchdog.Stop() {
+			select {
+			case <-watchdog.C:
+			default:
+			}
+		}
+		watchdog.Reset(safeWindow)
+	}
 	lastRenew := time.Now()
 	for {
 		select {
 		case <-stop:
 			return
+		case <-watchdog.C:
+			h.srv.logEvent(slog.LevelError,
+				"run lock watchdog fired — no successful renew within the safe window; cancelling to avoid two writers",
+				"runId", rn.id, "sinceLastRenew", time.Since(lastRenew).String())
+			rn.cancel()
+			return
 		case <-t.C:
-			stillMine, err := h.lock.renew(context.Background(), rn.id)
+			ctx, cancel := context.WithTimeout(context.Background(), renewBudget)
+			stillMine, err := h.lock.renew(ctx, lease)
+			cancel()
 			switch heartbeatDecision(stillMine, err, time.Since(lastRenew)) {
 			case hbRefreshed:
 				lastRenew = time.Now()
+				resetWatchdog()
 			case hbContinue:
 				h.srv.logEvent(slog.LevelWarn, "run lock renew failed — retrying before the lease expires",
 					"runId", rn.id, "err", err.Error(), "sinceLastRenew", time.Since(lastRenew).String())
@@ -305,7 +332,7 @@ func (h *httpServer) refreshRemote(rn *asyncRun) {
 		return
 	}
 	rn.mu.Lock()
-	if rn.state != "canceled" {
+	if rn.state != RunStateCanceled {
 		rn.state = rec.State
 	}
 	rn.step, rn.stepIndex, rn.stepTotal = rec.Step, rec.StepIndex, rec.StepTotal
@@ -334,7 +361,7 @@ func (h *httpServer) markIfLeaseExpired(rn *asyncRun) {
 		return
 	}
 	rn.mu.Lock()
-	working := rn.state == "working"
+	working := rn.state == RunStateWorking
 	rn.mu.Unlock()
 	if !working {
 		return
@@ -345,7 +372,7 @@ func (h *httpServer) markIfLeaseExpired(rn *asyncRun) {
 		return
 	}
 	rn.mu.Lock()
-	rn.state = "failed"
+	rn.state = RunStateFailed
 	rn.errMsg = "worker lease expired — resumable on another replica"
 	rn.resumable = h.cps.Exists(rn.id)
 	rn.updated = time.Now()
@@ -373,6 +400,31 @@ func (h *httpServer) handleRun(sess *session, msg rpcMsg) *rpcMsg {
 	}
 }
 
+// maxRunInputBytes caps the JSON size of run/start (and run/resume) arguments.
+// Durable intake persists these into the run record, read back by whichever
+// replica claims the run; an oversized payload belongs in a blob store, not a
+// state row. Spill-to-blob is Etapa 2 — until then, over the limit is refused.
+const maxRunInputBytes = 256 << 10
+
+// checkRunInputs enforces what run/start and run/resume arguments must satisfy
+// to travel with a durable run: JSON-serialisable (no closures/handles — they
+// cannot survive a checkpoint or a claim by another replica) and within
+// maxRunInputBytes. Over the MCP transport arguments arrive as JSON already, so
+// the serialisability check is defence for the in-process caller; the size
+// bound applies to every path.
+func checkRunInputs(args map[string]any) error {
+	if len(args) == 0 {
+		return nil
+	}
+	if err := runtime.CheckpointableVars(args); err != nil {
+		return err
+	}
+	if b, err := json.Marshal(args); err == nil && len(b) > maxRunInputBytes {
+		return fmt.Errorf("run inputs are %d bytes, over the %d-byte limit — pass large data by reference", len(b), maxRunInputBytes)
+	}
+	return nil
+}
+
 // runStart begins a workflow in the background and replies immediately with
 // its runId and initial ("working") status. params mirror tools/call:
 // {name, arguments}.
@@ -396,6 +448,13 @@ func (h *httpServer) runStart(sess *session, msg rpcMsg) *rpcMsg {
 	if err := w.Pipeline.ValidateInputs(p.Arguments); err != nil {
 		return errMsg(msg.ID, -32602, err.Error())
 	}
+	// Durable-intake contract (Etapa 0): a run's inputs must be JSON-serialisable
+	// and bounded, because once durable intake lands they are persisted with the
+	// run record and read back by whichever replica claims it. The runId this
+	// call returns is durable from here on — there is no separate claim_id.
+	if err := checkRunInputs(p.Arguments); err != nil {
+		return errMsg(msg.ID, -32602, err.Error())
+	}
 
 	// The run outlives this request, so its context descends from runsCtx
 	// (the drain-aware child of the server lifetime), not r.Context().
@@ -412,16 +471,41 @@ func (h *httpServer) runStart(sess *session, msg rpcMsg) *rpcMsg {
 		cancel:    cancel,
 		done:      make(chan struct{}),
 		logs:      newRingLog(),
-		state:     "queued", // launch sets the authoritative state synchronously
+		state:     RunStateQueued, // launch sets the authoritative state synchronously
 	}
 	h.runs.Put(rn)
+
+	// Durable intake (Etapa 1): when a cas store is configured, run/start does
+	// not launch. It persists the intake record and a `pending` status, then
+	// returns — the per-replica claim loop takes it from there (on this replica
+	// or another), so an accepted run survives a crash before its first step.
+	// Without a cas store the historical in-memory path runs unchanged.
+	if h.claimKV != nil {
+		if err := h.writeIntake(ctx, rn); err != nil {
+			// Persisting the run failed: fall back rather than drop it.
+			h.srv.logEvent(slog.LevelError, "durable intake write failed — launching in-memory only",
+				"runId", rn.id, "err", err.Error())
+			if sess.principal != "" {
+				_ = h.cps.WriteOwner(rn.id, rn.owner)
+			}
+			h.launch(ctx, rn, false)
+			return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+		}
+		rn.mu.Lock()
+		rn.state, rn.updated = RunStatePending, time.Now()
+		rn.mu.Unlock()
+		_ = h.cps.WriteOwner(rn.id, rn.owner)
+		h.publishRunStatus(rn)
+		h.nudgeClaim()
+		return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+	}
+
 	// Persist the owner only for a verified principal: a session-hash owner
 	// (no verifier) can't survive a restart anyway — each process mints fresh
 	// session ids — so cross-restart reclaim stays as in Phase 0 there.
 	if sess.principal != "" {
 		_ = h.cps.WriteOwner(rn.id, rn.owner)
 	}
-
 	h.launch(ctx, rn, false)
 	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
 }
@@ -443,11 +527,18 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	if rn == nil {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", p.RunID))
 	}
+	// Merged resume arguments are persisted with the run just like run/start's,
+	// so they carry the same serialisable-and-bounded contract.
+	if p.Arguments != nil {
+		if err := checkRunInputs(p.Arguments); err != nil {
+			return errMsg(msg.ID, -32602, err.Error())
+		}
+	}
 	// A run suspended by pause(...) is always resumable — it wrote its own
 	// checkpoint. Otherwise the workflow must not have opted out of the
 	// default per-step checkpointing with `checkpoint: { enabled: false }`.
 	rn.mu.Lock()
-	paused := rn.state == "paused"
+	paused := rn.state == RunStatePaused
 	rn.mu.Unlock()
 	if !paused && !rn.tool.Pipeline.Checkpoint.Enabled {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q's workflow declares checkpoint: { enabled: false } — nothing to resume", p.RunID))
@@ -477,7 +568,7 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	}
 
 	rn.mu.Lock()
-	if rn.state == "working" && (h.lock == nil || lockAlive) {
+	if rn.state == RunStateWorking && (h.lock == nil || lockAlive) {
 		rn.mu.Unlock()
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q is still working", p.RunID))
 	}
@@ -512,12 +603,16 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	// Cross-replica run lock: exactly one replica may drive a given runId. A
 	// confirmed lease is a hard precondition — if the store cannot be reached
 	// to take it, this run does not start (it cannot rule out another writer).
+	var lease leaseHandle // set when h.lock != nil; used to fence checkpoint writes
 	if h.lock != nil {
-		held, holder, err := h.lock.acquire(ctx, rn.id)
+		var held bool
+		var holder string
+		var err error
+		lease, held, holder, err = h.lock.acquire(ctx, rn.id)
 		switch {
 		case err != nil:
 			rn.mu.Lock()
-			rn.state = "failed"
+			rn.state = RunStateFailed
 			rn.errMsg = fmt.Sprintf("could not acquire run execution lease: %v", err)
 			rn.updated = time.Now()
 			rn.resumable = h.cps.Exists(rn.id)
@@ -528,7 +623,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 			return
 		case !held:
 			rn.mu.Lock()
-			rn.state = "failed"
+			rn.state = RunStateFailed
 			rn.errMsg = fmt.Sprintf("run is executing on another replica (%s)", holder)
 			rn.updated = time.Now()
 			rn.resumable = h.cps.Exists(rn.id)
@@ -540,8 +635,8 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		}
 		stopHB := make(chan struct{})
 		defer close(stopHB)
-		go h.heartbeatLock(rn, stopHB)
-		defer func() { _ = h.lock.release(context.WithoutCancel(ctx), rn.id) }()
+		go h.heartbeatLock(rn, lease, stopHB)
+		defer func() { _ = h.lock.release(context.WithoutCancel(ctx), lease) }()
 	}
 
 	// A cancel issued at another replica lands as a flag in the shared store;
@@ -558,7 +653,35 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 
 	var stateStore runtime.StateStore
 	if h.store != nil {
-		stateStore = newExtStateStore(h.store, rn.id) // checkpoints go to the extension, not disk
+		// Fence checkpoint writes on the execution lease: a replica that stalled
+		// past its lease and was taken over fails its checkpoint writes rather
+		// than corrupting the state the successor now drives. Atomic store-side
+		// when the store implements FencedWriter, else a local check-then-write.
+		var fence *stateFence
+		if h.lock != nil {
+			lz := lease
+			var fw FencedWriter
+			if cand, ok := h.store.(FencedWriter); ok && cand.FenceCapable() {
+				fw = cand
+			}
+			fence = &stateFence{
+				fw:      fw,
+				lockKey: runLockKey(rn.id),
+				holder:  h.replicaID,
+				token:   lz.token,
+				check: func() error {
+					ok, ferr := h.lock.ownsLease(context.Background(), lz)
+					if ferr != nil {
+						return ferr // fail closed on a store error
+					}
+					if !ok {
+						return ErrLeaseLost
+					}
+					return nil
+				},
+			}
+		}
+		stateStore = newExtStateStore(h.store, rn.id, fence) // checkpoints go to the extension, not disk
 	}
 	res, runErr := execsvc.Run(execsvc.Request{
 		Context:    ctx,
@@ -585,8 +708,8 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 			// watcher tick has not landed yet.
 			if h.cps.Shared() && h.cps.CancelRequested(rn.id) {
 				rn.mu.Lock()
-				if rn.state == "working" {
-					rn.state, rn.updated = "canceled", time.Now()
+				if rn.state == RunStateWorking {
+					rn.state, rn.updated = RunStateCanceled, time.Now()
 				}
 				rn.mu.Unlock()
 				rn.cancel()
@@ -596,25 +719,25 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 
 	rn.mu.Lock()
 	rn.updated = time.Now()
-	if rn.state != "canceled" {
+	if rn.state != RunStateCanceled {
 		switch {
 		case runErr != nil && ctx.Err() != nil:
-			rn.state, rn.errMsg = "canceled", runErr.Error()
+			rn.state, rn.errMsg = RunStateCanceled, runErr.Error()
 		case runErr != nil:
-			rn.state, rn.errMsg = "failed", runErr.Error()
+			rn.state, rn.errMsg = RunStateFailed, runErr.Error()
 		case res != nil && res.Paused:
 			// A step called pause(...): the run is suspended for a
 			// human-in-the-loop hand-off. Not completed (its checkpoint and
 			// state must survive for run/resume), not failed. The reason rides
 			// in errMsg the same way a failure message does.
-			rn.state = "paused"
+			rn.state = RunStatePaused
 			rn.errMsg = pauseReasonText(res.PauseReason)
 			rn.vars = res.Vars
 			if all := append(append([]string{}, res.Skipped...), res.Executed...); len(all) > 0 {
 				rn.reached = all
 			}
 		default:
-			rn.state = "completed"
+			rn.state = RunStateCompleted
 			if res != nil {
 				rn.vars = res.Vars
 				// Authoritative step list: what a resume skipped over, then
@@ -628,10 +751,10 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	// A paused run is always resumable — pause(...) writes a checkpoint
 	// unconditionally, no `checkpoint {}` block required. Otherwise a run is
 	// resumable only with a per-step checkpoint on disk.
-	if rn.state == "paused" {
+	if rn.state == RunStatePaused {
 		rn.resumable = h.cps.Exists(rn.id)
 	} else {
-		rn.resumable = rn.state != "completed" && w.Pipeline.Checkpoint.Enabled && h.cps.Exists(rn.id)
+		rn.resumable = rn.state != RunStateCompleted && w.Pipeline.Checkpoint.Enabled && h.cps.Exists(rn.id)
 	}
 	terminal := rn.state
 	steps := len(rn.reached)
@@ -640,13 +763,13 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	// No more output can arrive for a run that has stopped for good, so run/logs
 	// can stop holding back the secret-length tail it keeps while writes are
 	// still possible. A paused run may yet resume and write more, so leave it.
-	if terminal != "paused" {
+	if terminal != RunStatePaused {
 		rn.logs.Seal()
 	}
 
 	dur := time.Since(start)
-	h.metrics.ObserveRun(terminal, dur)
-	h.srv.logEvent(slog.LevelInfo, "run "+terminal,
+	h.metrics.ObserveRun(string(terminal), dur)
+	h.srv.logEvent(slog.LevelInfo, "run "+string(terminal),
 		"runId", rn.id, "owner", string(rn.owner), "tool", w.Name,
 		"durationMs", dur.Milliseconds(), "steps", steps)
 
@@ -666,8 +789,31 @@ func (h *httpServer) runStatus(sess *session, msg rpcMsg) *rpcMsg {
 	if rn == nil {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("unknown runId %q", id))
 	}
-	h.refreshRemote(rn) // a reconstructed run advances on the owning replica
+	h.adoptIfClaimedElsewhere(rn) // this replica accepted it, another claimed it
+	h.refreshRemote(rn)           // a reconstructed run advances on the owning replica
 	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
+}
+
+// adoptIfClaimedElsewhere turns a locally-accepted run that another replica has
+// claimed from durable intake into a remote view, so subsequent polls track it
+// through the shared status record and run/cancel signals through the store.
+func (h *httpServer) adoptIfClaimedElsewhere(rn *asyncRun) {
+	if h.claimKV == nil || rn == nil {
+		return
+	}
+	rn.mu.Lock()
+	skip := rn.remote || !rn.state.IsPreExecution()
+	rn.mu.Unlock()
+	if skip {
+		return
+	}
+	rec, ok := h.cps.ReadStatus(rn.id)
+	if !ok || rec.Holder == "" || rec.Holder == h.replicaID {
+		return
+	}
+	rn.mu.Lock()
+	rn.remote = true
+	rn.mu.Unlock()
 }
 
 // runLogs returns this run's retained step/log() output from a byte cursor.
@@ -710,10 +856,22 @@ func (h *httpServer) runCancel(sess *session, msg rpcMsg) *rpcMsg {
 		rn.cancel() // wakes a queued run's waitAndRun, which finishes the cancel
 	}
 	rn.mu.Lock()
-	if rn.state == "working" || rn.state == "queued" {
-		rn.state, rn.updated = "canceled", time.Now()
+	// working or any pre-execution state (queued, or durable pending/claimed) →
+	// canceled. A pre-execution run has no goroutine to stop and no external
+	// effect yet; run/cancel just records the state.
+	changed := false
+	if rn.state == RunStateWorking || rn.state.IsPreExecution() {
+		rn.state, rn.updated = RunStateCanceled, time.Now()
+		changed = true
 	}
 	rn.mu.Unlock()
+	// With durable intake, persist the terminal state so the claim loop stops
+	// selecting this pending run, and signal any replica that may have claimed
+	// it in the same instant.
+	if changed && h.claimKV != nil {
+		h.publishRunStatus(rn)
+		_ = h.cps.RequestCancel(rn.id)
+	}
 	return h.srv.replyResult(sess, msg.ID, h.runView(rn))
 }
 
@@ -787,7 +945,7 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 			cancel: func() {}, done: make(chan struct{}),
 			logs:      newRingLog(), // empty: this run's output was in a prior process
 			remote:    true,
-			state:     "failed",
+			state:     RunStateFailed,
 			step:      cp.NextStep,
 			stepTotal: len(w.Pipeline.Steps),
 			reached:   append([]string(nil), cp.CompletedSteps...),
@@ -825,7 +983,7 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 		vars:      rec.Vars, // already redacted at publish time
 	}
 	if rn.state == "" {
-		rn.state = "working"
+		rn.state = RunStateWorking
 	}
 	h.runs.Put(rn)
 	h.markIfLeaseExpired(rn)
@@ -853,7 +1011,7 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 	if rn.resumable {
 		v["resumable"] = true
 	}
-	if (rn.state == "completed" || rn.state == "paused") && rn.vars != nil {
+	if (rn.state == RunStateCompleted || rn.state == RunStatePaused) && rn.vars != nil {
 		// Redacted here too, so the replica that ran the workflow and a replica
 		// that reconstructs it from the shared status record return the same
 		// vars, and no resolved credential is ever surfaced.
@@ -862,7 +1020,7 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 	if rn.errMsg != "" {
 		// A failure/pause message can quote a resolved credential; mask it on
 		// the same policy as vars above.
-		if rn.state == "paused" {
+		if rn.state == RunStatePaused {
 			v["reason"] = auth.Redact(rn.errMsg)
 		} else {
 			v["error"] = auth.Redact(rn.errMsg)
@@ -871,7 +1029,27 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 	return v
 }
 
-// sweepRuns is opportunistic registry housekeeping, called on `initialize`.
+// housekeepLoop sweeps idle sessions and terminal run-status records on a
+// timer, independently of `initialize` — a client that keeps one session alive
+// and never re-initialises would otherwise let both accumulate (sessions in the
+// gauge, terminal status rows in a shared store). Started by buildHTTP; stops
+// with runsCtx.
+func (h *httpServer) housekeepLoop(ctx context.Context) {
+	t := time.NewTicker(housekeepInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			h.sessions.SweepIdle(sessionTTL)
+			h.sweepRuns()
+		}
+	}
+}
+
+// sweepRuns is opportunistic registry housekeeping, called on `initialize` and
+// on housekeepLoop's timer.
 // A completed run older than sessionTTL is dropped and its (already-cleared)
 // state dir removed. A stopped run with no checkpoint on disk can never be
 // resumed and is dropped too. A *resumable* run (failed/canceled with a
@@ -880,10 +1058,11 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 // once its TTL passes.
 //
 // When the store is shared between replicas it also retires terminal-run
-// status records the shared store keeps: execRun no longer deletes a completed
-// run's record on the spot (that made the same runId resolve on the replica
-// that ran it and 404 everywhere else), so this is what bounds the store's
-// growth — same sessionTTL window the in-memory registry uses.
+// records the shared store keeps: execRun no longer deletes a completed run's
+// record on the spot (that made the same runId resolve on the replica that ran
+// it and 404 everywhere else), so this walk is what bounds the store's growth.
+// It runs on the shorter terminalRunTTL, not sessionTTL — a shared store's size,
+// and every reconcile / sweep scan's cost, tracks how long dead run rows linger.
 func (h *httpServer) sweepRuns() {
 	cut := time.Now().Add(-sessionTTL)
 	for _, rn := range h.runs.List() {
@@ -893,7 +1072,7 @@ func (h *httpServer) sweepRuns() {
 		remote := rn.remote
 		rn.mu.Unlock()
 		switch {
-		case state == "completed" && old:
+		case state == RunStateCompleted && old:
 			h.runs.Delete(rn.id)
 			// A locally-run completion clears its whole state dir here. A run
 			// reconstructed from another replica only drops this pod's copy —
@@ -902,7 +1081,7 @@ func (h *httpServer) sweepRuns() {
 			if !remote {
 				_ = h.cps.Remove(rn.id)
 			}
-		case (state == "failed" || state == "canceled") && !h.cps.Exists(rn.id):
+		case (state == RunStateFailed || state == RunStateCanceled) && !h.cps.Exists(rn.id):
 			h.runs.Delete(rn.id)
 		}
 	}
@@ -914,19 +1093,18 @@ func (h *httpServer) sweepRuns() {
 	if err != nil {
 		return
 	}
+	termCut := time.Now().Add(-terminalRunTTL)
 	for id, rec := range statuses {
-		switch rec.State {
-		case "completed", "failed", "canceled":
-		default:
-			continue // queued / working / paused — still live, keep it
+		if !rec.State.IsTerminal() {
+			continue // pending / claimed / queued / working / paused — still live
 		}
-		if rec.UpdatedAt.IsZero() || !rec.UpdatedAt.Before(cut) {
+		if rec.UpdatedAt.IsZero() || !rec.UpdatedAt.Before(termCut) {
 			continue // inside the retention window (or undatable)
 		}
 		if h.cps.Exists(id) {
 			continue // a resumable checkpoint is still there — leave it for run/resume
 		}
-		_ = h.cps.Remove(id)
+		_ = h.cps.Remove(id) // deletes the whole run/<id>/ subtree
 	}
 }
 

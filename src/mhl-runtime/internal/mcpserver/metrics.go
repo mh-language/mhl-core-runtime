@@ -21,6 +21,12 @@ type MetricsSink interface {
 	// ObserveToolCall records one synchronous tools/call: outcome "ok" or
 	// "error".
 	ObserveToolCall(outcome string)
+	// ObserveClaim records one durable-intake run claimed by this replica; d is
+	// how long the claim call took (store round-trip).
+	ObserveClaim(d time.Duration)
+	// ObserveReconcile records one run returned to `pending` by reconcile
+	// (its holder's lease was gone).
+	ObserveReconcile()
 }
 
 // nopMetrics discards everything — the sink to use when metrics are off.
@@ -28,6 +34,8 @@ type nopMetrics struct{}
 
 func (nopMetrics) ObserveRun(string, time.Duration) {}
 func (nopMetrics) ObserveToolCall(string)           {}
+func (nopMetrics) ObserveClaim(time.Duration)       {}
+func (nopMetrics) ObserveReconcile()                {}
 
 // promMetrics is the built-in MetricsSink: in-process atomic counters rendered
 // as Prometheus text. Durations are summed in milliseconds (atomic-friendly)
@@ -42,6 +50,11 @@ type promMetrics struct {
 
 	toolCallsOK  atomic.Int64
 	toolCallsErr atomic.Int64
+
+	intakeClaims      atomic.Int64
+	intakeReconciled  atomic.Int64
+	claimLatencyMs    atomic.Int64
+	claimLatencyCount atomic.Int64
 }
 
 func newPromMetrics() *promMetrics { return &promMetrics{} }
@@ -67,11 +80,19 @@ func (m *promMetrics) ObserveToolCall(outcome string) {
 	m.toolCallsOK.Add(1)
 }
 
+func (m *promMetrics) ObserveClaim(d time.Duration) {
+	m.intakeClaims.Add(1)
+	m.claimLatencyMs.Add(d.Milliseconds())
+	m.claimLatencyCount.Add(1)
+}
+func (m *promMetrics) ObserveReconcile() { m.intakeReconciled.Add(1) }
+
 // liveGauges is the point-in-time state the /metrics render pairs with the
 // counters — computed from the registry, not tracked as events.
 type liveGauges struct {
 	runsActive     int
 	runsQueued     int
+	runsPending    int // durable-intake pending runs, fleet-wide (store scan)
 	sessionsActive int
 }
 
@@ -102,6 +123,23 @@ func (m *promMetrics) render(w io.Writer, g liveGauges) {
 	p("# HELP mhl_serve_runs_queued Runs waiting for a concurrency slot.\n")
 	p("# TYPE mhl_serve_runs_queued gauge\n")
 	p("mhl_serve_runs_queued %d\n", g.runsQueued)
+
+	p("# HELP mhl_serve_runs_pending Durable-intake runs accepted but not yet claimed (fleet-wide).\n")
+	p("# TYPE mhl_serve_runs_pending gauge\n")
+	p("mhl_serve_runs_pending %d\n", g.runsPending)
+
+	p("# HELP mhl_serve_intake_claims_total Durable-intake runs claimed by this replica.\n")
+	p("# TYPE mhl_serve_intake_claims_total counter\n")
+	p("mhl_serve_intake_claims_total %d\n", m.intakeClaims.Load())
+
+	p("# HELP mhl_serve_intake_reconciled_total Runs returned to pending by reconcile (holder lease gone).\n")
+	p("# TYPE mhl_serve_intake_reconciled_total counter\n")
+	p("mhl_serve_intake_reconciled_total %d\n", m.intakeReconciled.Load())
+
+	p("# HELP mhl_serve_intake_claim_latency_seconds Cumulative time spent in the claim call.\n")
+	p("# TYPE mhl_serve_intake_claim_latency_seconds summary\n")
+	p("mhl_serve_intake_claim_latency_seconds_sum %.3f\n", float64(m.claimLatencyMs.Load())/1000)
+	p("mhl_serve_intake_claim_latency_seconds_count %d\n", m.claimLatencyCount.Load())
 
 	p("# HELP mhl_serve_sessions_active Live MCP protocol sessions.\n")
 	p("# TYPE mhl_serve_sessions_active gauge\n")

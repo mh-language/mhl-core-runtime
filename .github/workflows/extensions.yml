@@ -1,0 +1,134 @@
+name: Extensions CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/mhl-extensions/**"
+      - "src/mhl-runtime/**"
+      - ".github/workflows/extensions.yml"
+      - ".github/workflows/release-extensions.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/mhl-extensions/**"
+      - "src/mhl-runtime/**"
+      - ".github/workflows/extensions.yml"
+      - ".github/workflows/release-extensions.yml"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Exact commit to build and test"
+        type: string
+        required: true
+      tag:
+        description: "Extension bundle tag"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/mhl-runtime/go.mod
+          cache-dependency-path: |
+            src/mhl-runtime/go.sum
+            src/mhl-extensions/**/go.sum
+
+      - name: Test release tooling
+        run: python3 -m unittest discover -s src/mhl-extensions/scripts -p 'test_*.py'
+
+      - name: Test and build runtime
+        working-directory: src/mhl-runtime
+        run: |
+          go vet ./...
+          make test build
+
+      - name: Test extensions
+        run: make -C src/mhl-extensions vet test
+
+      - name: Build all release platforms
+        run: make -C src/mhl-extensions release
+
+      - name: Record package versions and runtime compatibility
+        env:
+          RELEASE_TAG: ${{ inputs.tag || 'snapshot' }}
+        run: >-
+          python3 src/mhl-extensions/scripts/package_release.py prepare
+          --tag "$RELEASE_TAG" --runtime "$GITHUB_WORKSPACE/src/mhl-runtime/dist/mhl"
+
+      - name: Start integration services
+        id: services
+        timeout-minutes: 5
+        run: |
+          for ext in $(make -s -C src/mhl-extensions list); do
+            if test -f "src/mhl-extensions/$ext/docker-compose.yml"; then
+              make -C "src/mhl-extensions/$ext" up
+            fi
+          done
+
+      - name: Live database tests
+        env:
+          MHL_PG_TEST_DSN: postgres://mhl:mhl-secret-pw@localhost:5433/mhl_state?sslmode=disable
+          MHL_SQL_PG_TEST_DSN: postgres://mhl:mhl-secret-pw@localhost:5434/demo?sslmode=disable
+        run: |
+          make -C src/mhl-extensions/mhl-store-postgres test
+          make -C src/mhl-extensions/mhl-sql-postgres test
+          MHL_REDIS_TEST_ADDR=localhost:6380 make -C src/mhl-extensions/mhl-cache-redis test
+          MHL_REDIS_TEST_ADDR=localhost:6381 make -C src/mhl-extensions/mhl-store-redis test
+
+      - name: Reset seeded databases before smoke
+        run: |
+          set -euo pipefail
+          # The live-DB tests above run write paths against these shared
+          # containers; recreate the volumes so smoke sees a pristine
+          # initdb/seed.sql state, not test residue.
+          for ext in $(make -s -C src/mhl-extensions list); do
+            if test -f "src/mhl-extensions/$ext/docker-compose.yml"; then
+              compose="src/mhl-extensions/$ext/docker-compose.yml"
+              docker compose -f "$compose" down --volumes
+              # Use each extension's target: mhl-blob-s3 has a successful
+              # one-shot createbucket service that `compose up --wait` treats
+              # as a failed project even when it exits with status 0.
+              make -C "src/mhl-extensions/$ext" up
+            fi
+          done
+          SQLPG_COMPOSE=src/mhl-extensions/mhl-sql-postgres/docker-compose.yml
+          docker compose -f "$SQLPG_COMPOSE" exec -T postgres \
+            pg_isready -U mhl -d demo
+          test "$(docker compose -f "$SQLPG_COMPOSE" exec -T postgres \
+            psql -U mhl -d demo -Atc 'SELECT count(*) FROM people' | tr -d '\r')" = 5
+
+      - name: Install archives and exercise extensions through runtime
+        timeout-minutes: 5
+        run: make -C src/mhl-extensions smoke-release MHL="$GITHUB_WORKSPACE/src/mhl-runtime/dist/mhl"
+
+      - name: Stop integration services
+        if: ${{ always() && (steps.services.outcome == 'success' || steps.services.outcome == 'failure' || steps.services.outcome == 'cancelled') }}
+        run: |
+          for ext in $(make -s -C src/mhl-extensions list); do
+            if test -f "src/mhl-extensions/$ext/docker-compose.yml"; then
+              docker compose -f "src/mhl-extensions/$ext/docker-compose.yml" down --volumes
+            fi
+          done
+
+      - name: Save validated release packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-extensions
+          path: src/mhl-extensions/dist/release/
+          if-no-files-found: error
+          retention-days: 7

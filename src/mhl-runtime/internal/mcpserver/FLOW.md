@@ -27,9 +27,12 @@ POST-only (no DELETE); `GET` → 405.
 
 Operational endpoints, unauthenticated: `GET /healthz` (liveness, always 200
 while up), `GET /readyz` (200, or 503 once draining), `GET /metrics`
-(Prometheus text — run counters, duration sum/count, tool-call counters, and
-live `runs_active` / `runs_queued` / `sessions_active` gauges; 404 if a
-non-Prometheus `MetricsSink` is configured). Lifecycle events also go to
+(Prometheus text — run counters, duration sum/count, tool-call counters,
+`intake_claims_total` / `intake_reconciled_total` counters, and live
+`runs_active` / `runs_queued` / `runs_pending` (fleet-wide durable-intake depth —
+a `count_pending` index query on a `scan`-capable store, else a status scan per
+scrape) / `sessions_active` gauges; 404 if a non-Prometheus
+`MetricsSink` is configured). Lifecycle events also go to
 stderr as JSON (`log/slog`), keyed by `runId` and `owner`.
 
 ---
@@ -186,19 +189,29 @@ checkpoint (a run without `per_step` still working elsewhere, or a completed one
 whose checkpoint was cleared); such a run is marked `remote` and `run/status`
 re-reads the record on each poll. A terminal run's record is **not** deleted
 when `execRun` finishes — doing so made the same `runId` resolve on the replica
-that ran it and 404 everywhere else — it is kept for `sessionTTL` and then
-retired by `sweepRuns` (see below). The `h.runs` registry itself stays
+that ran it and 404 everywhere else — it is kept for `terminalRunTTL` (default
+10 min; `HTTPConfig.TerminalRunTTL` / `MHL_SERVE_TERMINAL_RUN_TTL`) and then the
+whole `run/<id>/` subtree is deleted by `sweepRuns` (see below). Splitting this
+from `sessionTTL` bounds a shared store's size — and every reconcile / sweep
+scan's cost tracks it directly. The `h.runs` registry itself stays
 process-local.
 
 **Run lock** (`h.lock != nil` — only when the store is an extension store that
 advertised the `cas` capability, i.e. implements `PutIfAbsent` /
 `CompareAndSwap`; see `runlock.go`): before `execRun` drives a run it
 `acquire`s `run/<id>/lock` = `{holder, token, expires}` and renews it on a
-`runLockHeartbeat` (`runLockTTL/3`). Each `acquire` mints a random `token`,
-stored per-runID in `runLock.tokens`; `renew` and `release` compare-and-swap
-only against a record that still carries this replica's `holder` **and**
-`token`, so a stale holder cannot renew or wipe a successor's lease. `release`
-is a conditional `CompareAndSwap` to an expired tombstone (the next `acquire`
+`runLockHeartbeat` (`runLockTTL/3`; `runLockTTL` defaults to 45s, widened by
+`HTTPConfig.RunLockTTL` / `MHL_SERVE_RUN_LOCK_TTL` on a CPU-contended host so a
+slow renew does not read as a dead replica — `setRunLockTiming` re-derives the
+heartbeat, renew budget, and `reconcileStaleAfter` from it). Each `acquire`
+mints a random `token` and
+returns an immutable `leaseHandle{runID, token}`; `execRun` keeps it for the
+attempt and passes it to `renew` / `release`, which compare-and-swap only
+against a record that still carries this replica's `holder` **and** that exact
+`token` — a later `acquire` of the same run (this replica lost the lease and
+took it back) yields a different handle, so a stale holder's late `renew` /
+`release` cannot touch the successor's (or its own new) lease. `release` is a
+conditional `CompareAndSwap` to an expired tombstone (the next `acquire`
 overwrites it; `Remove` sweeps it) — never an unconditional `Delete`.
 
 A confirmed lease is a hard precondition. An `acquire` that returns an **error**
@@ -210,8 +223,12 @@ errors (`lockUnknown` — it cannot rule out a live worker). `heartbeatLock`
 (`heartbeatDecision`) `cancel()`s the run when `renew` reports the lease is gone
 **or** when renews have been failing long enough that the lease is within one
 heartbeat of expiring — it stops *before* a takeover elsewhere could begin, not
-merely after N failures. If the holder simply stalls past `runLockTTL`, another
-replica's `acquire` takes the lapsed lock over via `CompareAndSwap`.
+merely after N failures. Each `renew` is bounded by `renewBudget` (a ctx
+timeout) so a wedged store cannot stall the loop, and an independent watchdog
+timer in the same `select` cancels the run if no `renew` succeeds within the
+safe window even if a `renew` call never returns. If the holder simply stalls
+past `runLockTTL`, another replica's `acquire` takes the lapsed lock over via
+`CompareAndSwap`.
 `reconstructRun` / `refreshRemote` run `markIfLeaseExpired`: a `remote` run the
 status says is `working` but whose lock is positively absent/expired is reported
 `failed` + `resumable` — a store read error leaves it `working` — and takeover
@@ -219,9 +236,17 @@ is an explicit `run/resume`, never automatic.
 
 Without a `cas`-capable store the lock is `nil`: a configured `Store` then
 refuses to start unless `--single-replica` / `MHL_SERVE_SINGLE_REPLICA`
-acknowledges a one-writer deployment. This is still a coarse lock, not a fenced
-one: a resurrected holder could write a stale checkpoint (a fencing token is a
-later increment).
+acknowledges a one-writer deployment.
+
+Checkpoint writes are **fenced on the lease**: the `extStateStore` `execRun`
+builds carries a `stateFence` with the run's lock key, this replica's holder id
+and the lease token. When the store advertises `"fence"` (`FencedWriter` —
+`mhl-store-postgres` `put_fenced` / `delete_fenced`), each `Save` / `Clear` is
+one atomic statement conditioned on the lease record still naming this
+holder+token — a replica that stalled past its lease and was taken over has the
+write **rejected by the store**, no TOCTOU window. Without `"fence"` it degrades
+to a check-then-write via `runLock.ownsLease` (a narrow window). Either way the
+loser gets `ErrLeaseLost`.
 
 ```mermaid
 sequenceDiagram
@@ -270,18 +295,29 @@ sequenceDiagram
         Note over G,X: execsvc.Run(Session: runId, Resume: true) → Runner loads the checkpoint,<br/>restores vars, restarts at NextStep (the failed / pausing step) · inputs re-applied shadow checkpoint vars
     end
 
-    Note over Reg: run/list returns only the caller's runs · initialize sweeps completed runs older than 1 h from the registry (removes the dir) and, on a shared store, retires terminal-run status records older than 1 h that have no resumable checkpoint · a resumable run is kept in the registry for the process lifetime so its owner binding holds · on-disk state is GC'd by runtime.PruneExpired · shutdown cancels all and, only for a temp runsDir, deletes it
+    Note over Reg: run/list returns only the caller's runs · `initialize` AND a 1-minute `housekeepLoop` timer drop completed runs older than sessionTTL (default 1 h; `MHL_SERVE_SESSION_TTL`) from the in-memory registry and, on a shared store, delete the whole `run/<id>/` subtree of terminal runs older than `terminalRunTTL` (default 10 min; `MHL_SERVE_TERMINAL_RUN_TTL`) with no resumable checkpoint; the same tick sweeps idle sessions · reconcile runs on its own ~15 s cadence, not every claim-loop tick · a resumable run is kept in the registry for the process lifetime so its owner binding holds · on-disk state is GC'd by runtime.PruneExpired · shutdown cancels all and, only for a temp runsDir, deletes it
 ```
 
 ### `asyncRun` states
 
+`RunState` (`runstate.go`) is the typed enum. Its underlying type is `string`,
+so the wire JSON is unchanged. `IsTerminal()` = completed/failed/canceled;
+`IsPreExecution()` = pending/claimed/queued (safe to cancel with no goroutine
+to stop and no external effect yet).
+
 ```
+pending ──▶ claimed ──▶ working    (durable intake — Etapa 1, no producer yet:
+        │            │              run/start writes a `pending` record to a CAS
+        │            │              store, a per-replica claim loop flips it to
+        │            │              `claimed` then acquires the lease)
+        └────────────┴─▶ canceled  (run/cancel on a pre-execution run)
+
 queued  ──▶ working           (a concurrency slot freed — see --max-concurrent-runs)
         └─▶ canceled          (run/cancel or shutdown while still waiting for a slot)
 
 working ──▶ completed         (run finished with no error — per-step checkpoint cleared;
         │                      on a shared store the status record, with redacted vars,
-        │                      lingers for sessionTTL so every replica agrees, then sweepRuns retires it)
+        │                      lingers for terminalRunTTL so every replica agrees, then sweepRuns deletes it)
         ├─▶ failed            (runErr != nil and ctx not cancelled — resumable if a checkpoint is on disk;
         │                      a step's `timeout <dur>` clause elapsing lands here, `error` wraps
         │                      runtime.ErrStepTimeout, and a resume re-enters the step with a fresh budget)
@@ -301,6 +337,28 @@ O(n^2) inside `run/list`), so aggregate queue depth lives in `/metrics` as
 `mhl_serve_runs_queued` instead. A synchronous `tools/call` does not queue: it
 holds the client connection while it waits up to ~5s for a slot, then either
 runs or returns `-32000` "server at capacity".
+
+**`runId` contract:** `run/start` returns a `runId` that is durable from that
+call — it is not a placeholder that a later step upgrades. There is no separate
+`claim_id`. When durable intake lands, that same `runId` names the `pending`
+record and every state after it. `run/start` / `run/resume` also reject
+arguments that are not JSON-serialisable or exceed 256 KiB (`checkRunInputs`),
+because they travel with the durable run record.
+
+**`ClaimNext` seam:** `claim.go`'s `claimNext` takes the next `pending` run via a
+native `ClaimNexter` fast path when the store or KV offers one — `mhl-store-postgres`
+backs it with `SELECT … FOR UPDATE SKIP LOCKED` (the `"claim"` capability;
+`extKV.ClaimNext`), returning `ErrClaimNextUnsupported` otherwise so the caller
+falls back to `claimNextCAS`, a compare-and-swap scan that flips the oldest
+`pending` `RunStatusRec` to `claimed` and stamps `Holder`. The per-replica claim
+loop (`claimLoop` / `drainClaims`) drives it, bounded by the concurrency
+semaphore; each claim's store round-trip feeds `mhl_serve_intake_claim_latency_seconds`.
+Durable intake needs a CAS-capable extension store, like the run lock. The
+loop's other job, `reconcileRuns` — returning a `claimed` / `working` / `paused`
+run whose lease is positively gone to `pending` — runs on its own ~15 s cadence
+(not every 1 s tick) and reads the whole status set through `ListStatuses`: a
+`scan`-capable store answers that with one `list_statuses` query instead of a
+`list` plus a `get` per run.
 
 `reached` is the ordered list of steps that **started** (fed by `OnStep`);
 on completion it becomes `Result.Skipped ++ Result.Executed` (authoritative,

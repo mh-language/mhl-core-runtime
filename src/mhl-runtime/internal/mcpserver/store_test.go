@@ -248,8 +248,8 @@ func TestDiskCheckpointStoreListStatuses(t *testing.T) {
 
 // TestSweepRunsRetiresOldSharedStatus: on a shared store, sweepRuns removes the
 // status record of a terminal run (completed, or a non-resumable failure) older
-// than sessionTTL, but keeps a fresh one and keeps an old terminal run that
-// still has a resumable checkpoint.
+// than terminalRunTTL — including one still well inside sessionTTL — but keeps a
+// fresh one and keeps an old terminal run that still has a resumable checkpoint.
 func TestSweepRunsRetiresOldSharedStatus(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "w.mh"),
@@ -263,7 +263,7 @@ func TestSweepRunsRetiresOldSharedStatus(t *testing.T) {
 	t.Cleanup(func() { h.runsCancel(); _ = h.cps.Close() })
 
 	now := time.Now()
-	old := now.Add(-2 * sessionTTL)
+	old := now.Add(-2 * terminalRunTTL) // past terminalRunTTL, still inside sessionTTL
 	_ = h.cps.WriteStatus("old", RunStatusRec{Tool: "W", State: "completed", StartedAt: old, UpdatedAt: old})
 	_ = h.cps.WriteStatus("oldFail", RunStatusRec{Tool: "W", State: "failed", StartedAt: old, UpdatedAt: old})
 	_ = h.cps.WriteStatus("fresh", RunStatusRec{Tool: "W", State: "completed", StartedAt: now, UpdatedAt: now})

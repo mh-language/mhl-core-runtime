@@ -4,7 +4,7 @@ MODULE := github.com/mh-language/mhl-core-runtime
 CMD := ./cmd/mhl
 DIST := dist
 SAMPLE := ../../sample
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION := $(shell git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X $(MODULE)/internal/cli.Version=$(VERSION)
 
 .PHONY: build test functional-test release clean verify-release linux-arm64

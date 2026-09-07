@@ -1,0 +1,464 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// pgStore is a `store`-kind backend on PostgreSQL: one row per key in a
+// `(key text primary key, value jsonb, updated_at timestamptz)` table. `put`
+// is an atomic `INSERT ... ON CONFLICT DO UPDATE`, so concurrent writes never
+// corrupt a row; `list(prefix)` is an indexed `key LIKE prefix || '%'`.
+
+const (
+	defaultTable    = "mhl_store"
+	defaultMaxConns = 8
+	opTimeout       = 30 * time.Second // client-side guard per operation
+)
+
+type pgConfig struct {
+	DSN string // full connection string (URL or keyword/value); wins over the discrete fields
+
+	Host     string
+	Port     string
+	DBName   string
+	User     string
+	Password string
+	SSLMode  string // default "prefer"
+
+	Table            string // default "mhl_store"; may be "schema.table"
+	Prefix           string // optional key namespace within the table
+	MaxConns         int32  // default 8
+	StatementTimeout time.Duration
+	AutoMigrate      bool // default true
+}
+
+type pgStore struct {
+	pool   *pgxpool.Pool
+	table  string // validated identifier — safe to interpolate into SQL
+	prefix string
+}
+
+func newPGStore(ctx context.Context, cfg pgConfig) (*pgStore, error) {
+	table := cfg.Table
+	if table == "" {
+		table = defaultTable
+	}
+	if !validIdent(table) {
+		return nil, fmt.Errorf("store-postgres: invalid `table` %q (identifier chars only; may be schema.table)", table)
+	}
+
+	dsn := strings.TrimSpace(cfg.DSN)
+	if dsn == "" {
+		dsn = buildKeywordDSN(cfg)
+	}
+	pcfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("store-postgres: bad connection config: %w", err)
+	}
+	if cfg.MaxConns > 0 {
+		pcfg.MaxConns = cfg.MaxConns
+	} else {
+		pcfg.MaxConns = defaultMaxConns
+	}
+	pcfg.MinConns = 0
+	pcfg.MaxConnIdleTime = 5 * time.Minute
+	if cfg.StatementTimeout > 0 {
+		if pcfg.ConnConfig.RuntimeParams == nil {
+			pcfg.ConnConfig.RuntimeParams = map[string]string{}
+		}
+		pcfg.ConnConfig.RuntimeParams["statement_timeout"] =
+			strconv.FormatInt(cfg.StatementTimeout.Milliseconds(), 10)
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, pcfg)
+	if err != nil {
+		return nil, fmt.Errorf("store-postgres: connect: %w", err)
+	}
+
+	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := pool.Ping(pingCtx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("store-postgres: ping: %w", err)
+	}
+
+	s := &pgStore{pool: pool, table: table, prefix: cfg.Prefix}
+	if cfg.AutoMigrate {
+		if err := s.migrate(ctx); err != nil {
+			pool.Close()
+			return nil, err
+		}
+	}
+	return s, nil
+}
+
+// migrateAdvisoryKey serialises the first migration across replicas booting
+// against a cold database. `CREATE TABLE / CREATE INDEX IF NOT EXISTS` are not
+// atomic on the pg catalog, so two concurrent creators can collide with 23505
+// on pg_type_typname_nsp_index and one replica is left permanently broken. A
+// transaction-scoped advisory lock makes the second replica wait here instead.
+// Any fixed 64-bit value works; this one spells "mhlstore".
+const migrateAdvisoryKey int64 = 0x6d686c73746f7265
+
+func (s *pgStore) migrate(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store-postgres: migrate: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrateAdvisoryKey); err != nil {
+		return fmt.Errorf("store-postgres: migrate: advisory lock: %w", err)
+	}
+
+	// s.table passed validIdent, so interpolation here is safe.
+	stmts := []string{
+		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+			key        text PRIMARY KEY,
+			value      jsonb NOT NULL,
+			updated_at timestamptz NOT NULL DEFAULT now()
+		)`, s.table),
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_key_pattern_idx ON %s (key text_pattern_ops)`,
+			unqualify(s.table), s.table),
+		// Partial index for the durable-intake claim loop: claim_next filters
+		// value->>'state' = 'pending' and orders by value->>'startedAt'. Without
+		// it, every poll Seq Scans the whole (shared) mhl_store table.
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_pending_idx ON %s ((value->>'startedAt')) WHERE value->>'state' = 'pending'`,
+			unqualify(s.table), s.table),
+	}
+	for _, q := range stmts {
+		if _, err := tx.Exec(ctx, q); err != nil {
+			// Belt & braces: a concurrent creator that slipped past the lock
+			// surfaces as unique_violation on the catalog — "already there",
+			// not a real failure.
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				continue
+			}
+			return fmt.Errorf("store-postgres: migrate: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store-postgres: migrate: commit: %w", err)
+	}
+	return nil
+}
+
+func (s *pgStore) key(logical string) string { return s.prefix + logical }
+
+func (s *pgStore) get(ctx context.Context, logical string) ([]byte, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	var raw []byte
+	err := s.pool.QueryRow(ctx,
+		fmt.Sprintf(`SELECT value FROM %s WHERE key = $1`, s.table), s.key(logical)).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("store-postgres: get %q: %w", logical, err)
+	}
+	return raw, true, nil
+}
+
+func (s *pgStore) put(ctx context.Context, logical string, value []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	_, err := s.pool.Exec(ctx, fmt.Sprintf(
+		`INSERT INTO %s (key, value, updated_at) VALUES ($1, $2::jsonb, now())
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, s.table),
+		s.key(logical), string(value))
+	if err != nil {
+		return fmt.Errorf("store-postgres: put %q: %w", logical, err)
+	}
+	return nil
+}
+
+// putIfAbsent inserts value at key only when no row exists yet. acquired is
+// false (nil error) when a row is already present. One atomic statement
+// (`INSERT ... ON CONFLICT DO NOTHING`), which is what the cross-replica run
+// lock's acquire step needs.
+func (s *pgStore) putIfAbsent(ctx context.Context, logical string, value []byte) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	tag, err := s.pool.Exec(ctx, fmt.Sprintf(
+		`INSERT INTO %s (key, value, updated_at) VALUES ($1, $2::jsonb, now())
+		 ON CONFLICT (key) DO NOTHING`, s.table),
+		s.key(logical), string(value))
+	if err != nil {
+		return false, fmt.Errorf("store-postgres: put_if_absent %q: %w", logical, err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// compareAndSwap replaces value at key with newValue only when the current
+// row's value equals expected under jsonb equality (whitespace/key order do
+// not matter). swapped is false (nil error) on a value mismatch or a missing
+// row. One atomic `UPDATE ... WHERE ... AND value = ...`.
+func (s *pgStore) compareAndSwap(ctx context.Context, logical string, expected, newValue []byte) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	tag, err := s.pool.Exec(ctx, fmt.Sprintf(
+		`UPDATE %s SET value = $2::jsonb, updated_at = now()
+		 WHERE key = $1 AND value = $3::jsonb`, s.table),
+		s.key(logical), string(newValue), string(expected))
+	if err != nil {
+		return false, fmt.Errorf("store-postgres: compare_and_swap %q: %w", logical, err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// claimNext atomically moves one row under logicalPrefix whose value ->>'state'
+// is 'pending' (oldest by ->>'startedAt', ties broken by key) to 'claimed' with
+// ->>'holder' set to holder, using FOR UPDATE SKIP LOCKED so concurrent
+// claimers on other connections never contend for the same row. Returns the
+// updated logical key and the new value bytes, or ok=false when nothing is
+// pending. Purpose-built for `mhl serve`'s durable intake (the RunStatusRec
+// shape: state / holder / startedAt fields, keys `run/<id>/status`).
+func (s *pgStore) claimNext(ctx context.Context, logicalPrefix, holder string) (string, []byte, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	pattern := likeEscape(s.prefix+logicalPrefix) + "%"
+	var key string
+	var val []byte
+	err := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		UPDATE %[1]s SET
+			value = jsonb_set(jsonb_set(value, '{state}', '"claimed"'), '{holder}', to_jsonb($2::text)),
+			updated_at = now()
+		WHERE key = (
+			SELECT key FROM %[1]s
+			WHERE key LIKE $1 ESCAPE '\'
+			  AND key LIKE '%%/status'
+			  AND value->>'state' = 'pending'
+			ORDER BY value->>'startedAt' NULLS FIRST, key
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		RETURNING key, value`, s.table), pattern, holder).Scan(&key, &val)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil, false, nil
+	}
+	if err != nil {
+		return "", nil, false, fmt.Errorf("store-postgres: claim_next: %w", err)
+	}
+	return strings.TrimPrefix(key, s.prefix), val, true, nil
+}
+
+// putFenced upserts value at key in one atomic statement, conditioned on the
+// lease row at lockKey still naming holder+token and being unexpired. written
+// is true when the lease was ours and the write landed; false (nil error) when
+// a takeover has occurred — the caller fails the run. Closes the check-then-
+// write TOCTOU window ("fence" capability).
+func (s *pgStore) putFenced(ctx context.Context, logical string, value []byte, lockKey, holder, token string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	var leaseOK bool
+	err := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		WITH lease AS (
+			SELECT 1 FROM %[1]s
+			WHERE key = $3
+			  AND value->>'holder' = $4
+			  AND value->>'token' = $5
+			  AND (value->>'expires')::timestamptz > now()
+		), ins AS (
+			INSERT INTO %[1]s (key, value, updated_at)
+			SELECT $1, $2::jsonb, now() FROM lease
+			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+			RETURNING 1
+		)
+		SELECT EXISTS (SELECT 1 FROM lease)`, s.table),
+		s.key(logical), string(value), s.key(lockKey), holder, token).Scan(&leaseOK)
+	if err != nil {
+		return false, fmt.Errorf("store-postgres: put_fenced %q: %w", logical, err)
+	}
+	return leaseOK, nil
+}
+
+// deleteFenced removes key subject to the same lease condition as putFenced.
+// deleted is true when the lease was ours (whether or not a row existed);
+// false when a takeover has occurred.
+func (s *pgStore) deleteFenced(ctx context.Context, logical, lockKey, holder, token string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	var leaseOK bool
+	err := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		WITH lease AS (
+			SELECT 1 FROM %[1]s
+			WHERE key = $2
+			  AND value->>'holder' = $3
+			  AND value->>'token' = $4
+			  AND (value->>'expires')::timestamptz > now()
+		), del AS (
+			DELETE FROM %[1]s WHERE key = $1 AND EXISTS (SELECT 1 FROM lease)
+			RETURNING 1
+		)
+		SELECT EXISTS (SELECT 1 FROM lease)`, s.table),
+		s.key(logical), s.key(lockKey), holder, token).Scan(&leaseOK)
+	if err != nil {
+		return false, fmt.Errorf("store-postgres: delete_fenced %q: %w", logical, err)
+	}
+	return leaseOK, nil
+}
+
+func (s *pgStore) del(ctx context.Context, logical string) error {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	if _, err := s.pool.Exec(ctx,
+		fmt.Sprintf(`DELETE FROM %s WHERE key = $1`, s.table), s.key(logical)); err != nil {
+		return fmt.Errorf("store-postgres: delete %q: %w", logical, err)
+	}
+	return nil
+}
+
+func (s *pgStore) list(ctx context.Context, logicalPrefix string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	pattern := likeEscape(s.prefix+logicalPrefix) + "%"
+	rows, err := s.pool.Query(ctx,
+		fmt.Sprintf(`SELECT key FROM %s WHERE key LIKE $1 ESCAPE '\' ORDER BY key`, s.table), pattern)
+	if err != nil {
+		return nil, fmt.Errorf("store-postgres: list: %w", err)
+	}
+	defer rows.Close()
+
+	out := []string{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, fmt.Errorf("store-postgres: list: %w", err)
+		}
+		out = append(out, strings.TrimPrefix(k, s.prefix))
+	}
+	return out, rows.Err()
+}
+
+// listStatuses returns every run-status row under logicalPrefix
+// (`<prefix><id>/status`) as key → raw JSON in one query. `mhl serve`'s
+// durable-intake reconcile and sweep loops call this instead of a `list`
+// followed by a `get` per run — the round-trip storm, not the scan, was the
+// cost. The `key LIKE '%/status'` narrowing keeps owner / lock / checkpoint
+// rows out of the result. ("scan" capability.)
+func (s *pgStore) listStatuses(ctx context.Context, logicalPrefix string) (map[string][]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	pattern := likeEscape(s.prefix+logicalPrefix) + "%"
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(
+		`SELECT key, value FROM %s WHERE key LIKE $1 ESCAPE '\' AND key LIKE '%%/status'`, s.table), pattern)
+	if err != nil {
+		return nil, fmt.Errorf("store-postgres: list_statuses: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string][]byte{}
+	for rows.Next() {
+		var k string
+		var v []byte
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, fmt.Errorf("store-postgres: list_statuses: %w", err)
+		}
+		out[strings.TrimPrefix(k, s.prefix)] = v
+	}
+	return out, rows.Err()
+}
+
+// countPending returns how many run-status rows under logicalPrefix are in the
+// `pending` state — the fleet-wide durable-intake queue depth for the
+// `mhl_serve_runs_pending` gauge. Served by the `<table>_pending_idx` partial
+// index (its predicate is exactly `value->>'state' = 'pending'`), so it stays
+// O(queue depth) as the shared table grows. ("scan" capability.)
+func (s *pgStore) countPending(ctx context.Context, logicalPrefix string) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	pattern := likeEscape(s.prefix+logicalPrefix) + "%"
+	var n int
+	err := s.pool.QueryRow(ctx, fmt.Sprintf(
+		`SELECT count(*) FROM %s WHERE key LIKE $1 ESCAPE '\' AND key LIKE '%%/status' AND value->>'state' = 'pending'`,
+		s.table), pattern).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store-postgres: count_pending: %w", err)
+	}
+	return n, nil
+}
+
+func (s *pgStore) close() {
+	if s.pool != nil {
+		s.pool.Close()
+	}
+}
+
+// --- helpers -------------------------------------------------------------
+
+// validIdent accepts a bare SQL identifier or a schema-qualified one
+// ("schema.table"): each part starts with a letter or underscore and
+// continues with letters, digits or underscores.
+func validIdent(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) == 0 || len(parts) > 2 {
+		return false
+	}
+	for _, p := range parts {
+		if p == "" {
+			return false
+		}
+		for i, r := range p {
+			switch {
+			case r == '_', unicode.IsLetter(r):
+			case i > 0 && unicode.IsDigit(r):
+			default:
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func unqualify(table string) string {
+	if i := strings.LastIndexByte(table, '.'); i >= 0 {
+		return table[i+1:]
+	}
+	return table
+}
+
+// likeEscape neutralises LIKE metacharacters in a literal prefix (ESCAPE '\').
+func likeEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// buildKeywordDSN assembles a libpq keyword/value connection string from the
+// discrete properties. pgxpool.ParseConfig accepts this form as well as URLs.
+func buildKeywordDSN(c pgConfig) string {
+	var b strings.Builder
+	add := func(k, v string) {
+		if v == "" {
+			return
+		}
+		if strings.ContainsAny(v, " '\\") {
+			v = "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(v) + "'"
+		}
+		fmt.Fprintf(&b, "%s=%s ", k, v)
+	}
+	add("host", c.Host)
+	add("port", c.Port)
+	add("dbname", c.DBName)
+	add("user", c.User)
+	add("password", c.Password)
+	sslmode := c.SSLMode
+	if sslmode == "" {
+		sslmode = "prefer"
+	}
+	add("sslmode", sslmode)
+	return strings.TrimSpace(b.String())
+}
