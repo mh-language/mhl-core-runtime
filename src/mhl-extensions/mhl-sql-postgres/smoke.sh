@@ -64,9 +64,37 @@ echo "==> project: $PROJ"
 ( cd "$PROJ" && "$MHL" extension install "$HERE" )
 ( cd "$PROJ" && "$MHL" extension doctor )
 
+diagnose() {
+  echo "--- smoke diagnostics ---" >&2
+  echo "runtime: $MHL" >&2
+  echo "extension: $HERE" >&2
+  echo "project: $PROJ" >&2
+  echo "--- project files ---" >&2
+  ls -la "$PROJ" >&2 || true
+  for output in "$OUT" "${WOUT:-}"; do
+    if [[ -n "$output" && -f "$output" ]]; then
+      echo "--- $output ---" >&2
+      cat "$output" >&2 || true
+    fi
+  done
+  if [[ -f "$PROJ/wire.jsonl" ]]; then
+    echo "--- $PROJ/wire.jsonl ---" >&2
+    cat "$PROJ/wire.jsonl" >&2 || true
+  fi
+  if command -v psql >/dev/null 2>&1; then
+    echo "--- PostgreSQL connectivity ---" >&2
+    psql "$SQL_PG_DSN" -v ON_ERROR_STOP=1 -Atc \
+      'SELECT current_database(), count(*) FROM people' >&2 || true
+  else
+    echo "psql not installed; PostgreSQL connectivity was not probed" >&2
+  fi
+}
+
 OUT="$PROJ/run.out"
 if ! ( cd "$PROJ" && "$MHL" run main.mh ) >"$OUT" 2>&1; then
-  echo "--- mhl run main.mh failed ---"; cat "$OUT"; exit 1
+  echo "--- mhl run main.mh failed ---" >&2
+  diagnose
+  exit 1
 fi
 echo "--- reads ---"; cat "$OUT"
 
@@ -89,5 +117,6 @@ if [[ ${#fails[@]} -eq 0 ]]; then
   echo "PASS — DQL round-trip (objects, numeric, jsonb, \$1); write rejected as read-only"
 else
   printf 'FAIL:\n'; printf '  - %s\n' "${fails[@]}"
+  diagnose
   exit 1
 fi

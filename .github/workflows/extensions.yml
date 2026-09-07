@@ -92,15 +92,22 @@ jobs:
 
       - name: Reset seeded databases before smoke
         run: |
+          set -euo pipefail
           # The live-DB tests above run write paths against these shared
           # containers; recreate the volumes so smoke sees a pristine
           # initdb/seed.sql state, not test residue.
           for ext in $(make -s -C src/mhl-extensions list); do
             if test -f "src/mhl-extensions/$ext/docker-compose.yml"; then
-              docker compose -f "src/mhl-extensions/$ext/docker-compose.yml" down --volumes
-              make -C "src/mhl-extensions/$ext" up
+              compose="src/mhl-extensions/$ext/docker-compose.yml"
+              docker compose -f "$compose" down --volumes
+              docker compose -f "$compose" up -d --wait
             fi
           done
+          SQLPG_COMPOSE=src/mhl-extensions/mhl-sql-postgres/docker-compose.yml
+          docker compose -f "$SQLPG_COMPOSE" exec -T postgres \
+            pg_isready -U mhl -d demo
+          test "$(docker compose -f "$SQLPG_COMPOSE" exec -T postgres \
+            psql -U mhl -d demo -Atc 'SELECT count(*) FROM people' | tr -d '\r')" = 5
 
       - name: Install archives and exercise extensions through runtime
         timeout-minutes: 5
