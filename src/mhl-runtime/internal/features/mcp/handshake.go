@@ -225,12 +225,26 @@ func (s *stdioSession) readMessage() ([]byte, error) {
 
 // shutdown closes stdin, stops the process, reaps it, and returns the trimmed
 // stderr. Idempotent — safe to call from an error path and again via defer.
+//
+// Order matters: pr is closed *before* waiting on waitDone. exec copies the
+// child's stdout to our pipe writer through an internal goroutine (cmd.Stdout is
+// an *io.PipeWriter, not an *os.File), and cmd.Wait blocks until that goroutine
+// returns. Once no one is draining pr, that goroutine parks in pw.Write, which
+// cmd.WaitDelay cannot interrupt — so closing pr here is what lets Wait finish.
+// Waiting first would deadlock: shutdown → waitDone → Wait → copy goroutine →
+// a pr reader that shutdown itself was about to become.
 func (s *stdioSession) shutdown() string {
 	s.once.Do(func() {
 		_ = s.stdin.Close()
 		s.cancel()
-		<-s.waitDone
 		_ = s.pr.Close()
+		select {
+		case <-s.waitDone:
+		case <-time.After(5 * time.Second):
+			// Defensive: cmd.WaitDelay (2s) plus a closed pr should always
+			// let Wait return well inside this bound. waitDone is buffered,
+			// so the goroutine never leaks even if we stop listening.
+		}
 		s.stderrStr = strings.TrimSpace(s.stderr.String())
 	})
 	return s.stderrStr
