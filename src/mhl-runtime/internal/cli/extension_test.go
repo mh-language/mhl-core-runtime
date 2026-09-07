@@ -282,6 +282,9 @@ func TestExtensionInstallVendorsAndPins(t *testing.T) {
 	if !strings.Contains(string(lock), `"com.acme.crm"`) || !strings.Contains(string(lock), `"2.0.0"`) || !strings.Contains(string(lock), `"sha256"`) {
 		t.Fatalf("lock missing the pinned entry:\n%s", lock)
 	}
+	if !strings.Contains(string(lock), `"lockfile_version": 2`) || !strings.Contains(string(lock), `"package_sha256"`) {
+		t.Fatalf("lock missing v2 package integrity fields:\n%s", lock)
+	}
 
 	// And now `doctor` should be happy with it.
 	var dbuf bytes.Buffer

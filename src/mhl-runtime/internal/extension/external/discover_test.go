@@ -121,6 +121,42 @@ func TestDiscoverRejectsAHashMismatch(t *testing.T) {
 	}
 }
 
+func TestDiscoverRejectsAPackageHashMismatch(t *testing.T) {
+	root := scaffold(t, "com.test.fake", "", true)
+	manifest := filepath.Join(root, ".mhl", "extensions", "com.test.fake", "extension.json")
+	if err := os.WriteFile(manifest, []byte(`{"id":"com.test.fake","version":"1.0.0","api_version":"1","executable":"`+testBinary+`","declarations":[{"kind":"changed"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	lockPath := filepath.Join(root, LockPath)
+	lock, err := LoadLock(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packageSum, err := HashPackage(filepath.Join(root, ".mhl", "extensions", "com.test.fake"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock.LockfileVersion = 2
+	entry := lock.Extensions["com.test.fake"]
+	entry.PackageSHA256 = packageSum
+	lock.Extensions["com.test.fake"] = entry
+	if err := lock.Save(lockPath); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(manifest, []byte(`{"id":"com.test.fake","version":"1.0.0","api_version":"1","executable":"`+testBinary+`","declarations":[{"kind":"tampered"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(set.exts) != 0 || len(set.Problems()) != 1 || !strings.Contains(set.Problems()[0].Message, "package sha256") {
+		t.Fatalf("expected a package hash problem, got exts=%d problems=%+v", len(set.exts), set.Problems())
+	}
+}
+
 func TestDiscoverMissingManifestIsAProblemNotACrash(t *testing.T) {
 	root := t.TempDir()
 	lock := Lock{Extensions: map[string]LockEntry{

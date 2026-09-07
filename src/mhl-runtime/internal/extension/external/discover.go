@@ -148,6 +148,15 @@ func resolveLocked(projectDir, id string, entry LockEntry) (*Manifest, string) {
 	if entry.Version != "" && m.Version != entry.Version {
 		return m, fmt.Sprintf("installed version %q does not match locked %q", m.Version, entry.Version)
 	}
+	if entry.PackageSHA256 != "" {
+		sum, err := HashPackage(filepath.Dir(manifestPath))
+		if err != nil {
+			return m, "hashing package: " + err.Error()
+		}
+		if sum != entry.PackageSHA256 {
+			return m, "package sha256 does not match the lock (refusing changed package content)"
+		}
+	}
 
 	exe := m.ExecutablePath()
 	info, err := os.Stat(exe)
