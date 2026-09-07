@@ -46,10 +46,13 @@ fi
 
 tag="${MHL_VERSION:-}"
 if [ -z "$tag" ]; then
-  info "resolving latest release..."
-  tag="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-    | grep '"tag_name"' | head -n1 | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
-  [ -n "$tag" ] || die "could not resolve latest release version"
+  info "resolving latest runtime release..."
+  # /releases/latest ignores prereleases and can resolve to a non-runtime
+  # release (extensions-v*), so scan the list for the newest v* tag instead.
+  tag="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=100" \
+    | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/' \
+    | grep -E '^v[0-9]' | head -n1)"
+  [ -n "$tag" ] || die "could not resolve latest runtime release version"
 fi
 # A manual MHL_VERSION may be given with or without the leading "v" the repo's
 # tags use (e.g. "1.2.0-beta.1" or "v1.2.0-beta.1") — normalize to the tag.
