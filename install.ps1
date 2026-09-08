@@ -25,10 +25,12 @@ $Arch = switch ($env:PROCESSOR_ARCHITECTURE) {
 
 $Tag = $env:MHL_VERSION
 if (-not $Tag) {
-  Info "resolving latest release..."
-  $release = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$Repo/releases/latest"
-  $Tag = $release.tag_name
-  if (-not $Tag) { Die "could not resolve latest release version" }
+  Info "resolving latest runtime release..."
+  # /releases/latest ignores prereleases and can resolve to a non-runtime
+  # release (extensions-v*), so scan the list for the newest v* tag instead.
+  $releases = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$Repo/releases?per_page=100"
+  $Tag = ($releases | Where-Object { $_.tag_name -match '^v[0-9]' } | Select-Object -First 1).tag_name
+  if (-not $Tag) { Die "could not resolve latest runtime release version" }
 }
 # A manual $env:MHL_VERSION may be given with or without the leading "v" the
 # repo's tags use (e.g. "1.2.0-beta.1" or "v1.2.0-beta.1") — normalize to the tag.
