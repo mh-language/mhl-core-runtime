@@ -389,8 +389,17 @@ func offsetToPos(src string, off int) position {
 	}
 }
 
-// pathToURI is uriToPath's inverse: a plain filesystem path to a file:// URI.
+// pathToURI is uriToPath's inverse: a plain filesystem path to a file://
+// URI. filepath.ToSlash normalizes Windows backslashes, and a drive-letter
+// path ("C:\...") needs a leading "/" ahead of the drive letter — the
+// "file:///C:/..." shape every LSP client (and uriToPath's decoding above)
+// expects; without it url.URL treats "C:" as the URI's host instead of the
+// start of the path.
 func pathToURI(p string) string {
+	p = filepath.ToSlash(p)
+	if len(p) >= 2 && p[1] == ':' && isASCIILetter(p[0]) {
+		p = "/" + p
+	}
 	u := url.URL{Scheme: "file", Path: p}
 	return u.String()
 }
