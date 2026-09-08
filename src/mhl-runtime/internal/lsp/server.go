@@ -131,10 +131,27 @@ func (s *server) publishDiagnostics(uri string) {
 // targets and to label findings, so a best-effort decode (falling back to
 // stripping the scheme verbatim on a malformed URI) is good enough — it
 // never needs to be a real file handle.
+//
+// A Windows client sends drive-letter URIs like "file:///c%3A/Users/..."
+// (VS Code, and the LSP spec's own examples, always do); url.Parse decodes
+// that to a Path of "/c:/Users/..." — a leading slash ahead of the drive
+// letter that isn't a valid Windows path, so every filepath.*/os.* call
+// downstream (import/prompt-source resolution, go-to-definition) silently
+// fails to find the file. Strip that leading slash when what follows looks
+// like a drive letter; a genuine Unix path never matches "/<letter>:/...",
+// so this is safe on every platform, not just under GOOS=windows.
 func uriToPath(uri string) string {
 	u, err := url.Parse(uri)
 	if err != nil || u.Scheme != "file" {
 		return strings.TrimPrefix(uri, "file://")
 	}
-	return u.Path
+	p := u.Path
+	if len(p) >= 3 && p[0] == '/' && p[2] == ':' && isASCIILetter(p[1]) {
+		p = p[1:]
+	}
+	return p
+}
+
+func isASCIILetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
