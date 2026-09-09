@@ -140,6 +140,52 @@ npm run compile
 Manually verify user-facing editor changes in an Extension Development Host and include screenshots
 in the pull request when the visual behavior changes.
 
+## Versioning releases with SemVer
+
+MHL releases follow [Semantic Versioning 2.0.0](https://semver.org/) using the
+`MAJOR.MINOR.PATCH` format. Runtime Git tags add a leading `v`, so version `1.4.2` is tagged
+`v1.4.2`. Choose the next version from the user-visible compatibility of all changes since the
+previous release:
+
+- increment `PATCH` for backward-compatible bug fixes, documentation corrections included in a
+  release, and internal changes that do not add or break public behavior: `1.4.2` → `1.4.3`;
+- increment `MINOR` for backward-compatible language, CLI, LSP, or runtime functionality, resetting
+  patch to zero: `1.4.3` → `1.5.0`;
+- increment `MAJOR` for an incompatible public change, resetting minor and patch to zero:
+  `1.5.0` → `2.0.0`.
+
+Versions below `1.0.0` denote initial development. Breaking changes are allowed there, but they
+must still be called out clearly; increment the minor version for a breaking change to the public
+surface (`0.4.3` → `0.5.0`) and the patch version only for compatible fixes (`0.5.0` → `0.5.1`).
+Release `1.0.0` when the public language and runtime contract is considered stable.
+
+Use a SemVer pre-release suffix for beta builds. Start at `-beta.1`, increment the numeric
+identifier for each replacement candidate, and remove the suffix only when promoting the exact
+target line to stable:
+
+```text
+1.5.0
+  → 1.6.0-beta.1  first beta of the next compatible feature release
+  → 1.6.0-beta.2  fixes or refinements found during beta testing
+  → 1.6.0-beta.3  another beta candidate, if needed
+  → 1.6.0         stable release
+
+1.6.0
+  → 2.0.0-beta.1  first beta containing breaking changes
+  → 2.0.0-beta.2
+  → 2.0.0
+```
+
+A beta has lower precedence than its corresponding stable version, so
+`1.6.0-beta.2 < 1.6.0`. Do not create `1.6.0-beta.1` after `1.6.0` has already been released;
+start a beta for a later version instead, such as `1.6.1-beta.1` or `1.7.0-beta.1`. Published
+versions and tags are immutable: never move or reuse a release tag. If a beta needs correction,
+publish the next beta number.
+
+Examples of runtime tags are `v1.6.0-beta.1`, `v1.6.0-beta.2`, and `v1.6.0`. Extension bundles
+are versioned independently with the same SemVer rules and use the `extensions-v` prefix, for
+example `extensions-v0.3.0-beta.1` and `extensions-v0.3.0`.
+
 ## Commit messages
 
 Use Conventional Commits and keep commits focused. Common examples include:
