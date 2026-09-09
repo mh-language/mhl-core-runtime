@@ -518,7 +518,7 @@ Audit.append("pipeline started")</code></pre>
           </ul>
         </section>
 
-        <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs http json log time uuid v4 v7 return types">
+        <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs dir directory create exists delete list http json log time uuid v4 v7 return types">
           <div class="feature-head"><h2><span class="feature-num">08</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">A tool creates a small, reusable API over native operations. Methods take positional arguments, may declare types, and use either an expression body or a statement block.</p>
           <div class="tip-row"><span>DEFAULT ARGUMENTS</span><p>A method or lambda parameter may end with <code>= expression</code> — <code>write(path: string, mode: string = "0644")</code> — supplying a value when the caller omits that argument. Positional parameters bind left to right, so a default may read an earlier parameter (<code>close: string = open</code>) but a non-defaulted parameter may not follow a defaulted one (<code>mhl lint</code> flags it). Each default is evaluated in the callee's own scope, once per call that omits it.</p></div>
@@ -542,6 +542,7 @@ if (result.exit_code != 0) fail(result.stderr)</code></pre>
           <div class="native-reference">
             <article><h3><code>cmd</code></h3><p><code>exec(command_or_argv, timeout:)</code></p><p><code>exec_all(commands:, timeout:)</code></p></article>
             <article><h3><code>fs</code></h3><p><code>read</code> · <code>exists</code> · <code>write</code> · <code>append</code></p><p><code>delete</code> · <code>join</code> · <code>list</code></p></article>
+            <article><h3><code>dir</code></h3><p><code>create</code> · <code>exists</code> · <code>list</code> · <code>delete</code></p><p>Directory-specific, non-recursive deletion.</p></article>
             <article><h3><code>git</code></h3><p><code>diff</code> · <code>add</code> · <code>commit</code> · <code>status</code></p><p><code>rev_parse</code> · <code>log</code></p></article>
             <article><h3><code>json</code></h3><p><code>parse</code> · <code>parse_lines</code> · <code>stringify</code></p></article>
             <article><h3><code>http</code></h3><p><code>get</code> · <code>post</code> · <code>put</code> · <code>patch</code> · <code>delete</code> · <code>head</code> · <code>options</code> · <code>download</code></p><p><code>(url:, headers:, query:, body:, text:, form:, timeout:, follow_redirects:, raise_for_status:, auth:, tls:, proxy:)</code></p></article>
@@ -564,7 +565,11 @@ var jobs = http.get(
 )
 if (jobs.ok) fs.write("result.json", json.stringify(jobs.json))
 http.download("https://api.example.com/artifacts/build.zip", "build.zip")
+dir.create("artifacts/reports")                 // idempotent; creates parents
+var entries = dir.list("artifacts")             // immediate, sorted paths
+if (dir.exists("artifacts/reports")) dir.delete("artifacts/reports") // empty only
 var expires_at = time.add(time.now(), 7d)</code></pre>
+          <p class="feature-lede"><code>dir</code> is the directory-specific companion to <code>fs</code>. <code>dir.create(path)</code> has <code>mkdir -p</code> semantics and succeeds when the directory already exists. <code>dir.exists(path)</code> returns true only for a directory (an existing file returns false). <code>dir.list(path)</code> returns immediate entries as joined paths in filename order. <code>dir.delete(path)</code> removes only an empty directory and raises for a file, missing path, or non-empty directory; it never recursively deletes contents.</p>
           <p class="feature-lede"><code>time.parse</code>/<code>time.format</code>'s <code>layout</code> accepts either a raw Go reference-time layout (<code>"2006-01-02"</code>) or the friendlier <code>yyyy</code>/<code>MM</code>/<code>dd</code>/<code>HH</code>/<code>mm</code>/<code>ss</code> tokens (e.g. <code>time.format(dt, "dd/MM/yyyy")</code>) — case matters where a unit would otherwise be ambiguous: <code>MM</code> is always month, <code>mm</code> is always minute; <code>HH</code> is always 24-hour, <code>hh</code> is always 12-hour.</p>
           <pre class="code-block"><code class="language-mhl">var target = input.repo_dir                       // some checkout, not this one
 
