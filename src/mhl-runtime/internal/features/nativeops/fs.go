@@ -31,6 +31,28 @@ func Exists(path string) (bool, error) {
 	return true, nil
 }
 
+// DirExists reports whether path names an existing directory. An existing
+// non-directory path is false; errors other than "not found" are surfaced.
+func DirExists(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("dir.exists %q: %w", path, err)
+	}
+	return info.IsDir(), nil
+}
+
+// CreateDir creates path and any missing parents. It is idempotent when the
+// directory already exists, matching mkdir -p semantics.
+func CreateDir(path string) (bool, error) {
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return false, fmt.Errorf("dir.create %q: %w", path, err)
+	}
+	return true, nil
+}
+
 // Write writes content to path, creating any missing parent directories
 // (same convention as internal/memory/json.go's writeJSON). Returns true on
 // success — there's nothing more meaningful to hand back for a write.
@@ -161,9 +183,18 @@ func AppendWriter(path string) io.WriteCloser {
 // returns entries sorted by filename, so the result is deterministic across
 // runs without an extra sort here.
 func List(dir string) ([]string, error) {
+	return listDir("fs.list", dir)
+}
+
+// ListDir is the directory-specific spelling of List.
+func ListDir(dir string) ([]string, error) {
+	return listDir("dir.list", dir)
+}
+
+func listDir(op, dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("fs.list %q: %w", dir, err)
+		return nil, fmt.Errorf("%s %q: %w", op, dir, err)
 	}
 	out := make([]string, len(entries))
 	for i, e := range entries {
@@ -189,6 +220,22 @@ func Join(parts ...string) string {
 func Delete(path string) (bool, error) {
 	if err := os.Remove(path); err != nil {
 		return false, err
+	}
+	return true, nil
+}
+
+// DeleteDir removes an empty directory. It deliberately does not recurse:
+// callers cannot accidentally erase a directory tree with this primitive.
+func DeleteDir(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, fmt.Errorf("dir.delete %q: %w", path, err)
+	}
+	if !info.IsDir() {
+		return false, fmt.Errorf("dir.delete %q: not a directory", path)
+	}
+	if err := os.Remove(path); err != nil {
+		return false, fmt.Errorf("dir.delete %q: %w", path, err)
 	}
 	return true, nil
 }
