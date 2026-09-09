@@ -26,11 +26,11 @@ func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
 }
 
 // nativeNamespaces are the reserved `tool` method-body namespaces
-// (language-design.md §7), plus `json`, `log`, `time`, and `uuid` — never
+// (language-design.md §7), plus `dir`, `json`, `log`, `time`, and `uuid` — never
 // looked up against user declarations, the same way the bare `log(...)`
 // builtin is reserved regardless of what a .mh author might otherwise name a
 // variable.
-var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "http": true, "json": true, "log": true, "time": true, "uuid": true}
+var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "dir": true, "http": true, "json": true, "log": true, "time": true, "uuid": true}
 
 // evalToolCall resolves and executes a declared `tool` method call, e.g.
 // `execution.get_diff()`. Arguments bind positionally to the method's
@@ -276,6 +276,38 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, fmt.Errorf("fs.list requires a string path as its first argument")
 		}
 		paths, err := nativeops.List(dir)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]any, len(paths))
+		for i, p := range paths {
+			out[i] = p
+		}
+		return out, nil
+	case "dir.create":
+		path, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("dir.create requires a string path as its first argument")
+		}
+		return nativeops.CreateDir(path)
+	case "dir.exists":
+		path, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("dir.exists requires a string path as its first argument")
+		}
+		return nativeops.DirExists(path)
+	case "dir.delete":
+		path, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("dir.delete requires a string path as its first argument")
+		}
+		return nativeops.DeleteDir(path)
+	case "dir.list":
+		path, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("dir.list requires a string path as its first argument")
+		}
+		paths, err := nativeops.ListDir(path)
 		if err != nil {
 			return nil, err
 		}

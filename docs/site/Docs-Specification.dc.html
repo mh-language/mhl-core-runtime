@@ -355,7 +355,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <div class="tip-row"><strong>Immutability and mutation</strong>Collection transforms, concatenation, and slices return new arrays. Plain indexed assignment such as <code>items[0] = value</code> and object-field assignment mutate the addressed collection.</div>
 </section>
 
-<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7">
+<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write dir directory create exists delete list git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7">
 <h2>11. Native operations</h2>
 <p>Native namespaces are reserved and can be called from pipeline statements, tool methods, hooks, and other expression positions. They execute host effects and therefore MUST be treated as privileged operations.</p>
 <h3>11.1 Command execution: <code>cmd</code></h3>
@@ -367,11 +367,18 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
 <tr><td class="signature">fs.read(path: string) → string</td><td>Reads the entire file; unreadable paths raise.</td></tr><tr><td class="signature">fs.exists(path: string) → bool</td><td>False only for not-found; other stat errors raise.</td></tr><tr><td class="signature">fs.write(path: string, content: string) → bool</td><td>Creates parent directories, truncates, writes, and returns true.</td></tr><tr><td class="signature">fs.append(path: string, content: string) → bool</td><td>Creates parent directories and appends.</td></tr><tr><td class="signature">fs.delete(path: string) → bool</td><td>Removes a file or empty directory. Missing targets raise.</td></tr><tr><td class="signature">fs.join(...segments: string) → string</td><td>OS-appropriate cleaned path join. At least one segment is required.</td></tr><tr><td class="signature">fs.list(dir: string) → string[]</td><td>Lists immediate entries as joined paths; it is not recursive.</td></tr>
 </tbody></table>
-<h3>11.3 Git: <code>git</code></h3>
+<h3>11.3 Directories: <code>dir</code></h3>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">dir.create(path: string) → bool</td><td>Creates the directory and every missing parent with host-default directory permissions, and returns true. The operation is idempotent when the directory already exists. A conflicting file or another creation failure raises.</td></tr>
+<tr><td class="signature">dir.exists(path: string) → bool</td><td>Returns true only when the path exists and is a directory. A missing path or an existing non-directory path returns false; other stat errors raise.</td></tr>
+<tr><td class="signature">dir.list(path: string) → string[]</td><td>Returns immediate entries as paths joined to <code>path</code>, sorted by filename. The operation is not recursive. A missing or non-directory path raises.</td></tr>
+<tr><td class="signature">dir.delete(path: string) → bool</td><td>Removes an empty directory and returns true. A file, missing path, non-empty directory, or removal failure raises. The operation MUST NOT recursively delete contents.</td></tr>
+</tbody></table>
+<h3>11.4 Git: <code>git</code></h3>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
 <tr><td class="signature">git.diff(target?: string, dir?: string) → string</td><td>Runs <code>git [-C dir] diff [target]</code>. Non-zero exit raises.</td></tr><tr><td class="signature">git.add(paths: string[], dir?: string) → {stdout, stderr, exit_code}</td><td>Stages paths with <code>git add -A --</code>. At least one path is required; exit status is inspectable.</td></tr><tr><td class="signature">git.commit(message: string, paths?: string[], dir?: string) → {stdout, stderr, exit_code}</td><td>Passes the message as one argv element. A non-empty message is required.</td></tr><tr><td class="signature">git.status(paths?: string[], dir?: string) → {stdout, stderr, exit_code}</td><td>Runs short status. A non-zero exit is inspectable.</td></tr><tr><td class="signature">git.rev_parse(ref: string, dir?: string) → string</td><td>Returns a trimmed short ref; invalid refs raise.</td></tr><tr><td class="signature">git.log(n: number, dir?: string) → string</td><td>Returns <code>git log -n n --oneline</code>; <code>n</code> MUST be positive.</td></tr>
 </tbody></table>
-<h3>11.4 HTTP: <code>http</code></h3>
+<h3>11.5 HTTP: <code>http</code></h3>
 <p>The operations <code>http.get</code>, <code>http.post</code>, <code>http.put</code>, <code>http.patch</code>, <code>http.delete</code>, <code>http.head</code>, and <code>http.options</code> share the following surface. The URL may be the first positional argument or the named <code>url:</code> argument; all other options are named.</p>
 <table><thead><tr><th>Signature / option</th><th>Semantics</th></tr></thead><tbody>
 <tr><td class="signature">http.&lt;verb&gt;(url: string, ...) → {status: number, body: string, headers: {string: string}, ok: bool, json: any}</td><td>Returns the response. <code>ok</code> is true for status 200–299. A transport failure raises; non-2xx status is a value unless <code>raise_for_status: true</code>.</td></tr>
@@ -389,13 +396,13 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <tr><td class="signature">http.download(url: string, path: string, ...) → {status: number, path: string, bytes: number, ok: bool, headers: {string: string}}</td><td>Streams a GET response to an atomic file. A non-2xx response writes no file unless raised by <code>raise_for_status</code>; it accepts the request options above except a request body.</td></tr>
 </tbody></table>
 <p>For JSON responses, <code>json</code> contains the parsed body when the response content type is JSON, otherwise null. Response headers with multiple values are joined with <code>", "</code>.</p>
-<h3>11.5 JSON: <code>json</code></h3>
+<h3>11.6 JSON: <code>json</code></h3>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">json.parse(text: string) → any</td><td>Parses one JSON document; invalid JSON raises.</td></tr><tr><td class="signature">json.parse_lines(text: string) → any[]</td><td>Parses one JSON value per non-empty line.</td></tr><tr><td class="signature">json.stringify(value: any) → string</td><td>Serializes a JSON-compatible value with stable object keys.</td></tr></tbody></table>
-<h3>11.6 Logging: <code>log</code></h3>
+<h3>11.7 Logging: <code>log</code></h3>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">log.info(...values: any) → null</td><td>Writes an <code>[INFO]</code> line.</td></tr><tr><td class="signature">log.warn(...values: any) → null</td><td>Writes a <code>[WARN]</code> line.</td></tr><tr><td class="signature">log.error(...values: any) → null</td><td>Writes an <code>[ERROR]</code> line; it does not raise or change exit status.</td></tr></tbody></table>
-<h3>11.7 Time: <code>time</code></h3>
+<h3>11.8 Time: <code>time</code></h3>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">time.now() → string</td><td>Current instant as RFC3339 UTC.</td></tr><tr><td class="signature">time.parse(text: string, layout?: string) → string</td><td>Parses and normalizes to RFC3339 UTC; default input layout is RFC3339.</td></tr><tr><td class="signature">time.format(value: string, layout?: string) → string</td><td>Formats an RFC3339 value using a Go layout or tokens such as <code>dd/MM/yyyy</code>.</td></tr><tr><td class="signature">time.add(value: string, duration: duration) → string</td><td>Adds a duration and returns RFC3339 UTC.</td></tr><tr><td class="signature">time.diff(a: string, b: string) → number</td><td>Returns seconds in <code>a - b</code>.</td></tr><tr><td class="signature">time.compare(a: string, b: string) → number</td><td>Returns -1, 0, or 1 for temporal ordering.</td></tr><tr><td class="signature">time.sleep(duration: duration) → null</td><td>Blocks for <code>duration</code> (e.g. <code>500ms</code>, <code>2s</code>). Cancellation-aware — a run-level cancel or the step's <code>timeout</code> firing interrupts it and fails the step; a non-positive value is a no-op.</td></tr></tbody></table>
-<h3>11.8 Identifiers: <code>uuid</code></h3>
+<h3>11.9 Identifiers: <code>uuid</code></h3>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">uuid.v4() → string</td><td>Random (version 4) UUID as a canonical 36-character lower-case string. An entropy failure raises.</td></tr><tr><td class="signature">uuid.v7() → string</td><td>Time-ordered (version 7) UUID — a 48-bit millisecond timestamp followed by random bits — as a canonical 36-character lower-case string. Values sort in creation order. An entropy failure raises.</td></tr></tbody></table>
 </section>
 
