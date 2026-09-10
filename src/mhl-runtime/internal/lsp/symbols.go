@@ -463,7 +463,7 @@ func inferKindFromText(rhs string) (symbolKind, bool) {
 	}
 }
 
-// nativeSymbols are the built-in cmd/git/fs/http/json/log/time namespaces —
+// nativeSymbols are the built-in cmd/git/fs/dir/http/json/log/time namespaces —
 // never declared in any .mh source, so symbolsFromProgram/symbolsFromText
 // can't find them, yet a .mh author calls their members constantly. Method
 // sets mirror the case labels nativeOpCall actually implements
@@ -474,6 +474,7 @@ var nativeSymbols = []symbol{
 	{Name: "cmd", Kind: symNative, Methods: []string{"exec", "exec_all"}},
 	{Name: "git", Kind: symNative, Methods: []string{"diff", "add", "commit", "status", "rev_parse", "log"}},
 	{Name: "fs", Kind: symNative, Methods: []string{"read", "exists", "write", "append", "delete", "list", "join"}},
+	{Name: "dir", Kind: symNative, Methods: []string{"list", "create", "exists", "delete"}},
 	{Name: "http", Kind: symNative, Methods: []string{"get", "post", "put", "patch", "delete", "head", "options", "download"}},
 	{Name: "json", Kind: symNative, Methods: []string{"parse", "parse_lines", "stringify"}},
 	{Name: "log", Kind: symNative, Methods: []string{"info", "warn", "error"}},

@@ -762,6 +762,86 @@ func TestToolFSListMissingDirErrors(t *testing.T) {
 	}
 }
 
+// --- dir -------------------------------------------------------------------
+
+func TestToolDirLifecycle(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "parent", "child")
+	out, err := run(t, wrapStep(`
+        log(dir.exists("`+filepath.ToSlash(path)+`"))
+        log(dir.create("`+filepath.ToSlash(path)+`"))
+        log(dir.create("`+filepath.ToSlash(path)+`"))
+        log(dir.exists("`+filepath.ToSlash(path)+`"))
+        log(dir.delete("`+filepath.ToSlash(path)+`"))
+        log(dir.exists("`+filepath.ToSlash(path)+`"))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"false\ntrue\ntrue\ntrue\ntrue\nfalse\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("unexpected output: %s", out)
+		}
+	}
+}
+
+func TestToolDirExistsFalseForFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	out, err := run(t, wrapStep(`log(dir.exists("`+filepath.ToSlash(path)+`"))`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "false\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolDirListReturnsEntryPaths(t *testing.T) {
+	dirPath := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dirPath, "child"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	out, err := run(t, wrapStep(`
+        var entries = dir.list("`+filepath.ToSlash(dirPath)+`")
+        log(entries.size())
+        log(entries[0])
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "1\n") || !strings.Contains(out, filepath.ToSlash(filepath.Join(dirPath, "child"))) {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestToolDirDeleteRejectsNonEmptyDirectory(t *testing.T) {
+	path := t.TempDir()
+	if err := os.WriteFile(filepath.Join(path, "keep.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := run(t, wrapStep(`dir.delete("`+filepath.ToSlash(path)+`")`))
+	if err == nil {
+		t.Fatal("expected an error deleting a non-empty directory")
+	}
+	if _, statErr := os.Stat(filepath.Join(path, "keep.txt")); statErr != nil {
+		t.Fatalf("directory contents were changed: %v", statErr)
+	}
+}
+
+func TestToolDirDeleteRejectsFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "keep.txt")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := run(t, wrapStep(`dir.delete("`+filepath.ToSlash(path)+`")`))
+	if err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("expected a not-a-directory error, got %v", err)
+	}
+}
+
 // --- fs.join -----------------------------------------------------------
 
 func TestToolFSJoinCombinesSegments(t *testing.T) {
