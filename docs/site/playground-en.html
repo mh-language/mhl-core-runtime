@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MHL Playground — learn step by step</title>
+  <meta name="description" content="Explore Meta-Harness Language syntax through a hands-on, progressive learning path.">
+  <link rel="icon" href="assets/mhl-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap">
+  <link rel="stylesheet" href="playground.css">
+  <link rel="alternate" hreflang="pt-BR" href="playground.html">
+  <link rel="alternate" hreflang="en" href="playground-en.html">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="Back to the MHL home page">
+      <img src="assets/mhl-logo.png" alt="" width="32" height="32">
+      <span><strong>MHL</strong><small>META-HARNESS LANGUAGE</small></span>
+    </a>
+    <nav aria-label="Main navigation">
+      <a href="index.html">Home</a>
+      <a href="Docs-Reference.dc.html">Reference</a>
+      <a href="playground-en.html" aria-current="page">Playground</a>
+    </nav>
+    <a class="language-switch" id="language-switch" href="playground.html" hreflang="pt-BR" lang="pt-BR" aria-label="Mudar para português">Português</a>
+    <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">☼</button>
+  </header>
+
+  <main>
+    <section class="intro">
+      <div>
+        <p class="eyebrow">PLAYGROUND · LEARN BY BUILDING</p>
+        <h1>Explore the MHL language.</h1>
+        <p>From syntax to workflows: edit, experiment, and run your code with the MHL runtime.</p>
+      </div>
+      <div class="progress-card" aria-label="Learning progress">
+        <div><span id="progress-label">Completed lessons</span><strong id="progress-percent">0%</strong></div>
+        <div class="progress-track" id="progress-track" role="progressbar" aria-label="Completed lessons" aria-valuemin="0" aria-valuemax="17" aria-valuenow="0"><span id="progress-bar"></span></div>
+        <small>Mark each lesson when you finish exploring it.</small>
+      </div>
+    </section>
+
+    <div class="workspace">
+      <aside class="lesson-nav" aria-label="Tutorial lessons">
+        <p class="nav-label">LEARNING PATH</p>
+        <label for="lesson-search" class="search-label">Find a feature</label>
+        <input id="lesson-search" type="search" placeholder="spawn, timeout, loop…" autocomplete="off">
+        <div id="lesson-list"></div>
+        <a class="reference-link" href="Docs-Reference.dc.html">Open full reference <span>↗</span></a>
+      </aside>
+
+      <section class="lesson" aria-labelledby="lesson-title">
+        <header class="lesson-head">
+          <div>
+            <p class="lesson-kicker" id="lesson-kicker"></p>
+            <h2 id="lesson-title" tabindex="-1"></h2>
+            <p id="lesson-description"></p>
+          </div>
+        </header>
+
+        <div class="concept-row" id="concepts"></div>
+
+        <div class="play-area">
+          <div class="editor-card">
+            <div class="panel-bar">
+              <div class="file-label"><span class="status-dot"></span><span id="file-name"></span><span id="edit-badge"></span></div>
+              <div class="panel-actions">
+                <button id="reset-button" type="button">Reset</button>
+                <button id="copy-button" type="button">Copy</button>
+                <button id="download-button" type="button">Download .mh</button>
+              </div>
+            </div>
+            <div class="editor-shell">
+              <pre id="line-numbers" aria-hidden="true"></pre>
+              <pre id="highlight" aria-hidden="true"><code></code></pre>
+              <textarea id="editor" aria-label="MHL code editor" aria-describedby="editor-help" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+            </div>
+            <div class="editor-status">
+              <span id="save-status"></span><span id="cursor-position">Ln 1, Col 1</span>
+            </div>
+          </div>
+
+          <div class="output-card">
+            <div class="panel-bar">
+              <div class="file-label"><span class="terminal-mark">›_</span> Example guide</div>
+            </div>
+            <div class="guide-content">
+              <h3>Try it</h3>
+              <p id="challenge"></p>
+              <details id="reference-details" open>
+                <summary>Expected behavior</summary>
+                <p id="reference-status"></p>
+                <pre class="output" id="output" tabindex="0" aria-label="Original example reference"></pre>
+              </details>
+              <a id="source-link" target="_blank" rel="noreferrer"></a>
+            </div>
+            <div class="run-row">
+              <button class="run-button" id="run-button" type="button">Check delimiters</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-help" id="editor-help">
+          <label><input id="indent-toggle" type="checkbox"> Tab inserts indentation</label>
+          <span>Esc releases Tab · Ctrl/Cmd+Enter checks · Ctrl/Cmd+Z undoes</span>
+        </div>
+        <div class="diagnostics">
+          <p id="diagnostic" role="status"></p>
+          <div id="diagnostic-list"></div>
+        </div>
+        <div class="tip" id="tip"></div>
+        <details class="cli-panel" open>
+          <summary>Run in your environment</summary>
+          <p>Download the .mh file and open a terminal in the folder where you saved it.</p>
+          <p id="requirements"></p>
+          <pre id="cli-command" tabindex="0" aria-label="MHL commands"></pre>
+          <button class="secondary-button" id="copy-cli" type="button">Copy commands</button>
+          <a href="index.html#start">Install the runtime ↗</a>
+        </details>
+
+        <footer class="lesson-footer">
+          <button class="secondary-button" id="previous-button" type="button">← Previous</button>
+          <div class="step-dots" id="step-dots"></div>
+          <button class="secondary-button" id="complete-button" type="button" aria-pressed="false">Mark as completed</button>
+          <button class="primary-button" id="next-button" type="button">Next lesson →</button>
+        </footer>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <span>MHL is open source.</span>
+    <div><a href="https://github.com/mh-language/mhl-core-runtime">GitHub ↗</a><a href="Docs-Specification.dc.html">Specification</a></div>
+  </footer>
+  <noscript><p class="tip">Enable JavaScript to use the editor. Examples are also available in the <a href="Docs-Reference.dc.html">MHL reference</a>.</p></noscript>
+  <script src="playground-lessons.js"></script>
+  <script src="playground-lessons.en.js"></script>
+  <script src="playground-core.js"></script>
+  <script src="playground.js"></script>
+</body>
+</html>
