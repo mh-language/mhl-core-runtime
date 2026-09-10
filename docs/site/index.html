@@ -172,6 +172,8 @@
             it works</a>
           <a href="#docs" data-pt="Documentação"
             style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">Documentation</a>
+          <a id="playground-link" href="playground-en.html" data-pt="Playground"
+            style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">Playground</a>
           <a href="#serve" data-pt="Servidores"
             style="color:var(--muted);font-size:15px;font-weight:600;padding:7px 10px;border-radius:7px;white-space:nowrap">Servers</a>
           <a href="#start" data-pt="Começar"
@@ -971,6 +973,8 @@ class Component extends DCLogic {
     const t = document.querySelector('#lang-toggle');
     if (t) t.textContent = pt ? 'EN' : 'PT';
     document.documentElement.lang = pt ? 'pt-BR' : 'en-US';
+    const playground = document.querySelector('#playground-link');
+    if (playground) playground.href = pt ? 'playground.html' : 'playground-en.html';
     localStorage.setItem('mhl-lang', lang);
   }
 
