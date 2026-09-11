@@ -150,6 +150,7 @@ var knownAgentProperties = map[string]bool{
 	"log": true, "trace": true,
 	"retry": true, "cache": true, "rate_limit": true, "fallback": true,
 	"before": true, "after": true,
+	"description": true,
 }
 
 // checkAgentProperties flags any property in an `agent { ... }` body — a
@@ -173,7 +174,7 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 		for _, p := range a.Props {
 			if !knownAgentProperties[p.Name] {
 				findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
-					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only engine, command, args, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, before, after", name, p.Name)})
+					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only engine, command, args, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, before, after, description", name, p.Name)})
 			}
 		}
 		if refs, err := ast.AgentFallbackRefs(a); err == nil {
@@ -186,6 +187,161 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 		if decl.Agent != nil {
 			check(decl.Agent)
 		}
+		if decl.Router != nil {
+			if ref, ok, err := ast.RouterDeciderRef(decl.Router); ok && err == nil {
+				check(ref.Inline)
+			}
+		}
+	}
+	return findings
+}
+
+// knownRouterProperties is the allow-list of bare `name: ...` properties a
+// `router` body may carry, shared with the interpreter and the LSP via
+// ast.RouterBodyProperties (the single source of truth) — derived the same
+// way checkPipelineProperties's knownPipelineProperties is, not hand-copied
+// like checkAgentProperties's knownAgentProperties.
+var knownRouterProperties = ast.RouterBodyPropertyNames()
+
+// knownRouterPropertyList is the same set as a stable, comma-joined string
+// for the diagnostic message.
+var knownRouterPropertyList = func() string {
+	names := make([]string, len(ast.RouterBodyProperties))
+	for i, p := range ast.RouterBodyProperties {
+		names[i] = p.Name
+	}
+	return strings.Join(names, ", ")
+}()
+
+// checkRouterProperties flags any property in a `router { ... }` body whose
+// name the runtime does not read, matching checkPipelineProperties.
+func checkRouterProperties(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Router == nil {
+			continue
+		}
+		for _, p := range decl.Router.Props {
+			if knownRouterProperties[p.Name] {
+				continue
+			}
+			findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+				Message: fmt.Sprintf("router %q: unknown property %q — the runtime reads only %s", decl.Router.Name, p.Name, knownRouterPropertyList)})
+		}
+	}
+	return findings
+}
+
+// checkRouterAgentRefs flags a router's `agents: [...]` entry that doesn't
+// name a declared agent, mirroring the fallback-ref check inside
+// checkExprCallShape.
+func checkRouterAgentRefs(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Router == nil {
+			continue
+		}
+		names, err := ast.RouterAgentRefs(decl.Router)
+		if err != nil {
+			findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column, Message: err.Error()})
+			continue
+		}
+		for _, name := range names {
+			if _, ok := findAgent(prog, name); !ok {
+				findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column,
+					Message: fmt.Sprintf("router %q: agent %q is not declared", decl.Router.Name, name)})
+			}
+		}
+	}
+	return findings
+}
+
+// checkRouterDecidable flags a router that declares neither a `select` hook
+// nor a `decider` — with neither, `.delegate()` can never resolve an agent,
+// so this is caught statically rather than only surfacing as a runtime
+// error on the first call. The LLM cascade itself stays optional: a router
+// with only `select` (an exhaustive one) is a legitimate, purely
+// deterministic router and is not flagged here.
+func checkRouterDecidable(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Router == nil {
+			continue
+		}
+		_, hasSelect := ast.RouterSelectExpr(decl.Router)
+		if hasSelect || ast.RouterHasDecider(decl.Router) {
+			continue
+		}
+		findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column,
+			Message: fmt.Sprintf("router %q: declares neither select nor a decider — delegate() can never resolve an agent", decl.Router.Name)})
+	}
+	return findings
+}
+
+// checkRouterDeciderRef flags a router's `decider: ...` property that
+// doesn't resolve — a malformed value (ast.RouterDeciderRef's own error), or
+// a bare name that isn't a declared agent — mirroring the equivalent
+// fallback-ref check for agent's own `fallback: [...]`.
+func checkRouterDeciderRef(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Router == nil {
+			continue
+		}
+		ref, ok, err := ast.RouterDeciderRef(decl.Router)
+		if err != nil {
+			findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column, Message: err.Error()})
+			continue
+		}
+		if !ok || ref.Inline != nil {
+			continue
+		}
+		if _, found := findAgent(prog, ref.Name); !found {
+			findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column,
+				Message: fmt.Sprintf("router %q: decider agent %q is not declared", decl.Router.Name, ref.Name)})
+		}
+	}
+	return findings
+}
+
+// checkRouterSelectBody statically walks a router's `select: (prompt) ->
+// {...}` hook body the same way checkToolBlocks walks a tool method's —
+// reusing collectVarNames/checkStatements with the hook's own parameter
+// (typed string, since that's always what runRouterDelegate binds it to)
+// seeded as the only known variable. This is what lets a `nameof(Billing)`
+// call inside select be validated at `mhl lint` time rather than only at
+// the first `.delegate()` call that reaches it. Only the common, literal
+// `(prompt) -> ...`/`(prompt) -> { ... }` shape is walked (ast.LambdaValue);
+// a select written some other way (e.g. a variable holding a lambda) is
+// left unchecked here, same graceful degradation every other static-AST
+// reader in this codebase already has.
+func checkRouterSelectBody(file string, prog *ast.Program, aliases map[string]types.Type) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Router == nil {
+			continue
+		}
+		expr, ok := ast.RouterSelectExpr(decl.Router)
+		if !ok {
+			continue
+		}
+		lambda, ok := ast.LambdaValue(expr)
+		if !ok {
+			continue
+		}
+		seed := map[string]types.Type{}
+		if len(lambda.Params) == 1 {
+			seed[lambda.Params[0].Name] = types.String
+		}
+		if lambda.Body != nil {
+			findings = append(findings, checkExprCall(file, prog, decl.Router.Pos, lambda.Body, seed, nil, aliases)...)
+			continue
+		}
+		if lambda.Block == nil {
+			continue
+		}
+		declared := collectVarNames(prog, lambda.Block, seed, nil)
+		findings = append(findings, checkStatements(file, prog, lambda.Block, declared, nil, aliases)...)
 	}
 	return findings
 }
@@ -676,6 +832,12 @@ func checkExprCall(file string, prog *ast.Program, pos lexer.Position, expr *ast
 }
 
 func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr *ast.Expr, declared map[string]types.Type, selfTool *ast.Tool, aliases map[string]types.Type) []Finding {
+	if call, ok := nameofCall(expr); ok {
+		return checkNameofCallShape(file, prog, pos, call)
+	}
+	if call, routerName, ok := routerDelegateCall(expr); ok {
+		return checkRouterDelegateCallShape(file, prog, pos, call, routerName)
+	}
 	call, agentName, ok := agentRunCall(expr)
 	if !ok {
 		if memCall, target, method, mOk := methodCall(expr); mOk {
@@ -788,6 +950,75 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 // (this pattern used to be duplicated across internal/engine/interpreter and internal/engine/runtime
 // — both now share internal/lang/ast's literal readers)
 
+// nameofCall recognizes the literal shape `nameof(...)` — a bare call with
+// no receiver, unlike agentRunCall/routerDelegateCall's `<Ident>.member(...)`
+// shape.
+func nameofCall(expr *ast.Expr) (*ast.Call, bool) {
+	postfix := ast.BarePostfix(expr)
+	if postfix == nil || postfix.Primary == nil || postfix.Primary.Ident != "nameof" || len(postfix.Ops) != 1 {
+		return nil, false
+	}
+	if postfix.Ops[0].Call != nil {
+		return postfix.Ops[0].Call, true
+	}
+	return nil, false
+}
+
+// checkNameofCallShape statically mirrors interpreter.evalNameofCall: the
+// call must carry exactly one bare-identifier argument, and that identifier
+// must name a real top-level declaration — catching a typo in
+// `nameof(Billing)` at `mhl lint` time instead of only at the first call
+// that reaches it.
+func checkNameofCallShape(file string, prog *ast.Program, pos lexer.Position, call *ast.Call) []Finding {
+	if len(call.Args) != 1 {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: "nameof takes exactly one argument, e.g. nameof(Billing)"}}
+	}
+	name, ok := ast.IdentValue(call.Args[0].Value)
+	if !ok {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: "nameof's argument must be a bare declared name, e.g. nameof(Billing) — not a string, variable, or expression"}}
+	}
+	if !declaredNameExists(prog, name) {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("nameof: %q is not a declared name", name)}}
+	}
+	return nil
+}
+
+// declaredNameExists reports whether name (after resolving any import
+// alias) names a top-level declaration of any kind in prog — mirrors
+// interpreter.declaredNameExists exactly.
+func declaredNameExists(prog *ast.Program, name string) bool {
+	name = resolveName(prog, name)
+	for _, decl := range prog.Decls {
+		switch {
+		case decl.Agent != nil && decl.Agent.Name == name:
+			return true
+		case decl.Router != nil && decl.Router.Name == name:
+			return true
+		case decl.Memory != nil && decl.Memory.Name == name:
+			return true
+		case decl.Tool != nil && decl.Tool.Name == name:
+			return true
+		case decl.Prompt != nil && decl.Prompt.Name == name:
+			return true
+		case decl.Pipeline != nil && decl.Pipeline.Name == name:
+			return true
+		case decl.Type != nil && decl.Type.Name == name:
+			return true
+		case decl.Enum != nil && decl.Enum.Name == name:
+			return true
+		case decl.Extensible != nil && decl.Extensible.Kind == name:
+			return true
+		}
+		if _, extName, _, ok := ast.AsExtension(decl); ok && extName == name {
+			return true
+		}
+	}
+	return false
+}
+
 func agentRunCall(expr *ast.Expr) (*ast.Call, string, bool) {
 	postfix := ast.BarePostfix(expr)
 	if postfix == nil || postfix.Primary == nil || postfix.Primary.Ident == "" || len(postfix.Ops) != 2 {
@@ -797,6 +1028,52 @@ func agentRunCall(expr *ast.Expr) (*ast.Call, string, bool) {
 		return postfix.Ops[1].Call, postfix.Primary.Ident, true
 	}
 	return nil, "", false
+}
+
+// routerDelegateCall recognizes the literal shape `<Ident>.delegate(...)`,
+// mirroring agentRunCall.
+func routerDelegateCall(expr *ast.Expr) (*ast.Call, string, bool) {
+	postfix := ast.BarePostfix(expr)
+	if postfix == nil || postfix.Primary == nil || postfix.Primary.Ident == "" || len(postfix.Ops) != 2 {
+		return nil, "", false
+	}
+	if postfix.Ops[0].Member != "" && postfix.Ops[0].Member == "delegate" && postfix.Ops[1].Call != nil {
+		return postfix.Ops[1].Call, postfix.Primary.Ident, true
+	}
+	return nil, "", false
+}
+
+// checkRouterDelegateCallShape validates a `<router>.delegate(...)` call
+// site: the router must be declared, and the call must carry a non-empty
+// `prompt:` argument — the same shape agentRunCall's body validates for
+// `.run(...)`. Router-internal validation (unknown properties, `agents:`
+// entries that don't resolve) is checkRouterProperties/checkRouterAgentRefs'
+// job, run once per program rather than once per call site.
+func checkRouterDelegateCallShape(file string, prog *ast.Program, pos lexer.Position, call *ast.Call, routerName string) []Finding {
+	if _, ok := findRouter(prog, routerName); !ok {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("router %q not found", routerName)}}
+	}
+	promptText, resolved, present, err := resolvePromptArgument(prog, call)
+	if err != nil {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("%s.delegate: %s", routerName, err)}}
+	}
+	if !present || (resolved && promptText == "") {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("%s.delegate requires a non-empty prompt", routerName)}}
+	}
+	return nil
+}
+
+func findRouter(prog *ast.Program, name string) (*ast.Router, bool) {
+	name = resolveName(prog, name)
+	for _, decl := range prog.Decls {
+		if decl.Router != nil && decl.Router.Name == name {
+			return decl.Router, true
+		}
+	}
+	return nil, false
 }
 
 func findAgent(prog *ast.Program, name string) (*ast.Agent, bool) {
@@ -842,9 +1119,9 @@ func findExtension(prog *ast.Program, name string) (*ast.Extension, bool) {
 }
 
 // nativeNamespaces mirrors internal/engine/interpreter.nativeNamespaces: the reserved
-// cmd/git/fs/dir/http/json/log/time/uuid method-call targets (language-design.md §7) that are
+// cmd/git/fs/dir/http/json/log/time/uuid/html method-call targets (language-design.md §7) that are
 // never looked up against user declarations.
-var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "dir": true, "http": true, "json": true, "log": true, "time": true, "uuid": true}
+var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "dir": true, "http": true, "json": true, "log": true, "time": true, "uuid": true, "html": true}
 
 // checkToolCall mirrors internal/engine/interpreter.evalToolCall's validation: the method
 // must exist on tool, and the call's argument count must match the

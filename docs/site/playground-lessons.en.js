@@ -72,6 +72,13 @@
       notes: ["Echo returns the prompt; command/args can point to a model CLI.", "Agent calls happen in the local runtime. The browser does not start processes."],
       challenge: 'Pass focus: "performance" to Review. This prompt uses named arguments.'
     },
+    roteador: {
+      title: "Router and delegating between agents",
+      description: "Declare a router over already-declared agents and decide which one handles a prompt: first through a deterministic rule, then, if needed, through a decision call.",
+      result: 'billing-said: my invoice is wrong\n\nWithout "invoice" in the prompt, select returns null and Frontdesk decides through a decision call to the Judge agent (here, echo stands in for that decision).',
+      notes: ["select runs first; a return that matches one of the names in agents skips the decision call.", "Without select, or when it can't decide, delegate runs the decider (an ordinary, separately declared agent) with a decision call, then runs the chosen agent with the same prompt.", "decider is optional: omit it entirely for a purely deterministic router — in that case select alone must cover every prompt.", "nameof(Billing), instead of the string \"Billing\", turns a typo into an mhl lint error and makes the editor's \"go to definition\" work; a return that matches no declared agent always fails immediately — it's never treated as select being undecided."],
+      challenge: 'Change the prompt so it doesn\'t mention "invoice" and predict which agent answers.'
+    },
     "loop-max": {
       title: "Execution limits",
       description: "Repeat the entire pipeline with an explicit iteration ceiling. mem retains its value between iterations.",

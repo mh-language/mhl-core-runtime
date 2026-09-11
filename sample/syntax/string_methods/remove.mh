@@ -1,0 +1,7 @@
+test remove {
+    describe remove {
+        are_equal("hello world".remove(0, 6), "world")
+        are_equal("hello world".remove(5, 11), "hello")
+        are_equal("hello".remove(0, 0), "hello")
+    }
+}

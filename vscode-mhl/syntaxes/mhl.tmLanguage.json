@@ -63,7 +63,7 @@
       "patterns": [
         {
           "name": "storage.type.declaration.mhl",
-          "match": "\\b(from|import|as|export|extension|extensible|agent|memory|tool|loop|pipeline|workflow|prompt|parallel|step|timeout|input|test|describe|type|enum)\\b"
+          "match": "\\b(from|import|as|export|extension|extensible|agent|router|memory|tool|loop|pipeline|workflow|prompt|parallel|step|timeout|input|test|describe|type|enum)\\b"
         },
         {
           "comment": "`max <N>` header clause on a `loop pipeline` / `loop workflow` — matched only after the declaration name so it never lights up an ordinary identifier, `.max(` call, or `max:` key",

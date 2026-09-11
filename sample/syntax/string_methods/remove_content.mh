@@ -1,0 +1,9 @@
+test remove_content {
+    describe remove_content {
+        var html = "<html><head><title>Nope</title></head><body>Keep me</body></html>"
+        are_equal(html.remove_content(from: "<head>", to: "</head>"), "<html><body>Keep me</body></html>")
+
+        // Both markers are removed along with everything between them.
+        are_equal("[keep][drop]tail".remove_content(from: "[drop]", to: "tail"), "[keep]")
+    }
+}

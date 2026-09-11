@@ -257,12 +257,13 @@ var field  = record?.[name] ?? null      // no `is_object(record)` guard needed<
           <p class="block-label">VALUE METHODS</p>
           <div class="method-grid">
             <article><h3>Common</h3><code>size()</code><code>is_empty()</code><code>equals()</code><code>deep_equal()</code><p>Strings, arrays, and objects. <code>equals</code> works on any value.</p></article>
-            <article><h3>String</h3><code>split()</code><code>replace()</code><code>contains()</code><code>starts_with()</code><code>ends_with()</code><code>trim()</code><code>to_upper()</code><code>to_lower()</code><code>substring()</code></article>
+            <article><h3>String</h3><code>split()</code><code>replace()</code><code>contains()</code><code>starts_with()</code><code>ends_with()</code><code>trim()</code><code>to_upper()</code><code>to_lower()</code><code>substring()</code><code>remove()</code><code>remove_content()</code><code>extract_content()</code></article>
             <article><h3>Array</h3><code>get_index()</code><code>index_of()</code><code>contains()</code><code>filter()</code><code>find()</code><code>sort_by()</code><code>map()</code><code>reduce()</code><code>any()</code><code>all()</code><code>append()</code><code>join()</code><code>unique()</code></article>
             <article><h3>Object</h3><code>keys()</code><code>values()</code><code>get()</code><p>Keys are returned in stable order. <code>get(key, default?)</code> never raises on a missing field.</p></article>
           </div>
           <div class="tip-row"><span>SIGNATURES</span><p>Every method's parameters, types, and return value are in the <a href="Docs-Specification.dc.html#stdlib">specification’s standard-library clause</a>.</p></div>
           <div class="tip-row"><span>RUNTIME TYPES</span><p><code>type_of(x)</code> returns a kind string (<code>"string"</code>, <code>"number"</code>, <code>"bool"</code>, <code>"array"</code>, <code>"object"</code>, <code>"null"</code>, …); <code>is_string</code>, <code>is_number</code>, <code>is_bool</code>, <code>is_array</code>, <code>is_object</code>, <code>is_null</code> are the per-kind predicates. Pair them with <code>?.</code> to branch on a dynamic field's shape.</p></div>
+          <div class="tip-row"><span>NAMEOF</span><p><code>nameof(Name)</code> takes a bare declared name — an <code>agent</code>, <code>router</code>, <code>memory</code>, <code>tool</code>, <code>prompt</code>, <code>pipeline</code>/<code>workflow</code>, <code>extension</code>, <code>type</code>, or <code>enum</code> — and returns it as a string, validated to exist. Prefer it over a string literal anywhere a declared name is needed as text (the <a href="#router">router</a>'s <code>select</code> hook is the main case): a typo in <code>nameof(Billing)</code> is a <code>mhl lint</code> error, and the identifier is a real reference an editor's "go to definition" follows.</p></div>
 
           <p class="block-label">DETERMINISTIC SELECTION EXAMPLE</p>
           <pre class="code-block"><code class="language-mhl">var passed_ids = [10]
@@ -380,6 +381,7 @@ var result = json.parse(raw)</code></pre>
             <div class="table-row"><span><code>fallback</code></span><code>[Backup, agent {...}]</code><span>Tries agents in declaration order.</span></div>
             <div class="table-row"><span><code>before</code></span><code>() -> {...}</code><span>Runs once, before the prompt is built.</span></div>
             <div class="table-row"><span><code>after</code></span><code>() -> {...}</code><span>Runs once, on the final response (bound as <code>result</code>).</span></div>
+            <div class="table-row"><span><code>description</code></span><code>"Handles invoices and refunds"</code><span>Optional; no runtime effect on the agent itself. A <code>router</code>'s <code>decider</code> folds it into the decision prompt next to the agent's name, giving the decision call more to go on than a bare name.</span></div>
           </div>
           <div class="tip-row"><span>ALPHA</span><p><code>retry.backoff</code>, <code>cache.strategy</code> and <code>rate_limit.on_exceeded</code> each accept exactly one value today — <code>"exponential"</code>, <code>"exact"</code> and <code>"queue"</code> respectively. Any other value is a build-time error at both <code>mhl lint</code> and <code>mhl run</code>. Fields the older docs may still show (<code>api_key</code>, <code>timeout</code>, <code>system_instructions</code>) are not read and are now a lint error.</p></div>
           <div class="tip-row"><span>RETRY</span><p>The exponential backoff carries <em>full jitter</em> (each wait is a uniform pick in <code>[0, delay·2ⁿ]</code>) and is capped at 30s per wait — the cap applies from the very first wait, so a <code>delay</code> larger than it is trimmed immediately rather than sleeping once at the full amount — so a large <code>max_attempts</code> never grows an unbounded sleep. The wait is governed by the run's context: a run-level cancel, a <code>timeout</code> clause, or a served <code>run/cancel</code> aborts a retry that is only sleeping, rather than blocking until the delay elapses. A cancelled or deadline-exceeded call is never retried, whatever <code>retry_on</code> says; the caller then sees the last real failure, not the cancellation.</p></div>
@@ -413,8 +415,68 @@ var review = Reviewer.run(
           <div class="tip-row"><span>REAL CALLS</span><p><code>before</code>/<code>after</code> execute real calls through mhl itself — the model never has to cooperate, and there is no separate declarative tool-scope list on the agent. When an agent needs a tool or an extension, call it from <code>before</code> and pass the result in through the prompt.</p></div>
         </section>
 
+        <section class="feature doc-section" id="router" data-title="router agents delegate select decision cascade">
+          <div class="feature-head"><h2><span class="feature-num">06</span><code>router</code></h2><span class="status status-full">Executable</span></div>
+          <p class="feature-lede">Declares a decision layer over a set of already-declared <code>agent</code>s and exposes one method, <code>.delegate(prompt: ...)</code>, that picks which one should handle a given prompt and runs it — the same call shape as <code>agent.run(...)</code>, with routing built in. The LLM decision call is optional: a router that declares only <code>select</code> is a purely deterministic router.</p>
+
+          <p class="block-label">HYBRID DECISION</p>
+          <pre class="code-block"><code class="language-mhl">agent Billing {
+    command: "claude" args: ["-p", "${prompt}"]
+    description: "Handles invoices, billing questions, and refunds"
+}
+agent Support {
+    command: "claude" args: ["-p", "${prompt}"]
+    description: "Handles account access and technical issues"
+}
+agent Judge { engine: "cli/claude-code" command: "claude" args: ["-p", "${prompt}"] }
+
+router Frontdesk {
+    agents: [Billing, Support]
+
+    // Tried first: a deterministic hook over the prompt text. A match
+    // skips the LLM decision call entirely. nameof(Billing) — not the
+    // string literal "Billing" — so a typo here is caught by mhl lint.
+    select: (prompt) -> {
+        if (prompt.contains("invoice")) { return nameof(Billing) }
+        if (prompt.contains("refund")) { return nameof(Billing) }
+        return null
+    }
+
+    // Used only when select is absent or returns nothing that names a
+    // declared agent: Judge is an ordinary, independently declared agent
+    // — nothing about its call configuration is duplicated on the
+    // router — sent one "pick one of these agents" decision call built
+    // from the prompt already passed to .delegate(...).
+    decider: Judge
+}
+
+var reply = Frontdesk.delegate(prompt: "My invoice is wrong.")</code></pre>
+          <p class="block-label">PURELY DETERMINISTIC — NO LLM CALL AT ALL</p>
+          <pre class="code-block"><code class="language-mhl">router Frontdesk {
+    agents: [Billing, Support]
+
+    // No decider declared at all: there is no decision call to cascade
+    // to, so select alone must be exhaustive.
+    select: (prompt) -> {
+        if (prompt.contains("invoice")) { return nameof(Billing) }
+        return nameof(Support)
+    }
+}</code></pre>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Field</span><span>Example</span><span>Behavior</span></div>
+            <div class="table-row"><span><code>agents</code></span><code>[Billing, Support]</code><span>Required. Names of already-declared agents <code>.delegate()</code> may choose among.</span></div>
+            <div class="table-row"><span><code>select</code></span><code>(prompt) -&gt; { ... }</code><span>A one-parameter hook run first; a returned string naming a declared agent (write it as <code>nameof(Billing)</code>, not <code>"Billing"</code>) picks it directly, skipping the decision call. A <code>null</code>/absent return cascades to the decision call — if one is configured. A non-null return that names <em>no</em> declared agent is always an error, never a silent cascade.</span></div>
+            <div class="table-row"><span><code>decider</code></span><code>Judge</code> · <code>agent {...}</code><span>Optional. A declared agent name (or inline <code>agent {...}</code> literal) the decision call runs through — its own <code>engine</code>/<code>command</code>/<code>args</code>/<code>endpoint</code>/<code>temperature</code>/<code>retry</code>/<code>cache</code>/<code>log</code>/<code>trace</code> apply unchanged; nothing is duplicated on the router. Omit entirely for a purely deterministic router driven only by <code>select</code>.</span></div>
+          </div>
+          <div class="tip-row"><span>DESCRIPTION</span><p>The decision prompt sent to <code>decider</code> lists each of <code>agents</code>' bare names. When an agent declares its own optional <code>description</code> property, that text is appended right after its name — no separate per-agent description list is declared on the router itself. An agent with no <code>description</code> still contributes its bare name.</p></div>
+          <div class="tip-row"><span>DELEGATE</span><p><code>.delegate(prompt: ..., schema?: ...)</code> resolves the agent to run — via <code>select</code>, else the decision call — then runs that agent with the same arguments the caller passed, returning its response unchanged. The chosen agent's own <code>retry</code>/<code>cache</code>/<code>rate_limit</code>/<code>fallback</code>/<code>before</code>/<code>after</code> all apply exactly as they would for a direct <code>.run(...)</code> call — and so does the <code>decider</code>'s, for the decision call itself.</p></div>
+          <div class="tip-row"><span>OPTIONAL LLM CASCADE</span><p>The decision call is opt-in, not implied by declaring a router: it only exists when <code>decider</code> is declared. A router with neither a <code>decider</code> nor a <code>select</code> hook is rejected by <code>mhl lint</code> — it could never resolve an agent. A router with only <code>select</code> is accepted; if that hook ever misses at run time (with no decider to fall back to), <code>.delegate()</code> fails with a clear "no decider is configured" error instead of silently trying to run one.</p></div>
+          <div class="tip-row"><span>NAMEOF</span><p><code>nameof(Name)</code> returns a declared top-level name (agent, router, memory, tool, prompt, pipeline/workflow, extension, type, enum) as a string, validated to exist — the argument must be a bare identifier, not a string or an expression. Returning <code>nameof(Billing)</code> from <code>select</code> instead of the string literal <code>"Billing"</code> means a typo is a <code>mhl lint</code> error, and "go to definition" on <code>Billing</code> in an editor follows it to the real <code>agent</code> declaration. A non-null <code>select</code> return that still names no declared agent — a plain string typo, or a stale rename — always fails <code>.delegate()</code> immediately, listing the real agent names; it is never silently treated as "select declined to decide".</p></div>
+          <div class="tip-row"><span>ALPHA</span><p>An <code>agents:</code> entry naming an undeclared agent, or a decision call whose answer matches none of them, is also an error — at <code>mhl lint</code> time for the former, at <code>.delegate()</code> call time for the latter.</p></div>
+        </section>
+
         <section class="feature doc-section" id="prompt" data-title="prompt template interpolation markdown from nested composition parameters">
-          <div class="feature-head"><h2><span class="feature-num">06</span><code>prompt</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">07</span><code>prompt</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">A named template with parameters. A prompt renders to a string and can be passed to an agent or composed into another prompt.</p>
 
           <p class="block-label">INLINE AND COMPOSED</p>
@@ -467,7 +529,7 @@ var rendered = Review(
         </section>
 
         <section class="feature doc-section" id="memory" data-title="memory mem kv json append log persistent state set get remove nested reset">
-          <div class="feature-head"><h2><span class="feature-num">07</span><code>memory</code> and <code>mem</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">08</span><code>memory</code> and <code>mem</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede"><code>memory</code> declares a named store. <code>mem</code> creates a pipeline-scoped persistent variable, ideal for a <code>loop pipeline</code> stop condition.</p>
 
           <p class="block-label">NAMED MEMORY</p>
@@ -518,8 +580,8 @@ Audit.append("pipeline started")</code></pre>
           </ul>
         </section>
 
-        <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs dir directory create exists delete list http json log time uuid v4 v7 return types">
-          <div class="feature-head"><h2><span class="feature-num">08</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
+        <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs dir directory create exists delete list http json log time uuid v4 v7 html parse get_element get_attribute get_text to_html return types">
+          <div class="feature-head"><h2><span class="feature-num">09</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">A tool creates a small, reusable API over native operations. Methods take positional arguments, may declare types, and use either an expression body or a statement block.</p>
           <div class="tip-row"><span>DEFAULT ARGUMENTS</span><p>A method or lambda parameter may end with <code>= expression</code> — <code>write(path: string, mode: string = "0644")</code> — supplying a value when the caller omits that argument. Positional parameters bind left to right, so a default may read an earlier parameter (<code>close: string = open</code>) but a non-defaulted parameter may not follow a defaulted one (<code>mhl lint</code> flags it). Each default is evaluated in the callee's own scope, once per call that omits it.</p></div>
           <pre class="code-block"><code class="language-mhl">tool Project {
@@ -549,6 +611,7 @@ if (result.exit_code != 0) fail(result.stderr)</code></pre>
             <article><h3><code>log</code></h3><p><code>info</code> · <code>warn</code> · <code>error</code></p></article>
             <article><h3><code>time</code></h3><p><code>now()</code> · <code>parse(text, layout:)</code> · <code>format(value, layout:)</code></p><p><code>add(value, duration)</code> · <code>diff(a, b)</code> · <code>compare(a, b)</code> · <code>sleep(duration)</code></p></article>
             <article><h3><code>uuid</code></h3><p><code>v4()</code> · <code>v7()</code></p><p>Canonical 36-character lower-case UUIDs; <code>v7</code> is time-ordered, so its values sort in creation order.</p></article>
+            <article><h3><code>html</code></h3><p><code>parse(text)</code> · <code>get_element(s)(node, tag:, attrs:)</code> · <code>get_element_by_id(node, id)</code></p><p><code>get_attribute(element, name, default:)</code> · <code>get_text(node)</code> · <code>to_html(node)</code></p><p>Parses into plain <code>{tag, attrs, text, children}</code> objects (no separate element type); no implicit <code>&lt;html&gt;</code>/<code>&lt;head&gt;</code>/<code>&lt;body&gt;</code> wrapping.</p></article>
           </div>
           <div class="tip-row"><span>SIGNATURES</span><p>Full parameter names, types, and return shapes for every native operation are in the <a href="Docs-Specification.dc.html#native">specification’s native-operations clause</a>.</p></div>
           <pre class="code-block"><code class="language-mhl">var result = cmd.exec(["git", "status", "--short"], timeout: 30s)
@@ -588,7 +651,7 @@ var recent = git.log(5, dir: target)             // --oneline text, newest first
         </section>
 
         <section class="feature doc-section" id="extension" data-title="extension kind mcp a2a external adapter declare call built-in installed manifest">
-          <div class="feature-head"><h2><span class="feature-num">09</span><code>extension</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">10</span><code>extension</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede"><code>extension &lt;kind&gt; &lt;Name&gt; { ...props }</code> declares a use of a runtime capability provider. The core sees only a kind, a name, and a property bag; the adapter registered for that kind validates the properties and defines the methods you call on <code>&lt;Name&gt;</code>. Two kinds ship built in — <code>mcp</code> and <code>a2a</code>, detailed below. Any other kind resolves through an installed external adapter.</p>
           <div class="reference-table">
             <div class="table-row table-head"><span>Kind</span><span>Backs</span><span>Where</span></div>
@@ -600,7 +663,7 @@ var recent = git.log(5, dir: target)             // --oneline text, newest first
         </section>
 
         <section class="feature doc-section" id="mcp" data-title="mcp server stdio http sse headers credential tools call list_tools discover x-mcp-header input_required mrtr protocol auto handshake initialize 2025-11-25 2025-06-18 2026-07-28 negotiation fallback">
-          <div class="feature-head"><h2><span class="feature-num">10</span><code>extension mcp</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">11</span><code>extension mcp</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Declares a Model Context Protocol server connection. Configuration supports stdio or HTTP transports and secure environment references. Call it with <code>Server.call("toolName", { ... })</code>, discover its catalog with <code>Server.list_tools()</code>, or inspect it with <code>Server.discover()</code>.</p>
           <div class="syntax-columns">
             <div><h3>stdio</h3><pre class="code-block"><code class="language-mhl">extension mcp LocalFiles {
@@ -639,7 +702,7 @@ var info = IssueTracker.discover()</code></pre></div>
         </section>
 
         <section class="feature doc-section" id="a2a" data-title="a2a agent2agent protocol remote agent send agent_card get_task cancel task message json-rpc message/send tasks/get tasks/cancel well-known agent-card poll blocking context">
-          <div class="feature-head"><h2><span class="feature-num">11</span><code>extension a2a</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">12</span><code>extension a2a</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Declares a stateless connection to a remote agent that speaks the <a href="https://a2a-protocol.org/latest/specification/">Agent2Agent (A2A)</a> protocol, revision 0.2.x: JSON-RPC 2.0 over HTTP(S) with header-based auth. Send it a message with <code>Agent.send("...")</code>, read its published capabilities with <code>Agent.agent_card()</code>, and poll or abort a running task with <code>Agent.get_task(id)</code> / <code>Agent.cancel(id)</code>.</p>
           <div class="syntax-columns">
             <div><h3>Declaration</h3><pre class="code-block"><code class="language-mhl">extension a2a Translator {
@@ -671,7 +734,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
         </section>
 
         <section class="feature doc-section" id="pipeline" data-title="pipeline workflow input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in for item in each spawn over collection array of handles">
-          <div class="feature-head"><h2><span class="feature-num">12</span><code>pipeline</code> and <code>workflow</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">13</span><code>pipeline</code> and <code>workflow</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in declared order. <code>pipeline</code> keeps that order — <code>goto</code> is a lint error. <code>workflow</code> is the same in every other way but allows <code>goto &lt;step&gt;</code>, forward or backward, so its steps form an explicitly branching state machine. Either takes the <code>loop</code> prefix.</p>
 
           <div class="reference-table">
@@ -842,7 +905,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
         </section>
 
         <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing">
-          <div class="feature-head"><h2><span class="feature-num">13</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">14</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">MHL files can be self-verifying examples. Each <code>describe</code> receives a fresh environment and uses the same statement syntax as a step.</p>
           <pre class="code-block"><code class="language-mhl">tool Normalize {
     slug(text: string): string ->
@@ -876,7 +939,7 @@ test normalize_examples {
         </section>
 
         <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp serve mcp a2a version security credentials env diagnostics install streamable http post mcp session id run start status resume cancel list async long-running poll step progress checkpoint per_step state-dir human-in-the-loop hitl approval gate fail resumable token origin">
-          <div class="feature-head"><h2><span class="feature-num">14</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
+          <div class="feature-head"><h2><span class="feature-num">15</span>CLI, diagnostics, and security</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The <code>mhl</code> binary handles execution, tests, static analysis, and editor integration.</p>
           <div class="cli-grid">
             <div class="cli-command"><code>mhl init</code><span>scaffold an immediately-runnable main.mh (never overwrites)</span></div>
@@ -939,6 +1002,7 @@ test normalize_examples {
           <a href="#expressions" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Expressions and collections</a>
           <a href="#statements" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Control flow</a>
           <a href="#agent" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">agent</a>
+          <a href="#router" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">router</a>
           <a href="#prompt" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">prompt</a>
           <a href="#memory" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">memory and mem</a>
           <a href="#tool" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">tool and native operations</a>
@@ -966,7 +1030,7 @@ test normalize_examples {
 </x-dc>
 <script type="text/x-dc" data-dc-script>
 const KEYWORDS=new Set('import from as export loop var mem if else while try catch finally return break goto for in self fail pause'.split(' '));
-const DECLS=new Set('agent memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
+const DECLS=new Set('agent router memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
 const CONSTS=new Set(['true','false','null']);
 const esc=(v)=>v.replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const span=(cls,v)=>'<span class="'+cls+'">'+v+'</span>';

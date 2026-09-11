@@ -1,0 +1,19 @@
+// Comments never appear as a node, and neither does a text node that's
+// only indentation/newlines between tags -- children only ever holds
+// elements and text nodes with real content.
+test html_parse_drops_comments_and_whitespace_text {
+    describe html_parse_drops_comments_and_whitespace_text {
+        var doc = html.parse("""
+<ul>
+    <!-- a comment -->
+    <li>one</li>
+    <li>two</li>
+</ul>
+""")
+        var ul = doc.get("children").find((n) -> n.get("tag") == "ul")
+        not_null(ul)
+        are_equal(ul.get("children").size(), 2)
+        are_equal(ul.get("children").get_index(0).get("tag"), "li")
+        are_equal(ul.get("children").get_index(1).get("tag"), "li")
+    }
+}

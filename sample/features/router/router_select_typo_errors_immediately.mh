@@ -1,0 +1,28 @@
+// A select hook that returns a non-empty name matching no declared agent is
+// always a bug -- a typo, or a stale rename -- not "select declined to
+// decide". delegate() treats it as an immediate, specific error (naming the
+// bad value and the real agent names), never as a silent cascade to the
+// decision call or a confusing "no command" failure from an unconfigured
+// one. nameof(Agent) is the recommended way to avoid this in the first
+// place: the argument is a real identifier, so a typo there is caught by
+// mhl lint before the program ever runs -- see
+// router_select_uses_nameof_for_ide_navigation.mh.
+agent Billing { command: "echo" args: ["billing-said:"] }
+agent Support { command: "echo" args: ["support-said:"] }
+
+router Frontdesk {
+    agents: [Billing, Support]
+    select: (prompt) -> "Biling"
+}
+
+test router_select_typo_errors_immediately {
+    describe select_typo_fails_immediately_with_a_specific_message {
+        try {
+            Frontdesk.delegate(prompt: "hi")
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("select returned \"Biling\""))
+            is_true(e.contains("Billing, Support"))
+        }
+    }
+}

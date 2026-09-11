@@ -4,6 +4,7 @@ Examples of mhl's higher-level building blocks — the declarations a pipeline i
 how they're wired together at runtime.
 
 - [agents/](agents/README.md) — declaring `agent`s and calling `.run()`
+- [router/](router/README.md) — declaring a `router` over a set of agents and calling `.delegate()`
 - [memory/](memory/README.md) — declaring `memory` stores and reading/writing them
 - [prompts/](prompts/README.md) — declaring and rendering `prompt` templates
 - [pipelines/](pipelines/README.md) — wiring an agent into a `pipeline` `step`
@@ -13,3 +14,4 @@ how they're wired together at runtime.
 - [uuid/](uuid/README.md) — the `uuid` native namespace: `uuid.v4` (random) and `uuid.v7` (time-ordered)
 - [git/](git/README.md) — the `git` native namespace: `git.status/diff/log/rev_parse/add/commit`
 - [http/](http/README.md) — the `http` native namespace: one op per verb (`get/post/put/patch/delete/head/options`) plus `download`, with `query`, `body`/`text`/`form`, `auth`, `tls` (PEM client certificates), `proxy`, and secret redaction
+- [html/](html/README.md) — the `html` native namespace: `html.parse` into plain `{tag, attrs, text, children}` nodes, `get_element(s)`/`get_element_by_id`/`get_attribute`/`get_text`/`to_html`

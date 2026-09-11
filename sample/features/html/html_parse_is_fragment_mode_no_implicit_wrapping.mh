@@ -1,0 +1,15 @@
+// html.parse() parses as a fragment (as if inserted into a <body>), not a
+// standalone document -- a loose snippet round-trips as itself instead of
+// growing an implicit <html>/<head>/<body> around it.
+test html_parse_is_fragment_mode_no_implicit_wrapping {
+    describe html_parse_is_fragment_mode_no_implicit_wrapping {
+        var doc = html.parse("<p>one</p><p>two</p>")
+        are_equal(doc.get("children").size(), 2)
+        are_equal(doc.get("children").get_index(0).get("tag"), "p")
+        are_equal(doc.get("children").get_index(1).get("tag"), "p")
+
+        // No html/head/body node appears anywhere in the tree.
+        is_null(html.get_element(doc, tag: "html"))
+        is_null(html.get_element(doc, tag: "body"))
+    }
+}

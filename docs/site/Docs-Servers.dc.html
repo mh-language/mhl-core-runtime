@@ -454,7 +454,7 @@ claude mcp add --transport http mhl-local http://127.0.0.1:8711/mcp</code></pre>
 </x-dc>
 <script type="text/x-dc" data-dc-script>
 const KEYWORDS=new Set('import from as export loop var mem if else while try catch finally return break goto for in self fail pause'.split(' '));
-const DECLS=new Set('agent memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
+const DECLS=new Set('agent router memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
 const CONSTS=new Set(['true','false','null']);
 const esc=(v)=>v.replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const span=(cls,v)=>'<span class="'+cls+'">'+v+'</span>';

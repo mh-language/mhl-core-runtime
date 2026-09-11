@@ -66,7 +66,7 @@ func definitionAt(path, text string, pos position) []location {
 // recoverable. extDeclLocRe is its `extension <kind> <Name>` counterpart
 // (two identifiers), capturing the name in group 1.
 var (
-	declLocRe    = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:loop[ \t]+)?(agent|memory|tool|prompt|pipeline|workflow|type|enum|extensible)[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
+	declLocRe    = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:loop[ \t]+)?(agent|router|memory|tool|prompt|pipeline|workflow|type|enum|extensible)[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
 	extDeclLocRe = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?extension[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
@@ -227,6 +227,8 @@ func declKind(keyword string) symbolKind {
 	switch keyword {
 	case "agent":
 		return symAgent
+	case "router":
+		return symRouter
 	case "memory":
 		return symMemory
 	case "tool":

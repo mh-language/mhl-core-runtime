@@ -114,6 +114,41 @@ var nativeSigs = map[string]sig{
 	"time.sleep":       {Label: "time.sleep(duration: duration) -> null", Params: []string{"duration"}, Doc: "Blocks for `duration` (e.g. `500ms`, `2s`). Cancellation-aware: a run-level cancel or the step's `timeout` firing interrupts it and fails the step. A non-positive value is a no-op."},
 	"uuid.v4":          {Label: "uuid.v4() -> string", Params: nil, Doc: "Random (version 4) UUID as a canonical 36-char lowercase string. Raises on entropy failure."},
 	"uuid.v7":          {Label: "uuid.v7() -> string", Params: nil, Doc: "Time-ordered (version 7) UUID as a canonical 36-char lowercase string: 48-bit ms timestamp + random. Sorts in creation order. Raises on entropy failure."},
+	"html.parse": {
+		Label:  "html.parse(text: string) -> object",
+		Params: []string{"text"},
+		Doc:    "Parses text as an HTML fragment into {tag, attrs, text, children} nodes (json.parse's plain-value contract, not an opaque handle); root is always a synthetic {tag: \"#fragment\", ...}. Comments and whitespace-only text nodes are dropped. Never raises.",
+	},
+	"html.get_element": {
+		Label:  "html.get_element(node: object, tag?: string, attrs?: {string: string}) -> object | null",
+		Params: []string{"node", "tag", "attrs"},
+		Doc:    "First node in node's subtree (node itself included) matching tag/attrs, depth-first; null if none does. `class` in attrs matches by space-separated token, every other attribute by exact value.",
+	},
+	"html.get_elements": {
+		Label:  "html.get_elements(node: object, tag?: string, attrs?: {string: string}) -> object[]",
+		Params: []string{"node", "tag", "attrs"},
+		Doc:    "Every node in node's subtree (node itself included) matching tag/attrs, depth-first — the same matching rules as get_element().",
+	},
+	"html.get_element_by_id": {
+		Label:  "html.get_element_by_id(node: object, id: string) -> object | null",
+		Params: []string{"node", "id"},
+		Doc:    "Shorthand for get_element(node, attrs: {id: id}).",
+	},
+	"html.get_attribute": {
+		Label:  "html.get_attribute(element: object, name: string, default?: any) -> any",
+		Params: []string{"element", "name", "default"},
+		Doc:    "The value of element's attrs[name], or default (null when omitted) if absent — never raises, even when element isn't an element node.",
+	},
+	"html.get_text": {
+		Label:  "html.get_text(node: object) -> string",
+		Params: []string{"node"},
+		Doc:    "Concatenates every #text descendant of node (node itself included), in document order — the textContent equivalent. No separator is inserted between sibling text runs.",
+	},
+	"html.to_html": {
+		Label:  "html.to_html(node: object) -> string",
+		Params: []string{"node"},
+		Doc:    "Serializes node back to an HTML string — the inverse of html.parse(). A \"#fragment\" node serializes each of its children in turn. Attribute order is not preserved.",
+	},
 }
 
 // httpSig builds the signature entry for one http.<verb> native op — they
@@ -142,15 +177,18 @@ var commonMethodSigs = map[string]sig{
 }
 
 var stringMethodSigs = map[string]sig{
-	"split":       {Label: "split(separator: string) -> string[]", Params: []string{"separator"}, Doc: "Splits on every occurrence of `separator`."},
-	"replace":     {Label: "replace(old: string, new: string) -> string", Params: []string{"old", "new"}, Doc: "Replaces all occurrences of `old`."},
-	"contains":    {Label: "contains(sub: string) -> bool", Params: []string{"sub"}, Doc: "Whether the string contains `sub`."},
-	"starts_with": {Label: "starts_with(prefix: string) -> bool", Params: []string{"prefix"}, Doc: ""},
-	"ends_with":   {Label: "ends_with(suffix: string) -> bool", Params: []string{"suffix"}, Doc: ""},
-	"trim":        {Label: "trim() -> string", Params: nil, Doc: "Strips leading and trailing whitespace."},
-	"to_upper":    {Label: "to_upper() -> string", Params: nil, Doc: ""},
-	"to_lower":    {Label: "to_lower() -> string", Params: nil, Doc: ""},
-	"substring":   {Label: "substring(start: number, end: number) -> string", Params: []string{"start", "end"}, Doc: "Byte range `[start, end)`; both bounds must be integers within `[0, size()]`."},
+	"split":           {Label: "split(separator: string) -> string[]", Params: []string{"separator"}, Doc: "Splits on every occurrence of `separator`."},
+	"replace":         {Label: "replace(old: string, new: string) -> string", Params: []string{"old", "new"}, Doc: "Replaces all occurrences of `old`."},
+	"contains":        {Label: "contains(sub: string) -> bool", Params: []string{"sub"}, Doc: "Whether the string contains `sub`."},
+	"starts_with":     {Label: "starts_with(prefix: string) -> bool", Params: []string{"prefix"}, Doc: ""},
+	"ends_with":       {Label: "ends_with(suffix: string) -> bool", Params: []string{"suffix"}, Doc: ""},
+	"trim":            {Label: "trim() -> string", Params: nil, Doc: "Strips leading and trailing whitespace."},
+	"to_upper":        {Label: "to_upper() -> string", Params: nil, Doc: ""},
+	"to_lower":        {Label: "to_lower() -> string", Params: nil, Doc: ""},
+	"substring":       {Label: "substring(start: number, end: number) -> string", Params: []string{"start", "end"}, Doc: "Byte range `[start, end)`; both bounds must be integers within `[0, size()]`."},
+	"remove":          {Label: "remove(from: number, to: number) -> string", Params: []string{"from", "to"}, Doc: "Removes the byte range `[from, to)`; both bounds must be integers within `[0, size()]`, the complement of substring()."},
+	"remove_content":  {Label: "remove_content(from: string, to: string) -> string", Params: []string{"from", "to"}, Doc: "Removes the first occurrence of `from`, through the end of the first `to` found after it — both markers included. Raises if either marker isn't found."},
+	"extract_content": {Label: "extract_content(from: string, to: string) -> string", Params: []string{"from", "to"}, Doc: "Keeps only the first occurrence of `from`, through the end of the first `to` found after it — both markers included; the complement of remove_content(). Raises if either marker isn't found."},
 }
 
 var arrayMethodSigs = map[string]sig{
@@ -199,6 +237,14 @@ var agentMethodSigs = map[string]sig{
 	},
 }
 
+var routerMethodSigs = map[string]sig{
+	"delegate": {
+		Label:  "delegate(prompt: string | Prompt(...), schema?: string) -> string",
+		Params: []string{"prompt", "schema"},
+		Doc:    "Picks one of the router's declared `agents` — its `select` hook first, falling back to an LLM decision call when `select` is absent or inconclusive — runs it with these same arguments, and returns its response text.",
+	},
+}
+
 // --- bare-name callables (no receiver) --------------------------------
 
 var globalSigs = map[string]sig{
@@ -206,6 +252,7 @@ var globalSigs = map[string]sig{
 	"fail":      {Label: "fail(...values: any) -> never", Params: []string{"values"}, Doc: "Raises an error whose message is the joined values. Catchable with `try/catch`; uncaught, it makes `mhl run` exit non-zero."},
 	"pause":     {Label: "pause(reason?: any) -> never", Params: []string{"reason"}, Doc: "Suspends the run at this step for a human-in-the-loop hand-off — not a failure, not a completion. The checkpoint is kept; `mhl run --resume` / `run/resume {runId, arguments}` re-enters this step with the merged decision. `reason` rides in the run status."},
 	"env":       {Label: "env(name: string) -> string", Params: []string{"name"}, Doc: "Reads an OS environment variable. Returns `\"\"` when unset."},
+	"nameof":    {Label: "nameof(Name) -> string", Params: []string{"Name"}, Doc: "Returns a declared top-level name (an `agent`, `router`, `memory`, `tool`, `prompt`, `pipeline`/`workflow`, `extension`, `type`, or `enum`) as a string, validated to exist. `Name` must be a bare identifier, not a string or expression — e.g. `nameof(Billing)`, not `nameof(\"Billing\")`. Useful anywhere a declared name is needed as a string but a free-floating literal would risk a silent typo — most commonly a router's `select: (prompt) -> { return nameof(Billing) }`."},
 	"type_of":   {Label: "type_of(value: any) -> string", Params: []string{"value"}, Doc: "The value's kind: `\"string\"`, `\"number\"`, `\"bool\"`, `\"array\"`, `\"object\"`, `\"null\"`, `\"enum\"`, `\"function\"`, or `\"task\"`."},
 	"is_string": {Label: "is_string(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"string\"`."},
 	"is_number": {Label: "is_number(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"number\"`."},
@@ -255,6 +302,9 @@ func signatureForMethod(path string, s symbol, method string) (sig, bool) {
 		return x, ok
 	case symAgent:
 		x, ok := agentMethodSigs[method]
+		return x, ok
+	case symRouter:
+		x, ok := routerMethodSigs[method]
 		return x, ok
 	default:
 		return sig{}, false

@@ -1,0 +1,11 @@
+import {Frontdesk} from "fixtures/router.mh"
+
+// When select returns nothing (no keyword matched), delegate falls back to
+// an LLM decision call through the router's own command/args, then runs
+// whichever agent that call chose.
+test router_cascades_to_llm_decision_when_select_is_inconclusive {
+    describe router_cascades_to_llm_decision_when_select_is_inconclusive {
+        var response = Frontdesk.delegate(prompt: "my account is locked")
+        are_equal(response, "support-said: my account is locked")
+    }
+}

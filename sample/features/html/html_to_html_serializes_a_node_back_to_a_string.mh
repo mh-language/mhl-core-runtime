@@ -1,0 +1,14 @@
+// html.to_html() is the inverse of html.parse() -- it serializes a node
+// (and its subtree) back into an HTML string. A "#fragment" root
+// serializes each of its children in turn, so parsing and re-serializing
+// a whole fragment reconstructs the original markup (attribute order
+// aside, since attrs are stored as an object, not an ordered list).
+test html_to_html_serializes_a_node_back_to_a_string {
+    describe html_to_html_serializes_a_node_back_to_a_string {
+        var div = html.get_element(html.parse("<div>Hello</div>"), tag: "div")
+        are_equal(html.to_html(div), "<div>Hello</div>")
+
+        var doc = html.parse("<p>a</p><p>b</p>")
+        are_equal(html.to_html(doc), "<p>a</p><p>b</p>")
+    }
+}

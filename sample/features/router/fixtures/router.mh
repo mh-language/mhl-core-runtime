@@ -1,0 +1,31 @@
+export agent Billing {
+    command: "echo"
+    args: ["billing-said:"]
+}
+
+export agent Support {
+    command: "echo"
+    args: ["support-said:"]
+}
+
+// Decider is an ordinary, independently declared agent -- nothing about the
+// LLM decision call is duplicated onto the router itself. `sh -c "printf
+// 'Support'"` stands in for a real LLM so tests stay hermetic.
+export agent Decider {
+    command: "sh"
+    args: ["-c", "printf 'Support'"]
+}
+
+// Frontdesk picks between Billing and Support: select is tried first (a
+// deterministic keyword check on the prompt), and only when it returns
+// nothing does delegate fall back to an LLM decision call through the
+// Decider agent.
+export router Frontdesk {
+    agents: [Billing, Support]
+    select: (prompt) -> {
+        if (prompt.contains("invoice")) return nameof(Billing)
+        return null
+    }
+    
+    decider: Decider
+}

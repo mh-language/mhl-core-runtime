@@ -62,10 +62,13 @@ func TestSignatureCatalogueMatchesSymbolTables(t *testing.T) {
 	// agent
 	checkExact(t, "agentMethodSigs", []string{"run"}, agentMethodSigs)
 
+	// router
+	checkExact(t, "routerMethodSigs", []string{"delegate"}, routerMethodSigs)
+
 	// globals + assertions: pinned to the interpreter's own lists (eval.go
 	// evalPostfix special-cases; test.go runAssertion).
 	checkExact(t, "globalSigs", []string{
-		"log", "fail", "pause", "env",
+		"log", "fail", "pause", "env", "nameof",
 		"type_of", "is_string", "is_number", "is_bool", "is_array", "is_object", "is_null", "is_enum",
 	}, globalSigs)
 	checkExact(t, "assertionSigs", []string{

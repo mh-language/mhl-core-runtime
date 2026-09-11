@@ -1,0 +1,10 @@
+// html.get_text() is the textContent equivalent -- every #text descendant
+// concatenated in document order, with no separator inserted between
+// sibling text runs.
+test html_get_text_concatenates_descendant_text {
+    describe html_get_text_concatenates_descendant_text {
+        var doc = html.parse("<p>Hello <b>bold</b> world</p>")
+        var p = html.get_element(doc, tag: "p")
+        are_equal(html.get_text(p), "Hello bold world")
+    }
+}

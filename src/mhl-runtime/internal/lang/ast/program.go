@@ -38,6 +38,7 @@ type Declaration struct {
 	Extension  *Extension  `parser:"| @@"`
 	Extensible *Extensible `parser:"| @@"`
 	Agent      *Agent      `parser:"| @@"`
+	Router     *Router     `parser:"| @@"`
 	Memory     *Memory     `parser:"| @@"`
 	Tool       *Tool       `parser:"| @@"`
 	Pipeline   *Pipeline   `parser:"| @@"`

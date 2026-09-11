@@ -46,6 +46,22 @@ func AgentEngine(agent *Agent) (string, bool) {
 	return "", false
 }
 
+// AgentDescription reads an agent's optional `description` property — a
+// human-authored summary of what the agent is for. It carries no runtime
+// behavior of its own; a `router`'s LLM decision cascade (routerDecide,
+// internal/engine/interpreter/router.go) is the one reader, folding it into
+// the decision prompt alongside each agent's bare name so the decider has
+// more than a name to go on. ok is false when the property is absent or not
+// a string.
+func AgentDescription(agent *Agent) (string, bool) {
+	for _, prop := range agent.Props {
+		if prop.Name == "description" {
+			return StringValue(prop.Value)
+		}
+	}
+	return "", false
+}
+
 // AgentOllamaConfig reads the endpoint/temperature configuration for an
 // ollama/* engine agent. model is derived from engine (the part after
 // "ollama/"). temperature is nil when the agent declares no temperature

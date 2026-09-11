@@ -1,0 +1,12 @@
+test extract_content_missing_marker_errors {
+    describe extract_content_missing_marker_errors {
+        var result = ""
+        try {
+            var s = "<html><head>hi</head></html>".extract_content(from: "<body>", to: "</body>")
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: extract_content(): from marker \"<body>\" not found")
+    }
+}
