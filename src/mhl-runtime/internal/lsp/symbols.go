@@ -18,6 +18,7 @@ type symbolKind int
 
 const (
 	symAgent symbolKind = iota
+	symRouter
 	symMemory
 	symTool
 	symPrompt
@@ -36,6 +37,8 @@ func (k symbolKind) label() string {
 	switch k {
 	case symAgent:
 		return "agent"
+	case symRouter:
+		return "router"
 	case symMemory:
 		return "memory"
 	case symTool:
@@ -85,6 +88,8 @@ func symbolsFromProgram(path string, prog *ast.Program) []symbol {
 		switch {
 		case decl.Agent != nil && decl.Agent.Name != "":
 			syms = append(syms, symbol{Name: decl.Agent.Name, Kind: symAgent, Methods: []string{"run"}})
+		case decl.Router != nil:
+			syms = append(syms, symbol{Name: decl.Router.Name, Kind: symRouter, Methods: []string{"delegate"}})
 		case decl.Memory != nil:
 			syms = append(syms, symbol{Name: decl.Memory.Name, Kind: symMemory, Methods: memoryMethods(decl.Memory)})
 		case decl.Tool != nil:
@@ -171,7 +176,7 @@ func memoryMethodsForType(memType string) []string {
 // pipeline X`) is skipped, not captured — it's a modifier on `pipeline`, not
 // a declaration kind of its own.
 var (
-	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|memory|tool|prompt|pipeline|workflow)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|router|memory|tool|prompt|pipeline|workflow)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 	// extDeclRe recognises `extension <kind> <Name>`, which unlike every
 	// other declaration keyword is followed by two identifiers.
 	extDeclRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?extension\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)`)
@@ -188,6 +193,8 @@ func symbolsFromText(path, src string) []symbol {
 		switch kind {
 		case symAgent:
 			s.Methods = []string{"run"}
+		case symRouter:
+			s.Methods = []string{"delegate"}
 		case symMemory:
 			s.Methods = memoryMethodsFromText(src, m[2])
 		case symTool:
@@ -279,6 +286,8 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 	switch kw {
 	case "agent":
 		return symAgent, true
+	case "router":
+		return symRouter, true
 	case "memory":
 		return symMemory, true
 	case "tool":
@@ -298,7 +307,7 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 // in sync by hand the same way nativeSymbols already is, since there's no
 // single source these are generated from either.
 var (
-	stringMethods = []string{"size", "is_empty", "equals", "deep_equal", "contains", "split", "replace", "starts_with", "ends_with", "trim", "to_upper", "to_lower", "substring"}
+	stringMethods = []string{"size", "is_empty", "equals", "deep_equal", "contains", "split", "replace", "starts_with", "ends_with", "trim", "to_upper", "to_lower", "substring", "remove", "remove_content", "extract_content"}
 	arrayMethods  = []string{"size", "is_empty", "equals", "deep_equal", "contains", "get_index", "index_of", "filter", "find", "sort_by", "map", "reduce", "any", "all", "append", "join", "unique"}
 	objectMethods = []string{"size", "is_empty", "equals", "deep_equal", "keys", "values", "get"}
 )
@@ -400,24 +409,26 @@ func inferLocalKind(value *ast.Expr) (symbolKind, bool) {
 	if ast.BareObject(value) != nil {
 		return symObject, true
 	}
-	if isRunCall(value) {
+	if isMemberCall(value, "run") || isMemberCall(value, "delegate") {
 		return symString, true
 	}
 	return 0, false
 }
 
-// isRunCall reports whether value is shaped like `<expr>.run(...)` — a
-// member-access trailer named "run" immediately followed by a call trailer.
-// A `.replace(...).run(...)`-style chain still matches (only the final two
-// trailers are inspected), same as any other postfix chain.
-func isRunCall(value *ast.Expr) bool {
+// isMemberCall reports whether value is shaped like `<expr>.<member>(...)` —
+// a member-access trailer named member immediately followed by a call
+// trailer. A `.replace(...).run(...)`-style chain still matches (only the
+// final two trailers are inspected), same as any other postfix chain. Used
+// for `.run(...)` (agent) and `.delegate(...)` (router), both of which
+// always return a string.
+func isMemberCall(value *ast.Expr, member string) bool {
 	pf := ast.BarePostfix(value)
 	if pf == nil || len(pf.Ops) < 2 {
 		return false
 	}
 	last := pf.Ops[len(pf.Ops)-1]
 	prev := pf.Ops[len(pf.Ops)-2]
-	return prev.Member == "run" && last.Call != nil
+	return prev.Member == member && last.Call != nil
 }
 
 // varDeclLineRe recognizes a single-line `var name = <rest of line>`
@@ -428,9 +439,10 @@ func isRunCall(value *ast.Expr) bool {
 // file's parse — until the member name is finished).
 var varDeclLineRe = regexp.MustCompile(`(?m)^\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$`)
 
-// runCallSuffixRe recognizes an initializer text ending in a `.run(...)`
-// call, the text-scanning counterpart to isRunCall.
-var runCallSuffixRe = regexp.MustCompile(`\.run\([^()]*\)\s*$`)
+// runCallSuffixRe recognizes an initializer text ending in a `.run(...)` or
+// `.delegate(...)` call, the text-scanning counterpart to isMemberCall —
+// both always return a string.
+var runCallSuffixRe = regexp.MustCompile(`\.(?:run|delegate)\([^()]*\)\s*$`)
 
 // localVarSymbolsFromText is localVarSymbols' regex-based fallback for
 // source that doesn't parse, classifying each `var` initializer by its
@@ -463,7 +475,7 @@ func inferKindFromText(rhs string) (symbolKind, bool) {
 	}
 }
 
-// nativeSymbols are the built-in cmd/git/fs/dir/http/json/log/time namespaces —
+// nativeSymbols are the built-in cmd/git/fs/dir/http/json/log/time/uuid/html namespaces —
 // never declared in any .mh source, so symbolsFromProgram/symbolsFromText
 // can't find them, yet a .mh author calls their members constantly. Method
 // sets mirror the case labels nativeOpCall actually implements
@@ -480,6 +492,7 @@ var nativeSymbols = []symbol{
 	{Name: "log", Kind: symNative, Methods: []string{"info", "warn", "error"}},
 	{Name: "time", Kind: symNative, Methods: []string{"now", "parse", "format", "add", "diff", "compare", "sleep"}},
 	{Name: "uuid", Kind: symNative, Methods: []string{"v4", "v7"}},
+	{Name: "html", Kind: symNative, Methods: []string{"parse", "get_element", "get_elements", "get_element_by_id", "get_attribute", "get_text", "to_html"}},
 }
 
 // documentSymbols returns every symbol visible from path/text: the fixed

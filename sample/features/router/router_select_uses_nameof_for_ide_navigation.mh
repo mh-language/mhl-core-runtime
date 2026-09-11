@@ -1,0 +1,23 @@
+// Returning nameof(Billing) instead of the string literal "Billing" makes
+// select's return a real identifier reference: mhl lint statically
+// validates it resolves to a declared agent (catching a typo before the
+// program ever runs, not just on the first .delegate() call), and an
+// editor's "go to definition" on Billing here follows it to the agent
+// declaration below.
+agent Billing { command: "echo" args: ["billing-said:"] }
+agent Support { command: "echo" args: ["support-said:"] }
+
+router Frontdesk {
+    agents: [Billing, Support]
+    select: (prompt) -> {
+        if (prompt.contains("invoice")) { return nameof(Billing) }
+        return nameof(Support)
+    }
+}
+
+test router_select_uses_nameof_for_ide_navigation {
+    describe nameof_resolves_the_same_way_a_string_literal_would {
+        are_equal(Frontdesk.delegate(prompt: "an invoice question"), "billing-said: an invoice question")
+        are_equal(Frontdesk.delegate(prompt: "my account is locked"), "support-said: my account is locked")
+    }
+}

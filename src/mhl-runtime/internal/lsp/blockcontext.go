@@ -17,6 +17,7 @@ type blockKind int
 const (
 	blockOther blockKind = iota
 	blockAgent
+	blockRouter
 	blockPipeline
 	blockLoopPipeline
 	blockCheckpoint
@@ -51,6 +52,7 @@ var headerRe = []struct {
 	{blockLoopPipeline, regexp.MustCompile(`\bloop\s+(?:pipeline|workflow)\s+\w+(?:\s+max\s+\d+)?\s*$`)},
 	{blockPipeline, regexp.MustCompile(`\b(?:pipeline|workflow)\s+\w+\s*$`)},
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
+	{blockRouter, regexp.MustCompile(`\brouter\s+\w+\s*$`)},
 	{blockParallel, regexp.MustCompile(`\bparallel\s+\w+\s*$`)},
 	{blockCheckpoint, regexp.MustCompile(`\bcheckpoint\s*:\s*$`)},
 	{blockSpawn, regexp.MustCompile(`\bspawn\s*:\s*$`)},

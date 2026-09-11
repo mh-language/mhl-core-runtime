@@ -1,0 +1,9 @@
+test extract_content {
+    describe extract_content {
+        var html = "<html><head>skip</head><body>Keep me</body></html>"
+        are_equal(html.extract_content(from: "<body>", to: "</body>"), "<body>Keep me</body>")
+
+        // Both markers are kept along with everything between them.
+        are_equal("prefix[keep]suffix".extract_content(from: "[", to: "]"), "[keep]")
+    }
+}

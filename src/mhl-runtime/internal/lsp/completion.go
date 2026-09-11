@@ -9,7 +9,7 @@ import (
 // offered as a plain keyword completion whenever the cursor isn't in a
 // member-access position.
 var keywords = []string{
-	"agent", "memory", "tool", "prompt", "pipeline", "workflow", "extension", "extensible", "loop",
+	"agent", "router", "memory", "tool", "prompt", "pipeline", "workflow", "extension", "extensible", "loop",
 	"import", "from", "as", "export", "input", "step", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
 	"return", "break", "goto", "spawn", "wait", "parallel", "timeout", "max", "true", "false", "null",
@@ -129,7 +129,7 @@ func methodItems(path string, s symbol) []completionItem {
 
 func symbolItemKind(k symbolKind) int {
 	switch k {
-	case symAgent, symTool, symMemory:
+	case symAgent, symRouter, symTool, symMemory:
 		return kindClass
 	case symPrompt, symPipeline, symExtension:
 		return kindProperty

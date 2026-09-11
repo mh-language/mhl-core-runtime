@@ -7,8 +7,8 @@ with its own stylesheet.
 | File | What it is |
 | --- | --- |
 | `index.html` | First-contact guide: the language shape, the anatomy of a workflow, determinism/audit, MCP and A2A serving, and a 30-second install-and-run. |
-| `playground.html`, `playground-en.html` | Portuguese and English playgrounds: 17 lessons in four sections, editable MHL, per-lesson drafts, explicit completion, challenges, source links, downloads, and CLI commands. |
-| `playground-lessons.js` | Complete `.mh` programs and teaching notes, from values to loops, deadlines, concurrency, recovery, and MCP/A2A. |
+| `playground.html`, `playground-en.html` | Portuguese and English playgrounds: 18 lessons in four sections, editable MHL, per-lesson drafts, explicit completion, challenges, source links, downloads, and CLI commands. |
+| `playground-lessons.js` | Complete `.mh` programs and teaching notes, from values to loops, deadlines, concurrency, recovery, routing, and MCP/A2A. |
 | `playground-lessons.en.js` | English lesson text, comments, and program messages; preserves the original lesson IDs, filenames, and execution contracts. |
 | `playground-core.js`, `playground.js`, `playground.css` | Source tokenizer, closure diagnostics, defensive storage loading, editor interactions, and responsive layout. |
 | `playground.test.cjs` | Node regression tests with optional integration against a locally built MHL binary. |

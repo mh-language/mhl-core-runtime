@@ -153,6 +153,33 @@
     'Passe focus: "performance" para Review. Os argumentos desse prompt são nomeados.',
     "sample/features/prompts/prompt_renders_declared_template.mh", { requirements: "Runtime MHL e o executável echo no PATH." });
 
+  lesson("roteador", "Orquestração", "Router e delegação entre agentes",
+    "Declare um router sobre agentes já declarados e decida qual deles atende um prompt: primeiro por uma regra determinística, depois, se necessário, por uma chamada de decisão.",
+    "router · select · delegate · decider · nameof", [
+      'agent Billing { command: "echo" args: ["billing-said:"] }',
+      'agent Support { command: "echo" args: ["support-said:"] }',
+      'agent Judge { command: "echo" args: ["support-said:"] }',
+      '',
+      'router Frontdesk {',
+      '    agents: [Billing, Support]',
+      '    select: (prompt) -> {',
+      '        if (prompt.contains("invoice")) return nameof(Billing)',
+      '        return null',
+      '    }',
+      '    decider: Judge',
+      '}',
+      '',
+      'pipeline Helpdesk {',
+      '    step Handle {',
+      '        var reply = Frontdesk.delegate(prompt: "my invoice is wrong")',
+      '        log(reply)',
+      '    }',
+      '}'
+    ], 'billing-said: my invoice is wrong\n\nSem "invoice" no prompt, select retorna null e Frontdesk decide pela chamada de decisão através do agent Judge (aqui, echo simula essa decisão).',
+    ["select roda primeiro; um retorno que bate com um nome em agents evita a chamada de decisão.", "Sem select, ou quando ele não decide, delegate roda o decider (um agent comum, declarado à parte) com uma chamada de decisão e então roda o agente escolhido com o mesmo prompt.", "decider é opcional: omita-o por completo para um router puramente determinístico — nesse caso select precisa cobrir todo prompt sozinho.", "nameof(Billing), em vez da string \"Billing\", faz o typo virar erro do mhl lint e deixa \"ir para definição\" do editor funcionar; um retorno que não bate com nenhum agent declarado sempre falha na hora, nunca é tratado como select indeciso."],
+    'Troque o prompt para não mencionar "invoice" e preveja qual agente responde.',
+    "sample/features/router/router_select_hook_resolves_deterministically.mh", { requirements: "Runtime MHL e o executável echo no PATH." });
+
   lesson("loop-max", "Orquestração", "Limite de execuções",
     "Repita o pipeline inteiro com um teto explícito de iterações. mem mantém o valor entre as repetições.",
     "loop pipeline · max · mem · break", [

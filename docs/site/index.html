@@ -826,7 +826,7 @@ const TOK = {
   fn: '#f4d17a', variable: 'inherit', operator: '#ef9b84', punctuation: '#91aaa2', escape: '#f1c27b'
 };
 const KEYWORDS = new Set('import from as export loop var mem if else while try catch finally return break goto for in self fail pause'.split(' '));
-const DECLS = new Set('agent memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
+const DECLS = new Set('agent router memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
 const CONSTS = new Set(['true', 'false', 'null']);
 
 const esc = (v) => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

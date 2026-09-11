@@ -26,11 +26,11 @@ func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
 }
 
 // nativeNamespaces are the reserved `tool` method-body namespaces
-// (language-design.md §7), plus `dir`, `json`, `log`, `time`, and `uuid` — never
-// looked up against user declarations, the same way the bare `log(...)`
-// builtin is reserved regardless of what a .mh author might otherwise name a
-// variable.
-var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "dir": true, "http": true, "json": true, "log": true, "time": true, "uuid": true}
+// (language-design.md §7), plus `dir`, `json`, `log`, `time`, `uuid`, and
+// `html` — never looked up against user declarations, the same way the
+// bare `log(...)` builtin is reserved regardless of what a .mh author
+// might otherwise name a variable.
+var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "dir": true, "http": true, "json": true, "log": true, "time": true, "uuid": true, "html": true}
 
 // evalToolCall resolves and executes a declared `tool` method call, e.g.
 // `execution.get_diff()`. Arguments bind positionally to the method's
@@ -429,9 +429,116 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		return nativeops.UUIDv4()
 	case "uuid.v7":
 		return nativeops.UUIDv7()
+	case "html.parse":
+		text, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("html.parse requires a string as its first argument")
+		}
+		return nativeops.ParseHTML(text)
+	case "html.get_element":
+		node, err := htmlNodeArg(args, 0, "html.get_element")
+		if err != nil {
+			return nil, err
+		}
+		match, err := htmlMatchArg(args, "html.get_element")
+		if err != nil {
+			return nil, err
+		}
+		return htmlElementResult(nativeops.GetElement(node, match)), nil
+	case "html.get_elements":
+		node, err := htmlNodeArg(args, 0, "html.get_elements")
+		if err != nil {
+			return nil, err
+		}
+		match, err := htmlMatchArg(args, "html.get_elements")
+		if err != nil {
+			return nil, err
+		}
+		return nativeops.GetElements(node, match), nil
+	case "html.get_element_by_id":
+		node, err := htmlNodeArg(args, 0, "html.get_element_by_id")
+		if err != nil {
+			return nil, err
+		}
+		id, ok := args.stringAt(1)
+		if !ok {
+			return nil, fmt.Errorf("html.get_element_by_id requires the id as its second argument")
+		}
+		return htmlElementResult(nativeops.GetElement(node, nativeops.HTMLMatch{Attrs: map[string]string{"id": id}})), nil
+	case "html.get_attribute":
+		if len(args.positional) == 0 {
+			return nil, fmt.Errorf("html.get_attribute requires an html node as its first argument")
+		}
+		// Unlike the other html.* ops, a non-object first argument (in
+		// particular null — the shape of a get_element()/get_element_by_id()
+		// miss passed straight through) is not an error: GetAttribute treats
+		// it the same as "no attrs", returning def.
+		element, _ := args.positional[0].(map[string]any)
+		name, ok := args.stringAt(1)
+		if !ok {
+			return nil, fmt.Errorf("html.get_attribute requires the attribute name as its second argument")
+		}
+		var def any
+		if len(args.positional) > 2 {
+			def = args.positional[2]
+		} else if v, ok := args.named["default"]; ok {
+			def = v
+		}
+		return nativeops.GetAttribute(element, name, def), nil
+	case "html.get_text":
+		node, err := htmlNodeArg(args, 0, "html.get_text")
+		if err != nil {
+			return nil, err
+		}
+		return nativeops.GetText(node), nil
+	case "html.to_html":
+		node, err := htmlNodeArg(args, 0, "html.to_html")
+		if err != nil {
+			return nil, err
+		}
+		return nativeops.ToHTML(node)
 	default:
 		return nil, fmt.Errorf("%s.%s is not a supported native operation", namespace, op)
 	}
+}
+
+// htmlNodeArg reads args.positional[i] as an html.parse()-shaped node
+// object — the html.* ops all take one as their first argument (the
+// document/element to query or serialize).
+func htmlNodeArg(args callArgs, i int, op string) (map[string]any, error) {
+	if i >= len(args.positional) {
+		return nil, fmt.Errorf("%s requires an html node as its first argument", op)
+	}
+	node, ok := args.positional[i].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s requires an html node (from html.parse or another html.* call) as its first argument, got %s", op, typeName(args.positional[i]))
+	}
+	return node, nil
+}
+
+// htmlMatchArg reads html.get_element/get_elements's optional named `tag:`
+// and `attrs:` filter arguments into a nativeops.HTMLMatch.
+func htmlMatchArg(args callArgs, op string) (nativeops.HTMLMatch, error) {
+	tag := args.stringNamed("tag")
+	attrs, err := args.stringMap("attrs")
+	if err != nil {
+		return nativeops.HTMLMatch{}, fmt.Errorf("%s: %w", op, err)
+	}
+	return nativeops.HTMLMatch{Tag: tag, Attrs: attrs}, nil
+}
+
+// htmlElementResult converts a possibly-nil nativeops.GetElement result to
+// an MHL value: a nil map[string]any, returned directly as `any`, would
+// carry a non-nil interface (concrete type map[string]any, nil value) —
+// not equal to the untyped nil `is_null()`/`== null` check for, the
+// classic Go typed-nil-in-interface trap. Normalizing it here, once, keeps
+// every html.* op that can return "no match" (get_element,
+// get_element_by_id) from re-triggering it.
+func htmlElementResult(el map[string]any) any {
+	if el == nil {
+		return nil
+	}
+	return el
 }
 
 // httpCall is the shared body of every http.<verb> native op: it resolves

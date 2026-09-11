@@ -1,6 +1,6 @@
 (function (root) {
   "use strict";
-  const keywords = new Set("agent prompt pipeline workflow loop parallel step input output memory mem tool extension extensible test describe var const enum type if else match while for in return break import from export as true false null max spawn wait any of timeout try catch finally goto".split(" "));
+  const keywords = new Set("agent router prompt pipeline workflow loop parallel step input output memory mem tool extension extensible test describe var const enum type if else match while for in return break import from export as true false null max spawn wait any of timeout try catch finally goto".split(" "));
   const types = new Set("string number bool object array duration datetime secret".split(" "));
   const escapeHtml = value => value.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 

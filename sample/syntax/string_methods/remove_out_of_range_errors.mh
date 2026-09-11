@@ -1,0 +1,12 @@
+test remove_out_of_range_errors {
+    describe remove_out_of_range_errors {
+        var result = ""
+        try {
+            var s = "hi".remove(0, 5)
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: remove(0, 5) out of range (length 2)")
+    }
+}

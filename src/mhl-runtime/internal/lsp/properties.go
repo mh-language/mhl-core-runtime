@@ -75,7 +75,20 @@ var agentPropertyItems = []completionItem{
 	propertyItem("fallback", "array of inline agent {...} literals or declared agent names"),
 	propertyItem("before", "() -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),
 	propertyItem("after", "() -> {...}: runs once on the final response (bound as result); a returned string replaces it"),
+	propertyItem("description", "string: optional summary of what this agent is for; a router's decider folds it into the decision prompt alongside the agent's name"),
 }
+
+// routerPropertyItems is what's valid directly inside a `router { ... }`
+// body, derived from ast.RouterBodyProperties — the single source of truth
+// also used by lint (checkRouterProperties) — the same pattern
+// pipelinePropertyItems uses, not hand-written like agentPropertyItems.
+var routerPropertyItems = func() []completionItem {
+	items := make([]completionItem, 0, len(ast.RouterBodyProperties))
+	for _, p := range ast.RouterBodyProperties {
+		items = append(items, propertyItem(p.Name, p.Doc))
+	}
+	return items
+}()
 
 // retryFieldItems mirrors agentRetry's field switch. backoff is listed even
 // though ast.AgentRetryConfig rejects any value other than "exponential" —
@@ -125,6 +138,8 @@ func propertyItemsFor(path string, stack []blockRef) []completionItem {
 		return items
 	case blockAgent:
 		return agentPropertyItems
+	case blockRouter:
+		return routerPropertyItems
 	case blockCheckpoint:
 		return checkpointFieldItems
 	case blockSpawn:

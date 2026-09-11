@@ -1,0 +1,16 @@
+// attrs: {class: "..."} matches by space-separated token -- the way
+// HTML/CSS itself treats class as a set, not an opaque string -- while
+// every other attribute matches by exact value.
+test html_get_element_matches_class_by_token {
+    describe html_get_element_matches_class_by_token {
+        var doc = html.parse("<div class=\"card featured\">x</div><div class=\"card\">y</div>")
+
+        var featured = html.get_element(doc, attrs: { "class": "featured" })
+        not_null(featured)
+        are_equal(html.get_text(featured), "x")
+
+        // Exact-string equality would have missed "card featured".
+        var elements = html.get_elements(doc, attrs: { "class": "card" })
+        are_equal(elements.size(), 2)
+    }
+}

@@ -1,0 +1,13 @@
+// html.get_element(node, tag?, attrs?) searches node's whole subtree
+// (node itself included), depth-first, for the first match -- or null.
+test html_get_element_finds_first_match_by_tag {
+    describe html_get_element_finds_first_match_by_tag {
+        var doc = html.parse("<div><span>a</span><span>b</span></div>")
+
+        var span = html.get_element(doc, tag: "span")
+        not_null(span)
+        are_equal(html.get_text(span), "a")
+
+        is_null(html.get_element(doc, tag: "table"))
+    }
+}

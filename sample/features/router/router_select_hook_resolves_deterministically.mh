@@ -1,0 +1,12 @@
+import {Frontdesk} from "fixtures/router.mh"
+
+// select: (prompt) -> {...} runs before any LLM call; when it returns a
+// name matching one of `agents: [...]`, delegate runs straight to that
+// agent -- Frontdesk's own command/args (used only for the LLM cascade) is
+// never invoked.
+test router_select_hook_resolves_deterministically {
+    describe router_select_hook_resolves_deterministically {
+        var response = Frontdesk.delegate(prompt: "invoice question")
+        are_equal(response, "billing-said: invoice question")
+    }
+}
