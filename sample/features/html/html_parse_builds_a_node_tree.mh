@@ -1,0 +1,19 @@
+// html.parse() has no dedicated "element" type -- every node is a plain
+// object with the same four keys (tag, attrs, text, children), the same
+// contract json.parse() already follows for JSON. The root is always a
+// synthetic {tag: "#fragment", ...}, even for a single top-level element.
+test html_parse_builds_a_node_tree {
+    describe html_parse_builds_a_node_tree {
+        var doc = html.parse("<div id=\"card\" class=\"box\">Hello</div>")
+        are_equal(doc.get("tag"), "#fragment")
+        are_equal(doc.get("children").size(), 1)
+
+        var div = doc.get("children").get_index(0)
+        are_equal(div.get("tag"), "div")
+        are_equal(div.get("attrs").get("id"), "card")
+        are_equal(div.get("attrs").get("class"), "box")
+        are_equal(div.get("children").size(), 1)
+        are_equal(div.get("children").get_index(0).get("tag"), "#text")
+        are_equal(div.get("children").get_index(0).get("text"), "Hello")
+    }
+}

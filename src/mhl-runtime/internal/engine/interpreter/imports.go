@@ -181,6 +181,8 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 		return "extension:" + decl.Extension.Kind, decl.Extension.Name, true
 	case decl.Agent != nil:
 		return "agent", decl.Agent.Name, true
+	case decl.Router != nil:
+		return "router", decl.Router.Name, true
 	case decl.Memory != nil:
 		return "memory", decl.Memory.Name, true
 	case decl.Tool != nil:
@@ -247,6 +249,8 @@ func findExport(module *ast.Program, name string) (*ast.Declaration, bool) {
 		}
 		switch {
 		case decl.Agent != nil && decl.Agent.Name == name:
+			return decl, true
+		case decl.Router != nil && decl.Router.Name == name:
 			return decl, true
 		case decl.Extension != nil && decl.Extension.Name == name:
 			return decl, true

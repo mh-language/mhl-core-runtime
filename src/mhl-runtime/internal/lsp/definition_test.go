@@ -30,6 +30,28 @@ pipeline Main {
 	}
 }
 
+// TestDefinitionFollowsNameofArgument proves the whole point of nameof
+// (internal/engine/interpreter/nameof.go): its argument is an ordinary
+// identifier occurrence, so "go to definition" on it already works through
+// the same generic word-at-cursor resolution every other identifier gets —
+// no special-casing of nameof needed in this package.
+func TestDefinitionFollowsNameofArgument(t *testing.T) {
+	src, pos := posAtMarker(t, `agent Billing { command: "echo" }
+
+router Frontdesk {
+    agents: [Billing]
+    select: (prompt) -> nameof(Bil§ling)
+}
+`)
+	locs := definitionAt("/proj/main.mh", src, pos)
+	if len(locs) != 1 {
+		t.Fatalf("want 1 location, got %d: %+v", len(locs), locs)
+	}
+	if got := locs[0].Range.Start; got.Line != 0 || got.Character != 6 {
+		t.Errorf("start = %+v, want {Line:0 Character:6} (the agent Billing declaration)", got)
+	}
+}
+
 func TestDefinitionResolvesEachDeclarationKind(t *testing.T) {
 	src := `agent Rev { engine: "cli/claude" }
 memory Store { type: "kv" }

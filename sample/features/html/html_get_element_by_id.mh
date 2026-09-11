@@ -1,0 +1,11 @@
+test html_get_element_by_id {
+    describe html_get_element_by_id {
+        var doc = html.parse("<div id=\"a\">x</div><div id=\"b\">y</div>")
+
+        var el = html.get_element_by_id(doc, "b")
+        not_null(el)
+        are_equal(html.get_text(el), "y")
+
+        is_null(html.get_element_by_id(doc, "nope"))
+    }
+}

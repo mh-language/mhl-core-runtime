@@ -1,0 +1,12 @@
+test remove_content_missing_marker_errors {
+    describe remove_content_missing_marker_errors {
+        var result = ""
+        try {
+            var s = "<html><body>hi</body></html>".remove_content(from: "<head>", to: "</head>")
+            result = "no error"
+        } catch (e) {
+            result = "Caught exception: ${e}"
+        }
+        are_equal(result, "Caught exception: remove_content(): from marker \"<head>\" not found")
+    }
+}

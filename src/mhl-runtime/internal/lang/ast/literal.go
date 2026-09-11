@@ -180,6 +180,20 @@ func AgentValue(e *Expr) (*Agent, bool) {
 	return p.Agent, true
 }
 
+// LambdaValue reads e as a bare inline lambda literal (`(params) -> ...`) —
+// used by static checks that need to look inside a hook body (e.g. a
+// router's `select: (prompt) -> {...}`) without going through full
+// expression evaluation. It returns ok=false for anything else, including a
+// variable that merely holds a lambda at runtime — the same graceful
+// degradation every other Bare*/*Value reader in this file already has.
+func LambdaValue(e *Expr) (*Lambda, bool) {
+	p := barePrimary(e)
+	if p == nil || p.Lambda == nil {
+		return nil, false
+	}
+	return p.Lambda, true
+}
+
 // DurationValue reads e as a bare duration literal (e.g. "120s", "7d").
 func DurationValue(e *Expr) (time.Duration, bool) {
 	p := barePrimary(e)

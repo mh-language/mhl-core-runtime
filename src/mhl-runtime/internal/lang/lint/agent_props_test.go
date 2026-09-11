@@ -47,6 +47,7 @@ agent Full {
     fallback: [Backup]
     before: () -> { return {} }
     after: () -> { log("done") }
+    description: "handles account questions"
 }
 
 agent Backup { command: "echo" }

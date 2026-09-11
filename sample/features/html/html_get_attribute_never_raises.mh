@@ -1,0 +1,16 @@
+// html.get_attribute() mirrors object.get()'s never-raise-on-missing
+// contract -- an absent attribute, or even a null element (a get_element
+// miss passed straight through), returns default instead of failing.
+test html_get_attribute_never_raises {
+    describe html_get_attribute_never_raises {
+        var doc = html.parse("<a href=\"/x\">link</a>")
+        var link = html.get_element(doc, tag: "a")
+
+        are_equal(html.get_attribute(link, "href"), "/x")
+        is_null(html.get_attribute(link, "target"))
+        are_equal(html.get_attribute(link, "target", "_self"), "_self")
+
+        var missing = html.get_element(doc, tag: "table")
+        are_equal(html.get_attribute(missing, "href", "fallback"), "fallback")
+    }
+}

@@ -439,11 +439,14 @@ func evalIfExpr(ctx *evalCtx, e *ast.IfExpr, depth int) (any, error) {
 
 // evalPostfix resolves a Postfix chain. Reserved namespace calls
 // (`cmd.exec(...)`, etc. — see nativeNamespaces), `name.run(...)` on a
-// declared agent, `self.<method>(...)` on the tool currently executing
-// (ctx.selfTool), `name.<method>(...)` on a declared memory, and
-// `name.<method>(...)` on a declared tool, and `name.call(...)` on a
-// declared mcp_server are all recognized first (and keep their existing,
-// specific "not found" errors) — anything else falls
+// declared agent, `name.delegate(...)` on a declared router (picks one of
+// its declared agents — via an optional deterministic `select` hook, falling
+// back to an LLM decision call — and runs it, see router.go),
+// `self.<method>(...)` on the tool currently executing (ctx.selfTool),
+// `name.<method>(...)` on a declared memory, and `name.<method>(...)` on a
+// declared tool, and `name.call(...)` on a declared mcp_server are all
+// recognized first (and keep their existing, specific "not found" errors) —
+// anything else falls
 // through to a generic identifier/literal lookup followed by plain member
 // access, so a variable holding an object (e.g. from memory.get()) can
 // have its fields read with `.field`.
@@ -482,6 +485,9 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	if p.Primary.Ident == "env" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalEnvCall(ctx, p.Ops[0].Call.Args, depth)
 	}
+	if p.Primary.Ident == "nameof" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
+		return evalNameofCall(ctx, p.Ops[0].Call.Args, depth)
+	}
 	if p.Primary.Ident != "" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		if v, handled, err := evalTypeBuiltinCall(ctx, p.Primary.Ident, p.Ops[0].Call.Args, depth); handled {
 			return v, err
@@ -510,6 +516,14 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 		case member == "run":
 			if agent, ok := findAgent(ctx.prog, name); ok {
 				v, err := runAgent(ctx, name, agent, call, depth)
+				if err != nil {
+					return nil, err
+				}
+				return applyTrailers(ctx, v, p.Ops[2:], depth)
+			}
+		case member == "delegate":
+			if router, ok := findRouter(ctx.prog, name); ok {
+				v, err := runRouterDelegate(ctx, name, router, call, depth)
 				if err != nil {
 					return nil, err
 				}
@@ -1293,7 +1307,46 @@ func callValueMethod(receiver any, name string, args []any, depth int) (any, err
 		if len(args) != 2 {
 			return nil, fmt.Errorf("substring() requires exactly two arguments (start, end)")
 		}
-		start, end, err := substringBounds(args[0], args[1], len(s))
+		start, end, err := substringBounds("substring", args[0], args[1], len(s))
+		if err != nil {
+			return nil, err
+		}
+		return s[start:end], nil
+	case "remove":
+		s, ok := receiver.(string)
+		if !ok {
+			return nil, fmt.Errorf("remove() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 2 {
+			return nil, fmt.Errorf("remove() requires exactly two arguments (from, to)")
+		}
+		start, end, err := substringBounds("remove", args[0], args[1], len(s))
+		if err != nil {
+			return nil, err
+		}
+		return s[:start] + s[end:], nil
+	case "remove_content":
+		s, ok := receiver.(string)
+		if !ok {
+			return nil, fmt.Errorf("remove_content() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 2 {
+			return nil, fmt.Errorf("remove_content() requires exactly two arguments (from, to)")
+		}
+		start, end, err := markerContentSpan("remove_content", args[0], args[1], s)
+		if err != nil {
+			return nil, err
+		}
+		return s[:start] + s[end:], nil
+	case "extract_content":
+		s, ok := receiver.(string)
+		if !ok {
+			return nil, fmt.Errorf("extract_content() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 2 {
+			return nil, fmt.Errorf("extract_content() requires exactly two arguments (from, to)")
+		}
+		start, end, err := markerContentSpan("extract_content", args[0], args[1], s)
 		if err != nil {
 			return nil, err
 		}
@@ -1516,16 +1569,18 @@ func callValueMethod(receiver any, name string, args []any, depth int) (any, err
 // arguments) as an integer [start, end) byte range within a string of the
 // given length — the same integer/bounds validation get_index() and slice
 // bounds (sliceBoundValue) already apply, just for a two-ended range
-// instead of one index.
-func substringBounds(rawStart, rawEnd any, length int) (int, int, error) {
+// instead of one index. method names the caller in error messages
+// (substring() vs remove()) so a bad argument to either is reported under
+// the name the caller actually wrote.
+func substringBounds(method string, rawStart, rawEnd any, length int) (int, int, error) {
 	toIndex := func(v any, label string) (int, error) {
 		f, ok := v.(float64)
 		if !ok {
-			return 0, fmt.Errorf("substring() %s must be a number, got %s", label, typeName(v))
+			return 0, fmt.Errorf("%s() %s must be a number, got %s", method, label, typeName(v))
 		}
 		n := int(f)
 		if float64(n) != f {
-			return 0, fmt.Errorf("substring() %s must be an integer, got %v", label, f)
+			return 0, fmt.Errorf("%s() %s must be an integer, got %v", method, label, f)
 		}
 		return n, nil
 	}
@@ -1538,8 +1593,36 @@ func substringBounds(rawStart, rawEnd any, length int) (int, int, error) {
 		return 0, 0, err
 	}
 	if start < 0 || end > length || start > end {
-		return 0, 0, fmt.Errorf("substring(%d, %d) out of range (length %d)", start, end, length)
+		return 0, 0, fmt.Errorf("%s(%d, %d) out of range (length %d)", method, start, end, length)
 	}
+	return start, end, nil
+}
+
+// markerContentSpan validates rawFrom/rawTo as non-empty string markers and
+// locates the byte span running from the first occurrence of rawFrom
+// through the end of the first occurrence of rawTo found after it — the
+// span remove_content() discards and extract_content() keeps, so both
+// share this lookup rather than duplicating it. method names the caller in
+// error messages.
+func markerContentSpan(method string, rawFrom, rawTo any, s string) (start, end int, err error) {
+	fromMarker, ok1 := rawFrom.(string)
+	toMarker, ok2 := rawTo.(string)
+	if !ok1 || !ok2 {
+		return 0, 0, fmt.Errorf("%s() arguments must be strings", method)
+	}
+	if fromMarker == "" || toMarker == "" {
+		return 0, 0, fmt.Errorf("%s() markers must be non-empty", method)
+	}
+	start = strings.Index(s, fromMarker)
+	if start < 0 {
+		return 0, 0, fmt.Errorf("%s(): from marker %q not found", method, fromMarker)
+	}
+	afterFrom := start + len(fromMarker)
+	rel := strings.Index(s[afterFrom:], toMarker)
+	if rel < 0 {
+		return 0, 0, fmt.Errorf("%s(): to marker %q not found after the from marker", method, toMarker)
+	}
+	end = afterFrom + rel + len(toMarker)
 	return start, end, nil
 }
 

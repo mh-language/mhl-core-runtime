@@ -1,0 +1,20 @@
+// A router declaring neither select nor a decider can never resolve an
+// agent -- mhl lint rejects this statically, and .delegate() also fails at
+// runtime (exercised here) with a clear, dedicated error rather than an
+// attempt to run an unconfigured decider.
+agent Billing { command: "echo" args: ["billing-said:"] }
+
+router Undecidable {
+    agents: [Billing]
+}
+
+test router_without_select_or_decision_engine_errors {
+    describe delegate_errors_with_a_clear_message {
+        try {
+            Undecidable.delegate(prompt: "hi")
+            is_true(false)
+        } catch (e) {
+            is_true(e.contains("no decider is configured"))
+        }
+    }
+}

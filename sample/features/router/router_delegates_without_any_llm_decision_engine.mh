@@ -1,0 +1,21 @@
+agent Billing { command: "echo" args: ["billing-said:"] }
+agent Support { command: "echo" args: ["support-said:"] }
+
+// FrontdeskDeterministic declares no decider at all -- there is no LLM
+// decision call to cascade to, so select alone must be exhaustive. The LLM
+// cascade is entirely optional: a developer who only wants deterministic
+// routing never has to declare a decider.
+router FrontdeskDeterministic {
+    agents: [Billing, Support]
+    select: (prompt) -> {
+        if (prompt.contains("invoice")) { return nameof(Billing) }
+        return nameof(Support)
+    }
+}
+
+test router_delegates_without_any_llm_decision_engine {
+    describe select_alone_resolves_every_prompt {
+        are_equal(FrontdeskDeterministic.delegate(prompt: "my invoice is wrong"), "billing-said: my invoice is wrong")
+        are_equal(FrontdeskDeterministic.delegate(prompt: "my account is locked"), "support-said: my account is locked")
+    }
+}

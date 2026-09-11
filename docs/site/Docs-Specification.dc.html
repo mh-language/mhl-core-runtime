@@ -149,7 +149,7 @@ html { scroll-behavior:smooth; }
 <h2>4. Syntactic grammar</h2>
 <p>The following is a compact grammar. The complete behavior of each production is specified in the subsequent clauses.</p>
 <pre class="grammar-block">program        ::= declaration*
-declaration    ::= ["export"] (import | agent | prompt | memory | tool | extension
+declaration    ::= ["export"] (import | agent | router | prompt | memory | tool | extension
                     | pipeline | workflow | type | enum | test)
 import         ::= "import" "{" import-item ("," import-item)* "}" "from" String
 import-item    ::= Identifier ["as" Identifier]
@@ -193,7 +193,7 @@ block          ::= "{" statement* "}"</pre>
 <tr><td><code>object</code></td><td><code>{name: "MHL", year: 2026}</code></td><td>String-keyed map. Keys may be identifiers or strings.</td></tr>
 <tr><td><code>enum</code></td><td><code>Status.Ready</code></td><td>Tagged value; it is not equal to the string <code>"Ready"</code>.</td></tr>
 <tr><td><code>function</code></td><td><code>(x) -&gt; x + 1</code></td><td>Closure created by a lambda expression.</td></tr>
-<tr><td><code>task</code></td><td>result of <code>spawn</code></td><td>Opaque asynchronous handle with the fields defined in §15.</td></tr>
+<tr><td><code>task</code></td><td>result of <code>spawn</code></td><td>Opaque asynchronous handle with the fields defined in §16.</td></tr>
 </tbody></table>
 <h3>5.2 Declared type expressions</h3>
 <p>Type annotations are accepted on pipeline inputs, prompt parameters, tool parameters, tool returns, and object-shape fields. The built-in vocabulary is <code>any</code>, <code>string</code>, <code>number</code>, <code>bool</code>, <code>array</code>, and <code>object</code>. The compatibility spellings <code>int</code>, <code>integer</code>, <code>float</code>, and <code>boolean</code> resolve to <code>number</code> or <code>bool</code>. Prompt parameters MAY use the pseudo-type <code>prompt</code>.</p>
@@ -290,7 +290,7 @@ pipeline Welcome {
 
 <section class="feature doc-section" id="declarations">
 <h2>9. Declarations</h2>
-<p>The declaration keywords are <code>agent</code>, <code>prompt</code>, <code>memory</code>, <code>tool</code>, <code>extension</code>, <code>pipeline</code>, <code>workflow</code>, <code>type</code>, <code>enum</code>, and <code>test</code>. Names are unique within the flattened program namespace.</p>
+<p>The declaration keywords are <code>agent</code>, <code>router</code>, <code>prompt</code>, <code>memory</code>, <code>tool</code>, <code>extension</code>, <code>pipeline</code>, <code>workflow</code>, <code>type</code>, <code>enum</code>, and <code>test</code>. Names are unique within the flattened program namespace.</p>
 <h3>9.1 Type aliases and enumerations</h3>
 <pre class="code-block"><code class="language-mhl">type UserId = string
 type User = {id: UserId, active: bool}
@@ -330,6 +330,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <tr><td class="signature">fail(...values: any) → never</td><td>Raises with the same formatting used by <code>log</code>. Catchable with <code>try</code>.</td></tr>
 <tr><td class="signature">pause(reason?: any) → never</td><td>Suspends the run at this step for a human-in-the-loop hand-off (state <code>paused</code>, resumable) rather than failing or completing. Not catchable with <code>try</code>; re-entered on <code>--resume</code> / <code>run/resume</code> with merged inputs.</td></tr>
 <tr><td class="signature">env(name: string) → string</td><td>Reads an operating-system environment variable. An unset variable returns the empty string. Sensitive names and values are registered for redaction.</td></tr>
+<tr><td class="signature">nameof(Name) → string</td><td>Returns the name of a top-level declaration — <code>agent</code>, <code>router</code>, <code>memory</code>, <code>tool</code>, <code>prompt</code>, <code>pipeline</code>/<code>workflow</code>, <code>extension</code>, <code>type</code>, or <code>enum</code> — as a string. <code>Name</code> MUST be a bare identifier read directly from the call site, not an evaluated expression; it is validated to name an actual declaration, and an unresolved or non-identifier argument is a static error at <code>mhl lint</code> time and a runtime error otherwise.</td></tr>
 <tr><td class="signature">type_of(value: any) → string</td><td>Returns <code>string</code>, <code>number</code>, <code>bool</code>, <code>array</code>, <code>object</code>, <code>null</code>, <code>enum</code>, <code>function</code>, or <code>task</code>.</td></tr>
 <tr><td class="signature">is_string(value: any) → bool</td><td>True exactly for strings.</td></tr><tr><td class="signature">is_number(value: any) → bool</td><td>True exactly for numbers.</td></tr>
 <tr><td class="signature">is_bool(value: any) → bool</td><td>True exactly for booleans.</td></tr><tr><td class="signature">is_array(value: any) → bool</td><td>True exactly for arrays.</td></tr>
@@ -344,7 +345,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 </tbody></table>
 <h3>10.3 String methods</h3>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
-<tr><td class="signature">split(separator: string) → string[]</td><td>Splits at every occurrence. An empty separator splits into individual runtime string units.</td></tr><tr><td class="signature">replace(old: string, new: string) → string</td><td>Replaces all occurrences.</td></tr><tr><td class="signature">contains(sub: string) → bool</td><td>Tests substring presence.</td></tr><tr><td class="signature">starts_with(prefix: string) → bool</td><td>Tests prefix.</td></tr><tr><td class="signature">ends_with(suffix: string) → bool</td><td>Tests suffix.</td></tr><tr><td class="signature">trim() → string</td><td>Removes leading and trailing whitespace.</td></tr><tr><td class="signature">to_upper() → string</td><td>Returns an upper-case string.</td></tr><tr><td class="signature">to_lower() → string</td><td>Returns a lower-case string.</td></tr><tr><td class="signature">substring(start: number, end: number) → string</td><td>Returns the half-open byte range <code>[start,end)</code>; bounds MUST be integral and within <code>[0,size()]</code>.</td></tr>
+<tr><td class="signature">split(separator: string) → string[]</td><td>Splits at every occurrence. An empty separator splits into individual runtime string units.</td></tr><tr><td class="signature">replace(old: string, new: string) → string</td><td>Replaces all occurrences.</td></tr><tr><td class="signature">contains(sub: string) → bool</td><td>Tests substring presence.</td></tr><tr><td class="signature">starts_with(prefix: string) → bool</td><td>Tests prefix.</td></tr><tr><td class="signature">ends_with(suffix: string) → bool</td><td>Tests suffix.</td></tr><tr><td class="signature">trim() → string</td><td>Removes leading and trailing whitespace.</td></tr><tr><td class="signature">to_upper() → string</td><td>Returns an upper-case string.</td></tr><tr><td class="signature">to_lower() → string</td><td>Returns a lower-case string.</td></tr><tr><td class="signature">substring(start: number, end: number) → string</td><td>Returns the half-open byte range <code>[start,end)</code>; bounds MUST be integral and within <code>[0,size()]</code>.</td></tr><tr><td class="signature">remove(from: number, to: number) → string</td><td>Returns the string with the half-open byte range <code>[from,to)</code> removed — the complement of <code>substring</code>. Bounds MUST be integral and within <code>[0,size()]</code>.</td></tr><tr><td class="signature">remove_content(from: string, to: string) → string</td><td>Returns the string with the first occurrence of <code>from</code>, through the end of the first <code>to</code> found after it, removed — both markers included. Raises if either marker is not found.</td></tr><tr><td class="signature">extract_content(from: string, to: string) → string</td><td>Returns only the first occurrence of <code>from</code>, through the end of the first <code>to</code> found after it — both markers included; the complement of <code>remove_content</code>. Raises if either marker is not found.</td></tr>
 </tbody></table>
 <h3>10.4 Array methods</h3>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
@@ -355,7 +356,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <div class="tip-row"><strong>Immutability and mutation</strong>Collection transforms, concatenation, and slices return new arrays. Plain indexed assignment such as <code>items[0] = value</code> and object-field assignment mutate the addressed collection.</div>
 </section>
 
-<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write dir directory create exists delete list git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7">
+<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write dir directory create exists delete list git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7 html get_element get_attribute get_text to_html">
 <h2>11. Native operations</h2>
 <p>Native namespaces are reserved and can be called from pipeline statements, tool methods, hooks, and other expression positions. They execute host effects and therefore MUST be treated as privileged operations.</p>
 <h3>11.1 Command execution: <code>cmd</code></h3>
@@ -404,6 +405,17 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">time.now() → string</td><td>Current instant as RFC3339 UTC.</td></tr><tr><td class="signature">time.parse(text: string, layout?: string) → string</td><td>Parses and normalizes to RFC3339 UTC; default input layout is RFC3339.</td></tr><tr><td class="signature">time.format(value: string, layout?: string) → string</td><td>Formats an RFC3339 value using a Go layout or tokens such as <code>dd/MM/yyyy</code>.</td></tr><tr><td class="signature">time.add(value: string, duration: duration) → string</td><td>Adds a duration and returns RFC3339 UTC.</td></tr><tr><td class="signature">time.diff(a: string, b: string) → number</td><td>Returns seconds in <code>a - b</code>.</td></tr><tr><td class="signature">time.compare(a: string, b: string) → number</td><td>Returns -1, 0, or 1 for temporal ordering.</td></tr><tr><td class="signature">time.sleep(duration: duration) → null</td><td>Blocks for <code>duration</code> (e.g. <code>500ms</code>, <code>2s</code>). Cancellation-aware — a run-level cancel or the step's <code>timeout</code> firing interrupts it and fails the step; a non-positive value is a no-op.</td></tr></tbody></table>
 <h3>11.9 Identifiers: <code>uuid</code></h3>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody><tr><td class="signature">uuid.v4() → string</td><td>Random (version 4) UUID as a canonical 36-character lower-case string. An entropy failure raises.</td></tr><tr><td class="signature">uuid.v7() → string</td><td>Time-ordered (version 7) UUID — a 48-bit millisecond timestamp followed by random bits — as a canonical 36-character lower-case string. Values sort in creation order. An entropy failure raises.</td></tr></tbody></table>
+<h3>11.10 HTML: <code>html</code></h3>
+<p>Parses and queries HTML built on <code>golang.org/x/net/html</code>. There is no separate "element" value type: every node is a plain object with the same four keys — <code>tag</code> (the lower-cased tag name, or <code>"#text"</code>/<code>"#fragment"</code>), <code>attrs</code> (<code>{string: string}</code>), <code>text</code> (a text node's content, <code>""</code> otherwise), and <code>children</code> (an array of nodes) — the same "parsed structure as plain values" contract <code>json.parse</code> follows (§11.6).</p>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">html.parse(text: string) → object</td><td>Parses <code>text</code> as an HTML <em>fragment</em> — as if inserted into a <code>&lt;body&gt;</code>, never wrapped in an implicit <code>&lt;html&gt;</code>/<code>&lt;head&gt;</code>/<code>&lt;body&gt;</code>. The root is always a synthetic <code>{tag: "#fragment", ...}</code> node, regardless of whether <code>text</code> parses to one top-level element or several. Comments never appear as a node; neither does a text node that is only whitespace between tags. The underlying HTML5 algorithm recovers from malformed markup rather than rejecting it, so this does not raise in practice.</td></tr>
+<tr><td class="signature">html.get_element(node: object, tag?: string, attrs?: {string: string}) → object | null</td><td>The first node in <code>node</code>'s subtree — <code>node</code> itself included — matching <code>tag</code> (when given) and every entry of <code>attrs</code> (when given), visited depth-first/pre-order. <code>null</code> when nothing matches. Every <code>attrs</code> key matches by exact string equality, <strong>except</strong> <code>class</code>, which matches when every space-separated token of the given value is present among the node's own space-separated class tokens (in any order, alongside others) — mirroring how HTML/CSS itself treats <code>class</code> as a set, not an opaque string.</td></tr>
+<tr><td class="signature">html.get_elements(node: object, tag?: string, attrs?: {string: string}) → object[]</td><td>Every node in <code>node</code>'s subtree — <code>node</code> itself included — matching <code>tag</code>/<code>attrs</code>, in the same depth-first/pre-order <code>get_element</code> searches. An empty array when nothing matches.</td></tr>
+<tr><td class="signature">html.get_element_by_id(node: object, id: string) → object | null</td><td>Shorthand for <code>get_element(node, attrs: {id: id})</code>.</td></tr>
+<tr><td class="signature">html.get_attribute(element: object, name: string, default?: any) → any</td><td>The value of <code>element</code>'s <code>attrs[name]</code>, or <code>default</code> (<code>null</code> when omitted) if absent. Never raises — not even when <code>element</code> is <code>null</code> (e.g. a <code>get_element</code> miss passed straight through) or otherwise not an element node.</td></tr>
+<tr><td class="signature">html.get_text(node: object) → string</td><td>Concatenates the content of every <code>"#text"</code> descendant of <code>node</code> — <code>node</code> itself included, if it is one — in document order, with no separator inserted between sibling text runs (the DOM <code>textContent</code> equivalent).</td></tr>
+<tr><td class="signature">html.to_html(node: object) → string</td><td>Serializes <code>node</code> back to an HTML string — the inverse of <code>html.parse</code>. A <code>"#fragment"</code> node serializes each of its children in turn, since a fragment itself is not one real tag. Attribute order is not preserved across a parse→serialize round trip, since <code>attrs</code> is stored as an object keyed by name, not an ordered list.</td></tr>
+</tbody></table>
 </section>
 
 <section class="feature doc-section" id="agents">
@@ -431,13 +443,51 @@ agent LocalModel {
 <tr><td><code>cache</code></td><td><code>{ttl, storage, strategy}</code>. Cache keys include engine, prompt, and schema. The only strategy currently supported is exact matching; <code>storage: "disk"</code> persists it.</td></tr>
 <tr><td><code>rate_limit</code></td><td><code>{requests_per_minute, concurrency, on_exceeded}</code>. Exceeded work queues; the supported value is <code>"queue"</code>.</td></tr>
 <tr><td><code>trace</code></td><td>When true, emits call/response trace lines. Sensitive values remain subject to redaction.</td></tr>
+<tr><td><code>description</code></td><td>Optional string. Carries no runtime behavior for the agent itself; a <code>router</code>'s decision cascade (§13) appends it after the agent's name in the decision prompt when declared.</td></tr>
 </tbody></table>
 <p>Agent errors are eligible for retry according to <code>retry_on</code>, then fallbacks are attempted. A cache hit bypasses the external call and retry path. Agent log paths interpolate like strings and append raw CLI stdout; the log property is ignored for spawned calls, whose output is buffered and merged by the step.</p>
 </section>
 
+<section class="feature doc-section" id="routers">
+<h2>13. Routers</h2>
+<p>A router declaration selects one of a fixed set of already-declared agents to handle a given prompt. The call form is <code>Name.delegate(prompt: ...)</code>; the prompt MUST be non-empty. The chosen agent then runs with the same call arguments and its response is returned unchanged.</p>
+<h3>13.1 Declaration and decision order</h3>
+<pre class="code-block"><code class="language-mhl">agent Billing { command: "claude" args: ["-p", "${prompt}"] }
+agent Support { command: "claude" args: ["-p", "${prompt}"] }
+agent Judge { engine: "cli/claude-code" command: "claude" args: ["-p", "${prompt}"] }
+
+router Frontdesk {
+    agents: [Billing, Support]
+    select: (prompt) -&gt; {
+        if (prompt.contains("invoice")) { return nameof(Billing) }
+        return null
+    }
+    decider: Judge
+}</code></pre>
+<p>Resolution is hybrid: if <code>select</code> is declared, it is invoked first with the prompt bound as its one parameter. Its return is one of three shapes: <code>null</code> or absent (no decision, cascade below); a string naming an entry of <code>agents</code> (used directly, decision call skipped); or a string naming <em>no</em> entry of <code>agents</code> — always a runtime error, listing the value returned and the declared agent names, never treated the same as a <code>null</code> return. This distinction exists because a non-null, non-matching return is almost always a bug (a typo, a stale rename), not a deliberate "I couldn't decide" — silently cascading past it would risk masking that bug behind an unrelated decision-call answer. <code>nameof(Billing)</code> (§10.1) is RECOMMENDED over the string literal <code>"Billing"</code> for this return specifically: it is validated at <code>mhl lint</code> time, wherever the hook is written as an inline lambda literal.</p>
+<p>When <code>select</code> returns <code>null</code> (or is absent), the runtime falls back to a decision call through <code>decider</code>, <em>if one is declared</em>: <code>decider</code> names an ordinary, separately declared <code>agent</code> (or carries an inline <code>agent {...}</code> literal, resolved the same way an agent's own <code>fallback: [...]</code> entries are) — none of its <code>engine</code>/<code>command</code>/<code>args</code>/<code>endpoint</code>/<code>temperature</code>/<code>retry</code>/<code>cache</code>/<code>log</code>/<code>trace</code> configuration is duplicated onto the router itself. The runtime builds a decision prompt from the agent names — plus each agent's own optional <code>description</code> property (§12.2), appended after its name when declared — and the original prompt, and runs it through the decider exactly as it would any other <code>Name.run(...)</code> call. The decision response is matched against the declared names; no match is an error.</p>
+<p>The decision call is entirely optional. A router declares one only by declaring <code>decider</code>. A router declaring no <code>decider</code> is a purely deterministic router: <code>select</code> alone MUST resolve every prompt it receives. If <code>select</code> returns <code>null</code> (or is absent) and no <code>decider</code> is declared, <code>.delegate()</code> fails with a dedicated error rather than attempting to run an unconfigured decider. A router declaring neither <code>select</code> nor <code>decider</code> can never resolve an agent and MUST be rejected as a static error.</p>
+<pre class="code-block"><code class="language-mhl">router Frontdesk {
+    agents: [Billing, Support]
+
+    // No decider declared: select alone decides.
+    select: (prompt) -&gt; {
+        if (prompt.contains("invoice")) { return nameof(Billing) }
+        return nameof(Support)
+    }
+}</code></pre>
+<h3>13.2 Properties</h3>
+<table><thead><tr><th>Property</th><th>Contract</th></tr></thead><tbody>
+<tr><td><code>agents</code></td><td>Required array of declared agent names. Any name that does not resolve to a declared agent is a static error.</td></tr>
+<tr><td><code>select</code></td><td>One-parameter lambda, <code>(prompt) -&gt; ...</code>. A returned string naming a declared agent resolves the call; <code>null</code> (or no return) cascades to the decision call, if one is configured; a non-null return naming no declared agent is always an error. Optional — but required, and MUST be exhaustive (never return <code>null</code>), when the router declares no <code>decider</code>. When written as an inline lambda literal, its body is statically checked by <code>mhl lint</code> the same way a pipeline step's statements are, including any <code>nameof(...)</code> call inside it.</td></tr>
+<tr><td><code>decider</code></td><td>A declared agent name, or an inline <code>agent {...}</code> literal — the same two shapes as an <code>agent</code>'s own <code>fallback: [...]</code> entries. The decision call runs through it via the agent's normal execution path (§12), so its own <code>engine</code>/<code>command</code>/<code>args</code>/<code>endpoint</code>/<code>temperature</code>/<code>retry</code>/<code>cache</code>/<code>log</code>/<code>trace</code>/<code>before</code>/<code>after</code> all apply. Optional — declaring no <code>decider</code> opts the router out of the LLM cascade entirely. A bare name that does not resolve to a declared agent is a static error.</td></tr>
+</tbody></table>
+<p>The chosen agent's own <code>retry</code>, <code>cache</code>, <code>rate_limit</code>, <code>fallback</code>, <code>before</code>, and <code>after</code> all apply exactly as they would for a direct <code>Name.run(...)</code> call, since <code>delegate</code> ultimately runs that agent through the same execution path.</p>
+</section>
+
 <section class="feature doc-section" id="memory">
-<h2>13. Memory and state</h2>
-<h3>13.1 Named memory declarations</h3>
+<h2>14. Memory and state</h2>
+<h3>14.1 Named memory declarations</h3>
 <pre class="code-block"><code class="language-mhl">memory Session {
     type: "json"
     path: ".mhl/session.json"
@@ -472,7 +522,7 @@ Events.append({event: "started", at: time.now()})</code></pre>
 <tr><td class="signature">append(value: any) → any</td><td>JSONL operation. Writes <code>{value, ts}</code> and returns the original value.</td></tr>
 </tbody></table>
 <p>A declaration body separates its properties by line breaks, not commas — <code>type:</code> and <code>path:</code> are properties of the <code>memory</code> declaration, not fields of an object literal. Memory methods are positional. JSON memory keys MAY navigate nested objects or arrays with <code>::</code>, for example <code>Session.get("config::retries", 3)</code>. A missing key returns the default when supplied, otherwise null. Path-backed memory interpolates its path, so use <code>context.session_id</code> to isolate concurrent runs.</p>
-<h3>13.2 Persistent pipeline variables</h3>
+<h3>14.2 Persistent pipeline variables</h3>
 <pre class="code-block"><code class="language-mhl">loop pipeline Poll {
     mem attempts = 0
     mem status = "pending"
@@ -486,8 +536,8 @@ Events.append({event: "started", at: time.now()})</code></pre>
 </section>
 
 <section class="feature doc-section" id="extensions">
-<h2>14. Extensions</h2>
-<h3>14.1 MCP client</h3>
+<h2>15. Extensions</h2>
+<h3>15.1 MCP client</h3>
 <p><code>extension mcp Name { ... }</code> connects to a Model Context Protocol server over <code>stdio</code> or HTTP. The methods are:</p>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
 <tr><td class="signature">Name.call(tool: string, arguments?: object) → any</td><td>Issues <code>tools/call</code> and returns the decoded result. An input-required response raises because this client cannot elicit and resubmit input.</td></tr>
@@ -495,7 +545,7 @@ Events.append({event: "started", at: time.now()})</code></pre>
 <tr><td class="signature">Name.discover() → any</td><td>Issues <code>server/discover</code>, or returns initialize identity for handshake-only servers.</td></tr>
 </tbody></table>
 <p>The protocol property accepts <code>auto</code> (default), <code>2026-07-28</code> stateless, <code>2025-11-25</code>, or <code>2025-06-18</code> handshake mode. In auto mode the stateless attempt is tried first and protocol incompatibility may trigger handshake fallback. Stdio calls create a fresh process; HTTP calls are independent requests. Credentials in headers SHOULD be obtained through <code>env</code>.</p>
-<h3>14.2 A2A client</h3>
+<h3>15.2 A2A client</h3>
 <p><code>extension a2a Name { url, headers, poll_interval?, poll_timeout? }</code> connects to a remote Agent2Agent endpoint.</p>
 <table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
 <tr><td class="signature">Name.send(message: string, context?: string) → object</td><td>Issues <code>message/send</code>. A non-terminal task is polled with <code>tasks/get</code>. Message results are normalized to <code>{kind, text, parts, message_id, context_id}</code>; tasks include id, state, artifacts, history, and status.</td></tr>
@@ -504,7 +554,7 @@ Events.append({event: "started", at: time.now()})</code></pre>
 <tr><td class="signature">Name.cancel(id: string) → object</td><td>Issues <code>tasks/cancel</code>.</td></tr>
 </tbody></table>
 <p>Streaming, push notifications, and input-required task continuation are not implemented in the current client profile.</p>
-<h3>14.3 External adapters</h3>
+<h3>15.3 External adapters</h3>
 <p>An unknown extension kind resolves through an installed external adapter. The adapter is an executable described by a manifest, selected by a locked identifier and SHA-256 digest, and spoken to over newline-delimited JSON-RPC. The host sends <code>initialize</code>, <code>call</code>, and <code>shutdown</code>; the adapter MAY send <code>log</code> and <code>secret.resolve</code> requests. Protocol messages belong on stdout; diagnostics belong on stderr.</p>
 <p>The manifest is <code>extension.json</code>: <code>id</code>, <code>api_version</code>, <code>executable</code>, and one or more <code>declarations</code> (<code>kind</code>, and optionally tooling metadata — <code>properties</code>, <code>methods</code>) are required; <code>permissions</code> gates secret and network access. <code>declarations</code> MAY instead live in a <code>declarations_file</code> sidecar — a JSON array/object, or the same shape in native mhl object/array syntax when the sidecar's extension is <code>.mh</code> — so tooling metadata can be regenerated without touching the manifest.</p>
 <pre class="code-block"><code class="language-json">{
@@ -528,9 +578,9 @@ extensible crm {
 </section>
 
 <section class="feature doc-section" id="pipelines">
-<h2>15. Pipelines and workflows</h2>
+<h2>16. Pipelines and workflows</h2>
 <p>A pipeline is the executable unit. Inputs are supplied by the CLI or a server adapter and are validated against their declared types. Pipeline-level variables are shared across steps; step-local variables are not visible to later steps or <code>repeat.stop_when</code>.</p>
-<h3>15.1 Ordered execution and checkpoints</h3>
+<h3>16.1 Ordered execution and checkpoints</h3>
 <pre class="code-block"><code class="language-mhl">workflow Release {
     input environment: string
     var approved = false
@@ -552,9 +602,9 @@ extensible crm {
 <p>Execution is <em>at-least-once</em> per step. A checkpoint records inter-step progress, not the external effects a step produced: a step that fails (or a process that dies) after performing an effect but before its checkpoint is written re-runs that effect on <code>--resume</code>; a <code>pause</code> re-enters its step; a failed <code>parallel</code> branch re-runs beside completed siblings. The runtime does not deduplicate external effects — a step that mutates an outside system MUST be made idempotent by the program (an idempotency key, check-then-act, or a prepare/apply split).</p>
 <p>Checkpoint state is JSON. A pipeline-scoped variable is checkpointable only if its value is JSON-representable — a string, number, bool, <code>null</code>, or an array/object of those; resolved credentials are persisted as their reference and re-resolved on <code>--resume</code>. A pipeline-scoped variable holding a value JSON cannot represent (a closure, an opaque handle) MUST fail the run at the next checkpoint rather than be silently persisted as an empty object.</p>
 <p>Explicit credential resolution MUST register the exact nonempty string independently of length, numeric/keyword appearance, or surrounding whitespace. Heuristic registration of ordinary environment reads remains separate. A whole secret value with an unambiguous reference is re-resolved on resume; embedded secrets and secrets without references are masked. Distinct references resolving to the same value in a runtime process MUST NOT silently overwrite provenance: the checkpoint records <code>env()</code>-independent <code>ambiguous()</code> in its secret-reference placeholder, and resume MUST fail with an explicit ambiguity error. This ambiguity remains for the lifetime of the process. Registration is process-wide; even a short explicitly resolved secret masks matching text in other output from that process.</p>
-<h3>15.2 Loop pipelines</h3>
+<h3>16.2 Loop pipelines</h3>
 <p>Prefix either form with <code>loop</code> and add <code>repeat: {stop_when, max_iterations}</code>. A <code>max &lt;N&gt;</code> header clause — <code>loop workflow Refine max 3 { ... }</code> — is shorthand for <code>repeat: {max_iterations: N}</code> when a fixed iteration ceiling is the whole repeat policy; declaring both the clause and an explicit <code>repeat</code> <code>max_iterations</code> is a lint error and the <code>repeat</code> block wins. An iteration runs to completion before <code>stop_when</code> is evaluated. <code>break</code> wins over the stop condition and maximum. An error is not a soft stop: it aborts the run. A loop checkpoint records the next iteration and terminal reason (<code>stop_when</code>, <code>max_iterations</code>, <code>break</code>, or <code>pause</code>); a <code>pause</code>d loop is re-entered by <code>--resume</code>, the others are not.</p>
-<h3>15.3 Context</h3>
+<h3>16.3 Context</h3>
 <pre class="code-block"><code class="language-mhl">pipeline Build {
     checkpoint: {enabled: true, strategy: "per_step"}
     context: {source: "latest", require: false}
@@ -564,7 +614,7 @@ extensible crm {
     }
 }</code></pre>
 <p>Every pipeline and workflow step MAY read the read-only object <code>context</code> = <code>{session_id, started_at, resumed, principal, vars}</code>; no declaration is required for <code>session_id</code>, <code>started_at</code>, <code>resumed</code>, or <code>principal</code>. <code>principal</code> is the verified server caller identity when available (otherwise the empty string) and is not an authorization mechanism. The <code>context: {source, require}</code> block governs <code>vars</code> only — the previous completed run's final variable state. Without the block <code>vars</code> is the empty object; with it, <code>vars</code> stays empty until a run of that pipeline has completed once, so a program SHOULD guard with <code>context.vars.keys().contains(...)</code>.</p>
-<h3>15.4 Output projection</h3>
+<h3>16.4 Output projection</h3>
 <pre class="code-block"><code class="language-mhl">workflow PublishRelease {
     input environment: string
     var artifact_url = ""
@@ -573,7 +623,7 @@ extensible crm {
 }</code></pre>
 <p>The optional <code>output: {name: expr, ...}</code> block is a pipeline/workflow's result contract. When declared, a run returns <em>only</em> these keys — to a <code>mhl run</code> invocation and to every <code>mhl serve mcp</code> / <code>serve a2a</code> caller — each evaluated against the final variable state (keys MAY be renamed, computed, or omitted). Without the block, a run returns every non-internal <code>var</code>. The projection does not affect what a later run's <code>context:</code> reads back, which is always the full final state. The value MUST be an object mapping; any other type aborts the run.</p>
 <p>The mapping is evaluated exactly once, when the run reaches a terminal state — a normal completion or a <code>break</code>. A run suspended by <code>pause(...)</code> does <em>not</em> evaluate it (its expressions may read a <code>var</code> the run has not set yet): the suspension response carries the partial variable state instead, and the <code>--resume</code> / <code>run/resume</code> that completes the run evaluates the real projection. The mapping's result is not checkpointed, so a resumed run re-evaluates it. Mapping expressions observe the run's cancellation and deadline like a step body; side effects there are discouraged — they run once, are not persisted, and re-run on resume.</p>
-<h3>15.5 Parallel groups and spawned agents</h3>
+<h3>16.5 Parallel groups and spawned agents</h3>
 <pre class="code-block"><code class="language-mhl">pipeline Review {
     input diff: string
     input changed_files: string[]
@@ -601,7 +651,7 @@ extensible crm {
 </section>
 
 <section class="feature doc-section" id="tests">
-<h2>16. Tests</h2>
+<h2>17. Tests</h2>
 <p>A test declaration contains named <code>describe</code> blocks. Each description gets a fresh environment and supports the same statement grammar as a pipeline step. Assertion calls are recognized only inside descriptions.</p>
 <pre class="code-block"><code class="language-mhl">test TextExamples {
     describe normalization {
@@ -620,8 +670,8 @@ extensible crm {
 </section>
 
 <section class="feature doc-section" id="cli">
-<h2>17. CLI and serving</h2>
-<h3>17.1 Commands</h3>
+<h2>18. CLI and serving</h2>
+<h3>18.1 Commands</h3>
 <table><thead><tr><th>Command</th><th>Purpose</th></tr></thead><tbody>
 <tr><td><code>mhl init</code></td><td>Creates a starter program without overwriting existing files.</td></tr>
 <tr><td><code>mhl run file.mh [--input key=value] [--resume [--force]] [--session id] [--format text|json] [--dry-run]</code></td><td>Runs a pipeline/workflow with typed inputs and optional checkpoint resume. <code>--force</code> (with <code>--resume</code>) resumes through a changed pipeline definition, warning instead of refusing. <code>--format json</code> emits one object — the result on success, or a typed error (<code>kind</code>, <code>step</code>, <code>hint</code>, and for bad inputs <code>missing</code>/<code>unknown</code>) on failure — with the run's own output moved to a <code>log</code> field; the process still exits non-zero on failure. Registered secrets are masked recursively in <code>vars</code>, both for legacy results and explicit <code>output:</code> projections; non-sensitive values and JSON types are preserved. Log and error text are also masked. <code>--dry-run</code> validates parse, imports, lint and the input contract — required inputs present, no undeclared keys, and each supplied value fitting its declared <code>input name: Type</code> (the same coercion a real run applies) — and prints the static step plan (order, parallel groups, checkpoint policy) without executing any step or calling any agent; it exits non-zero on a lint finding or an unsatisfied input contract, and cannot be combined with <code>--resume</code>.</td></tr>
@@ -635,7 +685,7 @@ extensible crm {
 <tr><td><code>mhl version</code>, <code>mhl --version</code>, <code>mhl -v</code></td><td>Prints the runtime version.</td></tr>
 </tbody></table>
 <p>For <code>--input</code>, strings remain strings; declared numbers and booleans are coerced from command-line text; arrays and objects are parsed as JSON. Inputs not declared by the selected pipeline are rejected by server adapters and diagnosed by the CLI profile.</p>
-<h3>17.2 Serving workflows</h3>
+<h3>18.2 Serving workflows</h3>
 <p><code>mhl serve mcp</code> publishes one MCP tool per pipeline/workflow. Stdio uses newline-delimited JSON-RPC 2.0. HTTP defaults to <code>127.0.0.1:8711</code> and accepts one JSON-RPC message per <code>POST /mcp</code>. The A2A server defaults to <code>127.0.0.1:8710</code> and publishes <code>/.well-known/agent-card.json</code>.</p>
 <table><thead><tr><th>Async method</th><th>Purpose</th></tr></thead><tbody>
 <tr><td><code>run/start</code></td><td>Starts a long workflow and returns a run id immediately.</td></tr><tr><td><code>run/status</code></td><td>Returns state, current step, reached steps, final variables, errors, and resumability.</td></tr><tr><td><code>run/resume</code></td><td>Continues a failed checkpointed workflow, optionally merging new arguments such as an approval.</td></tr><tr><td><code>run/cancel</code></td><td>Cancels an active run.</td></tr><tr><td><code>run/list</code></td><td>Lists runs owned by the current caller.</td></tr><tr><td><code>run/logs</code></td><td>Returns the run's retained step and <code>log()</code> output, incrementally via a <code>since</code> cursor.</td></tr>
@@ -645,7 +695,7 @@ extensible crm {
 </section>
 
 <section class="feature doc-section" id="security">
-<h2>18. Security and operational semantics</h2>
+<h2>19. Security and operational semantics</h2>
 <p>MHL programs can execute processes, modify files, access networks, call remote tools, and persist state. An implementation and operator SHOULD treat every <code>.mh</code> file as executable code.</p>
 <ul>
 <li>Credentials SHOULD be referenced with <code>env("NAME")</code> and MUST NOT be embedded in source, command arguments, or committed state.</li>
@@ -666,6 +716,7 @@ extensible crm {
 import-item    ::= Identifier ["as" Identifier]
 enum           ::= "enum" Identifier "{" [Identifier (","? Identifier)* ","?] "}"
 agent          ::= "agent" Identifier "{" property* "}"
+router         ::= "router" Identifier "{" property* "}"
 prompt         ::= "prompt" Identifier "(" [parameter ("," parameter)*] ")"
                    ("from" String | "{" expression "}")
 memory         ::= "memory" Identifier "{" property* "}"
@@ -704,7 +755,7 @@ goto           ::= "goto" Identifier
 test           ::= "test" Identifier "{" describe* "}"
 describe       ::= "describe" Identifier block
 property       ::= Identifier ":" expression</pre>
-<p>A declaration body (<code>agent</code>, <code>memory</code>, <code>extension</code>, and the property members of a pipeline) is a sequence of <code>property</code> productions separated by line breaks. Commas separate the fields of an <em>object literal</em> — the value on the right of a property — never the properties of a declaration body itself.</p>
+<p>A declaration body (<code>agent</code>, <code>router</code>, <code>memory</code>, <code>extension</code>, and the property members of a pipeline) is a sequence of <code>property</code> productions separated by line breaks. Commas separate the fields of an <em>object literal</em> — the value on the right of a property — never the properties of a declaration body itself.</p>
 <p>Implementations MAY expose richer diagnostic positions, syntax highlighting, completion, or generated schemas. Those facilities do not alter the source grammar.</p>
 </section>
 
@@ -784,6 +835,7 @@ test AuditExamples {
           <a href="#stdlib" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Standard library</a>
           <a href="#native" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Native operations</a>
           <a href="#agents" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Agents and traffic control</a>
+          <a href="#routers" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Routers</a>
           <a href="#memory" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Memory and state</a>
           <a href="#extensions" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Extensions</a>
           <a href="#pipelines" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Pipelines and workflows</a>
@@ -810,7 +862,7 @@ test AuditExamples {
 </x-dc>
 <script type="text/x-dc" data-dc-script>
 const KEYWORDS=new Set('import from as export loop var mem if else while try catch finally return break goto for in self fail pause'.split(' '));
-const DECLS=new Set('agent memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
+const DECLS=new Set('agent router memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
 const CONSTS=new Set(['true','false','null']);
 const esc=(v)=>v.replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const span=(cls,v)=>'<span class="'+cls+'">'+v+'</span>';
