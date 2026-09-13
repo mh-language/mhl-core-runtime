@@ -8,7 +8,7 @@ Hoje `command: env("VAR")` falha com `agent "X" has no command` — só uma stri
 
 > **Status:** `command`/cada elemento de `args` agora aceitam qualquer expressão (`env(...)`, concatenação, variável), não só string literal — mesmo tratamento que `extension { endpoint: env(...) }` já tinha. Um literal de string continua sendo usado ao pé da letra (sem interpolar `${...}`), preservando os placeholders `"${prompt}"`/`"${schema}"`. Uma referência de credencial em `env(...)` falha fechado (mesma garantia de `extension`) e é registrada para redaction. `mhl lint` para de reportar falso "has no command"/"args must be an array" para uma expressão não-literal. Implementado em `internal/engine/interpreter/agent.go` (`resolveAgentCommand`/`resolveCommandLikeExpr`) e `internal/lang/ast/agentconfig.go`; testes em `agent_engine_test.go`, `lint_test.go`.
 
-## 2. `mhl serve mcp` (stdio) deveria expor os mesmos `mhl_run_*` que o modo `--http`
+## 2. `mhl serve mcp` (stdio) deveria expor os mesmos `mhl_run_*` que o modo `--http` — 🚧 Blocking
 
 Confirmado por spike: a variante stdio (`mhl serve mcp <dir>`) só publica os workflows como ferramentas síncronas — `tools/list` nunca inclui `mhl_run_start`/`status`/`resume`/`cancel`/`list`/`logs`, e chamá-los retorna `unknown tool`. Isso obriga qualquer aplicação desktop que só precisa de um processo filho local (sem nenhuma intenção de expor rede) a abrir uma porta HTTP em loopback só para ganhar acesso a progresso assíncrono e human-in-the-loop — que são conceitos de protocolo (MCP), não de transporte. Achado completo: [FASE0-ACHADOS.md §2](FASE0-ACHADOS.md#2-achado-crítico--mhl_run_startstatusresumecancellistlogs-só-existem-sob---http-nunca-em-stdio-puro).
 
@@ -34,11 +34,11 @@ O bloco de operações nativas de `html` já tem `parse`, `get_element(s)`, `get
 
 > **Status:** corrigido — antes de cair no fallback "memory not found" para um método que colide com nome de método de `memory` (`set`/`get`/`append`/`remove`), o lint agora checa se o alvo já é uma variável local conhecida (`var`/`const`/parâmetro/`spawn`/`for-in`) e, se for, não emite achado nenhum (é um método de valor comum, resolvido em runtime). Implementado em `internal/lang/lint/checks.go` (`checkExprCallShape`); teste `TestLocalArrayAppendNotFlaggedAsMemory` em `lint_test.go`.
 
-## 6. Chamada de método-irmão dentro de um `tool` deveria funcionar sem qualificação
+## 6. Chamada de método-irmão dentro de um `tool` deveria funcionar sem qualificação — 🚧 Blocking
 
 Dentro de `tool Paths { root(id) -> "projects/" + ensure_valid(id) }`, chamar `ensure_valid(id)` sem prefixo falha com `undefined variable "ensure_valid"` — é preciso escrever `Paths.ensure_valid(id)`, mesmo estando no mesmo bloco declarativo. Isso não está documentado nas páginas de referência lidas e é uma pequena superfície a mais de fricção/erro (o padrão em praticamente toda outra linguagem com namespaces de método — `this.foo()` ou simplesmente `foo()` dentro da própria classe/módulo — é não precisar do nome completo). Se for intencional (por exemplo, para manter o corpo do método sem "escopo implícito" nenhum), vale pelo menos documentar explicitamente na página de `tool`.
 
-## 7. Escrita de campo de objeto via `.` (não só `[...]`)
+## 7. Escrita de campo de objeto via `.` (não só `[...]`) — 🚧 Blocking
 
 Leitura funciona com `obj.campo`, mas escrita (`obj.campo = valor`) falha com `assignment target must be a plain variable or an array index, not a nested field` — é preciso `obj["campo"] = valor`. A assimetria entre leitura (ponto) e escrita (colchete) para o mesmo tipo de acesso é uma pegadinha discreta; poucos usuários vão adivinhar que `obj.campo = x` é rejeitado antes de tentar.
 
@@ -54,11 +54,11 @@ Não testamos still, mas a tabela de "Declarable types" não deixa claro se um `
 
 > **Status:** confirmado por investigação de código (não só spike): `input action: ActionType` já funcionava e já era aceito antes desta mudança, mas projetava no schema só como `{"type": "string"}` genérico — a lacuna real não era "funciona ou não", era a falta do `"enum": [...]` no JSON Schema. Corrigido: `runtime.FindPipeline` agora resolve os variants declarados do `enum` e `InputSchema()` os inclui como `"enum": ["Create", "List", ...]`, na ordem de declaração — o mapeamento nativo do JSON Schema que o item já esperava. Implementado em `internal/engine/runtime/pipeline.go` (`enumVariants`, `PipelineInputSpec.EnumVariants`) e `schema.go`; testes em `schema_test.go` (unit + end-to-end via `FindPipeline` com `enum` real).
 
-## 10. `time.format`/`time.parse` — escapar literais nos tokens amigáveis (`yyyy`/`MM`/…)
+## 10. `time.format`/`time.parse` — escapar literais nos tokens amigáveis (`yyyy`/`MM`/…) — 🚧 Blocking
 
 O layout "amigável" (`yyyy-MM-dd`) não tem mecanismo de escape para caracteres literais no meio do padrão — `"yyyy-MM-dd'T'HH:mm:ss'Z'"` (sintaxe de aspas simples do Java/ICU) produz literalmente as aspas na saída em vez de tratar `T`/`Z` como literais. Hoje o único jeito de conseguir um timestamp ISO 8601/RFC 3339 correto é abandonar os tokens amigáveis e usar o layout Go puro (`"2006-01-02T15:04:05Z07:00"`) — o que exige conhecer a convenção de referência do Go (`Mon Jan 2 15:04:05 MST 2006`), justamente o conhecimento que os tokens amigáveis deveriam evitar exigir. Um mecanismo de escape (aspas simples, como ICU, ou colchetes) fecharia essa lacuna sem quebrar compatibilidade.
 
-## 11. Contrato de saída estruturada (`schema:`) deveria ser uniforme entre adapters `cli/*`
+## 11. Contrato de saída estruturada (`schema:`) deveria ser uniforme entre adapters `cli/*` — 🚧 Blocking
 
 Hoje, na prática (não documentado, descoberto testando os três CLIs reais):
 - `claude`: `--json-schema <schema-inline>` — schema como string JSON direta no argv.
@@ -67,11 +67,11 @@ Hoje, na prática (não documentado, descoberto testando os três CLIs reais):
 
 Um usuário que declara `agent.run(prompt:, schema:)` esperando o mesmo comportamento documentado ("passed to backends that support structured output") precisa descobrir por tentativa que `codex` exige gravar o schema em disco antes da chamada, e que `devin` simplesmente não tem como cumprir o contrato via CLI nenhuma. Se o adapter `cli/*` do MHL abstraísse essas diferenças (escrevendo o arquivo temporário sozinho quando o CLI exigir um caminho, e falhando de forma clara e antecipada — não silenciosa — quando o CLI não suportar nada), `schema:` seria de fato portável entre backends, como o texto da documentação sugere que já é.
 
-## 12. `mhl run --format json` pode emitir JSON tecnicamente inválido
+## 12. `mhl run --format json` pode emitir JSON tecnicamente inválido — 🚧 Blocking
 
 O campo `log` do envelope de saída às vezes contém quebras de linha reais (não escapadas como `\n`) dentro do valor da string, o que faz um parser JSON estrito (`json.loads` do Python, por exemplo) rejeitar o documento inteiro com "Invalid control character". Um consumidor programático de `--format json` (o próprio caso de uso do flag) não deveria precisar de um parser tolerante a JSON malformado.
 
-## 13. Testar um `pipeline`/`workflow` inteiro (steps + `goto` + `pause`) de dentro de `test`/`describe`
+## 13. Testar um `pipeline`/`workflow` inteiro (steps + `goto` + `pause`) de dentro de `test`/`describe` — 🚧 Blocking
 
 O bloco `test`/`describe` hoje só exercita `tool`s e expressões — não há um jeito documentado de rodar um `workflow` inteiro (com seus `step`s, `goto`s e `pause()`s) a partir de um `test`, validando `reached`/`state` como se faz manualmente via `mhl run --format json`. Isso deixa um buraco de cobertura automatizada: hoje a única forma de testar o *fluxo* de um `workflow` (não só a lógica pura dentro de um `tool`) é rodar `mhl run` de verdade e inspecionar a saída manualmente/via script externo, fora do framework de teste nativo do MHL.
 
