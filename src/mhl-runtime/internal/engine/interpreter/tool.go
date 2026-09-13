@@ -497,6 +497,12 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, err
 		}
 		return nativeops.ToHTML(node)
+	case "html.escape", "html.attr_escape":
+		text, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("%s requires a string as its first argument", op)
+		}
+		return nativeops.EscapeHTML(text), nil
 	default:
 		return nil, fmt.Errorf("%s.%s is not a supported native operation", namespace, op)
 	}

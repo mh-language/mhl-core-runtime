@@ -202,6 +202,7 @@ pipeline Publish {
         log(note)
     }
 }</code></pre>
+          <div class="tip-row"><span>ENUM INPUTS</span><p>An <code>input</code> typed with a declared <code>enum</code> — <code>input status: Status</code> above — closes its value set the same way in the <code>inputSchema</code> exposed via <code>mhl serve mcp</code>/<code>a2a</code>'s <code>tools/list</code>: it renders as <code>{"type": "string", "enum": ["Draft", "Published", "Archived"]}</code>, not a bare <code>{"type": "string"}</code> — so a caller (or a client's own form/UI generated from the schema) sees the closed set of legal values up front instead of discovering it by trial and error.</p></div>
 
           <p class="block-label">PRACTICAL GRAMMAR</p>
           <pre class="grammar-block"><code>declaration  := [export] (import | agent | prompt | memory | tool | extension | pipeline | workflow | type | enum | test)

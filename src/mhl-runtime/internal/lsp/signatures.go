@@ -149,6 +149,16 @@ var nativeSigs = map[string]sig{
 		Params: []string{"node"},
 		Doc:    "Serializes node back to an HTML string — the inverse of html.parse(). A \"#fragment\" node serializes each of its children in turn. Attribute order is not preserved.",
 	},
+	"html.escape": {
+		Label:  "html.escape(text: string) -> string",
+		Params: []string{"text"},
+		Doc:    "Escapes <, >, &, ' and \" so text is safe to splice into HTML content. Same escaping as html.attr_escape — safe for a quoted attribute value too.",
+	},
+	"html.attr_escape": {
+		Label:  "html.attr_escape(text: string) -> string",
+		Params: []string{"text"},
+		Doc:    "Escapes <, >, &, ' and \" so text is safe inside a single- or double-quoted HTML attribute value. Same escaping as html.escape.",
+	},
 }
 
 // httpSig builds the signature entry for one http.<verb> native op — they

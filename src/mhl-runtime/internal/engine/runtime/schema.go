@@ -18,15 +18,27 @@ import (
 // in which case it is left out of "required" and — best-effort, when the
 // default is itself a literal (ast.LiteralValue) — its "default" key is
 // filled in too; a non-literal default (e.g. one reading `context.*`) still
-// makes the input optional, it just has no representable JSON default. The
-// schema is otherwise the adapter's contract, deliberately tighter than
-// `mhl run`'s own leniency toward unrecognised --input flags. A pipeline
-// with no inputs yields {"type":"object","properties":{},"additionalProperties":false}.
+// makes the input optional, it just has no representable JSON default. An
+// enum-typed input (PipelineInputSpec.EnumVariants) gets its declared
+// variant list as a proper JSON Schema `"enum"` array — Type.JSONSchema()
+// can't do this on its own (an EnumKind Type carries only its name, not its
+// variants; see that method's own doc comment), so this is the one place
+// with access to both. The schema is otherwise the adapter's contract,
+// deliberately tighter than `mhl run`'s own leniency toward unrecognised
+// --input flags. A pipeline with no inputs yields
+// {"type":"object","properties":{},"additionalProperties":false}.
 func (p Pipeline) InputSchema() map[string]any {
 	props := make(map[string]any, len(p.Inputs))
 	required := make([]string, 0, len(p.Inputs))
 	for _, in := range p.Inputs {
 		s := in.Type.JSONSchema()
+		if len(in.EnumVariants) > 0 {
+			variants := make([]any, len(in.EnumVariants))
+			for i, v := range in.EnumVariants {
+				variants[i] = v
+			}
+			s["enum"] = variants
+		}
 		if in.Default != nil {
 			if dv, ok := ast.LiteralValue(in.Default); ok {
 				s["default"] = dv

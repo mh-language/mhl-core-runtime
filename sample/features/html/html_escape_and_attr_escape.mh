@@ -1,0 +1,23 @@
+// html.escape()/html.attr_escape() turn plain text into markup-safe text:
+// <, >, &, ' and " are replaced by their entity references. Both ops apply
+// the same escaping rule -- safe for text content and for a quoted
+// attribute value alike -- so either name works in either context; they
+// exist as two names for call-site clarity about which context is being
+// escaped for, not because the escaping itself differs.
+test html_escape_and_attr_escape {
+    describe html_escape {
+        are_equal(html.escape("<script>alert('hi')</script>"), "&lt;script&gt;alert(&#39;hi&#39;)&lt;/script&gt;")
+        are_equal(html.escape("Fish & Chips"), "Fish &amp; Chips")
+        are_equal(html.escape("no special chars"), "no special chars")
+    }
+    describe html_attr_escape {
+        are_equal(html.attr_escape("say \"hi\""), "say &#34;hi&#34;")
+        are_equal(html.attr_escape("O'Brien"), "O&#39;Brien")
+    }
+    describe html_escape_round_trips_into_a_valid_attribute {
+        var user_bio = "<b>bold</b> & \"quoted\""
+        var rendered = html.parse("<div title=\"" + html.attr_escape(user_bio) + "\">x</div>")
+        var div = html.get_element(rendered, tag: "div")
+        are_equal(html.get_attribute(div, "title"), user_bio)
+    }
+}

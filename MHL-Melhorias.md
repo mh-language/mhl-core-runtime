@@ -22,9 +22,11 @@ Confirmado por spike ([FASE0-ACHADOS.md §7](FASE0-ACHADOS.md#7-achado-crítico-
 
 > **Status:** implementado exatamente como sugerido — `memory { path_guard: "no_traversal" }` (opt-in, não é o padrão). A checagem é por *span* interpolado (o valor de cada `${...}`), não na string final concatenada — assim um `path:` cujo template já começa de um diretório absoluto continua válido; só o segmento interpolado (ex. `project_id`) é barrado se contiver `..` ou tiver cara de caminho absoluto. Qualquer outro valor de `path_guard` é erro em tempo de lint. Implementado em `internal/engine/interpreter/memory_ops.go` (`memoryPath`/`guardPathSpan`) e `internal/engine/interpreter/interpolate.go` (`interpolateChecked`); testes em `memory_test.go` (cenário de traversal real bloqueado) e `lint_test.go`.
 
-## 4. `html.escape`/`html.attr_escape` nativos
+## 4. `html.escape`/`html.attr_escape` nativos — ✅ Resolvido
 
 O bloco de operações nativas de `html` já tem `parse`, `get_element(s)`, `get_element_by_id`, `get_attribute`, `get_text`, `to_html` — mas nenhum `escape`. Qualquer geração de HTML a partir de texto de LLM (nosso caso de uso central em `Discovery`/`Delivery`) precisa reimplementar escaping à mão como uma cadeia de `.replace("&","&amp;").replace("<","&lt;")...`, na ordem certa, sem checagem do compilador de que a ordem/cobertura está correta. Isso é exatamente o tipo de operação que deveria ser nativa e testada pelo próprio runtime, do mesmo jeito que `json.stringify` já cobre escaping de string JSON.
+
+> **Status:** `html.escape(text)` e `html.attr_escape(text)` implementados — os dois delegam para o escaping de `golang.org/x/net/html` (`<`, `>`, `&`, `'`, `"`), que já cobre tanto conteúdo de texto quanto valor de atributo entre aspas simples ou duplas; existem como dois nomes por clareza no call-site, não porque a regra de escaping seja diferente entre eles. Implementado em `internal/features/nativeops/html.go` (`EscapeHTML`) + `internal/engine/interpreter/tool.go`; catálogo do LSP atualizado; testes em `html_test.go` (Go) e `sample/features/html/html_escape_and_attr_escape.mh` (round-trip real: escapar, montar HTML, fazer parse de volta e comparar).
 
 ## 5. `mhl lint` tem falso-positivo em `<array-var>.append(x)` — ✅ Resolvido
 
@@ -46,9 +48,11 @@ Só `parameter` (de `tool`/lambda) aceita `= expressão`; `input` é sempre obri
 
 > **Status:** `input name: Type = expr` agora é aceito, com a mesma sintaxe de `parameter`. Um input com default vira opcional: some do `required` do `inputSchema` derivado e, quando o default é um literal, aparece também como `"default"` no schema JSON. `ValidateInputs` não marca mais o input como `missing` quando ausente. A expressão do default é avaliada uma vez por execução (mesmo timing de um `var` de pipeline) e um valor explicitamente passado pelo chamador sempre vence sobre o default. Implementado em `internal/lang/ast/pipeline.go`, `internal/engine/runtime/pipeline.go` + `schema.go`, `internal/engine/interpreter/exec.go` (`EvalPipelineVars`); testes em `schema_test.go`, `execsvc_test.go`, `parser_test.go`.
 
-## 9. Enums em `input` de workflow servido por MCP
+## 9. Enums em `input` de workflow servido por MCP — ✅ Resolvido
 
 Não testamos still, mas a tabela de "Declarable types" não deixa claro se um `input action: ActionType` (com `enum ActionType { Create, List, Get, Archive, Usage }`) é aceito e, se for, como isso se projeta no `inputSchema` JSON exposto via `tools/list` (JSON Schema tem `enum` nativo — seria o mapeamento natural). Se funcionar, seria a forma correta de fechar valores como `action`/`type` em vez de string livre + validação manual dentro do step. Vale um spike futuro dedicado; hoje é registrado aqui como lacuna de documentação, não como bug confirmado.
+
+> **Status:** confirmado por investigação de código (não só spike): `input action: ActionType` já funcionava e já era aceito antes desta mudança, mas projetava no schema só como `{"type": "string"}` genérico — a lacuna real não era "funciona ou não", era a falta do `"enum": [...]` no JSON Schema. Corrigido: `runtime.FindPipeline` agora resolve os variants declarados do `enum` e `InputSchema()` os inclui como `"enum": ["Create", "List", ...]`, na ordem de declaração — o mapeamento nativo do JSON Schema que o item já esperava. Implementado em `internal/engine/runtime/pipeline.go` (`enumVariants`, `PipelineInputSpec.EnumVariants`) e `schema.go`; testes em `schema_test.go` (unit + end-to-end via `FindPipeline` com `enum` real).
 
 ## 10. `time.format`/`time.parse` — escapar literais nos tokens amigáveis (`yyyy`/`MM`/…)
 

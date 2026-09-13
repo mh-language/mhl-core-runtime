@@ -38,3 +38,6 @@ indentation/newlines between tags.
   — `html.get_text(node)`, the `textContent` equivalent
 - [html_to_html_serializes_a_node_back_to_a_string.mh](html_to_html_serializes_a_node_back_to_a_string.mh)
   — `html.to_html(node)`, the inverse of `html.parse()`
+- [html_escape_and_attr_escape.mh](html_escape_and_attr_escape.mh) — `html.escape(text)` /
+  `html.attr_escape(text)`, escaping `<`, `>`, `&`, `'` and `"` for text content or a quoted
+  attribute value (the same escaping rule serves both)

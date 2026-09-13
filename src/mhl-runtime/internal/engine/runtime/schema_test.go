@@ -173,3 +173,85 @@ func TestPipelineValidateInputsWithDefault(t *testing.T) {
 		t.Errorf("Missing = %#v, want [action] (item_type is optional)", ie.Missing)
 	}
 }
+
+// MHL-Melhorias.md #9: an enum-typed input previously projected onto
+// InputSchema as a bare {"type": "string"} — Type.JSONSchema() has no
+// access to the enum's declared variants, only its name. With
+// EnumVariants set (FindPipeline now fills it in from the program's `enum`
+// declaration), the schema advertises the closed value set as a real JSON
+// Schema "enum" array.
+func TestPipelineInputSchemaWithEnum(t *testing.T) {
+	p := runtime.Pipeline{
+		Name: "WorkItem",
+		Inputs: []runtime.PipelineInputSpec{
+			{Name: "action", Type: types.EnumType("ActionType"), EnumVariants: []string{"Create", "List", "Get", "Archive", "Usage"}},
+		},
+	}
+	got := p.InputSchema()
+	props, _ := got["properties"].(map[string]any)
+	want := map[string]any{
+		"type":        "string",
+		"description": "mhl enum ActionType",
+		"enum":        []any{"Create", "List", "Get", "Archive", "Usage"},
+	}
+	if !reflect.DeepEqual(props["action"], want) {
+		t.Errorf("properties[action] = %#v, want %#v", props["action"], want)
+	}
+}
+
+// An enum type with no matching `enum` declaration in the program (or no
+// EnumVariants set at all) still gets Type.JSONSchema()'s bare fallback —
+// no "enum" key — rather than an empty one.
+func TestPipelineInputSchemaEnumWithoutVariantsOmitsEnumKey(t *testing.T) {
+	p := runtime.Pipeline{
+		Name: "P",
+		Inputs: []runtime.PipelineInputSpec{
+			{Name: "action", Type: types.EnumType("ActionType")},
+		},
+	}
+	got := p.InputSchema()
+	props, _ := got["properties"].(map[string]any)
+	if _, hasEnum := props["action"].(map[string]any)["enum"]; hasEnum {
+		t.Errorf("properties[action] = %#v, want no \"enum\" key", props["action"])
+	}
+}
+
+// End-to-end: FindPipeline resolves a real `enum ActionType { ... }`
+// declaration and fills PipelineInputSpec.EnumVariants in for an
+// `input action: ActionType`, in declaration order.
+func TestFindPipelineResolvesEnumInputVariants(t *testing.T) {
+	prog, err := parser.Parse(`
+enum ActionType { Create, List, Get, Archive, Usage }
+
+pipeline WorkItem {
+    input action: ActionType
+    step S {}
+}
+`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	p, err := runtime.FindPipeline(prog, "")
+	if err != nil {
+		t.Fatalf("FindPipeline: %v", err)
+	}
+	if len(p.Inputs) != 1 {
+		t.Fatalf("Inputs = %#v, want exactly one", p.Inputs)
+	}
+	want := []string{"Create", "List", "Get", "Archive", "Usage"}
+	if !reflect.DeepEqual(p.Inputs[0].EnumVariants, want) {
+		t.Errorf("Inputs[0].EnumVariants = %#v, want %#v", p.Inputs[0].EnumVariants, want)
+	}
+	schema := p.InputSchema()
+	props, _ := schema["properties"].(map[string]any)
+	action, _ := props["action"].(map[string]any)
+	gotEnum, _ := action["enum"].([]any)
+	if len(gotEnum) != len(want) {
+		t.Fatalf("schema enum = %#v, want %v values", gotEnum, len(want))
+	}
+	for i, v := range want {
+		if gotEnum[i] != v {
+			t.Errorf("schema enum[%d] = %v, want %v", i, gotEnum[i], v)
+		}
+	}
+}

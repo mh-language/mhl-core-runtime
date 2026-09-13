@@ -192,6 +192,19 @@ func ToHTML(node map[string]any) (string, error) {
 	return b.String(), nil
 }
 
+// EscapeHTML escapes the five characters (<, >, &, ', ") that would
+// otherwise let text be misread as markup when spliced into an HTML
+// document — the same escaping `html.escape`/`html.attr_escape` both expose
+// at the MHL level (MHL-Melhorias.md #4). A single implementation serves
+// both text-content and quoted-attribute-value contexts: x/net/html's
+// EscapeString already covers both single and double quotes, so there is no
+// narrower "just for text" variant that would be any safer — splitting it
+// into two MHL ops is about call-site clarity (which context a caller is
+// escaping for), not about two different escaping rules.
+func EscapeHTML(s string) string {
+	return html.EscapeString(s)
+}
+
 func renderHTMLNode(node map[string]any, b *strings.Builder) error {
 	n, err := buildHTMLNode(node)
 	if err != nil {
