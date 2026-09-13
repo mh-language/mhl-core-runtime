@@ -73,7 +73,7 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 		return "", fmt.Errorf("%s.run: %w", agentName, err)
 	}
 
-	response, err := runAgentAttempt(ctx, agentName, agent, promptText, schemaText)
+	response, err := runAgentAttempt(ctx, agentName, agent, promptText, schemaText, depth)
 	if err == nil {
 		if agentTrace(agent) {
 			fmt.Fprintf(ctx.out, "agent %s response:\n%s\n", agentName, auth.Redact(response))
@@ -90,7 +90,7 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 		if fbName == "" {
 			fbName = fmt.Sprintf("%s.fallback[%d]", agentName, i)
 		}
-		response, fbAttemptErr := runAgentAttempt(ctx, fbName, fb, promptText, schemaText)
+		response, fbAttemptErr := runAgentAttempt(ctx, fbName, fb, promptText, schemaText, depth)
 		if fbAttemptErr == nil {
 			if agentTrace(fb) {
 				fmt.Fprintf(ctx.out, "agent %s response (via %s):\n%s\n", agentName, fbName, auth.Redact(response))
@@ -153,7 +153,7 @@ type agentCacheParams struct {
 // against its own cache and retry policy, without considering fallback —
 // that's runAgent's job, since a fallback agent has its own independent
 // retry/cache config and must not recurse into fallbacks of its own.
-func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptText, schemaText string) (string, error) {
+func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptText, schemaText string, depth int) (string, error) {
 	engine, _ := agentEngine(agent)
 
 	var command string
@@ -164,7 +164,7 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 	switch {
 	case engine == "" || strings.HasPrefix(engine, "cli/"):
 		var cfgErr error
-		command, cmdArgs, cfgErr = agentCommand(agent)
+		command, cmdArgs, cfgErr = resolveAgentCommand(ctx, agent, depth)
 		if cfgErr != nil {
 			return "", cfgErr
 		}
@@ -289,8 +289,90 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 	return response, nil
 }
 
-func agentCommand(agent *ast.Agent) (string, []string, error) {
-	return ast.AgentCommand(agent)
+// resolveAgentCommand evaluates an agent's `command`/`args` properties
+// against ctx's real evalCtx — unlike ast.AgentCommand (the purely-syntactic
+// reader internal/lang/lint uses), this lets `command`/`args` be any
+// expression, not just a string literal, e.g. `command: env("MODEL_CMD")` to
+// pick a backend per environment without duplicating the whole agent
+// declaration (MHL-Melhorias.md #1). Mirrors
+// resolveExtensionDeclaration's pattern (extension_ops.go): every credential
+// reference reachable in either property is resolved through
+// internal/features/auth first, so a missing env var fails closed before
+// anything runs and the secret is registered for auth.Redact regardless of
+// which property it came from.
+func resolveAgentCommand(ctx *evalCtx, agent *ast.Agent, depth int) (string, []string, error) {
+	var commandExpr, argsExpr *ast.Expr
+	for _, prop := range agent.Props {
+		switch prop.Name {
+		case "command":
+			commandExpr = prop.Value
+		case "args":
+			argsExpr = prop.Value
+		}
+	}
+	if commandExpr == nil {
+		return "", nil, fmt.Errorf("agent %q has no command", agent.Name)
+	}
+
+	command, err := resolveCommandLikeExpr(ctx, agent.Name, "command", commandExpr, depth)
+	if err != nil {
+		return "", nil, err
+	}
+	if command == "" {
+		return "", nil, fmt.Errorf("agent %q has no command", agent.Name)
+	}
+
+	if argsExpr == nil {
+		return command, nil, nil
+	}
+	arr := ast.BareArray(argsExpr)
+	if arr == nil {
+		return "", nil, fmt.Errorf("agent %q args must be an array of strings", agent.Name)
+	}
+	args := make([]string, 0, len(arr.Items))
+	for _, item := range arr.Items {
+		s, err := resolveCommandLikeExpr(ctx, agent.Name, "args", item, depth)
+		if err != nil {
+			return "", nil, err
+		}
+		args = append(args, s)
+	}
+	return command, args, nil
+}
+
+// resolveCommandLikeExpr resolves one `command`/`args`-element-shaped
+// expression to a string for resolveAgentCommand. A bare string literal —
+// including the "${prompt}"/"${schema}" placeholder tokens
+// injectPromptArg/injectSchemaArg substitute afterward — is returned
+// completely as-is via ast.StringValue, exactly as it always was: this
+// interpreter's string literals normally interpolate "${...}" spans against
+// the environment, but a command/args literal never has (there is no
+// `prompt` variable in scope to look up), and changing that now would
+// silently break every existing agent declaration that happens to use
+// "${prompt}"/"${schema}" or any other "${...}"-shaped literal text.
+// Anything that isn't a bare string literal — env(...), string
+// concatenation, a variable — is new (MHL-Melhorias.md #1: previously only a
+// literal was accepted at all) and goes through the full expression
+// evaluator, first failing closed on any credential reference it contains,
+// mirroring resolveExtensionDeclaration's pattern (extension_ops.go).
+func resolveCommandLikeExpr(ctx *evalCtx, agentName, propName string, expr *ast.Expr, depth int) (string, error) {
+	if s, ok := ast.StringValue(expr); ok {
+		return s, nil
+	}
+	for _, ref := range ast.CredentialRefs(expr) {
+		if _, err := auth.Resolve(ref); err != nil {
+			return "", fmt.Errorf("agent %q: %s: %w", agentName, propName, err)
+		}
+	}
+	v, err := evalExprAt(ctx, expr, depth)
+	if err != nil {
+		return "", fmt.Errorf("agent %q: %s: %w", agentName, propName, err)
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("agent %q: %s must be a string, got %s", agentName, propName, typeName(v))
+	}
+	return s, nil
 }
 
 // injectPromptArg places promptText into args at the position marked by a

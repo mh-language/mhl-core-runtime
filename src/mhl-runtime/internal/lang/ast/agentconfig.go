@@ -15,21 +15,33 @@ import (
 // functions only ever read literals already present in the parse tree; they
 // have no side effects and never execute anything.
 
-// AgentCommand reads an agent's `command`/`args` properties.
+// AgentCommand statically shape-checks an agent's `command`/`args`
+// properties for internal/lang/lint. `command`/`args` may be any expression
+// — `command: env("MODEL_CMD")`, `args: ["-p", env("MODEL_FLAG")]` — not
+// just a string literal, so a value that fails to unwrap as one is not by
+// itself an error; only a genuinely missing `command`, or an `args` that
+// isn't even array-shaped, is. The literal command/args are still returned
+// when they happen to be literals (lint's only use of them: checking
+// err == nil), but resolving a non-literal value is
+// interpreter.resolveAgentCommand's job (agent.go) — it evaluates the full
+// expression against a real evalCtx, which this purely-syntactic reader has
+// no access to.
 func AgentCommand(agent *Agent) (command string, args []string, err error) {
+	var hasCommand bool
 	for _, prop := range agent.Props {
 		switch prop.Name {
 		case "command":
+			hasCommand = true
 			command, _ = StringValue(prop.Value)
 		case "args":
-			var ok bool
-			args, ok = StringArrayValue(prop.Value)
-			if !ok {
+			if a, ok := StringArrayValue(prop.Value); ok {
+				args = a
+			} else if BareArray(prop.Value) == nil {
 				return "", nil, fmt.Errorf("agent %q args must be an array of strings", agent.Name)
 			}
 		}
 	}
-	if command == "" {
+	if !hasCommand {
 		return "", nil, fmt.Errorf("agent %q has no command", agent.Name)
 	}
 	return command, args, nil

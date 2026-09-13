@@ -5,8 +5,19 @@ import (
 	"testing"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
+
+func mustParseExpr(t *testing.T, src string) *ast.Expr {
+	t.Helper()
+	e, err := parser.ParseExpr(src)
+	if err != nil {
+		t.Fatalf("ParseExpr(%q): %v", src, err)
+	}
+	return e
+}
 
 func TestPipelineInputSchema(t *testing.T) {
 	p := runtime.Pipeline{
@@ -95,5 +106,70 @@ func TestPipelineValidateInputsNoInputsDeclared(t *testing.T) {
 	}
 	if err := p.ValidateInputs(map[string]any{"x": 1}); err == nil {
 		t.Error("undeclared key against a no-input pipeline should be rejected")
+	}
+}
+
+// A `input x: Type = expr` default drops the input from "required" and,
+// when the default is itself a literal, surfaces it as the schema's
+// "default" — the fix for MHL-Melhorias.md #8 (every input previously had
+// to be supplied on every call, even ones a given action ignores).
+func TestPipelineInputSchemaWithDefault(t *testing.T) {
+	p := runtime.Pipeline{
+		Name: "WorkItem",
+		Inputs: []runtime.PipelineInputSpec{
+			{Name: "action", Type: types.String},
+			{Name: "item_type", Type: types.String, Default: mustParseExpr(t, `""`)},
+		},
+	}
+
+	got := p.InputSchema()
+	if req, _ := got["required"].([]string); !reflect.DeepEqual(req, []string{"action"}) {
+		t.Errorf("required = %#v, want [action] (item_type has a default)", got["required"])
+	}
+	props, _ := got["properties"].(map[string]any)
+	want := map[string]any{"type": "string", "default": ""}
+	if !reflect.DeepEqual(props["item_type"], want) {
+		t.Errorf("properties[item_type] = %#v, want %#v", props["item_type"], want)
+	}
+}
+
+// A non-literal default (reads context.* or another expression lint can't
+// fold) still makes the input optional; it just has no JSON-representable
+// "default" to advertise.
+func TestPipelineInputSchemaWithNonLiteralDefault(t *testing.T) {
+	p := runtime.Pipeline{
+		Name: "P",
+		Inputs: []runtime.PipelineInputSpec{
+			{Name: "session", Type: types.String, Default: mustParseExpr(t, `context.session_id`)},
+		},
+	}
+	got := p.InputSchema()
+	if _, hasRequired := got["required"]; hasRequired {
+		t.Errorf("required = %#v, want no `required` key at all (sole input is defaulted)", got["required"])
+	}
+	props, _ := got["properties"].(map[string]any)
+	if _, hasDefault := props["session"].(map[string]any)["default"]; hasDefault {
+		t.Errorf("properties[session] = %#v, want no \"default\" key for a non-literal default", props["session"])
+	}
+}
+
+func TestPipelineValidateInputsWithDefault(t *testing.T) {
+	p := runtime.Pipeline{
+		Name: "WorkItem",
+		Inputs: []runtime.PipelineInputSpec{
+			{Name: "action", Type: types.String},
+			{Name: "item_type", Type: types.String, Default: mustParseExpr(t, `""`)},
+		},
+	}
+	if err := p.ValidateInputs(map[string]any{"action": "list"}); err != nil {
+		t.Errorf("ValidateInputs with item_type omitted = %v, want nil (it has a default)", err)
+	}
+	err := p.ValidateInputs(map[string]any{"item_type": "bug"})
+	ie, ok := err.(*runtime.InvalidInputsError)
+	if !ok {
+		t.Fatalf("err = %T %v, want *InvalidInputsError", err, err)
+	}
+	if !reflect.DeepEqual(ie.Missing, []string{"action"}) {
+		t.Errorf("Missing = %#v, want [action] (item_type is optional)", ie.Missing)
 	}
 }

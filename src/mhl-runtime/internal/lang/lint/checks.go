@@ -881,6 +881,17 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 					// this must come before the isMemoryMethod fallback.)
 					break
 				}
+				if _, found := declared[target]; found {
+					// target is a plain var/const/parameter (e.g. an array or
+					// object), not a memory declaration — `.append`/`.set`/
+					// `.get` on it is an ordinary built-in value method
+					// (callValueMethod, interpreter/eval.go), checked at run
+					// time, not something lint can resolve statically here.
+					// Without this, a local `items.append(x)` was flagged as
+					// "memory \"items\" not found" purely because its method
+					// name happens to collide with a memory method name.
+					break
+				}
 				if isMemoryMethod(method) {
 					return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 						Message: fmt.Sprintf("memory %q not found", target)}}
@@ -1301,6 +1312,19 @@ func literalValueAt(expr *ast.Expr, depth int) (any, error) {
 func checkMemoryOp(mem *ast.Memory, method string, call *ast.Call, known map[string]types.Type) error {
 	memType, _ := memoryProp(mem, "type")
 	n := len(call.Args)
+
+	// path_guard is an opt-in defense against path traversal
+	// (MHL-Melhorias.md #3): a "..".mh-interpolated `path:` like
+	// `path: "projects/${project_id}/f.json"` writes wherever `project_id`
+	// says to, with nothing in the runtime stopping it. Declaring
+	// `path_guard: "no_traversal"` makes interpreter.memoryPath fail closed
+	// on an absolute or `..`-escaping interpolated path instead. Only one
+	// value is implemented today (mirrors retry.backoff/cache.strategy/
+	// rate_limit.on_exceeded: an unrecognized value is a build-time error,
+	// not silently accepted).
+	if guard, ok := memoryProp(mem, "path_guard"); ok && guard != "no_traversal" {
+		return fmt.Errorf("memory %q: path_guard %q is not supported yet", mem.Name, guard)
+	}
 
 	checkStringArg := func(i int, label string) error {
 		if i >= len(call.Args) {

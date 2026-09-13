@@ -123,10 +123,13 @@ type Pipeline struct {
 }
 
 // PipelineInputSpec is one `input name: Type` declaration, resolved to the
-// shared types.Type vocabulary.
+// shared types.Type vocabulary. Default is nil for a required input (no
+// `= expr` written); when non-nil, the input is optional — see
+// ValidateInputs/InputSchema and interpreter.EvalPipelineVars.
 type PipelineInputSpec struct {
-	Name string
-	Type types.Type
+	Name    string
+	Type    types.Type
+	Default *ast.Expr
 }
 
 // PipelineFromAST projects an ast.Pipeline onto a runtime Pipeline, extracting
@@ -198,7 +201,7 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 			if !ok {
 				t = types.Any
 			}
-			out.Inputs = append(out.Inputs, PipelineInputSpec{Name: m.Input.Name, Type: t})
+			out.Inputs = append(out.Inputs, PipelineInputSpec{Name: m.Input.Name, Type: t, Default: m.Input.Default})
 		}
 	}
 	return out

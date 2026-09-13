@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
 // InputSchema renders p's declared `input name: Type` members as a single
@@ -11,16 +13,28 @@ import (
 // A2A skill input schema) advertises and validates a request's arguments
 // against before starting a run.
 //
-// Every declared input is required and no extra properties are allowed: the
-// schema is the adapter's contract, deliberately tighter than `mhl run`'s
-// own leniency toward unrecognised --input flags. A pipeline with no inputs
-// yields {"type":"object","properties":{},"additionalProperties":false}.
+// Every declared input is required and no extra properties are allowed,
+// unless the input carries a `= expr` default (PipelineInputSpec.Default),
+// in which case it is left out of "required" and — best-effort, when the
+// default is itself a literal (ast.LiteralValue) — its "default" key is
+// filled in too; a non-literal default (e.g. one reading `context.*`) still
+// makes the input optional, it just has no representable JSON default. The
+// schema is otherwise the adapter's contract, deliberately tighter than
+// `mhl run`'s own leniency toward unrecognised --input flags. A pipeline
+// with no inputs yields {"type":"object","properties":{},"additionalProperties":false}.
 func (p Pipeline) InputSchema() map[string]any {
 	props := make(map[string]any, len(p.Inputs))
 	required := make([]string, 0, len(p.Inputs))
 	for _, in := range p.Inputs {
-		props[in.Name] = in.Type.JSONSchema()
-		required = append(required, in.Name)
+		s := in.Type.JSONSchema()
+		if in.Default != nil {
+			if dv, ok := ast.LiteralValue(in.Default); ok {
+				s["default"] = dv
+			}
+		} else {
+			required = append(required, in.Name)
+		}
+		props[in.Name] = s
 	}
 	schema := map[string]any{
 		"type":                 "object",
@@ -78,13 +92,17 @@ func (e *InvalidInputsError) Error() string {
 func (p Pipeline) ValidateInputs(args map[string]any) error {
 	declared := make(map[string]bool, len(p.Inputs))
 	declaredList := make([]string, 0, len(p.Inputs))
+	required := make(map[string]bool, len(p.Inputs))
 	for _, in := range p.Inputs {
 		declared[in.Name] = true
 		declaredList = append(declaredList, in.Name)
+		if in.Default == nil {
+			required[in.Name] = true
+		}
 	}
 	var missing, unknown []string
 	for _, name := range declaredList {
-		if _, ok := args[name]; !ok {
+		if _, ok := args[name]; !ok && required[name] {
 			missing = append(missing, name)
 		}
 	}

@@ -307,7 +307,7 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 // in sync by hand the same way nativeSymbols already is, since there's no
 // single source these are generated from either.
 var (
-	stringMethods = []string{"size", "is_empty", "equals", "deep_equal", "contains", "split", "replace", "starts_with", "ends_with", "trim", "to_upper", "to_lower", "substring", "remove", "remove_content", "extract_content"}
+	stringMethods = []string{"size", "is_empty", "equals", "deep_equal", "contains", "split", "replace", "starts_with", "ends_with", "matches", "trim", "to_upper", "to_lower", "substring", "remove", "remove_content", "extract_content"}
 	arrayMethods  = []string{"size", "is_empty", "equals", "deep_equal", "contains", "get_index", "index_of", "filter", "find", "sort_by", "map", "reduce", "any", "all", "append", "join", "unique"}
 	objectMethods = []string{"size", "is_empty", "equals", "deep_equal", "keys", "values", "get"}
 )

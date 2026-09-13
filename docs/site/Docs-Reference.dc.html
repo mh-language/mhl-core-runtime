@@ -257,7 +257,7 @@ var field  = record?.[name] ?? null      // no `is_object(record)` guard needed<
           <p class="block-label">VALUE METHODS</p>
           <div class="method-grid">
             <article><h3>Common</h3><code>size()</code><code>is_empty()</code><code>equals()</code><code>deep_equal()</code><p>Strings, arrays, and objects. <code>equals</code> works on any value.</p></article>
-            <article><h3>String</h3><code>split()</code><code>replace()</code><code>contains()</code><code>starts_with()</code><code>ends_with()</code><code>trim()</code><code>to_upper()</code><code>to_lower()</code><code>substring()</code><code>remove()</code><code>remove_content()</code><code>extract_content()</code></article>
+            <article><h3>String</h3><code>split()</code><code>replace()</code><code>contains()</code><code>starts_with()</code><code>ends_with()</code><code>matches()</code><code>trim()</code><code>to_upper()</code><code>to_lower()</code><code>substring()</code><code>remove()</code><code>remove_content()</code><code>extract_content()</code></article>
             <article><h3>Array</h3><code>get_index()</code><code>index_of()</code><code>contains()</code><code>filter()</code><code>find()</code><code>sort_by()</code><code>map()</code><code>reduce()</code><code>any()</code><code>all()</code><code>append()</code><code>join()</code><code>unique()</code></article>
             <article><h3>Object</h3><code>keys()</code><code>values()</code><code>get()</code><p>Keys are returned in stable order. <code>get(key, default?)</code> never raises on a missing field.</p></article>
           </div>
@@ -372,7 +372,7 @@ var result = json.parse(raw)</code></pre>
           <div class="reference-table">
             <div class="table-row table-head"><span>Field</span><span>Example</span><span>Behavior</span></div>
             <div class="table-row"><span><code>engine</code></span><code>"cli/name" · "ollama/model"</code><span>Selects the adapter.</span></div>
-            <div class="table-row"><span><code>command</code> / <code>args</code></span><code>"claude" · ["-p", "${prompt}"]</code><span>Builds argv without splitting elements.</span></div>
+            <div class="table-row"><span><code>command</code> / <code>args</code></span><code>"claude" · env("MODEL_CMD") · ["-p", "${prompt}"]</code><span>Builds argv without splitting elements. Either may be any expression, not just a string literal — <code>command: env("MODEL_CMD")</code> picks a backend per environment from one declaration. A bare string literal element (including the <code>"${prompt}"</code>/<code>"${schema}"</code> placeholder tokens) is used exactly as written, with no <code>${...}</code> interpolation; anything else (<code>env(...)</code>, concatenation, a variable) is evaluated, failing closed on a missing credential the same way an <code>extension</code>'s <code>env(...)</code> does.</span></div>
             <div class="table-row"><span><code>log</code></span><code>"logs/run.${context.session_id}.log"</code><span>cli/* engine: appends every call's raw stdout to this path. Interpolated for <code>${...}</code> spans like a prompt string, so each run (or <code>--session</code>) can get its own file instead of concurrent runs interleaving into one. Ignored under <code>spawn</code>.</span></div>
             <div class="table-row"><span><code>endpoint</code> / <code>temperature</code></span><code>"http://localhost:11434" · 0.2</code><span>Configures Ollama.</span></div>
             <div class="table-row"><span><code>retry</code></span><code>{max_attempts: 3, delay: 2s}</code><span>Repeats eligible failures.</span></div>
@@ -556,6 +556,7 @@ Audit.append("pipeline started")</code></pre>
             <div class="table-row"><span>JSONL</span><code>type: "jsonl" · path: "events.jsonl"</code><span><code>append</code>; writes <code>{value, ts}</code> as one JSON line.</span></div>
           </div>
           <div class="tip-row"><span>PATHS</span><p>A store's <code>path:</code> is interpolated for <code>${...}</code> spans the same way an agent's <code>log:</code> path is — <code>path: ".mhl/state.${context.session_id}.json"</code> gives every run (and every <code>--session</code>) its own file, so concurrent runs never share a store. <code>context.session_id</code> and the other run-metadata fields are available with no <code>context:</code> block, exactly like in <code>log:</code>. Within JSON memory, <code>Session.get("config::retry")</code> navigates nested objects and <code>remove("config::retry")</code> removes only that field. <strong>Current profile:</strong> <code>remove</code> executes correctly under <code>mhl run</code>, but <code>mhl lint</code> does not yet list it among the JSON methods and reports <em>json memory has no method "remove"</em>. Until lint catches up, treat a <code>remove</code> finding as a false positive.</p></div>
+          <div class="tip-row"><span>PATH TRAVERSAL</span><p>Interpolation does not sanitize by default: <code>path: "projects/${project_id}/f.json"</code> with a caller-controlled <code>project_id</code> of <code>"../../../../tmp/x"</code> really does write there. Add <code>path_guard: "no_traversal"</code> to fail closed instead — it checks each <code>${...}</code> span's own value (never the whole templated path, which may legitimately start absolute) for <code>..</code> or an absolute shape, before anything touches disk. Opt-in, not the default; any other <code>path_guard</code> value is a build-time error.</p></div>
 
           <p class="block-label">PERSISTENT PIPELINE VARIABLE</p>
           <pre class="code-block"><code class="language-mhl">loop pipeline Poll {
@@ -886,7 +887,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
 
           <div class="pipeline-anatomy">
             <div><b><code>description</code></b><span>optional <code>"..."</code> summary; the tool / skill description under <code>mhl serve</code></span></div>
-            <div><b><code>input</code></b><span>a user-supplied value validated by type</span></div>
+            <div><b><code>input</code></b><span>a user-supplied value validated by type; optional <code>= expr</code> default makes it omittable — <code>input item_type: string = ""</code> — and drops it from the required set of the MCP/A2A <code>inputSchema</code></span></div>
             <div><b><code>var</code></b><span>state shared across steps in the current execution</span></div>
             <div><b><code>mem</code></b><span>persistent state shared across iterations and <code>stop_when</code></span></div>
             <div><b><code>context</code></b><span>read-only view of this session and the previous run's <code>vars</code></span></div>

@@ -17,6 +17,18 @@ import (
 // before; this is what lets `prompt: "Corrija: ${last_error}"` and
 // `log("attempt=${attempt}")` work.
 func interpolate(ctx *evalCtx, s string) (string, error) {
+	return interpolateChecked(ctx, s, nil)
+}
+
+// interpolateChecked is interpolate with an optional checkSpan hook, run on
+// each "${...}" span's own formatted value right before it's spliced in —
+// e.g. memoryPath's path_guard: "no_traversal" (MHL-Melhorias.md #3), which
+// needs to see one interpolated value in isolation (does *this* value
+// contain ".."?) rather than the final concatenated string, since the
+// surrounding template is author-written and may legitimately start from an
+// absolute base path. nil (interpolate's own behavior) skips the check
+// entirely, unchanged from before this existed.
+func interpolateChecked(ctx *evalCtx, s string, checkSpan func(string) error) (string, error) {
 	if !strings.Contains(s, "${") {
 		return s, nil
 	}
@@ -43,7 +55,13 @@ func interpolate(ctx *evalCtx, s string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("evaluating \"${%s}\": %w", inner, err)
 		}
-		b.WriteString(formatValue(v))
+		formatted := formatValue(v)
+		if checkSpan != nil {
+			if err := checkSpan(formatted); err != nil {
+				return "", fmt.Errorf("\"${%s}\": %w", inner, err)
+			}
+		}
+		b.WriteString(formatted)
 		i = end + 1
 	}
 	return b.String(), nil

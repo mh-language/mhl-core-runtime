@@ -402,6 +402,38 @@ pipeline P {
 	}
 }
 
+// `input item_type: string = ""` lets a caller omit it: the run must not
+// trip InputSchema admission, and the step must see the default value, not
+// an undefined variable — MHL-Melhorias.md #8's WorkItem scenario (a
+// multi-action workflow where only one action needs item_type).
+func TestRunAppliesInputDefaultWhenOmitted(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline WorkItem {
+    input action: string
+    input item_type: string = "unspecified"
+    var seen = ""
+    step S { seen = item_type }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{Source: src, Inputs: map[string]any{"action": "list"}, BaseDir: dir})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := res.Vars["seen"]; got != "unspecified" {
+		t.Errorf("Vars[seen] = %v, want the default %q", got, "unspecified")
+	}
+
+	// A caller-supplied value still wins over the default.
+	res, err = execsvc.Run(execsvc.Request{Source: src, Inputs: map[string]any{"action": "create", "item_type": "bug"}, BaseDir: dir})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := res.Vars["seen"]; got != "bug" {
+		t.Errorf("Vars[seen] = %v, want the supplied %q", got, "bug")
+	}
+}
+
 // A `break` is a clean early exit: it still hands back the variable state
 // built up so far (Result.Vars), rather than discarding it like a failure.
 func TestRunBreakKeepsVars(t *testing.T) {

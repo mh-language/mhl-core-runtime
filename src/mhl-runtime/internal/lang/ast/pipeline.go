@@ -141,11 +141,23 @@ type MemDecl struct {
 	Value *Expr  `parser:"@@"`
 }
 
-// PipelineInput is a typed pipeline input, e.g. `input issue_id: string`.
+// PipelineInput is a typed pipeline input, e.g. `input issue_id: string`. It
+// may carry a default value — `input item_type: string = ""` — mirroring
+// Param's `= expr` syntax (program.go). Default is nil when none was
+// written, which keeps the input required exactly as before; when present,
+// a caller may omit it (runtime.Pipeline.ValidateInputs/InputSchema no
+// longer require it) and interpreter.EvalPipelineVars evaluates the
+// expression once per run to seed it, the same way a pipeline-level `var`
+// initializer is evaluated — a caller-supplied value still always wins
+// (execsvc merges coerced inputs on top after init runs). Unlike Param,
+// there is no positional-order constraint to enforce: pipeline inputs are
+// always named, never positional, so a defaulted input may be declared
+// before a required one.
 type PipelineInput struct {
-	Pos  lexer.Position
-	Name string    `parser:"@Ident ':'"`
-	Type *TypeExpr `parser:"@@"`
+	Pos     lexer.Position
+	Name    string    `parser:"@Ident ':'"`
+	Type    *TypeExpr `parser:"@@"`
+	Default *Expr     `parser:"( '=' @@ )?"`
 }
 
 // Step is a named block of statements. An optional `timeout <duration>`

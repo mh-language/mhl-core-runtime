@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -207,6 +208,91 @@ pipeline P {
 	}
 	if !strings.Contains(buf.String(), "-p --dangerously-skip-permissions hi there") {
 		t.Errorf("expected the prompt appended last, got: %s", buf.String())
+	}
+}
+
+// TestRunCLIAgentCommandFromEnv is MHL-Melhorias.md #1: `command`/`args` can
+// now be any expression, not just a string literal, so `command: env("VAR")`
+// lets one agent declaration switch backend by environment instead of
+// needing a whole duplicated .mh file per environment. args mixes an
+// env(...) element with the pre-existing "${prompt}" placeholder token, to
+// prove the two coexist: env(...) is resolved through the real evaluator,
+// while "${prompt}" is still substituted by injectPromptArg afterward
+// rather than interpolated as a variable reference.
+func TestRunCLIAgentCommandFromEnv(t *testing.T) {
+	// auth's secret registry is process-global and never reset between
+	// tests in this package (see other env(...) tests in this file); any
+	// env(...) resolved through a declaration property is remembered
+	// unconditionally (RememberRef, regardless of length), so a short,
+	// ordinary-looking value like "echo" would get redacted out of every
+	// later test's output in this same binary that happens to print that
+	// substring. Distinctive values sidestep that instead of resetting
+	// global state no other test here resets either.
+	echoPath, err := exec.LookPath("echo")
+	if err != nil {
+		t.Skipf("echo not found on PATH: %v", err)
+	}
+	t.Setenv("MHL_TEST_ECHO_CMD_1", echoPath)
+	t.Setenv("MHL_TEST_ECHO_FLAG_1", "--mhl-test-marker-flag-1")
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	if err := os.WriteFile(main, []byte(`
+agent LocalEcho {
+    command: env("MHL_TEST_ECHO_CMD_1")
+    args: [env("MHL_TEST_ECHO_FLAG_1"), "-p", "${prompt}"]
+    trace: true
+}
+
+pipeline P {
+    step S {
+        var response = LocalEcho.run(prompt: "hi there")
+    }
+}
+`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", main}, &buf); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	// The env(...)-sourced flag is registered as a credential the same way
+	// any extension endpoint's env(...) is (resolveCommandLikeExpr mirrors
+	// resolveExtensionDeclaration), so trace output redacts it —
+	// "[REDACTED]" in its place, right before "-p hi there", is proof both
+	// that env(...) actually ran (echo's real argv did receive it; only the
+	// trace print is redacted) and that "${prompt}" still landed via its
+	// own placeholder substitution, not variable interpolation.
+	if !strings.Contains(buf.String(), "[REDACTED] -p hi there") {
+		t.Errorf("expected env(...)-resolved command/args (redacted in trace) with the prompt placed by its placeholder, got: %s", buf.String())
+	}
+}
+
+// TestRunCLIAgentCommandFromEnvMissingFailsClosed confirms a `command:
+// env("VAR")` referencing an unset variable fails the run with a clear
+// error — the same fail-closed guarantee extension declarations already
+// have (auth.Resolve) — rather than silently invoking an empty command.
+func TestRunCLIAgentCommandFromEnvMissingFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	if err := os.WriteFile(main, []byte(`
+agent LocalEcho {
+    command: env("MHL_TEST_ECHO_CMD_DOES_NOT_EXIST")
+}
+
+pipeline P {
+    step S {
+        var response = LocalEcho.run(prompt: "hi there")
+    }
+}
+`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	err := cli.Run([]string{"run", main}, &buf)
+	if err == nil {
+		t.Fatalf("expected a fail-closed error for an unset env var, got success: %s", buf.String())
 	}
 }
 

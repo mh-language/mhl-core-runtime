@@ -182,6 +182,7 @@ var stringMethodSigs = map[string]sig{
 	"contains":        {Label: "contains(sub: string) -> bool", Params: []string{"sub"}, Doc: "Whether the string contains `sub`."},
 	"starts_with":     {Label: "starts_with(prefix: string) -> bool", Params: []string{"prefix"}, Doc: ""},
 	"ends_with":       {Label: "ends_with(suffix: string) -> bool", Params: []string{"suffix"}, Doc: ""},
+	"matches":         {Label: "matches(pattern: string) -> bool", Params: []string{"pattern"}, Doc: "Whole-string match against an RE2 regex (Go `regexp` syntax) — the entire string must match, not just some substring of it."},
 	"trim":            {Label: "trim() -> string", Params: nil, Doc: "Strips leading and trailing whitespace."},
 	"to_upper":        {Label: "to_upper() -> string", Params: nil, Doc: ""},
 	"to_lower":        {Label: "to_lower() -> string", Params: nil, Doc: ""},
