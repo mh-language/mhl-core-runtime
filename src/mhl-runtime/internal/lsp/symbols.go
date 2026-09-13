@@ -307,7 +307,7 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 // in sync by hand the same way nativeSymbols already is, since there's no
 // single source these are generated from either.
 var (
-	stringMethods = []string{"size", "is_empty", "equals", "deep_equal", "contains", "split", "replace", "starts_with", "ends_with", "trim", "to_upper", "to_lower", "substring", "remove", "remove_content", "extract_content"}
+	stringMethods = []string{"size", "is_empty", "equals", "deep_equal", "contains", "split", "replace", "starts_with", "ends_with", "matches", "trim", "to_upper", "to_lower", "substring", "remove", "remove_content", "extract_content"}
 	arrayMethods  = []string{"size", "is_empty", "equals", "deep_equal", "contains", "get_index", "index_of", "filter", "find", "sort_by", "map", "reduce", "any", "all", "append", "join", "unique"}
 	objectMethods = []string{"size", "is_empty", "equals", "deep_equal", "keys", "values", "get"}
 )
@@ -492,7 +492,7 @@ var nativeSymbols = []symbol{
 	{Name: "log", Kind: symNative, Methods: []string{"info", "warn", "error"}},
 	{Name: "time", Kind: symNative, Methods: []string{"now", "parse", "format", "add", "diff", "compare", "sleep"}},
 	{Name: "uuid", Kind: symNative, Methods: []string{"v4", "v7"}},
-	{Name: "html", Kind: symNative, Methods: []string{"parse", "get_element", "get_elements", "get_element_by_id", "get_attribute", "get_text", "to_html"}},
+	{Name: "html", Kind: symNative, Methods: []string{"parse", "get_element", "get_elements", "get_element_by_id", "get_attribute", "get_text", "to_html", "escape", "attr_escape"}},
 }
 
 // documentSymbols returns every symbol visible from path/text: the fixed

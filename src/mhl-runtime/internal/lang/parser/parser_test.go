@@ -820,6 +820,35 @@ tool T {
 	}
 }
 
+// TestPipelineInputDefaultParses confirms `input name: Type = expr` parses
+// the same `= expr` shape Param already has, and that plain `input name:
+// Type` (no default) still leaves PipelineInput.Default nil — MHL-Melhorias
+// #8, a pipeline/workflow input that a caller may omit.
+func TestPipelineInputDefaultParses(t *testing.T) {
+	prog, err := Parse(`
+pipeline P {
+    input action: string
+    input item_type: string = ""
+    step S {}
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	required := prog.Decls[0].Pipeline.Body[0].Input
+	if required == nil || required.Default != nil {
+		t.Fatalf("input action: Default = %#v, want nil", required)
+	}
+	defaulted := prog.Decls[0].Pipeline.Body[1].Input
+	if defaulted == nil || defaulted.Default == nil {
+		t.Fatalf("input item_type: Default = %#v, want a parsed expr", defaulted)
+	}
+	s, ok := ast.StringValue(defaulted.Default)
+	if !ok || s != "" {
+		t.Errorf("input item_type default = %#v, want the empty string literal", defaulted.Default)
+	}
+}
+
 // TestExtensionDeclParses confirms `extension <kind> <Name> { ... }` binds a
 // kind, a name and a property-bag body, and that ast.AsExtension yields that
 // view. `extension a2a` gets duration-literal properties like any other kind.

@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -1272,6 +1273,28 @@ func callValueMethod(receiver any, name string, args []any, depth int) (any, err
 			return nil, fmt.Errorf("ends_with() argument must be a string, got %s", typeName(args[0]))
 		}
 		return strings.HasSuffix(s, suffix), nil
+	case "matches":
+		s, ok := receiver.(string)
+		if !ok {
+			return nil, fmt.Errorf("matches() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 1 {
+			return nil, fmt.Errorf("matches() requires exactly one argument (the regex pattern)")
+		}
+		pattern, ok := args[0].(string)
+		if !ok {
+			return nil, fmt.Errorf("matches() argument must be a string, got %s", typeName(args[0]))
+		}
+		// Whole-string match (Java/Kotlin convention, not JS/C#'s "contains a
+		// match" one): a caller validating a slug/id — MHL-Melhorias.md #14's
+		// example — writes `id.matches("[a-zA-Z0-9_-]+")` and expects the
+		// entire id to be checked, not just some substring of it. Wrapping in
+		// `^(?:...)$` is a no-op when the pattern already anchors itself.
+		re, err := regexp.Compile(`^(?:` + pattern + `)$`)
+		if err != nil {
+			return nil, fmt.Errorf("matches(): invalid regex %q: %w", pattern, err)
+		}
+		return re.MatchString(s), nil
 	case "trim":
 		s, ok := receiver.(string)
 		if !ok {

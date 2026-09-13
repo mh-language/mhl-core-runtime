@@ -123,10 +123,20 @@ type Pipeline struct {
 }
 
 // PipelineInputSpec is one `input name: Type` declaration, resolved to the
-// shared types.Type vocabulary.
+// shared types.Type vocabulary. Default is nil for a required input (no
+// `= expr` written); when non-nil, the input is optional — see
+// ValidateInputs/InputSchema and interpreter.EvalPipelineVars. EnumVariants
+// is set only when Type.Kind == types.EnumKind and the named `enum` is
+// declared in the same program — the declared variant list, in declaration
+// order, so InputSchema can advertise a real JSON Schema `"enum": [...]`
+// instead of the type-only `{"type": "string"}` Type.JSONSchema() falls
+// back to on its own (it has no access to the enum declaration, only its
+// name — see its own doc comment).
 type PipelineInputSpec struct {
-	Name string
-	Type types.Type
+	Name         string
+	Type         types.Type
+	Default      *ast.Expr
+	EnumVariants []string
 }
 
 // PipelineFromAST projects an ast.Pipeline onto a runtime Pipeline, extracting
@@ -139,7 +149,11 @@ type PipelineInputSpec struct {
 // value. aliases resolves `type X = ...` declarations for input-type
 // annotations (built by the caller from the whole program via
 // types.Aliases); a nil map just means aliased input types fall back to
-// types.Any, exactly as an unrecognized keyword already does here.
+// types.Any, exactly as an unrecognized keyword already does here. prog is
+// the whole program p was found in — its only use is looking up an enum
+// input's declared variant list (enumVariants) for PipelineInputSpec /
+// InputSchema; a nil prog just means an enum-typed input carries no
+// EnumVariants, the same as before this existed.
 //
 // Checkpoint starts at DefaultCheckpointConfig (per-step, enabled) and is
 // only replaced when a `checkpoint: { ... }` block is present, so omitting the
@@ -149,7 +163,7 @@ type PipelineInputSpec struct {
 // ast.PipelineBodyProperties (the shared allow-list lint and the LSP also
 // read); adding a body property means adding both its entry there and its
 // case here.
-func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
+func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.Program) Pipeline {
 	out := Pipeline{Name: p.Name, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
 	// `max <N>` header clause — shorthand for `repeat { max_iterations: N }`.
 	// Read first so an explicit `repeat` block below still wins (both being
@@ -198,7 +212,11 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type) Pipeline {
 			if !ok {
 				t = types.Any
 			}
-			out.Inputs = append(out.Inputs, PipelineInputSpec{Name: m.Input.Name, Type: t})
+			spec := PipelineInputSpec{Name: m.Input.Name, Type: t, Default: m.Input.Default}
+			if t.Kind == types.EnumKind {
+				spec.EnumVariants = enumVariants(prog, t.Name)
+			}
+			out.Inputs = append(out.Inputs, spec)
 		}
 	}
 	return out
@@ -293,6 +311,23 @@ func (p Pipeline) hasStep(name string) bool {
 	return false
 }
 
+// enumVariants looks up name's declared `enum` variants in prog, in
+// declaration order — runtime's own small copy of the same lookup
+// lint.findEnumDecl and the interpreter each keep independently (there is
+// no shared source of truth for it; see lint/match.go's doc comment on its
+// own copy). nil prog or no matching enum both just return nil.
+func enumVariants(prog *ast.Program, name string) []string {
+	if prog == nil {
+		return nil
+	}
+	for _, decl := range prog.Decls {
+		if decl.Enum != nil && decl.Enum.Name == name {
+			return decl.Enum.Variants
+		}
+	}
+	return nil
+}
+
 // FindPipeline returns the named pipeline from a program, or the first one when
 // name is empty.
 func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
@@ -305,7 +340,7 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 			continue
 		}
 		if name == "" || d.Pipeline.Name == name {
-			return PipelineFromAST(d.Pipeline, aliases), nil
+			return PipelineFromAST(d.Pipeline, aliases, prog), nil
 		}
 	}
 	if name == "" {

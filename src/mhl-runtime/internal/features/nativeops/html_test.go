@@ -152,3 +152,21 @@ func TestToHTMLOnAFragmentRendersEveryChild(t *testing.T) {
 		t.Fatalf("ToHTML = %q, want %q", got, "<p>a</p><p>b</p>")
 	}
 }
+
+// EscapeHTML backs both html.escape and html.attr_escape at the MHL level
+// (MHL-Melhorias.md #4) — one implementation for both, since x/net/html's
+// escaping already covers single- and double-quoted attribute values as
+// well as text content.
+func TestEscapeHTMLEscapesAllFiveSpecialCharacters(t *testing.T) {
+	got := nativeops.EscapeHTML(`<script>alert('hi') & "bye"</script>`)
+	want := "&lt;script&gt;alert(&#39;hi&#39;) &amp; &#34;bye&#34;&lt;/script&gt;"
+	if got != want {
+		t.Fatalf("EscapeHTML = %q, want %q", got, want)
+	}
+}
+
+func TestEscapeHTMLLeavesPlainTextUnchanged(t *testing.T) {
+	if got := nativeops.EscapeHTML("no special chars"); got != "no special chars" {
+		t.Fatalf("EscapeHTML = %q, want unchanged input", got)
+	}
+}

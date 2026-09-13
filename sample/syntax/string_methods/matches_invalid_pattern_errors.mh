@@ -1,0 +1,12 @@
+test matches_invalid_pattern_errors {
+    describe matches_invalid_pattern_errors {
+        var result = ""
+        try {
+            var ok = "x".matches("[a-z")
+            result = "no error"
+        } catch (e) {
+            result = "caught"
+        }
+        are_equal(result, "caught")
+    }
+}

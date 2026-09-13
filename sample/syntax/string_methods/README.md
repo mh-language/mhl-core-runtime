@@ -10,6 +10,9 @@ Built-in string methods, called with dot-method syntax.
 - [contains_on_array.mh](contains_on_array.mh) — `.contains()` on an array
 - [starts_with_and_ends_with.mh](starts_with_and_ends_with.mh) — `.starts_with()` /
   `.ends_with()`
+- [matches.mh](matches.mh) — `.matches(pattern)`, a whole-string RE2 regex match
+- [matches_invalid_pattern_errors.mh](matches_invalid_pattern_errors.mh) — an invalid regex
+  pattern raises a catchable error
 - [trim.mh](trim.mh) — `.trim()`
 - [to_upper_and_to_lower.mh](to_upper_and_to_lower.mh) — `.to_upper()` / `.to_lower()`
 - [substring.mh](substring.mh) — `.substring(start, end)`

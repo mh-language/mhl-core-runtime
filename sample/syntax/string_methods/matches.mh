@@ -1,0 +1,8 @@
+test matches {
+    describe matches {
+        is_true("issue-123".matches("[a-zA-Z0-9_-]+"))
+        is_false("issue 123".matches("[a-zA-Z0-9_-]+"))
+        is_true("2026-09-13".matches("\\d{4}-\\d{2}-\\d{2}"))
+        is_false("2026-09-13".matches("\\d{4}"))
+    }
+}

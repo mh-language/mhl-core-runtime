@@ -99,6 +99,32 @@ pipeline P {
 	}
 }
 
+// MHL-Melhorias.md #1: `command: env("VAR")` (and any other non-literal
+// expression) used to be flagged "has no command" — ast.StringValue
+// silently failed to unwrap it, leaving command empty, which the old
+// AgentCommand read as absent. It's only resolvable at run time
+// (interpreter.resolveAgentCommand), so lint must not flag it at all.
+func TestCheckAgentCommandFromEnvIsNotFlagged(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer {
+    command: env("REVIEWER_CMD")
+    args: ["--flag", env("REVIEWER_FLAG")]
+}
+
+pipeline P {
+    step S {
+        var response = Reviewer.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Fatalf("expected no findings, got %d: %+v", len(findings), findings)
+	}
+}
+
 func TestCheckRunMissingPrompt(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")
@@ -333,6 +359,56 @@ pipeline P {
 	}
 	if !strings.Contains(findings[0].Message, `memory "session_mem" has no path`) {
 		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+// MHL-Melhorias.md #3: `path_guard: "no_traversal"` is the one implemented
+// value (mirrors retry.backoff/cache.strategy/rate_limit.on_exceeded) — any
+// other value is a build-time error, not silently accepted.
+func TestCheckMemoryPathGuardRejectsUnimplementedValue(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+memory session_mem {
+    type: "json"
+    path: "data.json"
+    path_guard: "sandbox"
+}
+
+pipeline P {
+    step S {
+        session_mem.set("k", "v")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `memory "session_mem": path_guard "sandbox" is not supported yet`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+func TestCheckMemoryPathGuardNoTraversalIsClean(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+memory session_mem {
+    type: "json"
+    path: "data.json"
+    path_guard: "no_traversal"
+}
+
+pipeline P {
+    step S {
+        session_mem.set("k", "v")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Fatalf("expected no findings, got %d: %+v", len(findings), findings)
 	}
 }
 
@@ -631,6 +707,29 @@ pipeline P {
     step bump {
         var v = S.get("n")
         S.put("n", v + 1)
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Fatalf("expected no findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+// A plain `var` array/object shares its built-in `.append`/`.set`/`.get`
+// method names with `memory` — `items.append(x)` on a `var` never declared
+// as `memory` must not be flagged as `memory "items" not found`, since
+// interpreter.callValueMethod resolves it as an ordinary value method at
+// run time, not a memory op.
+func TestLocalArrayAppendNotFlaggedAsMemory(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+pipeline P {
+    step S {
+        var items = []
+        items.append("x")
+        var n = items.get(0)
     }
 }
 `)

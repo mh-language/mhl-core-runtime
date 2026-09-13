@@ -2,6 +2,8 @@ package interpreter
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
@@ -45,17 +47,51 @@ func memoryPath(ctx *evalCtx, mem *ast.Memory) (string, error) {
 	if !ok || raw == "" {
 		return "", fmt.Errorf("memory %q has no path", mem.Name)
 	}
-	if ctx == nil {
-		return raw, nil
+	// path_guard: "no_traversal" (MHL-Melhorias.md #3) — checked against
+	// each "${...}" span's own value as it's interpolated, not the final
+	// concatenated path: the template itself is author-written and commonly
+	// starts from an absolute base directory (e.g.
+	// `path: "/var/lib/app/projects/${project_id}/f.json"`), so a whole-path
+	// check would reject that legitimate declaration outright. What must be
+	// rejected is an interpolated segment like a project_id of
+	// "../../../../tmp/x" reaching outside the directory the template
+	// author intended — hence checking each span in isolation.
+	// lint.checkMemoryOp already rejects any path_guard value but
+	// "no_traversal" statically.
+	guard, hasGuard := memoryProp(mem, "path_guard")
+	if hasGuard && guard != "no_traversal" {
+		return "", fmt.Errorf("memory %q: path_guard %q is not supported yet", mem.Name, guard)
 	}
-	path, err := interpolate(ctx, raw)
-	if err != nil {
-		return "", fmt.Errorf("memory %q path %q: %w", mem.Name, raw, err)
-	}
-	if path == "" {
-		return "", fmt.Errorf("memory %q path %q interpolated to empty", mem.Name, raw)
+	path := raw
+	if ctx != nil {
+		var err error
+		if hasGuard {
+			path, err = interpolateChecked(ctx, raw, guardPathSpan)
+		} else {
+			path, err = interpolate(ctx, raw)
+		}
+		if err != nil {
+			return "", fmt.Errorf("memory %q path %q: %w", mem.Name, raw, err)
+		}
+		if path == "" {
+			return "", fmt.Errorf("memory %q path %q interpolated to empty", mem.Name, raw)
+		}
 	}
 	return path, nil
+}
+
+// guardPathSpan is interpolateChecked's per-span validator for
+// path_guard: "no_traversal" — it rejects an interpolated value containing
+// ".." (a traversal segment) or shaped like an absolute path, either of
+// which would let the value escape the template's own base directory.
+func guardPathSpan(v string) error {
+	if filepath.IsAbs(v) {
+		return fmt.Errorf("interpolated value %q looks like an absolute path", v)
+	}
+	if strings.Contains(v, "..") {
+		return fmt.Errorf("interpolated value %q contains \"..\"", v)
+	}
+	return nil
 }
 
 // executeMemoryOp dispatches a `memory.method(...)` call (language-design.md

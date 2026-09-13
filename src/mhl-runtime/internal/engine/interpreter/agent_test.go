@@ -46,7 +46,7 @@ export agent Sleepy {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, errs[i] = runAgentAttempt(nil, "Sleepy", agent, "hi", "")
+			_, errs[i] = runAgentAttempt(nil, "Sleepy", agent, "hi", "", 0)
 		}(i)
 	}
 	wg.Wait()
@@ -84,10 +84,10 @@ export agent Echo {
 		t.Fatal("agent Echo not found")
 	}
 
-	if _, err := runAgentAttempt(nil, "Echo", agent, "first", ""); err != nil {
+	if _, err := runAgentAttempt(nil, "Echo", agent, "first", "", 0); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	if _, err := runAgentAttempt(nil, "Echo", agent, "second", ""); err != nil {
+	if _, err := runAgentAttempt(nil, "Echo", agent, "second", "", 0); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 
@@ -151,7 +151,7 @@ export agent Echo {
 		t.Fatal("agent Echo not found")
 	}
 
-	if _, err := runAgentAttempt(nil, "Echo", agent, "hi", ""); err != nil {
+	if _, err := runAgentAttempt(nil, "Echo", agent, "hi", "", 0); err != nil {
 		t.Fatalf("call: %v", err)
 	}
 	if _, hasLog, err := agentLogPath(nil, agent); err != nil || hasLog {
@@ -193,7 +193,7 @@ export agent B {
 		t.Fatal("agent B not found")
 	}
 
-	gotA, err := runAgentAttempt(nil, "A", agentA, "same-prompt", "")
+	gotA, err := runAgentAttempt(nil, "A", agentA, "same-prompt", "", 0)
 	if err != nil {
 		t.Fatalf("A.run: %v", err)
 	}
@@ -201,7 +201,7 @@ export agent B {
 		t.Fatalf("A returned %q, want %q", gotA, "response-A same-prompt")
 	}
 
-	gotB, err := runAgentAttempt(nil, "B", agentB, "same-prompt", "")
+	gotB, err := runAgentAttempt(nil, "B", agentB, "same-prompt", "", 0)
 	if err != nil {
 		t.Fatalf("B.run: %v", err)
 	}

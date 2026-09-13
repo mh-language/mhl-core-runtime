@@ -129,6 +129,17 @@ func EvalPipelineVars(prog *ast.Program, pipelineName, file string, out io.Write
 				return nil, err
 			}
 			env[member.Var.Name] = v
+		case member.Input != nil && member.Input.Default != nil:
+			// Seeds the input's default so a step can read it even when the
+			// caller omitted it. execsvc re-injects every caller-supplied
+			// input on top of this env right after (once per step, so a
+			// resume sees it too), which is what makes a supplied value
+			// always win over the default rather than the other way around.
+			v, err := evalExpr(ctx, member.Input.Default)
+			if err != nil {
+				return nil, fmt.Errorf("input %q default: %w", member.Input.Name, err)
+			}
+			env[member.Input.Name] = v
 		}
 	}
 	return env, nil

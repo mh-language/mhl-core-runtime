@@ -328,6 +328,81 @@ pipeline P {
 	}
 }
 
+// TestRunJSONMemoryPathGuardRejectsTraversal is MHL-Melhorias.md #3's exact
+// scenario: a multi-tenant app interpolates a caller-supplied id into
+// `path:` for per-tenant isolation, and without a guard a malicious/broken
+// id like "../../../../tmp/x" writes for real outside the intended base
+// directory — confirmed as a real footgun with no runtime defense before
+// this fix. `path_guard: "no_traversal"` must fail the run closed instead of
+// touching disk anywhere.
+func TestRunJSONMemoryPathGuardRejectsTraversal(t *testing.T) {
+	dir := t.TempDir()
+	outside := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	src := `
+memory project_mem {
+    type: "json"
+    path: "` + dir + `/projects/${project_id}/f.json"
+    path_guard: "no_traversal"
+}
+
+pipeline P {
+    input project_id: string
+    step S {
+        project_mem.set("k", "v")
+    }
+}
+`
+	if err := os.WriteFile(main, []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	traversal := "../../../../../../.." + outside
+	var buf bytes.Buffer
+	err := cli.Run([]string{"run", main, "--input", "project_id=" + traversal}, &buf)
+	if err == nil {
+		t.Fatalf("expected the traversal attempt to fail closed, got success: %s", buf.String())
+	}
+	if !strings.Contains(err.Error(), `contains ".."`) {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(outside, "f.json")); statErr == nil {
+		t.Fatal("path_guard did not prevent the write outside the base directory")
+	}
+}
+
+// A project_id with no ".."/absolute shape still works exactly as before —
+// path_guard is opt-in defense, not a new restriction on legitimate ids.
+func TestRunJSONMemoryPathGuardAllowsSafePath(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	src := `
+memory project_mem {
+    type: "json"
+    path: "` + dir + `/projects/${project_id}/f.json"
+    path_guard: "no_traversal"
+}
+
+pipeline P {
+    input project_id: string
+    step S {
+        project_mem.set("k", "v")
+    }
+}
+`
+	if err := os.WriteFile(main, []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", main, "--input", "project_id=acme"}, &buf); err != nil {
+		t.Fatalf("run: %v\n%s", err, buf.String())
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "projects", "acme", "f.json")); statErr != nil {
+		t.Fatalf("expected the state file at the safe interpolated path: %v", statErr)
+	}
+}
+
 // TestRunJSONMemoryPersistsAcrossSeparateRuns proves the key differentiator
 // from the ephemeral kv memory: two separate cli.Run invocations against
 // the same path accumulate state, because the second run loads what the

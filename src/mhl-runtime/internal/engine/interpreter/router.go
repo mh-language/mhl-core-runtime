@@ -103,7 +103,7 @@ func runRouterDelegate(ctx *evalCtx, routerName string, router *ast.Router, call
 		if !ast.RouterHasDecider(router) {
 			return "", fmt.Errorf("%s.delegate: select did not resolve an agent, and no decider is configured — declare a decider on the router to enable an LLM cascade, or make select exhaustive", routerName)
 		}
-		_, chosen, err = routerDecide(ctx, routerName, router, agents, promptText)
+		_, chosen, err = routerDecide(ctx, routerName, router, agents, promptText, depth)
 		if err != nil {
 			return "", err
 		}
@@ -182,14 +182,14 @@ func routerDecider(prog *ast.Program, routerName string, router *ast.Router) (de
 // agents" prompt built from agents' names (plus each agent's own optional
 // `description` property, if declared) and promptText, the same prompt
 // already passed to `.delegate(...)`.
-func routerDecide(ctx *evalCtx, routerName string, router *ast.Router, agents []*ast.Agent, promptText string) (string, *ast.Agent, error) {
+func routerDecide(ctx *evalCtx, routerName string, router *ast.Router, agents []*ast.Agent, promptText string, depth int) (string, *ast.Agent, error) {
 	deciderName, decider, err := routerDecider(ctx.prog, routerName, router)
 	if err != nil {
 		return "", nil, err
 	}
 
 	names := agentNames(agents)
-	response, err := runAgentAttempt(ctx, deciderName, decider, routerDecisionPrompt(agents, promptText), routerDecisionSchema(names))
+	response, err := runAgentAttempt(ctx, deciderName, decider, routerDecisionPrompt(agents, promptText), routerDecisionSchema(names), depth)
 	if err != nil {
 		return "", nil, fmt.Errorf("%s.delegate: %w", routerName, err)
 	}
