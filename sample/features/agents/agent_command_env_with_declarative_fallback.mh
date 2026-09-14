@@ -1,0 +1,20 @@
+// `env(name, default)` — MHL-Melhorias.md #1's follow-up finding — is the
+// declarative way to make an `env(...)` reference inside `command`/`args`
+// genuinely optional, instead of reaching for an `if`/`else` workaround.
+// The 1-argument form is always treated as a required credential there:
+// missing fails the run closed, and the resolved value is redacted from
+// logs/traces — appropriate for a real secret, wrong for something like a
+// working directory that just needs *some* value. The 2-argument form
+// opts out of both on purpose (recognized by its own arity, wherever it
+// appears — inside an `if`/`match` branch or not).
+agent Echo {
+    command: "echo"
+    args: ["--cd", env("MHL_SAMPLE_AGENT_CWD_UNSET", "."), "-p", "${prompt}"]
+}
+
+test agent_command_env_with_declarative_fallback {
+    describe env_default_is_used_when_the_variable_is_unset {
+        var response = Echo.run(prompt: "hi")
+        are_equal(response, "--cd . -p hi")
+    }
+}

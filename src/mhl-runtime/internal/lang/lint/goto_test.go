@@ -42,6 +42,40 @@ workflow W {
 	}
 }
 
+// `goto nameof(B)` — the nameof-wrapped spelling — is checked exactly like
+// the bare `goto B` form: clean when B is a declared step.
+func TestGotoNameofWrappedTargetIsAllowed(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+workflow W {
+    step A { goto nameof(B) }
+    step B { log("b") }
+}
+`)
+	for _, f := range lint.File(main) {
+		if strings.Contains(f.Message, "goto") {
+			t.Fatalf("unexpected goto finding for goto nameof(B): %+v", f)
+		}
+	}
+}
+
+// A nameof-wrapped target that names no declared step is caught the same
+// way an unwrapped one is.
+func TestGotoNameofWrappedUnknownTargetIsRejected(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+workflow W {
+    step A { goto nameof(Nope) }
+    step B { log("b") }
+}
+`)
+	if !hasMessage(lint.File(main), "targets a step that isn't declared in it") {
+		t.Fatalf("expected an unknown-goto-target finding for goto nameof(Nope)")
+	}
+}
+
 // A `goto` target that names no step of the same declaration is caught
 // statically rather than only at run time.
 func TestGotoUnknownTargetInWorkflowIsRejected(t *testing.T) {

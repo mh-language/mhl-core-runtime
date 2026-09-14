@@ -30,6 +30,20 @@ func TestCredentialRefs(t *testing.T) {
 		{`env("DUP") + "/" + env("DUP")`, []string{`env("DUP")`}},
 		{`vault("db/password")`, []string{`vault("db/password")`}},
 		{`(env("NESTED"))`, []string{`env("NESTED")`}},
+		// MHL-Melhorias.md #1 follow-up: a reference reachable only through
+		// one branch of if/match is still a real reference — hiding
+		// env("TOKEN") behind `if (cond) env("TOKEN") else "x"` used to
+		// silently skip both the fail-closed check and redaction.
+		{`if (true) env("IF_THEN") else "x"`, []string{`env("IF_THEN")`}},
+		{`if (true) "x" else env("IF_ELSE")`, []string{`env("IF_ELSE")`}},
+		{`if (env("IF_COND") == "1") "x" else "y"`, []string{`env("IF_COND")`}},
+		{`match status { Status.A -> env("MATCH_ARM") _ -> "x" }`, []string{`env("MATCH_ARM")`}},
+		{`match env("MATCH_SUBJECT") { _ -> "x" }`, []string{`env("MATCH_SUBJECT")`}},
+		// The 2-argument form, env(name, default), is the declarative way
+		// to opt a reference *out* of credential treatment on purpose — it
+		// must stay invisible to this scan regardless of where it appears.
+		{`env("WITH_DEFAULT", "fallback")`, nil},
+		{`if (true) env("WITH_DEFAULT", "fallback") else "x"`, nil},
 	}
 	for _, c := range cases {
 		got := credRefsOf(t, c.src)

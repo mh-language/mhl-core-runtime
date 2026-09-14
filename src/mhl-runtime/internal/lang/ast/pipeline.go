@@ -296,8 +296,24 @@ type WaitOpt struct {
 // that isn't declared in the same declaration is an error — both enforced
 // by internal/lang/lint (checkPipelineGoto), the parser accepts the shape
 // in either.
+//
+// Target may be written bare (`goto Review`) or wrapped in `nameof(...)`
+// (`goto nameof(Review)`) — purely a spelling choice, both capture the same
+// identifier into Target and are checked identically downstream (nothing
+// past the parser ever sees which form was used). `nameof(...)` elsewhere
+// in the language (eval.go's evalNameofCall) is a real expression-position
+// builtin that validates its argument names a declared top-level thing;
+// here it is not evaluated as a call at all — plain grammar sugar so a
+// `goto` target reads the same way a router's `select: () -> nameof(X)`
+// already does, without goto needing an expression-typed Target (which
+// would ripple through every other reader of it — lint's
+// checkPipelineGoto, runtime.Runner's goto handling, execsvc's static
+// goto listing — since they only ever want the plain step name).
+// `nameof(...)`'s own argument-must-be-a-declared-name guarantee is not
+// needed here either: checkPipelineGoto already requires Target to name an
+// actual step, a strictly narrower and equally-enforced check.
 type GotoStmt struct {
-	Target string `parser:"'goto' @Ident"`
+	Target string `parser:"'goto' ( 'nameof' '(' @Ident ')' | @Ident )"`
 }
 
 // Every control-flow body below (IfStmt.Then/Else, WhileStmt.Body,

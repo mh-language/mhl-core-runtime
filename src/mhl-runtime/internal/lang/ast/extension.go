@@ -155,6 +155,30 @@ func CredentialRefs(e *Expr) []string {
 				walkExpr(f.Value)
 			}
 		}
+		// A credential reference reachable only through one branch of an
+		// `if`/`match` expression is just as much a real reference as one in
+		// an unconditional position — a config value the author intends to
+		// resolve through *some* branch at evaluation time. Without this, a
+		// real secret hidden behind `if (cond) env("TOKEN") else "x"` would
+		// silently skip both the fail-closed check and redaction — found
+		// while testing MHL-Melhorias.md #1 (agent.command/args
+		// expressions). The declarative way to make a reference genuinely
+		// optional (skip credential treatment on purpose) is env's own
+		// 2-argument form, `env(name, default)` — recognized above only at
+		// `len(args) == 1`, so it is deliberately invisible to this scan
+		// regardless of where it appears, `if`/`match` included.
+		if p.IfExpr != nil {
+			walkExpr(p.IfExpr.Cond)
+			walkExpr(p.IfExpr.Then)
+			walkExpr(p.IfExpr.Else)
+		}
+		if p.Match != nil {
+			walkExpr(p.Match.Subject)
+			for _, arm := range p.Match.Arms {
+				walkExpr(arm.Pattern)
+				walkExpr(arm.Body)
+			}
+		}
 	}
 
 	walkExpr(e)

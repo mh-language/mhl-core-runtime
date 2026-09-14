@@ -299,7 +299,7 @@ var next = ready.find((f) -> f.id == 20)</code></pre>
             <div class="table-row"><span>Iteration</span><code>for (var item in items) { ... }</code><span>Iterates over an array.</span></div>
             <div class="table-row"><span>Error handling</span><code>try { ... } catch (err) { ... } finally { ... }</code><span>Handles recoverable failures.</span></div>
             <div class="table-row"><span>Return</span><code>return value</code><span>Exits a method or step.</span></div>
-            <div class="table-row"><span>Transition</span><code>goto StepName</code><span>Jumps to another step, forward or backward. Only inside a <code>workflow</code> (not a plain <code>pipeline</code>); the target must be a step of that <code>workflow</code>.</span></div>
+            <div class="table-row"><span>Transition</span><code>goto StepName</code> · <code>goto nameof(StepName)</code><span>Jumps to another step, forward or backward. Only inside a <code>workflow</code> (not a plain <code>pipeline</code>); the target must be a step of that <code>workflow</code>. The <code>nameof(...)</code> spelling is sugar for the same bare name — it's not the <code>nameof(...)</code> builtin evaluated as a call, just a way to write a goto target that reads like a router's <code>select: () -&gt; nameof(Billing)</code>.</span></div>
             <div class="table-row"><span>Stop</span><code>break "reason"</code><span>Ends the current pipeline or loop early — a clean stop (exit 0, not a failure) that keeps the run's variable state as its result.</span></div>
             <div class="table-row"><span>Pause</span><code>pause("reason")</code><span>Suspends the run at this step for a human-in-the-loop hand-off — not a failure, not a completion. Keeps the checkpoint; <code>mhl run --resume</code> / <code>run/resume {runId, arguments}</code> re-enters this step with the merged decision.</span></div>
           </div>
@@ -373,7 +373,7 @@ var result = json.parse(raw)</code></pre>
           <div class="reference-table">
             <div class="table-row table-head"><span>Field</span><span>Example</span><span>Behavior</span></div>
             <div class="table-row"><span><code>engine</code></span><code>"cli/name" · "ollama/model"</code><span>Selects the adapter.</span></div>
-            <div class="table-row"><span><code>command</code> / <code>args</code></span><code>"claude" · env("MODEL_CMD") · ["-p", "${prompt}"]</code><span>Builds argv without splitting elements. Either may be any expression, not just a string literal — <code>command: env("MODEL_CMD")</code> picks a backend per environment from one declaration. A bare string literal element (including the <code>"${prompt}"</code>/<code>"${schema}"</code> placeholder tokens) is used exactly as written, with no <code>${...}</code> interpolation; anything else (<code>env(...)</code>, concatenation, a variable) is evaluated, failing closed on a missing credential the same way an <code>extension</code>'s <code>env(...)</code> does.</span></div>
+            <div class="table-row"><span><code>command</code> / <code>args</code></span><code>"claude" · env("MODEL_CMD") · ["-p", "${prompt}"]</code><span>Builds argv without splitting elements. Either may be any expression, not just a string literal — <code>command: env("MODEL_CMD")</code> picks a backend per environment from one declaration. A bare string literal element (including the <code>"${prompt}"</code>/<code>"${schema}"</code> placeholder tokens) is used exactly as written, with no <code>${...}</code> interpolation; anything else (<code>env(...)</code>, concatenation, a variable) is evaluated, failing closed on a missing credential the same way an <code>extension</code>'s <code>env(...)</code> does — reachable through an <code>if</code>/<code>match</code> branch or not. For a value that's genuinely optional (not a credential — a working directory, say), use <code>env("VAR", "default")</code> instead of an <code>if</code>/<code>else</code> workaround: the 2-argument form is exempt from that fail-closed requirement and redaction on purpose. The <code>"${prompt}"</code>/<code>"${schema}"</code> placeholder tokens are the only two recognized — only as a whole <code>args:</code> element, never inside <code>command:</code>, never embedded partway through a longer string; <code>mhl lint</code> flags any other <code>"${...}"</code>-shaped text there, since it would otherwise reach the real subprocess argv unsubstituted with no warning.</span></div>
             <div class="table-row"><span><code>log</code></span><code>"logs/run.${context.session_id}.log"</code><span>cli/* engine: appends every call's raw stdout to this path. Interpolated for <code>${...}</code> spans like a prompt string, so each run (or <code>--session</code>) can get its own file instead of concurrent runs interleaving into one. Ignored under <code>spawn</code>.</span></div>
             <div class="table-row"><span><code>endpoint</code> / <code>temperature</code></span><code>"http://localhost:11434" · 0.2</code><span>Configures Ollama.</span></div>
             <div class="table-row"><span><code>retry</code></span><code>{max_attempts: 3, delay: 2s}</code><span>Repeats eligible failures.</span></div>
@@ -409,9 +409,10 @@ var review = Reviewer.run(
     prompt: "Issue: ${issue}\nDiff: ${diff}\nWrite a review."
 )</code></pre>
           <ul class="plain-list">
-            <li>A hook body is an ordinary expression scope: it calls declared <code>tool</code>/<code>extension</code>/<code>agent</code> names, native ops (<code>http</code>, <code>cmd</code>, …) and <code>mem</code> the same way a step does, and sees the calling step's variables. Both hooks take <strong>no parameters</strong> — a leftover <code>(mcp, tools) -&gt;</code> is an error.</li>
-            <li><code>before</code>'s returned object's fields become real <code>"${...}"</code> bindings available to that call's <code>prompt:</code>/<code>schema:</code> arguments.</li>
-            <li><code>after</code> runs once, against whichever leg — the primary agent or a successful <code>fallback</code> — produced the final response, with it bound in the body as <code>result</code>. A non-<code>null</code> string return replaces that response; anything else (including no <code>return</code>) passes it through unchanged.</li>
+            <li>A hook body is an ordinary expression scope: it calls declared <code>tool</code>/<code>extension</code>/<code>agent</code> names, native ops (<code>http</code>, <code>cmd</code>, …) and <code>mem</code> the same way a step does. Both hooks take <strong>no parameters</strong> — a leftover <code>(mcp, tools) -&gt;</code> is an error.</li>
+            <li><strong>Reads the caller's variables; writes never come back.</strong> Like any lambda, a hook closes over the scope that issued the <code>.run(...)</code> call — a step's, or an intermediary <code>tool</code> method's — as a one-time snapshot, not a live view: the body sees each captured variable's value as it stood when the hook started, but a bare <code>name = ...</code> assignment inside the body is accepted with no error and simply never reaches the caller's real variable, at any call depth — even called directly from a step, with no <code>tool</code> in between. A hook's only way to actually hand data back is its own return value (below), or an external effect it performs itself (a <code>tool</code>/<code>extension</code> call, <code>mem</code>).</li>
+            <li><code>before</code>'s returned object's fields become real <code>"${...}"</code> bindings available to that call's <code>prompt:</code>/<code>schema:</code> arguments — the one channel a hook has for handing structured data back to its caller.</li>
+            <li><code>after</code> runs once, against whichever leg — the primary agent or a successful <code>fallback</code> — produced the final response, with it bound in the body as <code>result</code>. Its return MUST be a string or nothing: a non-<code>null</code> string replaces the response, no <code>return</code> (or an explicit <code>null</code>) passes it through unchanged, and any other type — an object included — raises <code>"&lt;Agent&gt;.after must return a string (or nothing), got &lt;type&gt;"</code>. Unlike <code>before</code>, <code>after</code> cannot hand back structured data through its return value.</li>
           </ul>
           <div class="tip-row"><span>REAL CALLS</span><p><code>before</code>/<code>after</code> execute real calls through mhl itself — the model never has to cooperate, and there is no separate declarative tool-scope list on the agent. When an agent needs a tool or an extension, call it from <code>before</code> and pass the result in through the prompt.</p></div>
         </section>
@@ -906,7 +907,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
           <div class="tip-row"><span>PARALLEL</span><p>A <code>parallel &lt;Name&gt; { … }</code> group runs its steps concurrently and joins them all before the pipeline advances — the step-level counterpart of <code>spawn</code> (which parallelises agent calls <em>within</em> one step). Each branch gets its own copy of the pipeline vars; on join, the writes are merged back, and a var two branches set to <em>different</em> values fails the run — so the outcome is deterministic. Branch output is buffered and printed in declared order. The group is atomic for checkpointing: a crash re-runs the whole group on <code>--resume</code>, so branch steps must stay idempotent. <code>goto</code> may not target a grouped step or be used from within one, and <code>break</code> may not be used from within one.</p></div>
         </section>
 
-        <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing">
+        <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing run workflow pipeline goto break pause fail executed state">
           <div class="feature-head"><h2><span class="feature-num">14</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">MHL files can be self-verifying examples. Each <code>describe</code> receives a fresh environment and uses the same statement syntax as a step.</p>
           <pre class="code-block"><code class="language-mhl">tool Normalize {
@@ -938,6 +939,35 @@ test normalize_examples {
             <div class="inline-code"><span>file</span><code>mhl test normalize.mh</code></div>
             <div class="inline-code"><span>directory</span><code>mhl test examples/</code></div>
           </div>
+          <p class="block-label">RUNNING A WORKFLOW FROM A TEST</p>
+          <p>Inside a <code>describe</code> block only, <code>Name.run(inputs?: object)</code> — where <code>Name</code> is a declared <code>pipeline</code>/<code>workflow</code> — runs its steps to completion (or to a <code>break</code>/<code>pause</code>/failure) in an isolated, throwaway sandbox and returns the outcome as an object instead of raising, so a test can assert on a workflow expected to fail exactly as easily as one expected to complete.</p>
+          <pre class="code-block"><code class="language-mhl">pipeline GuardedRetry {
+    step Implement {
+        var attempts = 4
+        if (attempts > 3) break "too many attempts"
+    }
+    step Handoff { var done = true }
+}
+
+test guarded_retry_test {
+    describe stops_after_too_many_attempts {
+        var result = GuardedRetry.run()
+        is_true(result.ok)
+        are_equal(result.state, "broke")
+        are_equal(result.break_reason, "too many attempts")
+        are_equal(result.executed, ["Implement"])
+    }
+}</code></pre>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Field</span><span>Type</span><span>Meaning</span></div>
+            <div class="table-row"><span><code>ok</code></span><code>bool</code><span>false only when state is "failed"</span></div>
+            <div class="table-row"><span><code>state</code></span><code>string</code><span>"completed" · "paused" · "broke" · "failed"</span></div>
+            <div class="table-row"><span><code>executed</code></span><code>string[]</code><span>step names that ran, in order</span></div>
+            <div class="table-row"><span><code>vars</code></span><code>object</code><span>final state; {} when state is "failed"</span></div>
+            <div class="table-row"><span><code>error</code> / <code>step</code></span><code>string</code><span>set only when state is "failed"</span></div>
+            <div class="table-row"><span><code>break_reason</code> / <code>pause_reason</code></span><code>any</code><span>null unless state is "broke" / "paused"</span></div>
+          </div>
+          <div class="tip-row"><span>RAISES VS. REPORTS</span><p><code>fail()</code>/<code>break</code>/<code>pause(...)</code> inside the workflow's own steps never raise — they land in the returned object. Only a problem with the call itself raises: a missing/mistyped required <code>input</code>, or a <code>loop pipeline</code>/<code>loop workflow</code> target (not supported yet). Calling <code>.run()</code> outside a <code>describe</code> block is refused — a run executing another synchronously mid-step has no defined interaction with checkpointing or <code>context</code> yet.</p></div>
         </section>
 
         <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp serve mcp a2a version security credentials env diagnostics install streamable http post mcp session id run start status resume cancel list async long-running poll step progress checkpoint per_step state-dir human-in-the-loop hitl approval gate fail resumable token origin">

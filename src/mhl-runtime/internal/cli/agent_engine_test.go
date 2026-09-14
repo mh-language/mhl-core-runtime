@@ -296,6 +296,81 @@ pipeline P {
 	}
 }
 
+// TestRunCLIAgentArgsEnvHiddenInIfElseStillFailsClosed is the fix for the
+// gap found alongside MHL-Melhorias.md #1: before ast.CredentialRefs
+// learned to walk if/match, an env(...) reference reachable only through
+// one branch of an if-expression silently escaped both the fail-closed
+// check and redaction — the exact opposite of what an author reaching for
+// `if (cond) env(X) else fallback` for a value they *believed* stayed
+// protected would expect. This proves a 1-argument env(...) behind an
+// always-true branch still fails closed when the variable is unset.
+func TestRunCLIAgentArgsEnvHiddenInIfElseStillFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	if err := os.WriteFile(main, []byte(`
+agent LocalEcho {
+    command: "echo"
+    args: ["-p", if (true) env("MHL_TEST_ECHO_HIDDEN_ENV_DOES_NOT_EXIST") else "x"]
+}
+
+pipeline P {
+    step S {
+        var response = LocalEcho.run(prompt: "hi there")
+    }
+}
+`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	err := cli.Run([]string{"run", main}, &buf)
+	if err == nil {
+		t.Fatalf("expected a fail-closed error for an env(...) hidden behind if/else, got success: %s", buf.String())
+	}
+}
+
+// TestRunCLIAgentArgsEnvTwoArgFormOptsOutOfFailClosed is the declarative
+// escape hatch MHL-Melhorias.md #1 asked for: env(name, default) makes a
+// reference genuinely optional on purpose — recognized by its own arity,
+// so it never enters ast.CredentialRefs' fail-closed/redaction treatment
+// regardless of where it appears, unlike the old if/else workaround whose
+// opt-out was an accidental side effect of a scanner blind spot (now
+// closed — see TestRunCLIAgentArgsEnvHiddenInIfElseStillFailsClosed).
+func TestRunCLIAgentArgsEnvTwoArgFormOptsOutOfFailClosed(t *testing.T) {
+	echoPath, err := exec.LookPath("echo")
+	if err != nil {
+		t.Skipf("echo not found on PATH: %v", err)
+	}
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	src := `
+agent LocalEcho {
+    command: "` + echoPath + `"
+    args: ["--cd", env("MHL_TEST_ECHO_CWD_DOES_NOT_EXIST", "."), "-p", "${prompt}"]
+    trace: true
+}
+
+pipeline P {
+    step S {
+        var response = LocalEcho.run(prompt: "hi there")
+    }
+}
+`
+	if err := os.WriteFile(main, []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", main}, &buf); err != nil {
+		t.Fatalf("run: %v\n%s", err, buf.String())
+	}
+	// Not "[REDACTED]": the 2-argument form's fallback is not treated as a
+	// credential, matching a bare default like "." never being one.
+	if !strings.Contains(buf.String(), "--cd . -p hi there") {
+		t.Errorf("expected the unredacted default value \".\", got: %s", buf.String())
+	}
+}
+
 // TestRunCLIAgentClaudeStyleCommandShape mirrors a Python helper that builds
 // a `claude` CLI invocation:
 //

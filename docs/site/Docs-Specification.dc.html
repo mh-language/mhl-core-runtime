@@ -235,7 +235,7 @@ var next = Transform(value: 3)</code></pre>
 <p>Optional member access (<code>?.name</code>) and optional dynamic indexing (<code>?.[expr]</code>) yield <code>null</code> for null, non-object receivers, missing object fields, or out-of-range array indexes; the remainder of the trailer chain is skipped. Calls accept positional or named arguments. A named argument has the form <code>name: expression</code>.</p>
 <p>String interpolation evaluates the expression between <code>${...}</code> in the current environment. It is available in ordinary strings, multiline strings, prompt bodies, agent argument values, log paths, and memory paths. Values are formatted as strings, with structured values represented as JSON-like text.</p>
 <h3>6.3 Conditionals, lambdas, and match</h3>
-<p>The expression form <code>if (condition) when_true else when_false</code> evaluates exactly one branch. A lambda has the form <code>(parameters) -&gt; expression</code> or <code>(parameters) -&gt; { statements }</code>. Tool methods and lambdas bind positional parameters left-to-right; defaulted parameters MUST be trailing for these callables.</p>
+<p>The expression form <code>if (condition) when_true else when_false</code> evaluates exactly one branch. A lambda has the form <code>(parameters) -&gt; expression</code> or <code>(parameters) -&gt; { statements }</code>. Tool methods and lambdas bind positional parameters left-to-right; defaulted parameters MUST be trailing for these callables. A lambda closes over the scope it is written in by value — a snapshot taken once, when the lambda expression itself is evaluated — not by live reference: the body reads a captured name's value as it stood at that moment, but assigning to a captured name inside the body is accepted without error and never propagates back to the defining scope, however many calls deep the lambda is eventually invoked from. A lambda's only channels back to its caller are its own return value and any external effect it performs itself (a <code>tool</code>/<code>extension</code> call, <code>mem</code>).</p>
 <pre class="code-block"><code class="language-mhl">var even = values.filter((n) -&gt; n % 2 == 0)
 var label = if (ready) "ready" else "blocked"
 var decision = match status {
@@ -261,7 +261,7 @@ var decision = match status {
 <tr><td>Return</td><td><code>return [expression]</code></td><td>Exits the current tool method or callable block. In a step it returns from the step.</td></tr>
 <tr><td>Break</td><td><code>break [expression]</code></td><td>Stops the current pipeline run and, for a loop pipeline, stops further iterations. It is not a nearest-while/for exit.</td></tr>
 <tr><td>Pause</td><td><code>pause([expression])</code></td><td>Suspends the run at this step for a human-in-the-loop hand-off — neither a failure nor a completion. The checkpoint is kept; <code>mhl run --resume</code> (or the server's <code>run/resume</code>) re-enters this step with any merged inputs. It is a control signal, so <code>try/catch</code> does not catch it, and it needs no checkpoint block.</td></tr>
-<tr><td>Goto</td><td><code>goto StepName</code></td><td>Transfers to a named step. Legal only in a <code>workflow</code>.</td></tr>
+<tr><td>Goto</td><td><code>goto StepName</code> or <code>goto nameof(StepName)</code></td><td>Transfers to a named step. Legal only in a <code>workflow</code>. The <code>nameof(...)</code>-wrapped spelling is pure grammar sugar for the same bare step name — it is not evaluated as the <code>nameof(...)</code> expression-position builtin (§10) — so a step it names is still checked purely as a step reference, not as a top-level declaration name.</td></tr>
 <tr><td>Expression</td><td><code>call(...)</code> or any expression</td><td>Evaluates for its side effect or discards its value.</td></tr>
 </tbody></table>
 <p><code>fail(...values)</code> raises an error whose message is the formatted, space-joined values. A non-zero process exit code, an HTTP non-2xx response, and a failed assertion are values or test outcomes according to their APIs; they do not automatically become language raises unless documented otherwise.</p>
@@ -329,7 +329,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <tr><td class="signature">log(...values: any) → null</td><td>Writes one space-joined line to stdout. Strings are raw, numbers are formatted compactly, and structured values are rendered as JSON.</td></tr>
 <tr><td class="signature">fail(...values: any) → never</td><td>Raises with the same formatting used by <code>log</code>. Catchable with <code>try</code>.</td></tr>
 <tr><td class="signature">pause(reason?: any) → never</td><td>Suspends the run at this step for a human-in-the-loop hand-off (state <code>paused</code>, resumable) rather than failing or completing. Not catchable with <code>try</code>; re-entered on <code>--resume</code> / <code>run/resume</code> with merged inputs.</td></tr>
-<tr><td class="signature">env(name: string) → string</td><td>Reads an operating-system environment variable. An unset variable returns the empty string. Sensitive names and values are registered for redaction.</td></tr>
+<tr><td class="signature">env(name: string, default?: string) → string</td><td>Reads an operating-system environment variable. An unset variable returns <code>default</code> when given, otherwise the empty string. Sensitive names and values are registered for redaction. In a <code>command</code>/<code>args</code> property or an <code>extension</code> property, only the 1-argument form is a credential reference (§19): it MUST resolve before the declaration is used (fail closed) and its value is masked. The 2-argument form is exempt from that requirement — reachable through any branch of an <code>if</code>/<code>match</code> expression or not — since supplying <code>default</code> is itself a declaration that the reference is optional.</td></tr>
 <tr><td class="signature">nameof(Name) → string</td><td>Returns the name of a top-level declaration — <code>agent</code>, <code>router</code>, <code>memory</code>, <code>tool</code>, <code>prompt</code>, <code>pipeline</code>/<code>workflow</code>, <code>extension</code>, <code>type</code>, or <code>enum</code> — as a string. <code>Name</code> MUST be a bare identifier read directly from the call site, not an evaluated expression; it is validated to name an actual declaration, and an unresolved or non-identifier argument is a static error at <code>mhl lint</code> time and a runtime error otherwise.</td></tr>
 <tr><td class="signature">type_of(value: any) → string</td><td>Returns <code>string</code>, <code>number</code>, <code>bool</code>, <code>array</code>, <code>object</code>, <code>null</code>, <code>enum</code>, <code>function</code>, or <code>task</code>.</td></tr>
 <tr><td class="signature">is_string(value: any) → bool</td><td>True exactly for strings.</td></tr><tr><td class="signature">is_number(value: any) → bool</td><td>True exactly for numbers.</td></tr>
@@ -433,12 +433,12 @@ agent LocalModel {
     endpoint: "http://localhost:11434"
     temperature: 0.1
 }</code></pre>
-<p>If <code>engine</code> is absent or begins with <code>cli/</code>, the runtime uses <code>command</code> and optional <code>args</code>. Each array element is one process argument; <code>${prompt}</code> and <code>${schema}</code> placeholders are injected without shell splitting. If <code>engine</code> begins with <code>ollama/</code>, the suffix is the model name and <code>endpoint</code> is required.</p>
+<p>If <code>engine</code> is absent or begins with <code>cli/</code>, the runtime uses <code>command</code> and optional <code>args</code>. Each array element is one process argument; <code>${prompt}</code> and <code>${schema}</code> placeholders are injected without shell splitting — recognized only as a whole <code>args:</code> element exactly equal to <code>"${prompt}"</code>/<code>"${schema}"</code>; <code>command:</code> never recognizes either, and neither is substituted when embedded inside a longer string. <code>mhl lint</code> flags any other <code>"${...}"</code>-shaped span in a literal <code>command</code>/<code>args</code> value, since it would otherwise reach the real subprocess argv unsubstituted with no diagnostic. If <code>engine</code> begins with <code>ollama/</code>, the suffix is the model name and <code>endpoint</code> is required.</p>
 <p><code>command</code> and each <code>args</code> element MAY be any expression, not only a string literal — <code>command: env("MODEL_CMD")</code> selects a backend per environment from a single declaration instead of a duplicated <code>.mh</code> file per environment. A bare string literal (including the <code>${prompt}</code>/<code>${schema}</code> placeholder tokens themselves) is used exactly as written, with no <code>${...}</code> interpolation, exactly as before this MAY existed; any other expression (<code>env(...)</code>, string concatenation, a variable) is evaluated at call time, and a credential reference it contains (<code>env("KEY")</code>) MUST resolve or the call fails closed (§19).</p>
 <h3>12.2 Hooks, fallbacks, retry, cache, and rate limits</h3>
 <table><thead><tr><th>Property</th><th>Contract</th></tr></thead><tbody>
 <tr><td><code>before</code></td><td>A zero-parameter lambda. Its returned object contributes bindings to prompt and schema interpolation. It may call tools, extensions, agents, native operations, and memory.</td></tr>
-<tr><td><code>after</code></td><td>A zero-parameter lambda with the final response bound as <code>result</code>. A returned string replaces the response; no return passes it through.</td></tr>
+<tr><td><code>after</code></td><td>A zero-parameter lambda with the final response bound as <code>result</code>. A returned string replaces the response; no return (or an explicit <code>null</code>) passes it through unchanged; any other return type — an object included — raises at run time. <code>after</code> cannot return a structured value.</td></tr>
 <tr><td><code>fallback</code></td><td>Array of declared agent names or inline agent objects. Each is tried after the previous leg fails; a successful fallback still invokes the primary agent's <code>after</code> hook.</td></tr>
 <tr><td><code>retry</code></td><td><code>{max_attempts, delay, retry_on, backoff}</code>. The only backoff value currently supported is <code>"exponential"</code>. Absent retry runs once.</td></tr>
 <tr><td><code>cache</code></td><td><code>{ttl, storage, strategy}</code>. Cache keys include engine, prompt, and schema. The only strategy currently supported is exact matching; <code>storage: "disk"</code> persists it.</td></tr>
@@ -447,6 +447,7 @@ agent LocalModel {
 <tr><td><code>description</code></td><td>Optional string. Carries no runtime behavior for the agent itself; a <code>router</code>'s decision cascade (§13) appends it after the agent's name in the decision prompt when declared.</td></tr>
 </tbody></table>
 <p>Agent errors are eligible for retry according to <code>retry_on</code>, then fallbacks are attempted. A cache hit bypasses the external call and retry path. Agent log paths interpolate like strings and append raw CLI stdout; the log property is ignored for spawned calls, whose output is buffered and merged by the step.</p>
+<p>A <code>before</code>/<code>after</code> body is an ordinary lambda (§6.3): it reads the scope that directly issued the <code>.run(...)</code> call — a step's, or an intermediary <code>tool</code> method's — as a snapshot taken when the hook starts, not a live view. Writing to a name from that scope inside the hook body is accepted without error but never propagates back to the caller, at any call depth, including a call made directly from a step with no <code>tool</code> in between. A hook's only channels back to its caller are its own return value — <code>before</code>'s returned object as <code>"${...}"</code> bindings, <code>after</code>'s returned string as the response — and any external effect it performs itself (a <code>tool</code>/<code>extension</code> call, <code>mem</code>).</p>
 </section>
 
 <section class="feature doc-section" id="routers">
@@ -668,6 +669,33 @@ extensible crm {
 <tr><td><code>are_equal</code></td><td class="signature">are_equal(actual: any, expected: any)</td></tr><tr><td><code>are_not_equal</code> / <code>not_equal</code></td><td class="signature">are_not_equal(a: any, b: any)</td></tr><tr><td><code>is_true</code>, <code>is_false</code></td><td class="signature">(value: bool)</td></tr><tr><td><code>is_null</code>, <code>not_null</code></td><td class="signature">(value: any)</td></tr><tr><td><code>greater_than</code>, <code>less_than</code></td><td class="signature">(a: number, b: number)</td></tr><tr><td><code>greater_than_or_equal</code>, <code>less_than_or_equal</code></td><td class="signature">(a: number, b: number)</td></tr><tr><td><code>includes</code></td><td class="signature">includes(array: any[], value: any)</td></tr><tr><td><code>incomplete</code></td><td class="signature">incomplete(reason?: any)</td></tr>
 </tbody></table>
 <p>Equality is deep and structural. Wrong assertion arity or type is a hard error. A failed assertion marks the description as failed; <code>incomplete</code> marks it pending and does not count as a failure.</p>
+<h3>17.1 Running a pipeline/workflow from a test</h3>
+<p>Inside a <code>describe</code> block only, <code>Name.run(inputs?: object)</code> — where <code>Name</code> is a declared <code>pipeline</code>/<code>workflow</code> — runs its steps to completion (or to a <code>break</code>/<code>pause</code>/failure) inside an isolated, throwaway sandbox (a fresh temp directory and an in-memory checkpoint store, both discarded when the call returns) and returns the outcome as an object, rather than the pipeline's raw variable state:</p>
+<pre class="code-block"><code class="language-mhl">workflow Recascade {
+    step Start { goto Target }
+    step Skip { var unreachable = true }
+    step Target { var reached = true }
+}
+
+test RecascadeTest {
+    describe follows_goto {
+        var result = Recascade.run()
+        is_true(result.ok)
+        are_equal(result.state, "completed")
+        are_equal(result.executed, ["Start", "Target"])
+    }
+}</code></pre>
+<table><thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>ok</code></td><td>bool</td><td><code>false</code> only when <code>state</code> is <code>"failed"</code>.</td></tr>
+<tr><td><code>state</code></td><td>string</td><td>One of <code>"completed"</code>, <code>"paused"</code>, <code>"broke"</code>, <code>"failed"</code>.</td></tr>
+<tr><td><code>executed</code></td><td>string[]</td><td>Step names that ran, in order.</td></tr>
+<tr><td><code>vars</code></td><td>object</td><td>Final variable state; <code>{}</code> when <code>state</code> is <code>"failed"</code> (nothing was captured to report).</td></tr>
+<tr><td><code>error</code></td><td>string</td><td><code>""</code> unless <code>state</code> is <code>"failed"</code>.</td></tr>
+<tr><td><code>step</code></td><td>string</td><td>The failing step's name; <code>""</code> unless <code>state</code> is <code>"failed"</code> from a step error.</td></tr>
+<tr><td><code>break_reason</code></td><td>any</td><td><code>null</code> unless <code>state</code> is <code>"broke"</code>.</td></tr>
+<tr><td><code>pause_reason</code></td><td>any</td><td><code>null</code> unless <code>state</code> is <code>"paused"</code>.</td></tr>
+</tbody></table>
+<p><code>.run()</code> never raises for an outcome the pipeline's own steps produced — <code>fail()</code>, <code>break</code>, <code>pause(...)</code> all land in the returned object, so a test asserting a workflow <em>should</em> fail needs no <code>try</code>/<code>catch</code>. It raises only for a problem with the call itself: a missing or mistyped required <code>input</code> (the same <code>InputSchema</code> contract <code>mhl run</code>/an MCP tool call enforces), or a <code>loop pipeline</code>/<code>loop workflow</code> target, which is not supported yet. Calling <code>.run()</code> on a pipeline/workflow name outside a <code>describe</code> block is a static-shaped but runtime-rejected call — one run executing another synchronously mid-step has no defined interaction with checkpointing or <code>context</code> yet, so it is refused with a clear error rather than allowed.</p>
 </section>
 
 <section class="feature doc-section" id="cli">
@@ -752,7 +780,7 @@ wait-option    ::= ("timeout" | "on_error") ":" expression
 try-statement  ::= "try" block "catch" ["(" Identifier ")"] block ["finally" block]
 return         ::= "return" [expression]
 break          ::= "break" [expression]
-goto           ::= "goto" Identifier
+goto           ::= "goto" (Identifier | "nameof" "(" Identifier ")")
 test           ::= "test" Identifier "{" describe* "}"
 describe       ::= "describe" Identifier block
 property       ::= Identifier ":" expression</pre>

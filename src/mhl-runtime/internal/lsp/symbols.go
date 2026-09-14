@@ -101,7 +101,12 @@ func symbolsFromProgram(path string, prog *ast.Program) []symbol {
 		case decl.Prompt != nil:
 			syms = append(syms, symbol{Name: decl.Prompt.Name, Kind: symPrompt})
 		case decl.Pipeline != nil:
-			syms = append(syms, symbol{Name: decl.Pipeline.Name, Kind: symPipeline})
+			// "run" completes `Name.run(inputs: {...})` — MHL-Melhorias.md
+			// #13, valid only inside a test's describe block
+			// (interpreter.runWorkflowCall enforces that at runtime; static
+			// completion here doesn't distinguish the two contexts, the same
+			// looseness every other symbol kind already has).
+			syms = append(syms, symbol{Name: decl.Pipeline.Name, Kind: symPipeline, Methods: []string{"run"}})
 		case decl.Type != nil:
 			syms = append(syms, symbol{Name: decl.Type.Name, Kind: symType})
 		case decl.Enum != nil:

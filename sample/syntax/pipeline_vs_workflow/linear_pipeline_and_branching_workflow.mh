@@ -42,6 +42,8 @@ workflow ReviewLoop {
     }
 
     step Gate {
+        // A goto target may also be written `nameof(Review)` — see
+        // goto_nameof_target.mh in this same directory.
         if (!approved) goto Review          // backward jump — only legal in a `workflow`
         log.info("change ${change_id} approved")
     }

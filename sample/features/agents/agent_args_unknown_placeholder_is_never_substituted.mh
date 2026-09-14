@@ -1,0 +1,30 @@
+// A "${name}" span in `command`/`args` is substituted only when it is a
+// whole `args:` element exactly equal to "${prompt}" or "${schema}" --
+// `command:` never recognizes either, and neither is substituted when
+// embedded inside a longer string. `${cwd}` below is none of those: a
+// caller-supplied `cwd:` argument, which `.run(...)` accepts (MHL doesn't
+// validate unknown named arguments) but nothing ever reads, so `${cwd}`
+// reaches the real subprocess argv completely unchanged -- silently
+// wrong, with no error at runtime (MHL-Melhorias.md #19).
+//
+// mhl lint now catches this statically -- this file is EXPECTED to fail
+// `mhl lint` (see agent_placeholders.go's checkAgentPlaceholders), on
+// purpose, to pin exactly what it catches. `mhl test` still passes: it
+// demonstrates the runtime symptom the lint rule exists to prevent a
+// caller from shipping unnoticed.
+agent Echo {
+    command: "echo"
+    args: ["--cd", "${cwd}", "${prompt}"]
+}
+
+test agent_args_unknown_placeholder_is_never_substituted {
+    describe cwd_argument_is_silently_discarded {
+        var response = Echo.run(prompt: "hi", cwd: "/tmp/x")
+        // Not "--cd /tmp/x hi" -- cwd: is accepted and ignored, and the
+        // literal "${cwd}" reaches the child process unchanged. Built by
+        // concatenation, not a "${cwd}" string literal, so *this*
+        // assertion isn't itself interpolated -- it needs the raw text.
+        var literal_placeholder = "$" + "{cwd}"
+        are_equal(response, "--cd " + literal_placeholder + " hi")
+    }
+}

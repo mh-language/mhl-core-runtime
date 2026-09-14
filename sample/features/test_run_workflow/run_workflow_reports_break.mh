@@ -1,0 +1,23 @@
+// A `break "reason"` inside a step ends the run early — reported as
+// state: "broke" with break_reason carrying the value, not a failure.
+pipeline GuardedRetry {
+    step Implement {
+        var attempts = 4
+        if (attempts > 3) {
+            break "too many attempts"
+        }
+    }
+    step Handoff {
+        var done = true
+    }
+}
+
+test run_workflow_reports_break {
+    describe run_workflow_reports_break {
+        var result = GuardedRetry.run()
+        is_true(result.ok)
+        are_equal(result.state, "broke")
+        are_equal(result.break_reason, "too many attempts")
+        are_equal(result.executed, ["Implement"])
+    }
+}

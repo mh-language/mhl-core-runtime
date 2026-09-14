@@ -731,6 +731,45 @@ func TestPipelineKindParses(t *testing.T) {
 	}
 }
 
+// TestGotoAcceptsBareOrNameofTarget covers ast.GotoStmt's two spellings for
+// the same target: a bare identifier (the original, still-supported shape)
+// and `nameof(Ident)` sugar — purely a spelling choice, both capture the
+// same string into Target. The two-alternative grammar
+// (`'goto' ( 'nameof' '(' @Ident ')' | @Ident )`) tries the nameof-wrapped
+// form first specifically so a real `goto nameof(X)` doesn't get
+// short-circuited into Target="nameof" plus a stray "(X)" expression
+// statement — verified here by asserting the step body has exactly one
+// statement, not two. The last case (a step actually named "nameof", with
+// no parens following) exercises the grammar falling through to the bare
+// alternative when the nameof-wrapped one doesn't match.
+func TestGotoAcceptsBareOrNameofTarget(t *testing.T) {
+	cases := []struct {
+		name   string
+		src    string
+		target string
+	}{
+		{"bare identifier", `workflow W { step A { goto B } step B {} }`, "B"},
+		{"nameof-wrapped", `workflow W { step A { goto nameof(B) } step B {} }`, "B"},
+		{"step literally named nameof", `workflow W { step A { goto nameof } step nameof {} }`, "nameof"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			prog, err := Parse(c.src)
+			if err != nil {
+				t.Fatalf("Parse(%q): %v", c.src, err)
+			}
+			body := prog.Decls[0].Pipeline.Body[0].Step.Body
+			if len(body) != 1 {
+				t.Fatalf("step A body = %d statement(s), want exactly 1 (a stray statement means the goto target wasn't fully consumed): %#v", len(body), body)
+			}
+			g := body[0].Goto
+			if g == nil || g.Target != c.target {
+				t.Fatalf("Goto = %#v, want Target %q", g, c.target)
+			}
+		})
+	}
+}
+
 // TestPipelineMaxClauseParses covers the optional `max <N>` header clause on
 // a `loop pipeline` / `loop workflow` declaration (ast.Pipeline.Max) —
 // shorthand for `repeat { max_iterations: N }`.

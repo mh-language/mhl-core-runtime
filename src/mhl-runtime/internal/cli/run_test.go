@@ -159,6 +159,55 @@ func TestRunGotoRedirectsToNamedStep(t *testing.T) {
 	}
 }
 
+const gotoNameofBreakPipelineFile = `
+workflow Recascade {
+    step Start {
+        goto nameof(Target)
+    }
+
+    step Skip {
+        var unreachable = true
+    }
+
+    step Target {
+        var reached = true
+    }
+}
+`
+
+// `goto nameof(Target)` — the nameof-wrapped spelling for a goto target —
+// redirects the run exactly like plain `goto Target` does; nameof(...) is
+// grammar sugar here (ast.GotoStmt), not evaluated as a real expression, so
+// this proves the parser fully consumes it as one goto (not, say, a goto to
+// a step literally named "nameof" plus a stray "(Target)" statement).
+func TestRunGotoNameofWrappedRedirectsToNamedStep(t *testing.T) {
+	dir := t.TempDir()
+	pip := filepath.Join(dir, "pipeline.mh")
+	if err := os.WriteFile(pip, []byte(gotoNameofBreakPipelineFile), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cwd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", "pipeline.mh"}, &buf); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "step: Skip") {
+		t.Errorf("goto should have skipped the Skip step entirely:\n%s", out)
+	}
+	if !strings.Contains(out, "step: Start") || !strings.Contains(out, "step: Target") {
+		t.Errorf("expected Start and Target to both run, got:\n%s", out)
+	}
+	if !strings.Contains(out, "executed 2 step(s)") {
+		t.Errorf("expected exactly 2 steps executed (Start, Target), got:\n%s", out)
+	}
+}
+
 const breakPipelineFile = `
 pipeline GuardedRetry {
     step Implement {

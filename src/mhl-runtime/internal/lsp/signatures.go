@@ -256,13 +256,21 @@ var routerMethodSigs = map[string]sig{
 	},
 }
 
+var pipelineMethodSigs = map[string]sig{
+	"run": {
+		Label:  "run(inputs?: object) -> {ok, state, executed, vars, error, step, break_reason, pause_reason}",
+		Params: []string{"inputs"},
+		Doc:    "Test-only: runs this pipeline/workflow's steps to completion (or to a break/pause/failure) in an isolated sandbox and reports the outcome — never raises for an outcome the workflow's own steps produced (fail()/break/pause), only for a problem with the call itself (unknown input, a `loop pipeline`/`loop workflow`). `state` is one of \"completed\", \"paused\", \"broke\", \"failed\". Valid only inside a test's describe block.",
+	},
+}
+
 // --- bare-name callables (no receiver) --------------------------------
 
 var globalSigs = map[string]sig{
 	"log":       {Label: "log(...values: any) -> null", Params: []string{"values"}, Doc: "Writes one space-joined line to stdout."},
 	"fail":      {Label: "fail(...values: any) -> never", Params: []string{"values"}, Doc: "Raises an error whose message is the joined values. Catchable with `try/catch`; uncaught, it makes `mhl run` exit non-zero."},
 	"pause":     {Label: "pause(reason?: any) -> never", Params: []string{"reason"}, Doc: "Suspends the run at this step for a human-in-the-loop hand-off — not a failure, not a completion. The checkpoint is kept; `mhl run --resume` / `run/resume {runId, arguments}` re-enters this step with the merged decision. `reason` rides in the run status."},
-	"env":       {Label: "env(name: string) -> string", Params: []string{"name"}, Doc: "Reads an OS environment variable. Returns `\"\"` when unset."},
+	"env":       {Label: "env(name: string, default?: string) -> string", Params: []string{"name", "default"}, Doc: "Reads an OS environment variable. Returns `default` (or `\"\"` when no default is given) when unset. In a `command`/`args`/extension-property position, only the 1-argument form is treated as a required credential (fail-closed + redacted); the 2-argument form opts out of that on purpose."},
 	"nameof":    {Label: "nameof(Name) -> string", Params: []string{"Name"}, Doc: "Returns a declared top-level name (an `agent`, `router`, `memory`, `tool`, `prompt`, `pipeline`/`workflow`, `extension`, `type`, or `enum`) as a string, validated to exist. `Name` must be a bare identifier, not a string or expression — e.g. `nameof(Billing)`, not `nameof(\"Billing\")`. Useful anywhere a declared name is needed as a string but a free-floating literal would risk a silent typo — most commonly a router's `select: (prompt) -> { return nameof(Billing) }`."},
 	"type_of":   {Label: "type_of(value: any) -> string", Params: []string{"value"}, Doc: "The value's kind: `\"string\"`, `\"number\"`, `\"bool\"`, `\"array\"`, `\"object\"`, `\"null\"`, `\"enum\"`, `\"function\"`, or `\"task\"`."},
 	"is_string": {Label: "is_string(value: any) -> bool", Params: []string{"value"}, Doc: "Whether `type_of(value) == \"string\"`."},
@@ -316,6 +324,9 @@ func signatureForMethod(path string, s symbol, method string) (sig, bool) {
 		return x, ok
 	case symRouter:
 		x, ok := routerMethodSigs[method]
+		return x, ok
+	case symPipeline:
+		x, ok := pipelineMethodSigs[method]
 		return x, ok
 	default:
 		return sig{}, false

@@ -1,0 +1,25 @@
+// `inputs: {...}` supplies a workflow's declared `input`s (MHL-Melhorias.md
+// #8's defaults apply the same way here as in a real `mhl run`): an omitted
+// defaulted input falls back to its declared default, and a supplied value
+// overrides it.
+pipeline WorkItem {
+    input action: string
+    input item_type: string = "unspecified"
+    var seen_type = ""
+
+    step Validate {
+        seen_type = item_type
+    }
+}
+
+test run_workflow_applies_input_default {
+    describe default_applies_when_omitted {
+        var result = WorkItem.run(inputs: {action: "list"})
+        is_true(result.ok)
+        are_equal(result.vars["seen_type"], "unspecified")
+    }
+    describe supplied_value_overrides_default {
+        var result = WorkItem.run(inputs: {action: "create", item_type: "bug"})
+        are_equal(result.vars["seen_type"], "bug")
+    }
+}

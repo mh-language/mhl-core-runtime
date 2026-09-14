@@ -125,6 +125,134 @@ pipeline P {
 	}
 }
 
+// MHL-Melhorias.md #19: only a whole `args:` element exactly equal to
+// "${prompt}"/"${schema}" is ever substituted (injectPromptArg/
+// injectSchemaArg, agent.go) — command: never is, regardless of content.
+// Any other "${...}"-shaped span silently reaches the real subprocess argv
+// as literal text; this pins that `mhl lint` now catches it instead.
+func TestCheckAgentArgsUnknownPlaceholderIsFlagged(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Echo {
+    command: "echo"
+    args: ["--cd", "${cwd}", "${prompt}"]
+}
+
+pipeline P {
+    step S {
+        var response = Echo.run(prompt: "hi", cwd: "/tmp/x")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Echo": args contains ${cwd}, which is never substituted`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+// command: never recognizes "${prompt}"/"${schema}" either — only args:
+// does, and only as a whole element.
+func TestCheckAgentCommandPlaceholderIsFlagged(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Echo {
+    command: "${prompt}"
+}
+
+pipeline P {
+    step S {
+        var response = Echo.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Echo": command contains ${prompt}, which is never substituted`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+// "${prompt}" embedded inside a larger args: element ("-p=${prompt}") is
+// just as inert as a wholly unrelated name — injectPromptArg only matches
+// an element that IS "${prompt}", not one that contains it.
+func TestCheckAgentArgsEmbeddedPlaceholderIsFlagged(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Echo {
+    command: "echo"
+    args: ["-p=${prompt}"]
+}
+
+pipeline P {
+    step S {
+        var response = Echo.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+	}
+	if !strings.Contains(findings[0].Message, `agent "Echo": args contains ${prompt}, which is never substituted`) {
+		t.Errorf("unexpected message: %q", findings[0].Message)
+	}
+}
+
+// The one recognized shape — a whole args: element exactly "${prompt}" or
+// "${schema}" — must stay clean; this is the regression guard against the
+// new check being too aggressive.
+func TestCheckAgentArgsRecognizedPlaceholdersAreNotFlagged(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Echo {
+    command: "echo"
+    args: ["-p", "${prompt}", "--json-schema", "${schema}", "--verbose"]
+}
+
+pipeline P {
+    step S {
+        var response = Echo.run(prompt: "hi", schema: "{}")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Fatalf("expected no findings, got %d: %+v", len(findings), findings)
+	}
+}
+
+// A non-literal args: element (an expression, e.g. env(...)) has no
+// "${...}" text to statically scan — left alone, not flagged.
+func TestCheckAgentArgsNonLiteralElementNotFlagged(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Echo {
+    command: "echo"
+    args: ["--cd", env("SOME_VAR", ".")]
+}
+
+pipeline P {
+    step S {
+        var response = Echo.run(prompt: "hi")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Fatalf("expected no findings, got %d: %+v", len(findings), findings)
+	}
+}
+
 func TestCheckRunMissingPrompt(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")

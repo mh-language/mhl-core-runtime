@@ -548,6 +548,47 @@ func TestEvalEnvCallReturnsEmptyStringWhenUnset(t *testing.T) {
 	}
 }
 
+// env(name, default) — MHL-Melhorias.md #1's declarative fallback — returns
+// default when the variable is unset or empty, and the real value
+// otherwise. It is the sanctioned replacement for the old
+// `if (env(X).is_empty()) default else env(X)` workaround.
+func TestEvalEnvCallTwoArgFormUsesDefaultWhenUnset(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        log(env("MHL_TEST_ENV_VAR_UNSET", "fallback"))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "fallback\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestEvalEnvCallTwoArgFormUsesRealValueWhenSet(t *testing.T) {
+	t.Setenv("MHL_TEST_ENV_VAR", "real")
+	out, err := run(t, wrapStep(`
+        log(env("MHL_TEST_ENV_VAR", "fallback"))
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "real\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestEvalEnvCallTwoArgFormRequiresStringDefault(t *testing.T) {
+	_, err := run(t, wrapStep(`
+        var v = env("MHL_TEST_ENV_VAR_UNSET", 1)
+    `))
+	if err == nil {
+		t.Fatal("expected an error for a non-string default")
+	}
+	if !strings.Contains(err.Error(), "env() default value must be a string") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestEvalEnvCallGatesIfBranch(t *testing.T) {
 	t.Setenv("MHL_TEST_ENV_VAR", "1")
 	out, err := run(t, wrapStep(`
@@ -561,6 +602,72 @@ func TestEvalEnvCallGatesIfBranch(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	if !strings.Contains(out, "enabled\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+// env(...) returns a real, chainable string — before this, any trailer
+// right after the call (.is_empty(), .trim(), ...) made the whole
+// special-case dispatch miss entirely (it required the call to be the
+// *entire* postfix chain), falling through to ordinary identifier
+// resolution and failing with the deeply misleading `undefined variable
+// "env"` — there is no such variable; the call was never dispatched at
+// all. Found while testing MHL-Melhorias.md #1 (agent.command/args
+// expressions): a caller who needed `if (env("X").is_empty()) fallback
+// else env("X")` for a non-credential value (a working directory, not a
+// secret) had no way to write that pattern anywhere in the language, not
+// just inside agent config.
+func TestEvalEnvCallChainsValueMethod(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        log(env("MHL_TEST_ENV_VAR_UNSET").is_empty())
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "true\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+// The exact pattern the chaining fix unblocks: env(...) as an if-expression
+// condition (via a chained .is_empty()) *and* as one of its branches,
+// giving a fallback for an unset variable without ever hitting the
+// fail-closed credential-resolution path agent.command/args' env(...)
+// handling has (that path is a separate, deliberate behavior — see
+// TestRunCLIAgentCommandFromEnvMissingFailsClosed — this test is about
+// env() used as an ordinary expression, unrelated to agent config).
+func TestEvalEnvCallChainedInIfExprBranch(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var cwd = if (env("MHL_TEST_ENV_VAR_UNSET").is_empty()) "." else env("MHL_TEST_ENV_VAR_UNSET")
+        log(cwd)
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, ".\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+// nameof(...) got the identical fix (same class of bug, same
+// special-case-dispatch shape) — a chained method right after it now works
+// instead of misreading as "undefined variable nameof".
+func TestEvalNameofCallChainsValueMethod(t *testing.T) {
+	out, err := run(t, `
+agent Reviewer {
+    command: "echo"
+}
+
+pipeline P {
+    step S {
+        log(nameof(Reviewer).to_lower())
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "reviewer\n") {
 		t.Errorf("unexpected output: %s", out)
 	}
 }
