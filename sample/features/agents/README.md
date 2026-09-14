@@ -39,3 +39,8 @@ environment — they need real network access and credentials, not just `mhl tes
   — an agent's `log:` path is interpolated for `${...}` spans against the calling scope, so
   `${context.session_id}` (or any in-scope var) gives each run its own file instead of every
   concurrent run of one pipeline appending into a single shared log
+- [agent_command_env_with_declarative_fallback.mh](agent_command_env_with_declarative_fallback.mh)
+  — `env(name, default)` inside `args:` for a value that's genuinely optional (not a
+  credential): the 1-argument form always fails the run closed on an unset variable and
+  redacts its resolved value, appropriate for a real secret; the 2-argument form opts out of
+  both on purpose

@@ -483,11 +483,29 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	if p.Primary.Ident == "pause" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalPauseCall(ctx, p.Ops[0].Call.Args, depth)
 	}
-	if p.Primary.Ident == "env" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
-		return evalEnvCall(ctx, p.Ops[0].Call.Args, depth)
+	// env(...)/nameof(...) both return a real, chainable string — unlike
+	// fail/pause/log (never return normally, so nothing sensible to chain
+	// onto), a caller very plausibly wants env("X").is_empty(),
+	// env("X").trim(), nameof(X).to_lower(), etc. right after the call.
+	// len(p.Ops) >= 1 (not == 1) plus applyTrailers on the remainder is what
+	// makes that work — without it, a trailer after the call silently
+	// missed this special-case entirely and fell through to ordinary
+	// identifier resolution, which then failed with the deeply misleading
+	// `undefined variable "env"` (there is no such variable; the call itself
+	// was never dispatched) instead of evaluating normally.
+	if p.Primary.Ident == "env" && len(p.Ops) >= 1 && p.Ops[0].Call != nil {
+		v, err := evalEnvCall(ctx, p.Ops[0].Call.Args, depth)
+		if err != nil {
+			return nil, err
+		}
+		return applyTrailers(ctx, v, p.Ops[1:], depth)
 	}
-	if p.Primary.Ident == "nameof" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
-		return evalNameofCall(ctx, p.Ops[0].Call.Args, depth)
+	if p.Primary.Ident == "nameof" && len(p.Ops) >= 1 && p.Ops[0].Call != nil {
+		v, err := evalNameofCall(ctx, p.Ops[0].Call.Args, depth)
+		if err != nil {
+			return nil, err
+		}
+		return applyTrailers(ctx, v, p.Ops[1:], depth)
 	}
 	if p.Primary.Ident != "" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		if v, handled, err := evalTypeBuiltinCall(ctx, p.Primary.Ident, p.Ops[0].Call.Args, depth); handled {
@@ -775,8 +793,8 @@ func evalTypeBuiltinCall(ctx *evalCtx, name string, args []*ast.Argument, depth 
 }
 
 func evalEnvCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("env() requires exactly one argument (the variable name)")
+	if len(args) < 1 || len(args) > 2 {
+		return nil, fmt.Errorf("env() requires the variable name and, optionally, a default value")
 	}
 	v, err := evalExprAt(ctx, args[0].Value, depth)
 	if err != nil {
@@ -786,7 +804,31 @@ func evalEnvCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("env() requires a string argument, got %s", typeName(v))
 	}
-	value := os.Getenv(name)
+	value, isSet := os.LookupEnv(name)
+	// The 2-argument form, env(name, default), is what MHL-Melhorias.md #1
+	// asked for: a *declarative* way to say "this reference is genuinely
+	// optional" instead of reaching for an if/else workaround, which used
+	// to be the only option and (before ast.CredentialRefs learned to walk
+	// if/match) had the unintended side effect of hiding a real credential
+	// from fail-closed resolution and redaction just as effectively as a
+	// deliberately optional value. This form is recognized by its own
+	// arity — ast.CredentialRefs only ever treats the 1-argument shape as a
+	// credential reference — so command:/args:/an extension property using
+	// it is exempt from that declaration-level fail-closed requirement, on
+	// purpose, by being explicit about it. It is not exempt from the
+	// name-heuristic redaction below: if the resolved value's *name* still
+	// looks secret-shaped, it is still masked defensively.
+	if (!isSet || value == "") && len(args) == 2 {
+		dv, err := evalExprAt(ctx, args[1].Value, depth)
+		if err != nil {
+			return nil, err
+		}
+		def, ok := dv.(string)
+		if !ok {
+			return nil, fmt.Errorf("env() default value must be a string, got %s", typeName(dv))
+		}
+		return def, nil
+	}
 	// A read through a credential-shaped name (…_TOKEN, …_SECRET, …API_KEY)
 	// is treated as a secret: register it so it is masked in logs, error
 	// output and persisted checkpoints even when the .mh author never went
