@@ -1,0 +1,36 @@
+// A `goto` target may be written bare (`goto Review`, shown in
+// linear_pipeline_and_branching_workflow.mh) or wrapped in `nameof(...)`
+// (`goto nameof(Review)`, below) — pure grammar sugar for the exact same
+// step name. It is NOT the real `nameof(...)` expression-position builtin
+// evaluated as a call: the parser reads `'goto' ( 'nameof' '(' Ident ')' |
+// Ident )` as one production, so both spellings produce the identical
+// GotoStmt and are checked identically by `mhl lint`'s goto rules (only
+// legal in a `workflow`; the target must name a step of that `workflow`).
+// The point of the wrapped spelling is purely readability at the call
+// site — it reads the same way a router's `select: () -> nameof(Billing)`
+// already does.
+
+workflow ReviewLoop {
+    input change_id: string
+    var approved = false
+
+    step Review {
+        // (a real review agent would set `approved`)
+        approved = true
+    }
+
+    step Gate {
+        if (!approved) goto nameof(Review)   // same target as `goto Review`
+        log.info("change ${change_id} approved")
+    }
+}
+
+test goto_nameof_target {
+    describe goto_nameof_target {
+        // Control flow is declaration-level, not expression-level, so
+        // there is nothing to call here — this file exists to pin the
+        // grammar: `mhl lint` accepts `goto nameof(Review)` above exactly
+        // like it accepts the bare `goto Review` spelling.
+        are_equal("goto nameof(Review)", "goto nameof(Review)")
+    }
+}

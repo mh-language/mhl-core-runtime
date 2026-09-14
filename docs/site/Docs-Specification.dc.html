@@ -261,7 +261,7 @@ var decision = match status {
 <tr><td>Return</td><td><code>return [expression]</code></td><td>Exits the current tool method or callable block. In a step it returns from the step.</td></tr>
 <tr><td>Break</td><td><code>break [expression]</code></td><td>Stops the current pipeline run and, for a loop pipeline, stops further iterations. It is not a nearest-while/for exit.</td></tr>
 <tr><td>Pause</td><td><code>pause([expression])</code></td><td>Suspends the run at this step for a human-in-the-loop hand-off — neither a failure nor a completion. The checkpoint is kept; <code>mhl run --resume</code> (or the server's <code>run/resume</code>) re-enters this step with any merged inputs. It is a control signal, so <code>try/catch</code> does not catch it, and it needs no checkpoint block.</td></tr>
-<tr><td>Goto</td><td><code>goto StepName</code></td><td>Transfers to a named step. Legal only in a <code>workflow</code>.</td></tr>
+<tr><td>Goto</td><td><code>goto StepName</code> or <code>goto nameof(StepName)</code></td><td>Transfers to a named step. Legal only in a <code>workflow</code>. The <code>nameof(...)</code>-wrapped spelling is pure grammar sugar for the same bare step name — it is not evaluated as the <code>nameof(...)</code> expression-position builtin (§10) — so a step it names is still checked purely as a step reference, not as a top-level declaration name.</td></tr>
 <tr><td>Expression</td><td><code>call(...)</code> or any expression</td><td>Evaluates for its side effect or discards its value.</td></tr>
 </tbody></table>
 <p><code>fail(...values)</code> raises an error whose message is the formatted, space-joined values. A non-zero process exit code, an HTTP non-2xx response, and a failed assertion are values or test outcomes according to their APIs; they do not automatically become language raises unless documented otherwise.</p>
@@ -752,7 +752,7 @@ wait-option    ::= ("timeout" | "on_error") ":" expression
 try-statement  ::= "try" block "catch" ["(" Identifier ")"] block ["finally" block]
 return         ::= "return" [expression]
 break          ::= "break" [expression]
-goto           ::= "goto" Identifier
+goto           ::= "goto" (Identifier | "nameof" "(" Identifier ")")
 test           ::= "test" Identifier "{" describe* "}"
 describe       ::= "describe" Identifier block
 property       ::= Identifier ":" expression</pre>
