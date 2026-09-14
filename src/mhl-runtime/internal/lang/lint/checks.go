@@ -176,6 +176,7 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 				findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
 					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only engine, command, args, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, before, after, description", name, p.Name)})
 			}
+			findings = append(findings, checkAgentPlaceholders(file, name, p)...)
 		}
 		if refs, err := ast.AgentFallbackRefs(a); err == nil {
 			for _, r := range refs {

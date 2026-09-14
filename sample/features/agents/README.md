@@ -44,3 +44,9 @@ environment — they need real network access and credentials, not just `mhl tes
   credential): the 1-argument form always fails the run closed on an unset variable and
   redacts its resolved value, appropriate for a real secret; the 2-argument form opts out of
   both on purpose
+- [agent_args_unknown_placeholder_is_never_substituted.mh](agent_args_unknown_placeholder_is_never_substituted.mh)
+  — **expected to fail `mhl lint`, on purpose**: `"${prompt}"`/`"${schema}"` are the only two
+  placeholders `args:` ever substitutes, and only as a whole element — a caller-supplied
+  argument like `cwd:` that `.run(...)` silently accepts but never reads leaves `"${cwd}"`
+  in the real subprocess argv unchanged; `mhl lint` now flags this statically instead of it
+  only being discoverable by inspecting the child process's real argv
