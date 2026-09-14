@@ -1,0 +1,24 @@
+// `Name.run()` on a declared pipeline/workflow — test-only — runs its steps
+// to completion inside an isolated sandbox and returns {ok, state,
+// executed, vars, ...}. Here it follows a `goto`, skipping the step in
+// between, exactly as a real `mhl run` would.
+workflow Recascade {
+    step Start {
+        goto Target
+    }
+    step Skip {
+        var unreachable = true
+    }
+    step Target {
+        var reached = true
+    }
+}
+
+test run_workflow_follows_goto {
+    describe run_workflow_follows_goto {
+        var result = Recascade.run()
+        is_true(result.ok)
+        are_equal(result.state, "completed")
+        are_equal(result.executed, ["Start", "Target"])
+    }
+}

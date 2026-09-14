@@ -522,6 +522,13 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 				}
 				return applyTrailers(ctx, v, p.Ops[2:], depth)
 			}
+			if pipeline, ok := findPipelineDecl(ctx.prog, name); ok {
+				v, err := runWorkflowCall(ctx, name, pipeline, call, depth)
+				if err != nil {
+					return nil, err
+				}
+				return applyTrailers(ctx, v, p.Ops[2:], depth)
+			}
 		case member == "delegate":
 			if router, ok := findRouter(ctx.prog, name); ok {
 				v, err := runRouterDelegate(ctx, name, router, call, depth)

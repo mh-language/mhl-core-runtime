@@ -65,6 +65,9 @@ func TestSignatureCatalogueMatchesSymbolTables(t *testing.T) {
 	// router
 	checkExact(t, "routerMethodSigs", []string{"delegate"}, routerMethodSigs)
 
+	// pipeline/workflow (test-only .run())
+	checkExact(t, "pipelineMethodSigs", []string{"run"}, pipelineMethodSigs)
+
 	// globals + assertions: pinned to the interpreter's own lists (eval.go
 	// evalPostfix special-cases; test.go runAssertion).
 	checkExact(t, "globalSigs", []string{
@@ -132,7 +135,7 @@ func TestSignatureLabelsNonEmpty(t *testing.T) {
 	all := []map[string]sig{
 		nativeSigs, commonMethodSigs, stringMethodSigs, arrayMethodSigs,
 		objectMethodSigs, memoryMethodSigs, mcpServerMethodSigs,
-		a2aAgentMethodSigs, agentMethodSigs, globalSigs, assertionSigs,
+		a2aAgentMethodSigs, agentMethodSigs, pipelineMethodSigs, globalSigs, assertionSigs,
 	}
 	for _, table := range all {
 		for name, s := range table {

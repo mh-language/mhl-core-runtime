@@ -256,6 +256,14 @@ var routerMethodSigs = map[string]sig{
 	},
 }
 
+var pipelineMethodSigs = map[string]sig{
+	"run": {
+		Label:  "run(inputs?: object) -> {ok, state, executed, vars, error, step, break_reason, pause_reason}",
+		Params: []string{"inputs"},
+		Doc:    "Test-only: runs this pipeline/workflow's steps to completion (or to a break/pause/failure) in an isolated sandbox and reports the outcome — never raises for an outcome the workflow's own steps produced (fail()/break/pause), only for a problem with the call itself (unknown input, a `loop pipeline`/`loop workflow`). `state` is one of \"completed\", \"paused\", \"broke\", \"failed\". Valid only inside a test's describe block.",
+	},
+}
+
 // --- bare-name callables (no receiver) --------------------------------
 
 var globalSigs = map[string]sig{
@@ -316,6 +324,9 @@ func signatureForMethod(path string, s symbol, method string) (sig, bool) {
 		return x, ok
 	case symRouter:
 		x, ok := routerMethodSigs[method]
+		return x, ok
+	case symPipeline:
+		x, ok := pipelineMethodSigs[method]
 		return x, ok
 	default:
 		return sig{}, false

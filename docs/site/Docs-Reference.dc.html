@@ -906,7 +906,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
           <div class="tip-row"><span>PARALLEL</span><p>A <code>parallel &lt;Name&gt; { … }</code> group runs its steps concurrently and joins them all before the pipeline advances — the step-level counterpart of <code>spawn</code> (which parallelises agent calls <em>within</em> one step). Each branch gets its own copy of the pipeline vars; on join, the writes are merged back, and a var two branches set to <em>different</em> values fails the run — so the outcome is deterministic. Branch output is buffered and printed in declared order. The group is atomic for checkpointing: a crash re-runs the whole group on <code>--resume</code>, so branch steps must stay idempotent. <code>goto</code> may not target a grouped step or be used from within one, and <code>break</code> may not be used from within one.</p></div>
         </section>
 
-        <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing">
+        <section class="feature doc-section" id="tests" data-title="test describe assertions equal true false null includes incomplete testing run workflow pipeline goto break pause fail executed state">
           <div class="feature-head"><h2><span class="feature-num">14</span><code>test</code> and <code>describe</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">MHL files can be self-verifying examples. Each <code>describe</code> receives a fresh environment and uses the same statement syntax as a step.</p>
           <pre class="code-block"><code class="language-mhl">tool Normalize {
@@ -938,6 +938,35 @@ test normalize_examples {
             <div class="inline-code"><span>file</span><code>mhl test normalize.mh</code></div>
             <div class="inline-code"><span>directory</span><code>mhl test examples/</code></div>
           </div>
+          <p class="block-label">RUNNING A WORKFLOW FROM A TEST</p>
+          <p>Inside a <code>describe</code> block only, <code>Name.run(inputs?: object)</code> — where <code>Name</code> is a declared <code>pipeline</code>/<code>workflow</code> — runs its steps to completion (or to a <code>break</code>/<code>pause</code>/failure) in an isolated, throwaway sandbox and returns the outcome as an object instead of raising, so a test can assert on a workflow expected to fail exactly as easily as one expected to complete.</p>
+          <pre class="code-block"><code class="language-mhl">pipeline GuardedRetry {
+    step Implement {
+        var attempts = 4
+        if (attempts > 3) break "too many attempts"
+    }
+    step Handoff { var done = true }
+}
+
+test guarded_retry_test {
+    describe stops_after_too_many_attempts {
+        var result = GuardedRetry.run()
+        is_true(result.ok)
+        are_equal(result.state, "broke")
+        are_equal(result.break_reason, "too many attempts")
+        are_equal(result.executed, ["Implement"])
+    }
+}</code></pre>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Field</span><span>Type</span><span>Meaning</span></div>
+            <div class="table-row"><span><code>ok</code></span><code>bool</code><span>false only when state is "failed"</span></div>
+            <div class="table-row"><span><code>state</code></span><code>string</code><span>"completed" · "paused" · "broke" · "failed"</span></div>
+            <div class="table-row"><span><code>executed</code></span><code>string[]</code><span>step names that ran, in order</span></div>
+            <div class="table-row"><span><code>vars</code></span><code>object</code><span>final state; {} when state is "failed"</span></div>
+            <div class="table-row"><span><code>error</code> / <code>step</code></span><code>string</code><span>set only when state is "failed"</span></div>
+            <div class="table-row"><span><code>break_reason</code> / <code>pause_reason</code></span><code>any</code><span>null unless state is "broke" / "paused"</span></div>
+          </div>
+          <div class="tip-row"><span>RAISES VS. REPORTS</span><p><code>fail()</code>/<code>break</code>/<code>pause(...)</code> inside the workflow's own steps never raise — they land in the returned object. Only a problem with the call itself raises: a missing/mistyped required <code>input</code>, or a <code>loop pipeline</code>/<code>loop workflow</code> target (not supported yet). Calling <code>.run()</code> outside a <code>describe</code> block is refused — a run executing another synchronously mid-step has no defined interaction with checkpointing or <code>context</code> yet.</p></div>
         </section>
 
         <section class="feature doc-section" id="cli" data-title="cli init run test lint lsp serve mcp a2a version security credentials env diagnostics install streamable http post mcp session id run start status resume cancel list async long-running poll step progress checkpoint per_step state-dir human-in-the-loop hitl approval gate fail resumable token origin">

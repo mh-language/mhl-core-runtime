@@ -1,0 +1,23 @@
+// A missing required input is a problem with the .run() call itself (like
+// InputSchema validation for a real `mhl run` or MCP tool call), not an
+// outcome the pipeline's own steps produced — it raises a catchable error,
+// not a {ok: false} result.
+pipeline WorkItem {
+    input action: string
+
+    step S {
+        var x = action
+    }
+}
+
+test run_workflow_missing_required_input_raises {
+    describe run_workflow_missing_required_input_raises {
+        var caught = ""
+        try {
+            var result = WorkItem.run(inputs: {})
+        } catch (e) {
+            caught = "${e}"
+        }
+        is_true(caught.contains("action"))
+    }
+}

@@ -1,0 +1,21 @@
+// pause(reason) suspends the run at that step for a human-in-the-loop
+// hand-off — reported as state: "paused" with pause_reason carrying the
+// argument, and steps after the pausing one never execute.
+workflow ApprovalGate {
+    step Ask {
+        pause("awaiting approval")
+    }
+    step Done {
+        var x = 1
+    }
+}
+
+test run_workflow_reports_pause {
+    describe run_workflow_reports_pause {
+        var result = ApprovalGate.run()
+        is_true(result.ok)
+        are_equal(result.state, "paused")
+        are_equal(result.pause_reason, "awaiting approval")
+        are_equal(result.executed, ["Ask"])
+    }
+}

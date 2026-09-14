@@ -668,6 +668,33 @@ extensible crm {
 <tr><td><code>are_equal</code></td><td class="signature">are_equal(actual: any, expected: any)</td></tr><tr><td><code>are_not_equal</code> / <code>not_equal</code></td><td class="signature">are_not_equal(a: any, b: any)</td></tr><tr><td><code>is_true</code>, <code>is_false</code></td><td class="signature">(value: bool)</td></tr><tr><td><code>is_null</code>, <code>not_null</code></td><td class="signature">(value: any)</td></tr><tr><td><code>greater_than</code>, <code>less_than</code></td><td class="signature">(a: number, b: number)</td></tr><tr><td><code>greater_than_or_equal</code>, <code>less_than_or_equal</code></td><td class="signature">(a: number, b: number)</td></tr><tr><td><code>includes</code></td><td class="signature">includes(array: any[], value: any)</td></tr><tr><td><code>incomplete</code></td><td class="signature">incomplete(reason?: any)</td></tr>
 </tbody></table>
 <p>Equality is deep and structural. Wrong assertion arity or type is a hard error. A failed assertion marks the description as failed; <code>incomplete</code> marks it pending and does not count as a failure.</p>
+<h3>17.1 Running a pipeline/workflow from a test</h3>
+<p>Inside a <code>describe</code> block only, <code>Name.run(inputs?: object)</code> — where <code>Name</code> is a declared <code>pipeline</code>/<code>workflow</code> — runs its steps to completion (or to a <code>break</code>/<code>pause</code>/failure) inside an isolated, throwaway sandbox (a fresh temp directory and an in-memory checkpoint store, both discarded when the call returns) and returns the outcome as an object, rather than the pipeline's raw variable state:</p>
+<pre class="code-block"><code class="language-mhl">workflow Recascade {
+    step Start { goto Target }
+    step Skip { var unreachable = true }
+    step Target { var reached = true }
+}
+
+test RecascadeTest {
+    describe follows_goto {
+        var result = Recascade.run()
+        is_true(result.ok)
+        are_equal(result.state, "completed")
+        are_equal(result.executed, ["Start", "Target"])
+    }
+}</code></pre>
+<table><thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>ok</code></td><td>bool</td><td><code>false</code> only when <code>state</code> is <code>"failed"</code>.</td></tr>
+<tr><td><code>state</code></td><td>string</td><td>One of <code>"completed"</code>, <code>"paused"</code>, <code>"broke"</code>, <code>"failed"</code>.</td></tr>
+<tr><td><code>executed</code></td><td>string[]</td><td>Step names that ran, in order.</td></tr>
+<tr><td><code>vars</code></td><td>object</td><td>Final variable state; <code>{}</code> when <code>state</code> is <code>"failed"</code> (nothing was captured to report).</td></tr>
+<tr><td><code>error</code></td><td>string</td><td><code>""</code> unless <code>state</code> is <code>"failed"</code>.</td></tr>
+<tr><td><code>step</code></td><td>string</td><td>The failing step's name; <code>""</code> unless <code>state</code> is <code>"failed"</code> from a step error.</td></tr>
+<tr><td><code>break_reason</code></td><td>any</td><td><code>null</code> unless <code>state</code> is <code>"broke"</code>.</td></tr>
+<tr><td><code>pause_reason</code></td><td>any</td><td><code>null</code> unless <code>state</code> is <code>"paused"</code>.</td></tr>
+</tbody></table>
+<p><code>.run()</code> never raises for an outcome the pipeline's own steps produced — <code>fail()</code>, <code>break</code>, <code>pause(...)</code> all land in the returned object, so a test asserting a workflow <em>should</em> fail needs no <code>try</code>/<code>catch</code>. It raises only for a problem with the call itself: a missing or mistyped required <code>input</code> (the same <code>InputSchema</code> contract <code>mhl run</code>/an MCP tool call enforces), or a <code>loop pipeline</code>/<code>loop workflow</code> target, which is not supported yet. Calling <code>.run()</code> on a pipeline/workflow name outside a <code>describe</code> block is a static-shaped but runtime-rejected call — one run executing another synchronously mid-step has no defined interaction with checkpointing or <code>context</code> yet, so it is refused with a clear error rather than allowed.</p>
 </section>
 
 <section class="feature doc-section" id="cli">

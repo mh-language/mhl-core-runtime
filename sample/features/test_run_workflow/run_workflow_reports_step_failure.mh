@@ -1,0 +1,26 @@
+// fail() inside a step is reported through the result object — ok: false,
+// state: "failed", step: <the failing step's name>, error containing the
+// message — not raised. A test asserting a workflow *should* fail on some
+// input doesn't need try/catch for that; see
+// run_workflow_missing_required_input_raises.mh for the one case that
+// actually does raise (a problem with the .run() call itself, not the
+// workflow's own logic).
+pipeline WorkItem {
+    input action: string
+
+    step Fail {
+        if (action == "boom") {
+            fail("boom requested")
+        }
+    }
+}
+
+test run_workflow_reports_step_failure {
+    describe run_workflow_reports_step_failure {
+        var result = WorkItem.run(inputs: {action: "boom"})
+        is_false(result.ok)
+        are_equal(result.state, "failed")
+        are_equal(result.step, "Fail")
+        is_true(result.error.contains("boom requested"))
+    }
+}
