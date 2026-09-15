@@ -1,0 +1,14 @@
+tool Greetings {
+    const prefix = "Hello, "
+    const suffix = "!"
+
+    greet(name: string) -> prefix + name + suffix
+    excited(name: string) -> prefix + name + suffix + suffix
+}
+
+test const_is_available_to_every_method {
+    describe const_is_available_to_every_method {
+        are_equal(Greetings.greet("MHL"), "Hello, MHL!")
+        are_equal(Greetings.excited("MHL"), "Hello, MHL!!")
+    }
+}

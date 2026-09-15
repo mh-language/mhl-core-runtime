@@ -585,16 +585,18 @@ Audit.append("pipeline started")</code></pre>
 
         <section class="feature doc-section" id="tool" data-title="tool methods native operations cmd git fs dir directory create exists delete list http json log time uuid v4 v7 html parse get_element get_attribute get_text to_html return types">
           <div class="feature-head"><h2><span class="feature-num">09</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">A tool creates a small, reusable API over native operations. Methods take positional arguments, may declare types, and use either an expression body or a statement block.</p>
+          <p class="feature-lede">A tool creates a small, reusable API over native operations. Declare <code>const</code> or <code>var</code> in the tool body for values shared by its methods during a call. Methods take positional arguments, may declare types, and use either an expression body or a statement block.</p>
           <div class="tip-row"><span>DEFAULT ARGUMENTS</span><p>A method or lambda parameter may end with <code>= expression</code> — <code>write(path: string, mode: string = "0644")</code> — supplying a value when the caller omits that argument. Positional parameters bind left to right, so a default may read an earlier parameter (<code>close: string = open</code>) but a non-defaulted parameter may not follow a defaulted one (<code>mhl lint</code> flags it). Each default is evaluated in the callee's own scope, once per call that omits it.</p></div>
           <pre class="code-block"><code class="language-mhl">tool Project {
+    const test_timeout = 2m
+    var directory = "."
     read(path: string): string -> fs.read(path)
 
     test(package: string): {stdout: string, stderr: string, exit_code: number} ->
-        cmd.exec(["go", "test", package], timeout: 2m)
+        cmd.exec(["go", "test", package], timeout: test_timeout)
 
     changed_go_files(): string[] -> {
-        var paths = fs.list(".")
+        var paths = fs.list(directory)
         return paths.filter((path) -> path.ends_with(".go"))
     }
 }

@@ -1,0 +1,25 @@
+tool Counter {
+    const start = 10
+    var current = start + 1
+
+    advance(amount: number) -> {
+        current += amount
+        return current
+    }
+
+    peek() -> current
+}
+
+test var_initializes_in_order_and_resets_per_call {
+    describe var_initializes_in_order_and_resets_per_call {
+        // The initializer for current can read the earlier tool constant.
+        are_equal(Counter.peek(), 11)
+
+        // A method can change the tool var during its own call.
+        are_equal(Counter.advance(4), 15)
+
+        // The next method call gets a fresh tool environment.
+        are_equal(Counter.peek(), 11)
+        are_equal(Counter.advance(4), 15)
+    }
+}

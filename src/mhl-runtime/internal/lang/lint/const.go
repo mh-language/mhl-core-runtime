@@ -83,8 +83,21 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 				}
 			}
 		case decl.Tool != nil:
+			toolConsts := map[string]bool{}
+			for _, member := range decl.Tool.Members {
+				if member.Const != nil {
+					toolConsts[member.Const.Name] = true
+				}
+			}
 			for _, m := range decl.Tool.Methods {
-				check(m.Block, nil)
+				visibleConsts := map[string]bool{}
+				for name := range toolConsts {
+					visibleConsts[name] = true
+				}
+				for _, param := range m.Params {
+					delete(visibleConsts, param.Name)
+				}
+				check(m.Block, visibleConsts)
 			}
 		}
 	}

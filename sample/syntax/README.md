@@ -38,3 +38,4 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
 - [type_alias/](type_alias/README.md) — `type X = <TypeExpr>` named aliases for the type
   vocabulary
 - [type_introspection/](type_introspection/README.md) — `type_of()` and the `is_*` predicates
+- [tool_scope/](tool_scope/README.md) — `const` and `var` declarations shared by methods of one `tool` call

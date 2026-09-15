@@ -298,14 +298,16 @@ enum State { Draft, Ready, Complete }</code></pre>
 <p>An enum declares a closed set of no-payload variants. Values are constructed only through qualified access such as <code>State.Ready</code>. Enum values support equality, interpolation, JSON formatting, and exhaustive <code>match</code>.</p>
 <h3>9.2 Tool declarations</h3>
 <pre class="code-block"><code class="language-mhl">tool Files {
+    const extension = ".go"
+    var suffix = extension
     read(path: string): string -&gt; fs.read(path)
     count(paths: string[]): number -&gt; {
         var n = 0
-        for (var path in paths) { if (path.ends_with(".go")) n += 1 }
+        for (var path in paths) { if (path.ends_with(suffix)) n += 1 }
         return n
     }
 }</code></pre>
-<p>A tool is a named method namespace. A method has positional parameters, optional type annotations, optional defaults, and either an expression body or a statement block. A method invocation creates a fresh call environment containing its parameters and does not expose caller-local variables. A declared return type is checked after evaluation. A block without <code>return</code> yields <code>null</code>.</p>
+<p>A tool is a named method namespace. Its body may declare <code>const name = expression</code> and <code>var name = expression</code> alongside methods. These declarations initialize in order for each method call; methods can read them, and a method can assign to a tool <code>var</code> during that call. A method has positional parameters, optional type annotations, optional defaults, and either an expression body or a statement block. A method invocation creates a fresh call environment containing tool declarations and its parameters and does not expose caller-local variables. A declared return type is checked after evaluation. A block without <code>return</code> yields <code>null</code>.</p>
 <h3>9.3 Prompt declarations</h3>
 <pre class="code-block"><code class="language-mhl">prompt Review(file: string, language: string = "English") {
     "Review ${file}. Write the findings in ${language}."

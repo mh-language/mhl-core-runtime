@@ -581,8 +581,21 @@ func checkToolBlocks(file string, prog *ast.Program, aliases map[string]types.Ty
 		if decl.Tool == nil {
 			continue
 		}
+		toolNames := map[string]types.Type{}
+		for _, member := range decl.Tool.Members {
+			if member.Const != nil {
+				mergeVarType(toolNames, prog, member.Const.Name, member.Const.Value, decl.Tool)
+			} else if member.Var != nil {
+				mergeVarType(toolNames, prog, member.Var.Name, member.Var.Value, decl.Tool)
+			}
+		}
 		for _, m := range decl.Tool.Methods {
 			params := toolMethodParamTypes(m, aliases)
+			for name, typ := range toolNames {
+				if _, exists := params[name]; !exists {
+					params[name] = typ
+				}
+			}
 			if m.Body != nil {
 				// A single-expression body is not walked by checkStatements;
 				// still validate any `match` inside it.

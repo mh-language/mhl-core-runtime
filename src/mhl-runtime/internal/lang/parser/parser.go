@@ -100,6 +100,16 @@ func Parse(source string) (*ast.Program, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, decl := range prog.Decls {
+		if decl.Tool == nil {
+			continue
+		}
+		for _, member := range decl.Tool.Members {
+			if member.Method != nil {
+				decl.Tool.Methods = append(decl.Tool.Methods, member.Method)
+			}
+		}
+	}
 	return prog, nil
 }
 
