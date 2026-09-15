@@ -8,9 +8,9 @@ import (
 
 // evalNameofCall implements the nameof(Identifier) builtin: it takes a
 // single bare identifier naming any top-level declaration — agent, router,
-// memory, tool, prompt, pipeline/workflow, extension, type alias, or enum —
-// and returns that name as a string, after validating the declaration
-// actually exists. The argument is read directly off the AST
+// memory, tool, prompt, skill, pipeline/workflow, extension, type alias, or
+// enum — and returns that name as a string, after validating the
+// declaration actually exists. The argument is read directly off the AST
 // (ast.IdentValue) rather than evaluated as an ordinary expression, because
 // a bare declared name has no runtime value of its own to evaluate (a
 // stand-alone `Billing` is "undefined variable" everywhere else in the
@@ -55,6 +55,8 @@ func declaredNameExists(prog *ast.Program, name string) bool {
 		case decl.Tool != nil && decl.Tool.Name == name:
 			return true
 		case decl.Prompt != nil && decl.Prompt.Name == name:
+			return true
+		case decl.Skill != nil && decl.Skill.Name == name:
 			return true
 		case decl.Pipeline != nil && decl.Pipeline.Name == name:
 			return true

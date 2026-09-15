@@ -103,3 +103,45 @@ func runAgentAfterHook(ctx *evalCtx, agentName string, agent *ast.Agent, respons
 	}
 	return s, nil
 }
+
+// runAgentSystemPromptHook evaluates an agent's `system_prompt: (skills,
+// prompt) -> ...` hook, if declared, with skills (the selected skill
+// objects, in call order — each {name, frontmatter, content}) and
+// promptText bound as its two positional parameters. It returns promptText
+// unchanged when the agent declares no `system_prompt` at all — this is
+// only ever invoked when the call actually selected at least one skill (see
+// runAgent), so a call with no skills selected never reaches here and the
+// request it sends stays identical to an agent with no skills feature in
+// play at all.
+//
+// Unlike before/after (agentHookExpr + evalHookClosure, both zero
+// parameters), system_prompt takes exactly two — it composes the outgoing
+// prompt from data already in hand, not from a side effect run beforehand
+// or a response read afterward, so it needs both pieces as arguments to
+// have anything to compose from.
+func runAgentSystemPromptHook(ctx *evalCtx, agentName string, agent *ast.Agent, skills []any, promptText string, depth int) (string, error) {
+	expr, ok := agentHookExpr(agent, "system_prompt")
+	if !ok {
+		return promptText, nil
+	}
+	v, err := evalExprAt(ctx, expr, depth)
+	if err != nil {
+		return "", fmt.Errorf("%s.system_prompt: %w", agentName, err)
+	}
+	closure, ok := v.(*Closure)
+	if !ok {
+		return "", fmt.Errorf("%s.system_prompt must be a lambda, e.g. (skills, prompt) -> {...}", agentName)
+	}
+	if len(closure.def.Params) != 2 {
+		return "", fmt.Errorf("%s.system_prompt takes exactly two parameters (skills, prompt), got %d", agentName, len(closure.def.Params))
+	}
+	result, err := invokeClosureWithValues(closure, []any{skills, promptText}, depth)
+	if err != nil {
+		return "", fmt.Errorf("%s.system_prompt: %w", agentName, err)
+	}
+	s, ok := result.(string)
+	if !ok {
+		return "", fmt.Errorf("%s.system_prompt must return a string, got %s", agentName, typeName(result))
+	}
+	return s, nil
+}

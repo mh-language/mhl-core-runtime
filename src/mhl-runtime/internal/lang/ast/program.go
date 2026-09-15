@@ -35,6 +35,7 @@ type Declaration struct {
 	Export     bool        `parser:"@'export'?"`
 	Import     *Import     `parser:"( @@"`
 	Prompt     *Prompt     `parser:"| @@"`
+	Skill      *Skill      `parser:"| @@"`
 	Extension  *Extension  `parser:"| @@"`
 	Extensible *Extensible `parser:"| @@"`
 	Agent      *Agent      `parser:"| @@"`
@@ -115,10 +116,18 @@ type Memory struct {
 	Props []*Property `parser:"'{' @@* '}'"`
 }
 
-// Tool declares a namespace of native tool methods.
+// Tool declares a namespace of native tool methods and call-local bindings.
 type Tool struct {
 	Name    string        `parser:"'tool' @Ident"`
-	Methods []*ToolMethod `parser:"'{' @@* '}'"`
+	Members []*ToolMember `parser:"'{' @@* '}'"`
+	Methods []*ToolMethod // Derived from Members by parser.Parse for method lookup.
+}
+
+// ToolMember is a declaration in a tool namespace.
+type ToolMember struct {
+	Const  *ConstDecl  `parser:"( @@"`
+	Var    *VarDecl    `parser:"| @@"`
+	Method *ToolMethod `parser:"| @@ )"`
 }
 
 // ToolMethod is a single native method mapping, either a single expression:

@@ -63,6 +63,29 @@ func evalToolCall(ctx *evalCtx, tool *ast.Tool, method string, call *ast.Call, d
 	// to right so a later default may read an earlier parameter.
 	childEnv := Env{}
 	childCtx := &evalCtx{prog: ctx.prog, store: ctx.store, jsonStore: ctx.jsonStore, out: ctx.out, env: childEnv, file: ctx.file, selfTool: tool, cctx: ctx.cctx, aliasTypes: ctx.aliasTypes, registry: ctx.registry}
+	for _, member := range tool.Members {
+		var name string
+		var value *ast.Expr
+		switch {
+		case member.Const != nil:
+			name, value = member.Const.Name, member.Const.Value
+		case member.Var != nil:
+			name, value = member.Var.Name, member.Var.Value
+		default:
+			continue
+		}
+		v, err := evalExprAt(childCtx, value, depth)
+		if err != nil {
+			return nil, fmt.Errorf("tool %q: initializer for %q: %w", tool.Name, name, err)
+		}
+		childEnv[name] = v
+		if member.Const != nil {
+			if childCtx.constNames == nil {
+				childCtx.constNames = map[string]bool{}
+			}
+			childCtx.constNames[name] = true
+		}
+	}
 	bound := make([]any, len(m.Params))
 	for i, p := range m.Params {
 		var v any
@@ -82,6 +105,7 @@ func evalToolCall(ctx *evalCtx, tool *ast.Tool, method string, call *ast.Call, d
 		}
 		bound[i] = v
 		childEnv[p.Name] = v
+		delete(childCtx.constNames, p.Name) // Parameters shadow tool-level bindings.
 	}
 	for i, p := range m.Params {
 		if p.Type == nil {

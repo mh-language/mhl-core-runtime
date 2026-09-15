@@ -120,3 +120,16 @@ func findPrompt(prog *ast.Program, name string) (*ast.Prompt, bool) {
 	}
 	return nil, false
 }
+
+// promptFrontmatterValue copies pr's parsed frontmatter into a fresh object
+// value for `PromptName.frontmatter` (eval.go) — a copy, not the AST node's
+// own map, so a program that mutates the returned object (e.g.
+// `PromptName.frontmatter["x"] = 1` used as a plain local object from then
+// on) never corrupts the shared *ast.Prompt every future access reads from.
+func promptFrontmatterValue(pr *ast.Prompt) map[string]any {
+	fm := make(map[string]any, len(pr.Frontmatter))
+	for k, v := range pr.Frontmatter {
+		fm[k] = v
+	}
+	return fm
+}

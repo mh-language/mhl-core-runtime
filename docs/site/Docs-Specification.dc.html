@@ -290,7 +290,7 @@ pipeline Welcome {
 
 <section class="feature doc-section" id="declarations">
 <h2>9. Declarations</h2>
-<p>The declaration keywords are <code>agent</code>, <code>router</code>, <code>prompt</code>, <code>memory</code>, <code>tool</code>, <code>extension</code>, <code>pipeline</code>, <code>workflow</code>, <code>type</code>, <code>enum</code>, and <code>test</code>. Names are unique within the flattened program namespace.</p>
+<p>The declaration keywords are <code>agent</code>, <code>router</code>, <code>prompt</code>, <code>skill</code>, <code>memory</code>, <code>tool</code>, <code>extension</code>, <code>pipeline</code>, <code>workflow</code>, <code>type</code>, <code>enum</code>, and <code>test</code>. Names are unique within the flattened program namespace.</p>
 <h3>9.1 Type aliases and enumerations</h3>
 <pre class="code-block"><code class="language-mhl">type UserId = string
 type User = {id: UserId, active: bool}
@@ -298,21 +298,28 @@ enum State { Draft, Ready, Complete }</code></pre>
 <p>An enum declares a closed set of no-payload variants. Values are constructed only through qualified access such as <code>State.Ready</code>. Enum values support equality, interpolation, JSON formatting, and exhaustive <code>match</code>.</p>
 <h3>9.2 Tool declarations</h3>
 <pre class="code-block"><code class="language-mhl">tool Files {
+    const extension = ".go"
+    var suffix = extension
     read(path: string): string -&gt; fs.read(path)
     count(paths: string[]): number -&gt; {
         var n = 0
-        for (var path in paths) { if (path.ends_with(".go")) n += 1 }
+        for (var path in paths) { if (path.ends_with(suffix)) n += 1 }
         return n
     }
 }</code></pre>
-<p>A tool is a named method namespace. A method has positional parameters, optional type annotations, optional defaults, and either an expression body or a statement block. A method invocation creates a fresh call environment containing its parameters and does not expose caller-local variables. A declared return type is checked after evaluation. A block without <code>return</code> yields <code>null</code>.</p>
+<p>A tool is a named method namespace. Its body may declare <code>const name = expression</code> and <code>var name = expression</code> alongside methods. These declarations initialize in order for each method call; methods can read them, and a method can assign to a tool <code>var</code> during that call. A method has positional parameters, optional type annotations, optional defaults, and either an expression body or a statement block. A method invocation creates a fresh call environment containing tool declarations and its parameters and does not expose caller-local variables. A declared return type is checked after evaluation. A block without <code>return</code> yields <code>null</code>.</p>
 <h3>9.3 Prompt declarations</h3>
 <pre class="code-block"><code class="language-mhl">prompt Review(file: string, language: string = "English") {
     "Review ${file}. Write the findings in ${language}."
 }
 prompt External(file: string) from "review.prompt.md"</code></pre>
 <p>A prompt is a named template. Prompt calls bind by parameter name, and missing parameters MUST have defaults or the call raises. Extra and unknown arguments raise. A default expression is evaluated in the caller scope for prompt calls; a prompt default MAY appear in any parameter position. An external Markdown body uses the same <code>${name}</code> interpolation syntax; write <code>\${name}</code> when a literal placeholder must remain.</p>
-<h3>9.4 Extension declarations</h3>
+<p>A file-sourced prompt's body MAY open with a frontmatter block — the same flat, <code>---</code>-delimited <code>key: value</code> format §9.4 defines for a skill's <code>SKILL.md</code>, but with no required keys. It is parsed and stripped from the rendered body, and is readable as <code>PromptName.frontmatter</code>, an object (empty when the file declares no such block). An inline <code>prompt Name() { ... }</code> body never has frontmatter.</p>
+<h3>9.4 Skill declarations</h3>
+<pre class="code-block"><code class="language-mhl">skill CodeReview from "code-review.md"</code></pre>
+<p>A skill is a named, reusable instruction package, always file-sourced — there is no inline <code>skill Name { ... }</code> form. Unlike every other declaration, its MHL name (<code>CodeReview</code>, used in <code>skills:</code> lists, <code>run(skills: ...)</code>, and <code>nameof(CodeReview)</code>) is distinct from any name given in the file's own frontmatter, which identifies the package in text sent to a model, not in the program. A skill is consumed only through an agent's <code>skills</code>/<code>system_prompt</code> properties (§12.3); a skill's Markdown content is never executed.</p>
+<p>The source file MUST open with a frontmatter block: a line containing only <code>---</code>, zero or more flat <code>key: value</code> lines (blank lines permitted; no nesting, lists, or multi-line values), and a closing <code>---</code> line. The keys <code>name</code> and <code>description</code> MUST both be present and non-empty; any other key is preserved unvalidated. Everything after the closing <code>---</code> is the skill's content, with leading/trailing whitespace trimmed. A missing file, a malformed or incomplete frontmatter block, or a file exceeding the implementation's configured size limit MUST fail at import resolution — before any pipeline that references the skill runs.</p>
+<h3>9.5 Extension declarations</h3>
 <pre class="code-block"><code class="language-mhl">extension mcp Issues {
     transport: "http"
     url: "https://mcp.example.test"
@@ -330,7 +337,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <tr><td class="signature">fail(...values: any) → never</td><td>Raises with the same formatting used by <code>log</code>. Catchable with <code>try</code>.</td></tr>
 <tr><td class="signature">pause(reason?: any) → never</td><td>Suspends the run at this step for a human-in-the-loop hand-off (state <code>paused</code>, resumable) rather than failing or completing. Not catchable with <code>try</code>; re-entered on <code>--resume</code> / <code>run/resume</code> with merged inputs.</td></tr>
 <tr><td class="signature">env(name: string, default?: string) → string</td><td>Reads an operating-system environment variable. An unset variable returns <code>default</code> when given, otherwise the empty string. Sensitive names and values are registered for redaction. In a <code>command</code>/<code>args</code> property or an <code>extension</code> property, only the 1-argument form is a credential reference (§19): it MUST resolve before the declaration is used (fail closed) and its value is masked. The 2-argument form is exempt from that requirement — reachable through any branch of an <code>if</code>/<code>match</code> expression or not — since supplying <code>default</code> is itself a declaration that the reference is optional.</td></tr>
-<tr><td class="signature">nameof(Name) → string</td><td>Returns the name of a top-level declaration — <code>agent</code>, <code>router</code>, <code>memory</code>, <code>tool</code>, <code>prompt</code>, <code>pipeline</code>/<code>workflow</code>, <code>extension</code>, <code>type</code>, or <code>enum</code> — as a string. <code>Name</code> MUST be a bare identifier read directly from the call site, not an evaluated expression; it is validated to name an actual declaration, and an unresolved or non-identifier argument is a static error at <code>mhl lint</code> time and a runtime error otherwise.</td></tr>
+<tr><td class="signature">nameof(Name) → string</td><td>Returns the name of a top-level declaration — <code>agent</code>, <code>router</code>, <code>memory</code>, <code>tool</code>, <code>prompt</code>, <code>skill</code>, <code>pipeline</code>/<code>workflow</code>, <code>extension</code>, <code>type</code>, or <code>enum</code> — as a string. <code>Name</code> MUST be a bare identifier read directly from the call site, not an evaluated expression; it is validated to name an actual declaration, and an unresolved or non-identifier argument is a static error at <code>mhl lint</code> time and a runtime error otherwise.</td></tr>
 <tr><td class="signature">type_of(value: any) → string</td><td>Returns <code>string</code>, <code>number</code>, <code>bool</code>, <code>array</code>, <code>object</code>, <code>null</code>, <code>enum</code>, <code>function</code>, or <code>task</code>.</td></tr>
 <tr><td class="signature">is_string(value: any) → bool</td><td>True exactly for strings.</td></tr><tr><td class="signature">is_number(value: any) → bool</td><td>True exactly for numbers.</td></tr>
 <tr><td class="signature">is_bool(value: any) → bool</td><td>True exactly for booleans.</td></tr><tr><td class="signature">is_array(value: any) → bool</td><td>True exactly for arrays.</td></tr>
@@ -440,6 +447,8 @@ agent LocalModel {
 <tr><td><code>before</code></td><td>A zero-parameter lambda. Its returned object contributes bindings to prompt and schema interpolation. It may call tools, extensions, agents, native operations, and memory.</td></tr>
 <tr><td><code>after</code></td><td>A zero-parameter lambda with the final response bound as <code>result</code>. A returned string replaces the response; no return (or an explicit <code>null</code>) passes it through unchanged; any other return type — an object included — raises at run time. <code>after</code> cannot return a structured value.</td></tr>
 <tr><td><code>fallback</code></td><td>Array of declared agent names or inline agent objects. Each is tried after the previous leg fails; a successful fallback still invokes the primary agent's <code>after</code> hook.</td></tr>
+<tr><td><code>skills</code></td><td>Array of declared <code>skill</code> (§9.4) names — the allow-list a <code>run(skills: [...])</code> call MAY select a subset of, in call order. A non-empty <code>skills</code> without a declared <code>system_prompt</code> is a static error (§12.3).</td></tr>
+<tr><td><code>system_prompt</code></td><td>A two-parameter lambda, <code>(skills, prompt) -&gt; ...</code> (§12.3). Composes the outgoing prompt when a call selects at least one skill.</td></tr>
 <tr><td><code>retry</code></td><td><code>{max_attempts, delay, retry_on, backoff}</code>. The only backoff value currently supported is <code>"exponential"</code>. Absent retry runs once.</td></tr>
 <tr><td><code>cache</code></td><td><code>{ttl, storage, strategy}</code>. Cache keys include engine, prompt, and schema. The only strategy currently supported is exact matching; <code>storage: "disk"</code> persists it.</td></tr>
 <tr><td><code>rate_limit</code></td><td><code>{requests_per_minute, concurrency, on_exceeded}</code>. Exceeded work queues; the supported value is <code>"queue"</code>.</td></tr>
@@ -448,6 +457,24 @@ agent LocalModel {
 </tbody></table>
 <p>Agent errors are eligible for retry according to <code>retry_on</code>, then fallbacks are attempted. A cache hit bypasses the external call and retry path. Agent log paths interpolate like strings and append raw CLI stdout; the log property is ignored for spawned calls, whose output is buffered and merged by the step.</p>
 <p>A <code>before</code>/<code>after</code> body is an ordinary lambda (§6.3): it reads the scope that directly issued the <code>.run(...)</code> call — a step's, or an intermediary <code>tool</code> method's — as a snapshot taken when the hook starts, not a live view. Writing to a name from that scope inside the hook body is accepted without error but never propagates back to the caller, at any call depth, including a call made directly from a step with no <code>tool</code> in between. A hook's only channels back to its caller are its own return value — <code>before</code>'s returned object as <code>"${...}"</code> bindings, <code>after</code>'s returned string as the response — and any external effect it performs itself (a <code>tool</code>/<code>extension</code> call, <code>mem</code>).</p>
+<h3>12.3 Skills</h3>
+<pre class="code-block"><code class="language-mhl">skill CodeReview from "code-review.md"
+
+agent Reviewer {
+    command: "claude"
+    args: ["-p", "${prompt}"]
+    skills: [CodeReview]
+    system_prompt: (skills, prompt) -> skills[0].content + "\n\n" + prompt
+}
+
+Reviewer.run(skills: [CodeReview], prompt: "Review this diff.")</code></pre>
+<p><code>skills</code> declares an allow-list of already-declared <code>skill</code> names. A call's <code>skills: [...]</code> argument MUST name only entries of that allow-list, each a bare identifier — never a string or other expression — and MUST NOT repeat one; violating either is a static error where the selection is a literal array, and a run-time error otherwise. A call that omits <code>skills:</code> entirely, or supplies <code>skills: []</code>, selects nothing.</p>
+<p>When a call selects at least one skill, <code>system_prompt</code> MUST be declared — its absence on an agent whose <code>skills</code> is non-empty is a static error, since it is the only channel through which a selection reaches the outgoing request. <code>system_prompt</code> is invoked exactly once per <code>.run(...)</code> call that selects at least one skill, after <code>before</code> and after <code>prompt:</code>/<code>schema:</code> resolve, and before the first attempt; a call that selects no skills never invokes it, and the request sent is then identical to one from an agent declaring no <code>skills</code>/<code>system_prompt</code> at all. Its two parameters are, in order:</p>
+<ul>
+<li><code>skills</code> — an array of objects, one per selected skill, in call order. Each carries <code>name</code> (the skill's MHL declaration name — the value <code>nameof(CodeReview)</code> returns, distinct from any <code>name</code> the skill's own frontmatter carries), <code>frontmatter</code> (the skill's parsed frontmatter, an object), and <code>content</code> (the skill's Markdown body).</li>
+<li><code>prompt</code> — the string <code>prompt:</code> resolved to for this call, before composition.</li>
+</ul>
+<p><code>system_prompt</code> MUST return a string; that return replaces <code>prompt</code> as the text carried by every subsequent attempt of this call, including a retried primary and any <code>fallback</code> leg — it is composed once, not once per attempt.</p>
 </section>
 
 <section class="feature doc-section" id="routers">
@@ -748,6 +775,7 @@ agent          ::= "agent" Identifier "{" property* "}"
 router         ::= "router" Identifier "{" property* "}"
 prompt         ::= "prompt" Identifier "(" [parameter ("," parameter)*] ")"
                    ("from" String | "{" expression "}")
+skill          ::= "skill" Identifier "from" String
 memory         ::= "memory" Identifier "{" property* "}"
 tool           ::= "tool" Identifier "{" tool-method* "}"
 tool-method    ::= Identifier "(" [parameter ("," parameter)*] ")"
@@ -891,7 +919,7 @@ test AuditExamples {
 </x-dc>
 <script type="text/x-dc" data-dc-script>
 const KEYWORDS=new Set('import from as export loop var mem if else while try catch finally return break goto for in self fail pause'.split(' '));
-const DECLS=new Set('agent router memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
+const DECLS=new Set('agent router memory tool pipeline prompt skill extension parallel step input output test describe'.split(' '));
 const CONSTS=new Set(['true','false','null']);
 const esc=(v)=>v.replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const span=(cls,v)=>'<span class="'+cls+'">'+v+'</span>';

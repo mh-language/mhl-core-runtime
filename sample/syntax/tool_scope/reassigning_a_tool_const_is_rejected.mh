@@ -1,0 +1,21 @@
+// tool Settings {
+//     const mode = "safe"
+
+//     read_mode() -> mode
+//     change_mode() -> {
+//         mode = "unsafe"
+//     }
+// }
+
+// test reassigning_a_tool_const_is_rejected {
+//     describe reassigning_a_tool_const_is_rejected {
+//         are_equal(Settings.read_mode(), "safe")
+
+//         try {
+//             Settings.change_mode()
+//             fail("expected constant assignment to fail")
+//         } catch (err) {
+//             are_equal(err, "cannot assign to constant \"mode\"")
+//         }
+//     }
+// }

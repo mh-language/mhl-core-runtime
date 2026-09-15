@@ -521,6 +521,21 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 			return applyTrailers(ctx, rendered, p.Ops[1:], depth)
 		}
 	}
+	// `PromptName.frontmatter` — a declared `prompt ... from "file"` name
+	// followed by a plain `.frontmatter` member trailer — resolves to that
+	// prompt's parsed frontmatter object (an empty object when the file had
+	// none). Guarded exactly like the enum-access case just below: a local
+	// `var` of the same name shadows the prompt, and only a non-optional
+	// `.frontmatter` (not a call, index, or `?.`) heads this access —
+	// `PromptName(...)` is still the ordinary render-call shape above,
+	// unaffected.
+	if p.Primary.Ident != "" && !isBoundVar(ctx, p.Primary.Ident) && len(p.Ops) >= 1 &&
+		p.Ops[0].Member == "frontmatter" && !p.Ops[0].Optional && p.Ops[0].Call == nil &&
+		p.Ops[0].Slice == nil && p.Ops[0].Index == nil && p.Ops[0].OptIndex == nil {
+		if pr, ok := findPrompt(ctx.prog, p.Primary.Ident); ok {
+			return applyTrailers(ctx, promptFrontmatterValue(pr), p.Ops[1:], depth)
+		}
+	}
 	if p.Primary.Ident != "" && !isBoundVar(ctx, p.Primary.Ident) && len(p.Ops) >= 2 && p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[1].Call != nil {
 		name := p.Primary.Ident
 		member := p.Ops[0].Member

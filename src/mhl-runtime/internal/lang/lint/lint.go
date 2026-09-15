@@ -61,6 +61,8 @@ func Source(path, src string) []Finding {
 	findings = append(findings, checkPipelineGoto(path, merged)...)
 	findings = append(findings, checkPipelineProperties(path, merged)...)
 	findings = append(findings, checkAgentProperties(path, merged)...)
+	findings = append(findings, checkAgentSkillsProperty(path, merged)...)
+	findings = append(findings, checkAgentSystemPromptBody(path, merged, aliases)...)
 	findings = append(findings, checkRouterProperties(path, merged)...)
 	findings = append(findings, checkRouterAgentRefs(path, merged)...)
 	findings = append(findings, checkRouterDeciderRef(path, merged)...)

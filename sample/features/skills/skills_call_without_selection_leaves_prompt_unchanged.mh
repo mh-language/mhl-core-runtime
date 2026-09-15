@@ -1,0 +1,12 @@
+// A call that never mentions `skills:` never invokes `system_prompt` at
+// all, even though Reviewer declares both `skills:` and `system_prompt` --
+// the request sent is exactly what `prompt:` resolves to, identical to an
+// agent with no skills feature in play.
+import {Reviewer} from "fixtures/agents.mh"
+
+test skills_call_without_selection_leaves_prompt_unchanged {
+    describe skills_call_without_selection_leaves_prompt_unchanged {
+        var response = Reviewer.run(prompt: "check this diff")
+        are_equal(response, "check this diff")
+    }
+}

@@ -1,0 +1,22 @@
+// `skill Name from "path"` loads a reusable instruction package from a
+// Markdown file with frontmatter -- see fixtures/code-review.md and
+// fixtures/agents.mh's Reviewer agent. Two skills selected, in order, reach
+// `system_prompt` as a list of {name, frontmatter, content} objects: `name`
+// is the MHL declaration identifier (what nameof(CodeReview) resolves to,
+// not the frontmatter's own `name` field), letting a hook compare by
+// identity instead of a free-floating string.
+import {CodeReview, SecurityReview, Reviewer} from "fixtures/agents.mh"
+
+test skills_compose_system_prompt_from_selected_skills {
+    describe skills_compose_system_prompt_from_selected_skills {
+        var response = Reviewer.run(
+            skills: [CodeReview, SecurityReview],
+            prompt: "check this diff"
+        )
+        is_true(response.contains("## code-review"))
+        is_true(response.contains("Look for null dereferences"))
+        is_true(response.contains("## security-review"))
+        is_true(response.contains("Look for injection"))
+        is_true(response.contains("check this diff"))
+    }
+}
