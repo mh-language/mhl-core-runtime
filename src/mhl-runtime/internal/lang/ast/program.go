@@ -35,6 +35,7 @@ type Declaration struct {
 	Export     bool        `parser:"@'export'?"`
 	Import     *Import     `parser:"( @@"`
 	Prompt     *Prompt     `parser:"| @@"`
+	Skill      *Skill      `parser:"| @@"`
 	Extension  *Extension  `parser:"| @@"`
 	Extensible *Extensible `parser:"| @@"`
 	Agent      *Agent      `parser:"| @@"`

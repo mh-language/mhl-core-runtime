@@ -242,9 +242,9 @@ var (
 
 var agentMethodSigs = map[string]sig{
 	"run": {
-		Label:  "run(prompt: string | Prompt(...), schema?: string) -> string",
-		Params: []string{"prompt", "schema"},
-		Doc:    "Runs the agent. `prompt:` (required) is a string literal or a declared `prompt` template call. `schema:` (optional) is a string, usually `json.stringify({...})`. Returns the model's response text.",
+		Label:  "run(prompt: string | Prompt(...), schema?: string, skills?: [Name, ...]) -> string",
+		Params: []string{"prompt", "schema", "skills"},
+		Doc:    "Runs the agent. `prompt:` (required) is a string literal or a declared `prompt` template call. `schema:` (optional) is a string, usually `json.stringify({...})`. `skills:` (optional) selects, in order, a subset of the agent's declared `skills:` allow-list — each entry a bare declared `skill` name, never a string. Returns the model's response text.",
 	},
 }
 

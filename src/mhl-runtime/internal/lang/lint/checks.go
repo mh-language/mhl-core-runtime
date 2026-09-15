@@ -150,8 +150,14 @@ var knownAgentProperties = map[string]bool{
 	"log": true, "trace": true,
 	"retry": true, "cache": true, "rate_limit": true, "fallback": true,
 	"before": true, "after": true,
+	"skills": true, "system_prompt": true,
 	"description": true,
 }
+
+// knownAgentPropertyList is knownAgentProperties as prose, for the
+// "unknown property" diagnostic — kept as one place so that message and the
+// map above can't drift apart.
+const knownAgentPropertyList = "engine, command, args, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, skills, system_prompt, before, after, description"
 
 // checkAgentProperties flags any property in an `agent { ... }` body — a
 // top-level agent or an inline `fallback: [agent { ... }]` literal — whose
@@ -174,7 +180,7 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 		for _, p := range a.Props {
 			if !knownAgentProperties[p.Name] {
 				findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
-					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only engine, command, args, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, before, after, description", name, p.Name)})
+					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only %s", name, p.Name, knownAgentPropertyList)})
 			}
 			findings = append(findings, checkAgentPlaceholders(file, name, p)...)
 		}
@@ -193,6 +199,96 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 				check(ref.Inline)
 			}
 		}
+	}
+	return findings
+}
+
+// checkAgentSkillsProperty flags a top-level agent that declares a
+// non-empty `skills: [...]` allow-list but no `system_prompt` hook to
+// receive them — the only place composed skill instructions can reach the
+// outgoing request (runAgentSystemPromptHook, agent_hooks.go). Without this,
+// selecting a skill at a call site would silently have no effect on the
+// request actually sent, the one failure mode this feature must never allow
+// to pass quietly. Only top-level named agents are checked: an inline
+// `fallback: [agent {...}]` literal is never itself the target of
+// `.run(skills: ...)` — runAgent composes with the *called* agent's
+// system_prompt exactly once, before any fallback leg, and every leg
+// (retried primary or fallback) reuses that same already-composed prompt —
+// so a fallback agent's own skills/system_prompt properties, if any, are
+// simply never consulted.
+func checkAgentSkillsProperty(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Agent == nil {
+			continue
+		}
+		a := decl.Agent
+		skills, err := ast.AgentSkillRefs(a)
+		if err != nil {
+			findings = append(findings, Finding{File: file, Line: a.Pos.Line, Column: a.Pos.Column, Message: err.Error()})
+			continue
+		}
+		if len(skills) == 0 {
+			continue
+		}
+		if _, ok := agentHookLambda(a, "system_prompt"); !ok {
+			findings = append(findings, Finding{File: file, Line: a.Pos.Line, Column: a.Pos.Column,
+				Message: fmt.Sprintf("agent %q: declares skills but no system_prompt to receive them — add system_prompt: (skills, prompt) -> ...", a.Name)})
+		}
+	}
+	return findings
+}
+
+// agentHookLambda reads an agent's before/after/system_prompt-shaped
+// property as a lambda literal, for static checks that need to look inside
+// the body (checkAgentSkillsProperty, checkAgentSystemPromptBody) without
+// going through full expression evaluation — the same graceful-degradation
+// shape ast.LambdaValue already has: ok is false for anything else,
+// including a variable that merely holds a lambda at runtime.
+func agentHookLambda(a *ast.Agent, propName string) (*ast.Lambda, bool) {
+	for _, p := range a.Props {
+		if p.Name == propName {
+			return ast.LambdaValue(p.Value)
+		}
+	}
+	return nil, false
+}
+
+// checkAgentSystemPromptBody statically walks an agent's `system_prompt:
+// (skills, prompt) -> {...}` hook body the same way checkRouterSelectBody
+// walks a router's `select` hook — reusing collectVarNames/checkStatements
+// with the hook's own two parameters seeded as known variables. This is
+// what lets a `nameof(Biling)` typo inside system_prompt be caught at `mhl
+// lint` time instead of only at the first `.run(skills: ...)` call that
+// reaches it. Only the common, literal `(skills, prompt) -> ...`/`(skills,
+// prompt) -> { ... }` shape is walked (ast.LambdaValue); a system_prompt
+// written some other way (e.g. a variable holding a lambda) is left
+// unchecked here, the same graceful degradation every other static-AST
+// reader in this codebase already has.
+func checkAgentSystemPromptBody(file string, prog *ast.Program, aliases map[string]types.Type) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		if decl.Agent == nil {
+			continue
+		}
+		lambda, ok := agentHookLambda(decl.Agent, "system_prompt")
+		if !ok {
+			continue
+		}
+		seed := map[string]types.Type{}
+		if len(lambda.Params) == 2 {
+			seed[lambda.Params[0].Name] = types.ArrayOf(types.Any)
+			seed[lambda.Params[1].Name] = types.String
+		}
+		if lambda.Body != nil {
+			findings = append(findings, checkExprCall(file, prog, decl.Agent.Pos, lambda.Body, seed, nil, aliases)...)
+			continue
+		}
+		if lambda.Block == nil {
+			continue
+		}
+		declared := collectVarNames(prog, lambda.Block, seed, nil)
+		findings = append(findings, checkStatements(file, prog, lambda.Block, declared, nil, aliases)...)
 	}
 	return findings
 }
@@ -968,7 +1064,79 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 			Message: fmt.Sprintf("%s.run requires a non-empty prompt", agentName)}}
 	}
 
+	if selected, hasSkills, err := callSkillsArg(call); err != nil {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("%s.run: %s", agentName, err)}}
+	} else if hasSkills {
+		if finding, ok := checkCallSkillsSelection(file, prog, pos, agent, agentName, selected); !ok {
+			return []Finding{finding}
+		}
+	}
+
 	return nil
+}
+
+// callSkillsArg reads call's `skills: [...]` argument statically — mirrors
+// interpreter.resolveCallSkillsArg exactly, since a `skills:` argument is
+// always a bare array of declared-skill identifiers, never a dynamic
+// expression, so lint and the interpreter read it the same way.
+func callSkillsArg(call *ast.Call) (names []string, ok bool, err error) {
+	for _, arg := range call.Args {
+		if arg.Name != "skills" {
+			continue
+		}
+		arr := ast.BareArray(arg.Value)
+		if arr == nil {
+			return nil, false, fmt.Errorf("skills must be an array of declared skill names")
+		}
+		names = make([]string, 0, len(arr.Items))
+		for _, item := range arr.Items {
+			name, identOk := ast.IdentValue(item)
+			if !identOk {
+				return nil, false, fmt.Errorf("skills entries must be a declared skill name, not a string or expression")
+			}
+			names = append(names, name)
+		}
+		return names, true, nil
+	}
+	return nil, false, nil
+}
+
+// checkCallSkillsSelection validates a `.run(skills: [...])` call's
+// selection against agent's `skills:` allow-list — mirrors
+// interpreter.resolveSkillObjects' validation exactly (not permitted,
+// repeated, or not declared at all), so a mistake here is caught at `mhl
+// lint` time with the same message `mhl run` would fail with.
+func checkCallSkillsSelection(file string, prog *ast.Program, pos lexer.Position, agent *ast.Agent, agentName string, selected []string) (Finding, bool) {
+	allowed, err := ast.AgentSkillRefs(agent)
+	if err != nil {
+		return Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("%s: %s", agentName, err)}, false
+	}
+	if len(allowed) == 0 {
+		return Finding{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("%s.run: skills selected but agent %q declares no skills property", agentName, agentName)}, false
+	}
+	allowedSet := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		allowedSet[a] = true
+	}
+	seen := make(map[string]bool, len(selected))
+	for _, name := range selected {
+		if !allowedSet[name] {
+			return Finding{File: file, Line: pos.Line, Column: pos.Column,
+				Message: fmt.Sprintf("%s.run: skill %q not permitted (declared skills: %s)", agentName, name, strings.Join(allowed, ", "))}, false
+		}
+		if seen[name] {
+			return Finding{File: file, Line: pos.Line, Column: pos.Column,
+				Message: fmt.Sprintf("%s.run: skill %q selected more than once", agentName, name)}, false
+		}
+		seen[name] = true
+		if !declaredNameExists(prog, name) {
+			return Finding{File: file, Line: pos.Line, Column: pos.Column,
+				Message: fmt.Sprintf("%s.run: skill %q is not declared", agentName, name)}, false
+		}
+	}
+	return Finding{}, true
 }
 
 // --- lint-specific expression helpers (shared literal reading now lives in internal/lang/ast) -----
@@ -1027,6 +1195,8 @@ func declaredNameExists(prog *ast.Program, name string) bool {
 		case decl.Tool != nil && decl.Tool.Name == name:
 			return true
 		case decl.Prompt != nil && decl.Prompt.Name == name:
+			return true
+		case decl.Skill != nil && decl.Skill.Name == name:
 			return true
 		case decl.Pipeline != nil && decl.Pipeline.Name == name:
 			return true

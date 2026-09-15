@@ -73,6 +73,8 @@ var agentPropertyItems = []completionItem{
 	propertyItem("cache", "{ ttl, storage, strategy }"),
 	propertyItem("rate_limit", "{ requests_per_minute, concurrency, on_exceeded }"),
 	propertyItem("fallback", "array of inline agent {...} literals or declared agent names"),
+	propertyItem("skills", "array of declared skill names this agent may receive via run(skills: [...]) — requires system_prompt"),
+	propertyItem("system_prompt", "(skills, prompt) -> string: composes the outgoing prompt when a call selects skills; skills is a list of {name, frontmatter, content}"),
 	propertyItem("before", "() -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),
 	propertyItem("after", "() -> {...}: runs once on the final response (bound as result); a returned string replaces it"),
 	propertyItem("description", "string: optional summary of what this agent is for; a router's decider folds it into the decision prompt alongside the agent's name"),

@@ -333,3 +333,29 @@ func AgentFallbackRefs(agent *Agent) ([]FallbackRef, error) {
 	}
 	return nil, nil
 }
+
+// AgentSkillRefs reads an agent's `skills: [...]` property — the allow-list
+// of declared `skill` names this agent may receive via `run(skills:
+// [...])`. Unlike fallback (AgentFallbackRefs), every entry must be a bare
+// identifier naming a declared skill — there is no inline-literal form.
+func AgentSkillRefs(agent *Agent) ([]string, error) {
+	for _, prop := range agent.Props {
+		if prop.Name != "skills" {
+			continue
+		}
+		arr := BareArray(prop.Value)
+		if arr == nil {
+			return nil, fmt.Errorf("agent %q skills must be an array", agent.Name)
+		}
+		names := make([]string, 0, len(arr.Items))
+		for _, item := range arr.Items {
+			name, ok := IdentValue(item)
+			if !ok {
+				return nil, fmt.Errorf("agent %q skills entries must be a declared skill name, not a string or expression", agent.Name)
+			}
+			names = append(names, name)
+		}
+		return names, nil
+	}
+	return nil, nil
+}

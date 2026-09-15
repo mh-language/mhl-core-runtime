@@ -1,0 +1,34 @@
+// Reviewer echoes whatever prompt mhl built for it -- no real LLM call
+// involved, so the composed request is directly observable as its
+// response.
+//
+// `skills: [...]` is an allow-list: a `.run(skills: [...])` call may only
+// select from it, in any subset, preserving call order. `system_prompt` is
+// what actually receives a selection -- it is the only place composed
+// skill instructions reach the outgoing request. A call that never
+// mentions `skills:` never invokes it at all: the request stays exactly
+// what `prompt:` resolves to, identical to an agent with no skills feature
+// in play.
+export skill CodeReview from "code-review.md"
+export skill SecurityReview from "security-review.md"
+
+export agent Reviewer {
+    command: "echo"
+    args: ["${prompt}"]
+    skills: [CodeReview, SecurityReview]
+
+    // `skills` is a list of {name, frontmatter, content} objects, in call
+    // order -- `name` is the MHL declaration identifier (what
+    // nameof(CodeReview) resolves to), `frontmatter` is the parsed
+    // frontmatter block, `content` is the Markdown body with the
+    // frontmatter stripped out. A block body (not just a single
+    // expression) lets it loop over the selection and format each skill
+    // however this agent's CLI expects.
+    system_prompt: (skills, prompt) -> {
+        var instructions = ""
+        for (var s in skills) {
+            instructions = instructions + "## " + s.frontmatter.name + "\n" + s.content + "\n\n"
+        }
+        return instructions + prompt
+    }
+}

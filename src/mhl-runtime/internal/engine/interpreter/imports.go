@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/frontmatter"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
@@ -71,11 +72,19 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 	for _, decl := range prog.Decls {
 		switch {
 		case decl.Prompt != nil && decl.Prompt.Source != "":
-			text, err := loadPromptSource(dir, decl.Prompt.Source)
+			fm, text, err := loadPromptSource(dir, decl.Prompt.Source)
 			if err != nil {
 				return fmt.Errorf("prompt %q from %q: %w", decl.Prompt.Name, decl.Prompt.Source, err)
 			}
+			decl.Prompt.Frontmatter = fm
 			decl.Prompt.Body = ast.NewMultilineStringExpr(text)
+		case decl.Skill != nil && decl.Skill.Source != "":
+			fm, content, err := loadSkillSource(dir, decl.Skill.Source)
+			if err != nil {
+				return fmt.Errorf("skill %q from %q: %w", decl.Skill.Name, decl.Skill.Source, err)
+			}
+			decl.Skill.Frontmatter = fm
+			decl.Skill.Content = content
 		case decl.Import != nil:
 			modulePath := filepath.Join(dir, decl.Import.Path)
 			key := modulePath
@@ -177,6 +186,8 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 	switch {
 	case decl.Prompt != nil:
 		return "prompt", decl.Prompt.Name, true
+	case decl.Skill != nil:
+		return "skill", decl.Skill.Name, true
 	case decl.Extension != nil:
 		return "extension:" + decl.Extension.Kind, decl.Extension.Name, true
 	case decl.Agent != nil:
@@ -228,17 +239,47 @@ func loadModule(dir, path string) (*ast.Program, error) {
 }
 
 // loadPromptSource reads the file at path, resolved relative to dir, for a
-// `prompt ... from "path"` declaration. The trailing TrimSpace mirrors
+// `prompt ... from "path"` declaration: an optional leading frontmatter
+// block (any flat keys — unlike a skill, none is required) plus the
+// remaining body. frontmatter.Parse's trailing TrimSpace mirrors
 // trimMultiline's treatment of an inline """...""" body (internal/lang/parser/parser.go)
 // so a file-sourced and an inline-sourced prompt body are indistinguishable
 // from here on.
-func loadPromptSource(dir, path string) (string, error) {
+func loadPromptSource(dir, path string) (map[string]any, string, error) {
 	full := filepath.Join(dir, path)
 	src, err := os.ReadFile(full)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
-	return strings.TrimSpace(string(src)), nil
+	return frontmatter.Parse(string(src))
+}
+
+// maxSkillSourceSize caps a skill's SKILL.md file — generous for
+// hand-written instructions while catching an accidental huge file (e.g. a
+// binary asset pointed at by mistake). Revisit as a configurable limit if
+// this proves insufficient in practice.
+const maxSkillSourceSize = 64 * 1024
+
+// loadSkillSource reads and parses the SKILL.md file at path, resolved
+// relative to dir, for a `skill ... from "path"` declaration: frontmatter
+// (name/description required) plus the remaining Markdown content.
+func loadSkillSource(dir, path string) (map[string]any, string, error) {
+	full := filepath.Join(dir, path)
+	src, err := os.ReadFile(full)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(src) > maxSkillSourceSize {
+		return nil, "", fmt.Errorf("%d bytes exceeds the %d byte limit", len(src), maxSkillSourceSize)
+	}
+	fm, content, err := frontmatter.Parse(string(src))
+	if err != nil {
+		return nil, "", err
+	}
+	if err := frontmatter.RequireKeys(fm, "name", "description"); err != nil {
+		return nil, "", err
+	}
+	return fm, content, nil
 }
 
 // findExport returns the declaration in module exporting name, if any.
@@ -261,6 +302,8 @@ func findExport(module *ast.Program, name string) (*ast.Declaration, bool) {
 		case decl.Pipeline != nil && decl.Pipeline.Name == name:
 			return decl, true
 		case decl.Prompt != nil && decl.Prompt.Name == name:
+			return decl, true
+		case decl.Skill != nil && decl.Skill.Name == name:
 			return decl, true
 		case decl.Type != nil && decl.Type.Name == name:
 			return decl, true

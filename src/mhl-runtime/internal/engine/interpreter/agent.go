@@ -24,6 +24,96 @@ func findAgent(prog *ast.Program, name string) (*ast.Agent, bool) {
 	return nil, false
 }
 
+func findSkill(prog *ast.Program, name string) (*ast.Skill, bool) {
+	name = resolveName(prog, name)
+	for _, decl := range prog.Decls {
+		if decl.Skill != nil && decl.Skill.Name == name {
+			return decl.Skill, true
+		}
+	}
+	return nil, false
+}
+
+// skillValue builds the object system_prompt's `skills` parameter binds
+// each selected skill to: `name` is the MHL declaration identifier (the
+// same string nameof(CodeReview) resolves to, letting a hook write `s.name
+// == nameof(CodeReview)`), `frontmatter` is a copy of the parsed
+// frontmatter block, and `content` is the Markdown body with the
+// frontmatter stripped out.
+func skillValue(s *ast.Skill) map[string]any {
+	fm := make(map[string]any, len(s.Frontmatter))
+	for k, v := range s.Frontmatter {
+		fm[k] = v
+	}
+	return map[string]any{"name": s.Name, "frontmatter": fm, "content": s.Content}
+}
+
+// resolveCallSkillsArg reads call's `skills: [...]` argument, if present —
+// a bare array of identifiers naming declared `skill`s, read directly off
+// the AST like nameof's argument, never a dynamic expression. ok is false
+// (with a nil error) when the call supplies no `skills:` argument at all,
+// letting a call that never mentions skills behave exactly as it did before
+// this argument existed.
+func resolveCallSkillsArg(call *ast.Call) (names []string, ok bool, err error) {
+	for _, arg := range call.Args {
+		if arg.Name != "skills" {
+			continue
+		}
+		arr := ast.BareArray(arg.Value)
+		if arr == nil {
+			return nil, false, fmt.Errorf("skills must be an array of declared skill names")
+		}
+		names = make([]string, 0, len(arr.Items))
+		for _, item := range arr.Items {
+			name, identOk := ast.IdentValue(item)
+			if !identOk {
+				return nil, false, fmt.Errorf("skills entries must be a declared skill name, not a string or expression")
+			}
+			names = append(names, name)
+		}
+		return names, true, nil
+	}
+	return nil, false, nil
+}
+
+// resolveSkillObjects validates selected (the names a `.run(skills: [...])`
+// call chose, in call order) against agent's `skills:` allow-list and
+// resolves each to its skillValue object. A selection that names a skill
+// the agent didn't permit, repeats a name, or names something not declared
+// at all fails before any model call is attempted — mirroring the existing
+// "agent %q fallback: agent %q is not declared" shape for an analogous
+// static-reference mistake.
+func resolveSkillObjects(prog *ast.Program, agent *ast.Agent, agentName string, selected []string) ([]any, error) {
+	allowed, err := ast.AgentSkillRefs(agent)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", agentName, err)
+	}
+	if len(allowed) == 0 {
+		return nil, fmt.Errorf("%s.run: skills selected but agent %q declares no skills property", agentName, agentName)
+	}
+	allowedSet := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		allowedSet[a] = true
+	}
+	seen := make(map[string]bool, len(selected))
+	objs := make([]any, 0, len(selected))
+	for _, name := range selected {
+		if !allowedSet[name] {
+			return nil, fmt.Errorf("%s.run: skill %q not permitted (declared skills: %s)", agentName, name, strings.Join(allowed, ", "))
+		}
+		if seen[name] {
+			return nil, fmt.Errorf("%s.run: skill %q selected more than once", agentName, name)
+		}
+		seen[name] = true
+		skill, found := findSkill(prog, name)
+		if !found {
+			return nil, fmt.Errorf("%s.run: skill %q is not declared", agentName, name)
+		}
+		objs = append(objs, skillValue(skill))
+	}
+	return objs, nil
+}
+
 // runAgent executes agent's `.run(...)` call and returns its response. It is
 // the single place this happens — reached both for a bare top-level
 // `Agent.run(...)` statement and for `Agent.run(...)` used as a
@@ -71,6 +161,30 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 	schemaText, _, err := resolveAgentStringArg(promptCtx, call, "schema", depth)
 	if err != nil {
 		return "", fmt.Errorf("%s.run: %w", agentName, err)
+	}
+
+	// Skills are composed once, here — before the primary attempt and
+	// before any retry/fallback — so every leg (a retried primary call, or
+	// a fallback agent) receives the exact same already-composed
+	// promptText, the same way schemaText already is threaded to all of
+	// them. A call that selects no skills never invokes system_prompt at
+	// all: promptText stays exactly what resolvePromptArgument produced,
+	// so the request sent is identical to today's for any agent this
+	// feature doesn't touch.
+	selectedSkillNames, hasSkills, err := resolveCallSkillsArg(call)
+	if err != nil {
+		return "", fmt.Errorf("%s.run: %w", agentName, err)
+	}
+	var skillObjs []any
+	if hasSkills && len(selectedSkillNames) > 0 {
+		skillObjs, err = resolveSkillObjects(ctx.prog, agent, agentName, selectedSkillNames)
+		if err != nil {
+			return "", err
+		}
+		promptText, err = runAgentSystemPromptHook(promptCtx, agentName, agent, skillObjs, promptText, depth)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	response, err := runAgentAttempt(ctx, agentName, agent, promptText, schemaText, depth)
