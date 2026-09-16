@@ -21,6 +21,13 @@ step using the same pattern equality and first-match order as expression
 `match`. Each destination is a literal step identifier, checked by `mhl lint`;
 it is not built from a string at runtime. An unmatched value without `_`
 fails at runtime. The fallback can explicitly fail with a computed reason.
+For reuse inside one workflow, declare the table once as
+`route Generate(artifact: string) { ... }` and invoke it from any step with
+`goto Generate(artifact)`. A route has exactly one typed parameter and static
+step destinations. It is workflow-local and does not return a string. A tool
+may return a string, but `goto` deliberately does not accept computed step
+names. Expression `nameof(BriefGenerate)` checks top-level declarations, so it
+cannot name a workflow step.
 
 A `step` or `parallel` group may also carry a `timeout <duration>` header
 clause (`step Build timeout 3m { ... }`): the runtime caps that step's

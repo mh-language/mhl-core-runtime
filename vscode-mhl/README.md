@@ -11,6 +11,9 @@ expose those workflows over MCP or A2A. See
 Provides syntax highlighting, diagnostics, completion, signature help, and
 go-to-definition for `.mh` files. It also highlights MHL code blocks inside
 Markdown files when the fence is tagged as `mhl` or `mh`.
+Workflow-local `route Name(param: type) { pattern -> Step }` declarations,
+their static step targets, and `goto Name(value)` calls receive dedicated
+declaration, label, parameter, type, and call scopes.
 These language features are served by `mhl lsp` (a Language Server Protocol
 server built into the `mhl` binary, see `../src/mhl-runtime`) — this
 extension is just its client.

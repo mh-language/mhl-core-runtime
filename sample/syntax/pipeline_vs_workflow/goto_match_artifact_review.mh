@@ -4,20 +4,24 @@ workflow ArtifactReview {
     input artifact: string
     input approved: bool = false
     input feedback: string = ""
+    input via_retry: bool = false
 
     var feedback_consumed = false
     var pending_feedback = ""
 
+    route Generate(artifact: string) {
+        "brief" -> BriefGenerate
+        "adr"   -> AdrGenerate
+        _ -> fail("unknown artifact: " + artifact)
+    }
+
     step Gate {
+        if (via_retry) goto Retry
         if (!approved) {
             if (!feedback.is_empty() && !feedback_consumed) {
                 feedback_consumed = true
                 pending_feedback = feedback
-                goto match artifact {
-                    "brief" -> BriefGenerate
-                    "adr"   -> AdrGenerate
-                    _ -> fail("unknown artifact: " + artifact)
-                }
+                goto Generate(artifact)
             }
             feedback_consumed = false
             pause("review '" + artifact + "' before commit")
@@ -32,12 +36,18 @@ workflow ArtifactReview {
 
     step BriefGenerate {
         log.info("regenerating brief with feedback:", pending_feedback)
+        if (via_retry) break "brief regenerated through retry"
         goto Gate
     }
 
     step AdrGenerate {
         log.info("regenerating ADR with feedback:", pending_feedback)
+        if (via_retry) break "ADR regenerated through retry"
         goto Gate
+    }
+
+    step Retry {
+        goto Generate(artifact)
     }
 
     step BriefCommit {
@@ -64,6 +74,12 @@ test goto_match_artifact_review {
         are_equal(result.state, "paused")
         are_equal(result.executed, ["Gate", "BriefGenerate", "Gate"])
         are_equal(result.vars.pending_feedback, "change-title")
+    }
+
+    describe the_same_route_is_reused_by_another_step {
+        var result = ArtifactReview.run(inputs: {artifact: "adr", approved: false, feedback: "", via_retry: true})
+        are_equal(result.state, "broke")
+        are_equal(result.executed, ["Gate", "Retry", "AdrGenerate"])
     }
 
     describe approval_routes_to_the_selected_commit_step {

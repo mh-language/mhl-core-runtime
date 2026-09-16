@@ -40,7 +40,7 @@ func RunStep(goctx context.Context, prog *ast.Program, stepName, file string, ou
 		return fmt.Errorf("pipeline step %q not found", stepName)
 	}
 
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, stepName)}
+	ctx := &evalCtx{prog: prog, pipelineName: pipelineNameForStep(prog, stepName), store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, stepName)}
 	// A non-nil spawnSem enables `spawn`/`wait` for this step and confines
 	// them to it: drainAtStepEnd joins whatever the step body left running,
 	// so no spawned goroutine ever outlives the step (and no handle is live
@@ -63,6 +63,27 @@ func RunStep(goctx context.Context, prog *ast.Program, stepName, file string, ou
 		return nil
 	}
 	return err
+}
+
+func pipelineNameForStep(prog *ast.Program, stepName string) string {
+	for _, decl := range prog.Decls {
+		if decl.Pipeline == nil {
+			continue
+		}
+		for _, member := range decl.Pipeline.Body {
+			if member.Step != nil && member.Step.Name == stepName {
+				return decl.Pipeline.Name
+			}
+			if member.Parallel != nil {
+				for _, step := range member.Parallel.Steps {
+					if step.Name == stepName {
+						return decl.Pipeline.Name
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // findStep returns the pipeline step named stepName, whether it is a plain
@@ -376,6 +397,9 @@ func execStatementBody(ctx *evalCtx, statement *ast.Statement) error {
 		}
 		return &breakSignal{reason: reason}
 	case statement.Goto != nil:
+		if statement.Goto.Called {
+			return execGotoRoute(ctx, statement.Goto)
+		}
 		return &gotoSignal{target: statement.Goto.Target}
 	case statement.GotoMatch != nil:
 		return execGotoMatch(ctx, statement.GotoMatch)

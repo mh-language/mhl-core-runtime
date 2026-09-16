@@ -167,6 +167,10 @@ func walkStmtMatchExprs(s *ast.Statement, fn func(*ast.MatchExpr)) {
 			walkMatchExprs(arm.Pattern, fn)
 			walkMatchExprs(arm.Fail, fn)
 		}
+	case s.Goto != nil:
+		for _, arg := range s.Goto.Args {
+			walkMatchExprs(arg.Value, fn)
+		}
 	case s.Assign != nil:
 		walkMatchExprs(s.Assign.Value, fn)
 	case s.Expr != nil:

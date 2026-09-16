@@ -103,8 +103,17 @@ type PipelineMember struct {
 	Var      *VarDecl       `parser:"| @@"`
 	Mem      *MemDecl       `parser:"| @@"`
 	Parallel *ParallelGroup `parser:"| @@"`
+	Route    *WorkflowRoute `parser:"| @@"`
 	Step     *Step          `parser:"| @@"`
 	Prop     *Property      `parser:"| @@ )"`
+}
+
+// WorkflowRoute is a reusable, statically checked step dispatch table.
+type WorkflowRoute struct {
+	Pos    lexer.Position
+	Name   string          `parser:"'route' @Ident"`
+	Params []*Param        `parser:"'(' ( @@ ( ',' @@ )* )? ')'"`
+	Arms   []*GotoMatchArm `parser:"'{' @@+ '}'"`
 }
 
 // ParallelGroup is a set of steps that run concurrently: the pipeline does
@@ -314,7 +323,9 @@ type WaitOpt struct {
 // needed here either: checkPipelineGoto already requires Target to name an
 // actual step, a strictly narrower and equally-enforced check.
 type GotoStmt struct {
-	Target string `parser:"'goto' ( 'nameof' '(' @Ident ')' | @Ident )"`
+	Target string      `parser:"'goto' ( 'nameof' '(' @Ident ')' | @Ident"`
+	Called bool        `parser:"( @'('"`
+	Args   []*Argument `parser:"( @@ ( ',' @@ )* )? ')' )? )"`
 }
 
 // GotoMatchStmt selects a statically named step using match patterns.

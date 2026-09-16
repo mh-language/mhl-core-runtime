@@ -31,11 +31,12 @@ type Env map[string]any
 // live stores those declarations back onto, where agent responses and
 // log(...) output get traced, and the current step's variable environment.
 type evalCtx struct {
-	prog      *ast.Program
-	store     *memory.KVStore
-	jsonStore *memory.JSONStore
-	out       io.Writer
-	env       Env
+	prog         *ast.Program
+	pipelineName string
+	store        *memory.KVStore
+	jsonStore    *memory.JSONStore
+	out          io.Writer
+	env          Env
 	// pipelineEnv holds a pipeline's top-level `var` declarations
 	// (PipelineMember.Var, ast/pipeline.go) — nil outside of RunStep's own
 	// step execution (a tool method call, `describe` block, or `stop_when`
