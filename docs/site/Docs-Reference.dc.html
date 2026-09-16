@@ -854,7 +854,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
         _ -&gt; fail("unknown artifact: " + artifact)
     }
 }</code></pre>
-          <p><code>goto match</code> evaluates <code>artifact</code> once and selects the first matching arm. The destination is a step name, not a computed string. <code>mhl lint</code> checks all destinations, duplicate patterns, and arms after the wildcard. On <code>--resume</code>, a paused <code>Gate</code> runs again with updated inputs and selects the route then. See <code>sample/syntax/pipeline_vs_workflow/goto_match_artifact_review.mh</code> for generation and commit routes in one workflow.</p>
+          <p><code>goto match</code> evaluates <code>artifact</code> once and selects the first matching arm. To reuse that table, declare <code>route Generate(artifact: string) { ... }</code> in the workflow and call it with <code>goto Generate(artifact)</code> from any step. A route has one typed parameter and static step destinations; <code>mhl lint</code> checks its name, arity, patterns, and targets. It transfers control directly rather than returning a string. Expression <code>nameof(BriefGenerate)</code> cannot name a workflow step because that builtin checks top-level declarations. On <code>--resume</code>, a paused gate runs again with updated inputs and selects the route then. See <code>sample/syntax/pipeline_vs_workflow/goto_match_artifact_review.mh</code>.</p>
           <div class="run-stack">
             <div class="inline-code"><span>start</span><code>mhl run release.mh --input environment=staging</code></div>
             <div class="inline-code"><span>resume</span><code>mhl run release.mh --input environment=staging --resume</code></div>
@@ -1148,7 +1148,7 @@ test guarded_retry_test {
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script>
-const KEYWORDS=new Set('import from as export loop var mem if else while try catch finally return break goto for in self fail pause'.split(' '));
+const KEYWORDS=new Set('import from as export loop var mem if else while try catch finally return break goto route for in self fail pause'.split(' '));
 const DECLS=new Set('agent router memory tool pipeline prompt skill extension parallel step input output test describe'.split(' '));
 const CONSTS=new Set(['true','false','null']);
 const esc=(v)=>v.replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

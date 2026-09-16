@@ -64,6 +64,21 @@ func TestGotoMatchChecksTargetsAndPatterns(t *testing.T) {
 	}
 }
 
+func TestWorkflowRouteChecksTargetAndArity(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `workflow W {
+  route Generate(artifact: string) { "brief" -> Missing }
+  step Gate { goto Generate() }
+}`)
+	findings := lint.File(main)
+	for _, want := range []string{"targets step \"Missing\"", "expects 1 argument(s), got 0"} {
+		if !hasMessage(findings, want) {
+			t.Errorf("missing %q in %+v", want, findings)
+		}
+	}
+}
+
 // `goto nameof(B)` — the nameof-wrapped spelling — is checked exactly like
 // the bare `goto B` form: clean when B is a declared step.
 func TestGotoNameofWrappedTargetIsAllowed(t *testing.T) {

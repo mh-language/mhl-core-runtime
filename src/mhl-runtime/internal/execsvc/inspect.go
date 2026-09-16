@@ -193,12 +193,18 @@ func collectPipelineGotos(prog *ast.Program, name string) []InspectGoto {
 		if d.Pipeline == nil || d.Pipeline.Name != name {
 			continue
 		}
+		routes := map[string]*ast.WorkflowRoute{}
+		for _, m := range d.Pipeline.Body {
+			if m.Route != nil {
+				routes[m.Route.Name] = m.Route
+			}
+		}
 		for _, m := range d.Pipeline.Body {
 			if m.Step == nil {
 				continue
 			}
 			var targets []string
-			gotoTargets(m.Step.Body, &targets)
+			gotoTargets(m.Step.Body, routes, &targets)
 			for _, t := range targets {
 				out = append(out, InspectGoto{From: m.Step.Name, To: t})
 			}
@@ -207,14 +213,22 @@ func collectPipelineGotos(prog *ast.Program, name string) []InspectGoto {
 	return out
 }
 
-func gotoTargets(stmts []*ast.Statement, out *[]string) {
+func gotoTargets(stmts []*ast.Statement, routes map[string]*ast.WorkflowRoute, out *[]string) {
 	for _, s := range stmts {
 		if s == nil {
 			continue
 		}
 		switch {
 		case s.Goto != nil:
-			*out = append(*out, s.Goto.Target)
+			if route := routes[s.Goto.Target]; s.Goto.Called && route != nil {
+				for _, arm := range route.Arms {
+					if arm.Fail == nil {
+						*out = append(*out, arm.Target)
+					}
+				}
+			} else {
+				*out = append(*out, s.Goto.Target)
+			}
 		case s.GotoMatch != nil:
 			for _, arm := range s.GotoMatch.Arms {
 				if arm.Fail == nil {
@@ -222,16 +236,16 @@ func gotoTargets(stmts []*ast.Statement, out *[]string) {
 				}
 			}
 		case s.If != nil:
-			gotoTargets(s.If.Then, out)
-			gotoTargets(s.If.Else, out)
+			gotoTargets(s.If.Then, routes, out)
+			gotoTargets(s.If.Else, routes, out)
 		case s.While != nil:
-			gotoTargets(s.While.Body, out)
+			gotoTargets(s.While.Body, routes, out)
 		case s.ForIn != nil:
-			gotoTargets(s.ForIn.Body, out)
+			gotoTargets(s.ForIn.Body, routes, out)
 		case s.Try != nil:
-			gotoTargets(s.Try.Body, out)
-			gotoTargets(s.Try.Catch, out)
-			gotoTargets(s.Try.Finally, out)
+			gotoTargets(s.Try.Body, routes, out)
+			gotoTargets(s.Try.Catch, routes, out)
+			gotoTargets(s.Try.Finally, routes, out)
 		}
 	}
 }

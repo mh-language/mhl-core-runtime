@@ -508,17 +508,55 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 		p := decl.Pipeline
 
 		steps := map[string]bool{}
+		routes := map[string]*ast.WorkflowRoute{}
 		for _, m := range p.Body {
+			if m.Route != nil {
+				if routes[m.Route.Name] != nil {
+					findings = append(findings, Finding{File: file, Line: m.Route.Pos.Line, Column: m.Route.Pos.Column, Message: fmt.Sprintf("workflow %q declares more than one route named %q", p.Name, m.Route.Name)})
+				}
+				routes[m.Route.Name] = m.Route
+			}
 			for _, s := range pipelineMemberSteps(m) {
 				steps[s.Name] = true
+			}
+		}
+		for _, route := range routes {
+			findings = append(findings, checkRouteArms(file, route)...)
+			if !p.IsWorkflow() {
+				findings = append(findings, Finding{File: file, Line: route.Pos.Line, Column: route.Pos.Column, Message: "`route` is only valid inside a `workflow`"})
+			}
+			if len(route.Params) != 1 {
+				findings = append(findings, Finding{File: file, Line: route.Pos.Line, Column: route.Pos.Column, Message: fmt.Sprintf("route %q must declare exactly one match parameter", route.Name)})
+			}
+			if len(route.Params) == 1 && route.Params[0].Type == nil {
+				findings = append(findings, Finding{File: file, Line: route.Params[0].Pos.Line, Column: route.Params[0].Pos.Column, Message: fmt.Sprintf("route %q parameter %q requires a type", route.Name, route.Params[0].Name)})
+			}
+			if len(route.Params) == 1 && route.Params[0].Default != nil {
+				findings = append(findings, Finding{File: file, Line: route.Params[0].Pos.Line, Column: route.Params[0].Pos.Column, Message: fmt.Sprintf("route %q parameter cannot have a default", route.Name)})
+			}
+			for _, arm := range route.Arms {
+				if arm.Fail == nil && !steps[arm.Target] {
+					findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("route %q targets step %q, which isn't declared in workflow %q", route.Name, arm.Target, p.Name)})
+				}
 			}
 		}
 
 		for _, m := range p.Body {
 			for _, step := range pipelineMemberSteps(m) {
 				findings = append(findings, checkGotoMatchArms(file, step.Body, p.IsWorkflow())...)
+				walkGotoRouteCalls(step.Body, func(call *ast.GotoStmt, pos lexer.Position) {
+					route := routes[call.Target]
+					if route == nil {
+						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("workflow route %q isn't declared in workflow %q", call.Target, p.Name)})
+					} else if len(call.Args) != len(route.Params) {
+						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("route %q expects %d argument(s), got %d", route.Name, len(route.Params), len(call.Args))})
+					}
+				})
 				walkGotoBreak(step.Body, func(target string, isBreak bool, pos lexer.Position) {
 					if isBreak {
+						return
+					}
+					if route := routes[target]; route != nil {
 						return
 					}
 					if !p.IsWorkflow() {
@@ -535,6 +573,51 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 		}
 	}
 	return findings
+}
+
+func checkRouteArms(file string, route *ast.WorkflowRoute) []Finding {
+	var findings []Finding
+	seen := map[string]bool{}
+	wildcard := false
+	for _, arm := range route.Arms {
+		if wildcard {
+			findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: "route arm is unreachable: it follows the `_` wildcard"})
+		}
+		if arm.Wildcard {
+			wildcard = true
+			continue
+		}
+		key := patternKey(arm.Pattern)
+		if key != "" && seen[key] {
+			findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("duplicate route pattern %s", key)})
+		}
+		seen[key] = true
+	}
+	return findings
+}
+
+func walkGotoRouteCalls(stmts []*ast.Statement, fn func(*ast.GotoStmt, lexer.Position)) {
+	for _, s := range stmts {
+		if s == nil {
+			continue
+		}
+		if s.Goto != nil && s.Goto.Called {
+			fn(s.Goto, s.Pos)
+		}
+		switch {
+		case s.If != nil:
+			walkGotoRouteCalls(s.If.Then, fn)
+			walkGotoRouteCalls(s.If.Else, fn)
+		case s.While != nil:
+			walkGotoRouteCalls(s.While.Body, fn)
+		case s.ForIn != nil:
+			walkGotoRouteCalls(s.ForIn.Body, fn)
+		case s.Try != nil:
+			walkGotoRouteCalls(s.Try.Body, fn)
+			walkGotoRouteCalls(s.Try.Catch, fn)
+			walkGotoRouteCalls(s.Try.Finally, fn)
+		}
+	}
 }
 
 func checkGotoMatchArms(file string, stmts []*ast.Statement, workflow bool) []Finding {
