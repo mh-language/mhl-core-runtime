@@ -39,15 +39,29 @@ func latestPath(baseDir, pipeline string) string {
 }
 
 // writeLatest atomically records id as pipeline's most recent session.
+//
+// The temp file is suffixed with id, not shared across calls: two sessions
+// of the same pipeline can legitimately run concurrently (e.g. a workflow
+// with no side effects, like ArtifactPreview, called once per item of a
+// paused batch instead of once for the whole batch), each reaching this
+// function around the same time. A single shared "pipeline.latest.tmp"
+// meant one call's os.Rename could find the other had already renamed it
+// away — a real "no such file or directory" seen in practice, not a
+// theoretical race. os.Rename to the final path is still atomic, so the
+// pointer itself is still well-defined (last writer wins) even though which
+// writer is "last" among concurrent sessions is unspecified — exactly the
+// same guarantee a single unconditional writer would give, just without
+// two writers corrupting each other's intermediate file first.
 func writeLatest(baseDir, pipeline, id string) error {
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return fmt.Errorf("runtime: creating state dir: %w", err)
 	}
-	tmp := latestPath(baseDir, pipeline) + ".tmp"
+	tmp := latestPath(baseDir, pipeline) + "." + id + ".tmp"
 	if err := os.WriteFile(tmp, []byte(id+"\n"), 0o644); err != nil {
 		return fmt.Errorf("runtime: writing latest pointer: %w", err)
 	}
 	if err := os.Rename(tmp, latestPath(baseDir, pipeline)); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("runtime: committing latest pointer: %w", err)
 	}
 	return nil

@@ -3,6 +3,7 @@ package nativeops_test
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -218,10 +219,14 @@ func TestListReturnsJoinedPathsSortedByName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
+	// path.Join (always "/", unlike path/filepath which is OS-aware) against
+	// dir pre-normalized the same way — an independently-computed forward
+	// slash expectation, not just re-deriving what List itself did.
+	slashDir := filepath.ToSlash(dir)
 	want := []string{
-		filepath.Join(dir, "a.txt"),
-		filepath.Join(dir, "b.txt"),
-		filepath.Join(dir, "sub"),
+		path.Join(slashDir, "a.txt"),
+		path.Join(slashDir, "b.txt"),
+		path.Join(slashDir, "sub"),
 	}
 	if len(got) != len(want) {
 		t.Fatalf("List = %v, want %v", got, want)
@@ -240,9 +245,40 @@ func TestListMissingDirErrors(t *testing.T) {
 	}
 }
 
-func TestJoinMatchesFilepathJoin(t *testing.T) {
+// TestListAndJoinNeverReturnBackslashes pins the actual bug: .mh code (e.g.
+// workflows/work_item/actions.mh's WorkItemActions.list, via
+// entry.replace("projects/", "")) assumes every fs/dir path it gets back
+// uses "/", per workflows/shared/core/paths.mh's own documented contract.
+// dir.list("projects") on Windows used to hand back "projects\<id>"
+// (filepath.Join is OS-aware), which silently failed that replace, dropping
+// every real work-item from a freshly-created list — reproduced for real on
+// Windows, not hypothetical. This can't force GOOS=windows-only separator
+// behavior running on a non-Windows CI machine (filepath.ToSlash is a no-op
+// where "/" is already native), but it still pins the contract these two
+// functions must not regress on any platform.
+func TestListAndJoinNeverReturnBackslashes(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	got, err := nativeops.List(dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, p := range got {
+		if strings.Contains(p, `\`) {
+			t.Errorf("List returned a backslash-separated path: %q", p)
+		}
+	}
+
+	if j := nativeops.Join("a", "b", "c.txt"); strings.Contains(j, `\`) {
+		t.Errorf("Join returned a backslash-separated path: %q", j)
+	}
+}
+
+func TestJoinReturnsForwardSlashJoinedPath(t *testing.T) {
 	got := nativeops.Join("a", "b", "c.txt")
-	want := filepath.Join("a", "b", "c.txt")
+	want := path.Join("a", "b", "c.txt") // independently computed, always "/"
 	if got != want {
 		t.Errorf("Join = %q, want %q", got, want)
 	}

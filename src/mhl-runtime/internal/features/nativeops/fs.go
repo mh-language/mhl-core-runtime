@@ -178,10 +178,11 @@ func AppendWriter(path string) io.WriteCloser {
 
 // List returns the paths of dir's immediate entries — files and
 // subdirectories, one level, not recursive — as filepath.Join(dir, name)
-// each, so a caller can feed a result straight into fs.read/fs.write/
-// fs.delete without reassembling the path itself. os.ReadDir already
-// returns entries sorted by filename, so the result is deterministic across
-// runs without an extra sort here.
+// each (then forward-slash-normalized — see the note on that below), so a
+// caller can feed a result straight into fs.read/fs.write/fs.delete without
+// reassembling the path itself. os.ReadDir already returns entries sorted
+// by filename, so the result is deterministic across runs without an extra
+// sort here.
 func List(dir string) ([]string, error) {
 	return listDir("fs.list", dir)
 }
@@ -198,15 +199,29 @@ func listDir(op, dir string) ([]string, error) {
 	}
 	out := make([]string, len(entries))
 	for i, e := range entries {
-		out[i] = filepath.Join(dir, e.Name())
+		out[i] = filepath.ToSlash(filepath.Join(dir, e.Name()))
 	}
 	return out, nil
 }
 
-// Join combines parts into a single path using the OS-appropriate separator,
-// exactly like filepath.Join — cleaning the result and dropping empty parts.
+// Join combines parts into a single path, exactly like filepath.Join
+// (cleaning the result and dropping empty parts), then forward-slash-
+// normalizes it — every .mh path is written and compared as "a/b/c" (see
+// e.g. workflows/shared/core/paths.mh's own doc comment: "always `/` as
+// separator ... never concatenate `\\` manually"), so returning Windows'
+// native `\` here would silently break any .mh string op downstream that
+// expects `/` — string.replace("prefix/", ""), a manual "x/y" comparison,
+// splitting on "/". This bit real: dir.list("projects")'s entries reaching
+// WorkItemActions.list() unable to strip "projects/" via
+// entry.replace("projects/", "") on Windows (where filepath.Join alone
+// would have produced "projects\<id>"), silently dropping every real
+// work-item from the list. The actual OS file calls (os.ReadDir/Open/…)
+// still work fine given a forward-slash path on Windows — Go's os package
+// accepts either separator there — so this only changes the string these
+// functions hand back to .mh, never how a path is used against the real
+// filesystem.
 func Join(parts ...string) string {
-	return filepath.Join(parts...)
+	return filepath.ToSlash(filepath.Join(parts...))
 }
 
 // Delete removes path — a file or an empty directory. Unlike Exists, it
