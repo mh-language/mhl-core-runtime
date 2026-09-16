@@ -34,3 +34,32 @@ func evalMatchExpr(ctx *evalCtx, e *ast.MatchExpr, depth int) (any, error) {
 	}
 	return nil, fmt.Errorf("match: no arm matched value %s", formatValue(subject))
 }
+
+func execGotoMatch(ctx *evalCtx, m *ast.GotoMatchStmt) error {
+	subject, err := evalExpr(ctx, m.Subject)
+	if err != nil {
+		return err
+	}
+	for _, arm := range m.Arms {
+		matched := arm.Wildcard
+		if !matched {
+			pattern, err := evalExpr(ctx, arm.Pattern)
+			if err != nil {
+				return err
+			}
+			matched = reflect.DeepEqual(subject, pattern)
+		}
+		if !matched {
+			continue
+		}
+		if arm.Fail != nil {
+			reason, err := evalExpr(ctx, arm.Fail)
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("%s", formatValue(reason))
+		}
+		return &gotoSignal{target: arm.Target}
+	}
+	return fmt.Errorf("goto match: no arm matched value %s", formatValue(subject))
+}

@@ -42,6 +42,28 @@ workflow W {
 	}
 }
 
+func TestGotoMatchChecksTargetsAndPatterns(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `workflow W {
+  step A {
+    goto match artifact {
+      "brief" -> B
+      "brief" -> Missing
+      _ -> fail("unknown")
+      "adr" -> B
+    }
+  }
+  step B {}
+}`)
+	findings := lint.File(main)
+	for _, want := range []string{"targets a step that isn't declared", "duplicate goto match pattern", "follows the `_` wildcard"} {
+		if !hasMessage(findings, want) {
+			t.Errorf("missing %q in %+v", want, findings)
+		}
+	}
+}
+
 // `goto nameof(B)` — the nameof-wrapped spelling — is checked exactly like
 // the bare `goto B` form: clean when B is a declared step.
 func TestGotoNameofWrappedTargetIsAllowed(t *testing.T) {

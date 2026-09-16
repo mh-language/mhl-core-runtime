@@ -181,20 +181,21 @@ type Step struct {
 // commits to ReturnStmt rather than being misread as a bare `return`
 // identifier expression followed by a second, unrelated statement.
 type Statement struct {
-	Pos    lexer.Position
-	Const  *ConstDecl  `parser:"( @@"`
-	Var    *VarDecl    `parser:"| @@"`
-	Return *ReturnStmt `parser:"| @@"`
-	Break  *BreakStmt  `parser:"| @@"`
-	Goto   *GotoStmt   `parser:"| @@"`
-	Spawn  *SpawnStmt  `parser:"| @@"`
-	Wait   *WaitStmt   `parser:"| @@"`
-	If     *IfStmt     `parser:"| @@"`
-	While  *WhileStmt  `parser:"| @@"`
-	ForIn  *ForInStmt  `parser:"| @@"`
-	Try    *TryStmt    `parser:"| @@"`
-	Assign *AssignStmt `parser:"| @@"`
-	Expr   *ExprStmt   `parser:"| @@ )"`
+	Pos       lexer.Position
+	Const     *ConstDecl     `parser:"( @@"`
+	Var       *VarDecl       `parser:"| @@"`
+	Return    *ReturnStmt    `parser:"| @@"`
+	Break     *BreakStmt     `parser:"| @@"`
+	GotoMatch *GotoMatchStmt `parser:"| @@"`
+	Goto      *GotoStmt      `parser:"| @@"`
+	Spawn     *SpawnStmt     `parser:"| @@"`
+	Wait      *WaitStmt      `parser:"| @@"`
+	If        *IfStmt        `parser:"| @@"`
+	While     *WhileStmt     `parser:"| @@"`
+	ForIn     *ForInStmt     `parser:"| @@"`
+	Try       *TryStmt       `parser:"| @@"`
+	Assign    *AssignStmt    `parser:"| @@"`
+	Expr      *ExprStmt      `parser:"| @@ )"`
 }
 
 // VarDecl declares and initializes a local variable: `var x = expr`.
@@ -314,6 +315,21 @@ type WaitOpt struct {
 // actual step, a strictly narrower and equally-enforced check.
 type GotoStmt struct {
 	Target string `parser:"'goto' ( 'nameof' '(' @Ident ')' | @Ident )"`
+}
+
+// GotoMatchStmt selects a statically named step using match patterns.
+type GotoMatchStmt struct {
+	Subject *Expr           `parser:"'goto' 'match' @@ '{'"`
+	Arms    []*GotoMatchArm `parser:"@@+ '}'"`
+}
+
+// GotoMatchArm redirects to Target or fails with a computed reason.
+type GotoMatchArm struct {
+	Pos      lexer.Position
+	Wildcard bool   `parser:"( @'_'"`
+	Pattern  *Expr  `parser:"| @@ ) '->' ("`
+	Fail     *Expr  `parser:"'fail' '(' @@ ')'"`
+	Target   string `parser:"| @Ident )"`
 }
 
 // Every control-flow body below (IfStmt.Then/Else, WhileStmt.Body,

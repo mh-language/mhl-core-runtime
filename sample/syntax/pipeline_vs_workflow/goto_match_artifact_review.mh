@@ -1,0 +1,86 @@
+// A review gate with two static route tables. The step is re-entered on
+// --resume; approval and feedback arrive as updated inputs.
+workflow ArtifactReview {
+    input artifact: string
+    input approved: bool = false
+    input feedback: string = ""
+
+    var feedback_consumed = false
+    var pending_feedback = ""
+
+    step Gate {
+        if (!approved) {
+            if (!feedback.is_empty() && !feedback_consumed) {
+                feedback_consumed = true
+                pending_feedback = feedback
+                goto match artifact {
+                    "brief" -> BriefGenerate
+                    "adr"   -> AdrGenerate
+                    _ -> fail("unknown artifact: " + artifact)
+                }
+            }
+            feedback_consumed = false
+            pause("review '" + artifact + "' before commit")
+        }
+
+        goto match artifact {
+            "brief" -> BriefCommit
+            "adr"   -> AdrCommit
+            _ -> fail("unknown artifact: " + artifact)
+        }
+    }
+
+    step BriefGenerate {
+        log.info("regenerating brief with feedback:", pending_feedback)
+        goto Gate
+    }
+
+    step AdrGenerate {
+        log.info("regenerating ADR with feedback:", pending_feedback)
+        goto Gate
+    }
+
+    step BriefCommit {
+        log.info("committing brief")
+        break "brief committed"
+    }
+
+    step AdrCommit {
+        log.info("committing ADR")
+        break "ADR committed"
+    }
+}
+
+test goto_match_artifact_review {
+    describe unapproved_artifact_pauses_at_gate {
+        var result = ArtifactReview.run(inputs: {artifact: "brief", approved: false, feedback: ""})
+        are_equal(result.state, "paused")
+        are_equal(result.executed, ["Gate"])
+        are_equal(result.pause_reason, "review 'brief' before commit")
+    }
+
+    describe feedback_routes_to_generation_then_pauses {
+        var result = ArtifactReview.run(inputs: {artifact: "brief", approved: false, feedback: "change-title"})
+        are_equal(result.state, "paused")
+        are_equal(result.executed, ["Gate", "BriefGenerate", "Gate"])
+        are_equal(result.vars.pending_feedback, "change-title")
+    }
+
+    describe approval_routes_to_the_selected_commit_step {
+        var brief = ArtifactReview.run(inputs: {artifact: "brief", approved: true, feedback: ""})
+        are_equal(brief.state, "broke")
+        are_equal(brief.executed, ["Gate", "BriefCommit"])
+        are_equal(brief.break_reason, "brief committed")
+
+        var adr = ArtifactReview.run(inputs: {artifact: "adr", approved: true, feedback: ""})
+        are_equal(adr.state, "broke")
+        are_equal(adr.executed, ["Gate", "AdrCommit"])
+        are_equal(adr.break_reason, "ADR committed")
+    }
+
+    describe unknown_artifact_fails_in_fallback_arm {
+        var result = ArtifactReview.run(inputs: {artifact: "unknown", approved: true, feedback: ""})
+        are_equal(result.state, "failed")
+        are_equal(result.step, "Gate")
+    }
+}

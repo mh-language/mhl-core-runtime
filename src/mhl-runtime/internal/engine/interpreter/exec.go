@@ -377,6 +377,8 @@ func execStatementBody(ctx *evalCtx, statement *ast.Statement) error {
 		return &breakSignal{reason: reason}
 	case statement.Goto != nil:
 		return &gotoSignal{target: statement.Goto.Target}
+	case statement.GotoMatch != nil:
+		return execGotoMatch(ctx, statement.GotoMatch)
 	case statement.Spawn != nil:
 		return execSpawn(ctx, statement.Spawn)
 	case statement.Wait != nil:
