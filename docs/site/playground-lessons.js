@@ -333,25 +333,29 @@
     "sample/features/pipelines/session_scoped_memory_pipeline_example.mh", { requirements: "Runtime MHL; a execução cria um arquivo JSON em .mhl/." });
 
   lesson("retomada", "Resiliência e integrações", "Workflow e aprovação humana",
-    "Ramifique com goto e suspenda a execução até uma decisão externa. O checkpoint permite retomar o passo.",
-    "workflow · goto · pause · checkpoint · --resume", [
+    "Ramifique com goto match e suspenda a execução até uma decisão externa. O checkpoint permite retomar o passo.",
+    "workflow · goto match · pause · checkpoint · --resume", [
       'workflow Approval {',
       '    input approved: bool',
+      '    input artifact: string',
       '    checkpoint: { ttl: 7d }',
       '',
       '    step Gate {',
       '        if (!approved) pause("Aguardando aprovação")',
-      '        goto Publish',
+      '        goto match artifact {',
+      '            "brief" -> Publish',
+      '            _ -> fail("Artefato desconhecido: " + artifact)',
+      '        }',
       '    }',
       '    step Publish {',
       '        log("approved")',
       '    }',
       '}'
     ], "Com approved=false: execução suspensa em Gate.\nRetome com approved=true: Gate é reexecutado e Publish imprime approved.",
-    ["goto é permitido em workflow, não em pipeline.", "pause é um sinal de suspensão, não uma exceção capturada por try/catch. Evite efeitos não idempotentes antes da pausa."],
-    "Execute com approved=false; depois use o comando de retomada com approved=true.",
-    "sample/syntax/pipeline_vs_workflow/linear_pipeline_and_branching_workflow.mh",
-    { args: "--input approved=false", resume: "mhl run retomada.mh --resume --input approved=true" });
+    ["goto match escolhe um step declarado; mhl lint verifica os destinos e os padrões repetidos.", "pause é um sinal de suspensão, não uma exceção capturada por try/catch. Evite efeitos não idempotentes antes da pausa."],
+    "Execute com approved=false e artifact=brief; depois retome com approved=true.",
+    "sample/syntax/pipeline_vs_workflow/goto_match_artifact_review.mh",
+    { args: "--input approved=false --input artifact=brief", resume: "mhl run retomada.mh --resume --input approved=true" });
 
   lesson("falhas", "Resiliência e integrações", "Tentativas e tratamento de falhas",
     "Defina o teto de tentativas do agente e trate o erro quando a chamada não produzir um resultado.",

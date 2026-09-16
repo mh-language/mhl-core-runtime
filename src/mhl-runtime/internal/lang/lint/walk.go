@@ -161,6 +161,12 @@ func walkStmtMatchExprs(s *ast.Statement, fn func(*ast.MatchExpr)) {
 		walkMatchExprs(s.Return.Value, fn)
 	case s.Break != nil:
 		walkMatchExprs(s.Break.Reason, fn)
+	case s.GotoMatch != nil:
+		walkMatchExprs(s.GotoMatch.Subject, fn)
+		for _, arm := range s.GotoMatch.Arms {
+			walkMatchExprs(arm.Pattern, fn)
+			walkMatchExprs(arm.Fail, fn)
+		}
 	case s.Assign != nil:
 		walkMatchExprs(s.Assign.Value, fn)
 	case s.Expr != nil:

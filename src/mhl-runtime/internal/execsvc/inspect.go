@@ -215,6 +215,12 @@ func gotoTargets(stmts []*ast.Statement, out *[]string) {
 		switch {
 		case s.Goto != nil:
 			*out = append(*out, s.Goto.Target)
+		case s.GotoMatch != nil:
+			for _, arm := range s.GotoMatch.Arms {
+				if arm.Fail == nil {
+					*out = append(*out, arm.Target)
+				}
+			}
 		case s.If != nil:
 			gotoTargets(s.If.Then, out)
 			gotoTargets(s.If.Else, out)

@@ -300,6 +300,7 @@ var next = ready.find((f) -> f.id == 20)</code></pre>
             <div class="table-row"><span>Error handling</span><code>try { ... } catch (err) { ... } finally { ... }</code><span>Handles recoverable failures.</span></div>
             <div class="table-row"><span>Return</span><code>return value</code><span>Exits a method or step.</span></div>
             <div class="table-row"><span>Transition</span><code>goto StepName</code> · <code>goto nameof(StepName)</code><span>Jumps to another step, forward or backward. Only inside a <code>workflow</code> (not a plain <code>pipeline</code>); the target must be a step of that <code>workflow</code>. The <code>nameof(...)</code> spelling is sugar for the same bare name — it's not the <code>nameof(...)</code> builtin evaluated as a call, just a way to write a goto target that reads like a router's <code>select: () -&gt; nameof(Billing)</code>.</span></div>
+            <div class="table-row"><span>Dispatch</span><code>goto match artifact { "brief" -&gt; Brief _ -&gt; fail("unknown") }</code><span>Chooses a step by the same first-match equality as expression <code>match</code>. Destinations are declared step identifiers, checked by lint; duplicate patterns and arms after <code>_</code> are reported. Without a matching arm, the run fails.</span></div>
             <div class="table-row"><span>Stop</span><code>break "reason"</code><span>Ends the current pipeline or loop early — a clean stop (exit 0, not a failure) that keeps the run's variable state as its result.</span></div>
             <div class="table-row"><span>Pause</span><code>pause("reason")</code><span>Suspends the run at this step for a human-in-the-loop hand-off — not a failure, not a completion. Keeps the checkpoint; <code>mhl run --resume</code> / <code>run/resume {runId, arguments}</code> re-enters this step with the merged decision.</span></div>
           </div>
@@ -819,7 +820,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
             <div class="table-row table-head"><span></span><span><code>pipeline</code></span><span><code>workflow</code></span></div>
             <div class="table-row"><span>Steps in declared order, each once</span><code>yes</code><code>yes</code></div>
             <div class="table-row"><span><code>parallel</code>, <code>spawn</code>/<code>wait</code>, <code>loop</code> + <code>repeat:</code></span><code>yes</code><code>yes</code></div>
-            <div class="table-row"><span><code>goto &lt;step&gt;</code></span><code>lint error</code><code>yes — forward or backward</code></div>
+            <div class="table-row"><span><code>goto &lt;step&gt;</code> / <code>goto match</code></span><code>lint error</code><code>yes — forward or backward</code></div>
             <div class="table-row"><span>Reading guarantee</span><code>runs top to bottom</code><code>may branch — read the goto's</code></div>
           </div>
 
@@ -844,6 +845,16 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
         log.info("publishing to", environment)
     }
 }</code></pre>
+          <p class="block-label">STATIC STEP DISPATCH</p>
+          <pre class="code-block"><code class="language-mhl">step Gate {
+    if (!approved) pause("review " + artifact)
+    goto match artifact {
+        "brief" -&gt; BriefCommit
+        "adr"   -&gt; AdrCommit
+        _ -&gt; fail("unknown artifact: " + artifact)
+    }
+}</code></pre>
+          <p><code>goto match</code> evaluates <code>artifact</code> once and selects the first matching arm. The destination is a step name, not a computed string. <code>mhl lint</code> checks all destinations, duplicate patterns, and arms after the wildcard. On <code>--resume</code>, a paused <code>Gate</code> runs again with updated inputs and selects the route then. See <code>sample/syntax/pipeline_vs_workflow/goto_match_artifact_review.mh</code> for generation and commit routes in one workflow.</p>
           <div class="run-stack">
             <div class="inline-code"><span>start</span><code>mhl run release.mh --input environment=staging</code></div>
             <div class="inline-code"><span>resume</span><code>mhl run release.mh --input environment=staging --resume</code></div>

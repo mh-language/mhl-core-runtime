@@ -33,7 +33,7 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
 - [param_defaults/](param_defaults/README.md) — default values for `tool` method, lambda and
   `prompt` parameters (`greeting: string = "Hello"`)
 - [pipeline_vs_workflow/](pipeline_vs_workflow/README.md) — `pipeline` (linear) vs `workflow`
-  (`goto`-capable); same grammar, one static rule apart
+  (`goto`-capable), including `goto match` for static step dispatch
 - [string_methods/](string_methods/README.md) — built-in string methods
 - [type_alias/](type_alias/README.md) — `type X = <TypeExpr>` named aliases for the type
   vocabulary

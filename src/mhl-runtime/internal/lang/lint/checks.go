@@ -516,6 +516,7 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 
 		for _, m := range p.Body {
 			for _, step := range pipelineMemberSteps(m) {
+				findings = append(findings, checkGotoMatchArms(file, step.Body, p.IsWorkflow())...)
 				walkGotoBreak(step.Body, func(target string, isBreak bool, pos lexer.Position) {
 					if isBreak {
 						return
@@ -534,6 +535,59 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 		}
 	}
 	return findings
+}
+
+func checkGotoMatchArms(file string, stmts []*ast.Statement, workflow bool) []Finding {
+	var findings []Finding
+	for _, s := range stmts {
+		if s == nil {
+			continue
+		}
+		if m := s.GotoMatch; m != nil {
+			if !workflow && len(m.Arms) > 0 && allGotoMatchArmsFail(m) {
+				findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column, Message: "`goto` is only valid inside a `workflow`"})
+			}
+			seen := map[string]bool{}
+			wildcard := false
+			for _, arm := range m.Arms {
+				if wildcard {
+					findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: "goto match arm is unreachable: it follows the `_` wildcard"})
+				}
+				if arm.Wildcard {
+					wildcard = true
+					continue
+				}
+				key := patternKey(arm.Pattern)
+				if key != "" && seen[key] {
+					findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("duplicate goto match pattern %s", key)})
+				}
+				seen[key] = true
+			}
+		}
+		switch {
+		case s.If != nil:
+			findings = append(findings, checkGotoMatchArms(file, s.If.Then, workflow)...)
+			findings = append(findings, checkGotoMatchArms(file, s.If.Else, workflow)...)
+		case s.While != nil:
+			findings = append(findings, checkGotoMatchArms(file, s.While.Body, workflow)...)
+		case s.ForIn != nil:
+			findings = append(findings, checkGotoMatchArms(file, s.ForIn.Body, workflow)...)
+		case s.Try != nil:
+			findings = append(findings, checkGotoMatchArms(file, s.Try.Body, workflow)...)
+			findings = append(findings, checkGotoMatchArms(file, s.Try.Catch, workflow)...)
+			findings = append(findings, checkGotoMatchArms(file, s.Try.Finally, workflow)...)
+		}
+	}
+	return findings
+}
+
+func allGotoMatchArmsFail(m *ast.GotoMatchStmt) bool {
+	for _, arm := range m.Arms {
+		if arm.Fail == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // pipelineMemberSteps returns the step(s) a pipeline body member contributes
@@ -571,6 +625,12 @@ func walkGotoBreak(stmts []*ast.Statement, fn func(target string, isBreak bool, 
 		switch {
 		case s.Goto != nil:
 			fn(s.Goto.Target, false, s.Pos)
+		case s.GotoMatch != nil:
+			for _, arm := range s.GotoMatch.Arms {
+				if arm.Fail == nil {
+					fn(arm.Target, false, arm.Pos)
+				}
+			}
 		case s.Break != nil:
 			fn("", true, s.Pos)
 		case s.If != nil:

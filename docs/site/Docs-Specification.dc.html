@@ -177,6 +177,8 @@ lambda         ::= "(" [parameter ("," parameter)*] ")" "->" (expression | block
 if-expression  ::= "if" "(" expression ")" expression "else" expression
 match          ::= "match" expression "{" match-arm+ "}"
 match-arm      ::= ("_" | expression) "->" expression
+goto-match     ::= "goto" "match" expression "{" goto-match-arm+ "}"
+goto-match-arm ::= ("_" | expression) "->" (Identifier | "fail" "(" expression ")")
 block          ::= "{" statement* "}"</pre>
 <p>A declaration body is a sequence of properties and/or declaration-specific members. Object fields may be separated by commas, line breaks, or both. MHL does not require semicolons.</p>
 </section>
@@ -262,6 +264,7 @@ var decision = match status {
 <tr><td>Break</td><td><code>break [expression]</code></td><td>Stops the current pipeline run and, for a loop pipeline, stops further iterations. It is not a nearest-while/for exit.</td></tr>
 <tr><td>Pause</td><td><code>pause([expression])</code></td><td>Suspends the run at this step for a human-in-the-loop hand-off — neither a failure nor a completion. The checkpoint is kept; <code>mhl run --resume</code> (or the server's <code>run/resume</code>) re-enters this step with any merged inputs. It is a control signal, so <code>try/catch</code> does not catch it, and it needs no checkpoint block.</td></tr>
 <tr><td>Goto</td><td><code>goto StepName</code> or <code>goto nameof(StepName)</code></td><td>Transfers to a named step. Legal only in a <code>workflow</code>. The <code>nameof(...)</code>-wrapped spelling is pure grammar sugar for the same bare step name — it is not evaluated as the <code>nameof(...)</code> expression-position builtin (§10) — so a step it names is still checked purely as a step reference, not as a top-level declaration name.</td></tr>
+<tr><td>Goto match</td><td><code>goto match value { pattern -&gt; StepName _ -&gt; fail(reason) }</code></td><td>Evaluates the subject once and tests arms in order using the same equality as expression <code>match</code>. A selected step name is a static identifier in the current <code>workflow</code>, checked by lint. An unmatched value without a wildcard fails at runtime; a selected <code>fail(reason)</code> arm fails with the formatted reason. Lint reports duplicate patterns and arms after <code>_</code>.</td></tr>
 <tr><td>Expression</td><td><code>call(...)</code> or any expression</td><td>Evaluates for its side effect or discards its value.</td></tr>
 </tbody></table>
 <p><code>fail(...values)</code> raises an error whose message is the formatted, space-joined values. A non-zero process exit code, an HTTP non-2xx response, and a failed assertion are values or test outcomes according to their APIs; they do not automatically become language raises unless documented otherwise.</p>
@@ -627,6 +630,16 @@ extensible crm {
     }
 }</code></pre>
 <p>A plain <code>pipeline</code> runs steps in declaration order and rejects <code>goto</code>. A <code>workflow</code> has the same model but permits forward or backward jumps to its own named steps. A step timeout creates a deadline for blocking calls and fails the step when it expires. A checkpoint is saved after each completed step when per-step checkpointing is enabled; <code>mhl run ... --resume</code> re-enters after the last completed unit with a fresh timeout budget.</p>
+<p>For a recurring dispatch, write <code>goto match</code> rather than a chain of <code>if (artifact == ...)</code> checks. Each arm names a declared step, so a typo is caught by lint. A review gate may pause and, on resume, choose generation or commit:</p>
+<pre class="code-block"><code class="language-mhl">step Gate {
+    if (!approved) pause("review " + artifact)
+    goto match artifact {
+        "brief" -&gt; BriefCommit
+        "adr"   -&gt; AdrCommit
+        _ -&gt; fail("unknown artifact: " + artifact)
+    }
+}</code></pre>
+<p>The full feedback and approval flow is in <code>sample/syntax/pipeline_vs_workflow/goto_match_artifact_review.mh</code>. A paused run re-enters <code>Gate</code> with updated inputs; the route is selected then.</p>
 <p>Each checkpoint carries a digest of the pipeline it was written for — that pipeline's own declaration plus the shared declarations it may reference (agents, tools, prompts, memory, extensions, type aliases, enums, imports); positions, comments, sibling pipelines and <code>test</code> blocks are excluded — together with the runtime build version and a state-schema version. A <code>--resume</code> whose current digest differs MUST be refused rather than run stale variable state through changed control flow, unless the operator passes <code>--force</code> (mismatch becomes a warning). A newer state schema is refused regardless of <code>--force</code>; a checkpoint predating the digest field resumes unconditionally.</p>
 <p>Execution is <em>at-least-once</em> per step. A checkpoint records inter-step progress, not the external effects a step produced: a step that fails (or a process that dies) after performing an effect but before its checkpoint is written re-runs that effect on <code>--resume</code>; a <code>pause</code> re-enters its step; a failed <code>parallel</code> branch re-runs beside completed siblings. The runtime does not deduplicate external effects — a step that mutates an outside system MUST be made idempotent by the program (an idempotency key, check-then-act, or a prepare/apply split).</p>
 <p>Checkpoint state is JSON. A pipeline-scoped variable is checkpointable only if its value is JSON-representable — a string, number, bool, <code>null</code>, or an array/object of those; resolved credentials are persisted as their reference and re-resolved on <code>--resume</code>. A pipeline-scoped variable holding a value JSON cannot represent (a closure, an opaque handle) MUST fail the run at the next checkpoint rather than be silently persisted as an empty object.</p>

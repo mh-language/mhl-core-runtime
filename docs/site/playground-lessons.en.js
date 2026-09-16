@@ -132,11 +132,11 @@
     },
     retomada: {
       title: "Workflows and human approval",
-      description: "Branch with goto and suspend execution until an external decision arrives. The checkpoint lets you resume the step.",
+      description: "Branch with goto match and suspend execution until an external decision arrives. The checkpoint lets you resume the step.",
       result: "With approved=false: execution pauses in Gate.\nResume with approved=true: Gate runs again and Publish prints approved.",
-      notes: ["goto is allowed in workflow, not in pipeline.", "pause is a suspension signal, not an exception caught by try/catch. Avoid non-idempotent effects before pausing."],
-      challenge: "Run with approved=false, then use the resume command with approved=true.",
-      replacements: [["Aguardando aprovação", "Awaiting approval"]]
+      notes: ["goto match selects a declared step; lint checks targets and duplicate patterns.", "pause is a suspension signal, not an exception caught by try/catch. Avoid non-idempotent effects before pausing."],
+      challenge: "Run with approved=false and artifact=brief, then resume with approved=true.",
+      replacements: [["Aguardando aprovação", "Awaiting approval"], ["Artefato desconhecido", "Unknown artifact"]]
     },
     falhas: {
       title: "Retries and error handling",
