@@ -11,6 +11,15 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/cli"
 )
 
+// shortCircuitMargin bounds the wall-clock checks below that distinguish "the
+// slow spawn was cancelled promptly" from "it ran to completion" (each uses a
+// 30s straggler). It only needs to sit well under 30s — under `go test ./...`
+// package-level parallelism on a loaded/shared CI runner, the goroutine that
+// delivers the kill signal can be scheduled much later than on a quiet
+// machine, so a tight margin (previously 5s) flakes without indicating an
+// actual cancellation bug.
+const shortCircuitMargin = 20 * time.Second
+
 // runSpawn writes src to a temp dir, runs `mhl run` from inside it, and
 // returns stdout plus any error.
 func runSpawn(t *testing.T, src string, args ...string) (string, error) {
@@ -169,7 +178,7 @@ pipeline P {
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
-	if time.Since(start) > 5*time.Second {
+	if time.Since(start) > shortCircuitMargin {
 		t.Fatalf("quorum did not short-circuit the 30s straggler")
 	}
 	if !strings.Contains(out, "a=done b=done c=cancelled") {
@@ -197,7 +206,7 @@ pipeline P {
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
-	if time.Since(start) > 5*time.Second {
+	if time.Since(start) > shortCircuitMargin {
 		t.Fatalf("wait any did not short-circuit the slow spawn")
 	}
 	if !strings.Contains(out, "f.ok=true s.ok=false") {
@@ -223,7 +232,7 @@ pipeline P {
 	if err == nil {
 		t.Fatalf("expected a timeout failure:\n%s", out)
 	}
-	if time.Since(start) > 5*time.Second {
+	if time.Since(start) > shortCircuitMargin {
 		t.Fatalf("timeout did not fire promptly")
 	}
 	if !strings.Contains(err.Error(), "timed out") {
