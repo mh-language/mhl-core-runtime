@@ -174,8 +174,8 @@ func (d *diskSessionStore) Put(sess *session) {
 		return
 	}
 	b, err := json.Marshal(sessionRec{
-		ID: sess.id, Principal: sess.principal, Initialized: sess.initialized,
-		Protocol: sess.protocol, LastUsed: time.Now(),
+		ID: sess.id, Principal: sess.getPrincipal(), Initialized: sess.isInitialized(),
+		Protocol: sess.getProtocol(), LastUsed: time.Now(),
 	})
 	if err != nil {
 		return

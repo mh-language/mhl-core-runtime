@@ -463,7 +463,7 @@ func (h *httpServer) runStart(sess *session, msg rpcMsg) *rpcMsg {
 	rn := &asyncRun{
 		id:        runtime.NewSessionID(),
 		owner:     h.ownerOf(sess),
-		principal: sess.principal,
+		principal: sess.getPrincipal(),
 		tool:      w,
 		args:      p.Arguments,
 		started:   time.Now(),
@@ -485,7 +485,7 @@ func (h *httpServer) runStart(sess *session, msg rpcMsg) *rpcMsg {
 			// Persisting the run failed: fall back rather than drop it.
 			h.srv.logEvent(slog.LevelError, "durable intake write failed — launching in-memory only",
 				"runId", rn.id, "err", err.Error())
-			if sess.principal != "" {
+			if sess.getPrincipal() != "" {
 				_ = h.cps.WriteOwner(rn.id, rn.owner)
 			}
 			h.launch(ctx, rn, false)
@@ -503,7 +503,7 @@ func (h *httpServer) runStart(sess *session, msg rpcMsg) *rpcMsg {
 	// Persist the owner only for a verified principal: a session-hash owner
 	// (no verifier) can't survive a restart anyway — each process mints fresh
 	// session ids — so cross-restart reclaim stays as in Phase 0 there.
-	if sess.principal != "" {
+	if sess.getPrincipal() != "" {
 		_ = h.cps.WriteOwner(rn.id, rn.owner)
 	}
 	h.launch(ctx, rn, false)
@@ -582,12 +582,12 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	}
 	ctx, cancel := context.WithCancel(h.runsCtx)
 	rn.errMsg, rn.updated = "", time.Now()
-	rn.principal = sess.principal // context.principal for this leg = the resumer
+	rn.principal = sess.getPrincipal() // context.principal for this leg = the resumer
 	rn.cancel, rn.done = cancel, make(chan struct{})
 	rn.mu.Unlock()
 
 	h.runs.Put(rn)
-	if sess.principal != "" { // (re)bind — see runStart
+	if sess.getPrincipal() != "" { // (re)bind — see runStart
 		_ = h.cps.WriteOwner(rn.id, rn.owner)
 	}
 
@@ -893,8 +893,8 @@ func (h *httpServer) runList(sess *session, msg rpcMsg) *rpcMsg {
 // Phase-0 per-session hash so a plain --token / no-verifier deployment is
 // unchanged.
 func (h *httpServer) ownerOf(sess *session) Owner {
-	if sess.principal != "" {
-		return ownerFor(sess.principal)
+	if p := sess.getPrincipal(); p != "" {
+		return ownerFor(p)
 	}
 	return ownerFromSession(sess.id)
 }

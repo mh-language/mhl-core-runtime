@@ -44,6 +44,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
@@ -90,7 +91,19 @@ const listCacheTTLms = 300000
 // for the whole process; over HTTP a session is created by `initialize` and
 // keyed by the `Mcp-Session-Id` header, or is ephemeral (one request) for a
 // stateless `params._meta` call.
+//
+// Over HTTP, memSessionStore.Get hands the same *session to every concurrent
+// request carrying the same Mcp-Session-Id — exactly what a caller polling
+// run/status while another call is in flight on the same session does. mu
+// guards every field below except id, which mintSession/http.go's initialize
+// path sets once before the session is ever published to a SessionStore (so
+// no reader can observe it before that first Put, and it never changes
+// after) — read/write it directly. The others (initialized, protocol,
+// principal) are mutated on later requests against an already-shared
+// pointer, so every access — even a same-value write — goes through the
+// methods below; a bare field read/write here is a data race.
 type session struct {
+	mu sync.RWMutex
 	// initialized is set once the client completes the legacy `initialize`
 	// handshake; before then every tools/* call is served statelessly and
 	// must carry the 2026-07-28 params._meta protocol fields.
@@ -103,6 +116,40 @@ type session struct {
 	// TokenVerifier), refreshed on every request. "" when no verifier yields
 	// one — run ownership then falls back to the per-session hash.
 	principal string
+}
+
+// setHandshake records a legacy `initialize` handshake: initialized and
+// protocol must become visible together under one lock, never with one set
+// and the other still at its zero value for a concurrent reader.
+func (s *session) setHandshake(protocol string) {
+	s.mu.Lock()
+	s.initialized = true
+	s.protocol = protocol
+	s.mu.Unlock()
+}
+
+func (s *session) isInitialized() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.initialized
+}
+
+func (s *session) getProtocol() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.protocol
+}
+
+func (s *session) setPrincipal(p string) {
+	s.mu.Lock()
+	s.principal = p
+	s.mu.Unlock()
+}
+
+func (s *session) getPrincipal() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.principal
 }
 
 // Serve loads every .mh file under dir, then reads JSON-RPC messages from in
@@ -217,8 +264,8 @@ func (s *server) dispatch(ctx context.Context, sess *session, msg rpcMsg) *rpcMs
 		// Legacy semantics: the handshake result carries no `resultType` and
 		// puts serverInfo at the top level, matching revisions 2025-*.
 		res := s.initializeResult(msg.Params)
-		sess.initialized = true
-		sess.protocol, _ = res["protocolVersion"].(string)
+		protocol, _ := res["protocolVersion"].(string)
+		sess.setHandshake(protocol)
 		return resultMsg(msg.ID, res)
 	case "notifications/initialized":
 		return nil // no-op (legacy lifecycle)
@@ -239,7 +286,7 @@ func (s *server) dispatch(ctx context.Context, sess *session, msg rpcMsg) *rpcMs
 	case "ping":
 		// `ping` was removed in 2026-07-28 — honour it only for a legacy
 		// (2025-11-25 and earlier) connection.
-		if sess.initialized {
+		if sess.isInitialized() {
 			return resultMsg(msg.ID, map[string]any{})
 		}
 		return errMsg(msg.ID, -32601, "method not found: ping")
@@ -251,7 +298,7 @@ func (s *server) dispatch(ctx context.Context, sess *session, msg rpcMsg) *rpcMs
 			return errMsg(msg.ID, -32602, "unknown cursor: this server returns the full tool list unpaginated")
 		}
 		payload := map[string]any{"tools": s.toolList()}
-		if !sess.initialized {
+		if !sess.isInitialized() {
 			payload["ttlMs"] = listCacheTTLms
 			payload["cacheScope"] = "public"
 		}
@@ -300,7 +347,7 @@ func listCursor(params json.RawMessage) string {
 // decorations (`resultType: "complete"` and `_meta` serverInfo) unless a
 // legacy `initialize` handshake is in effect for this session.
 func (s *server) replyResult(sess *session, id json.RawMessage, payload map[string]any) *rpcMsg {
-	if !sess.initialized {
+	if !sess.isInitialized() {
 		decorateModern(payload)
 	}
 	return resultMsg(id, payload)
@@ -326,7 +373,7 @@ func decorateModern(payload map[string]any) {
 // implement is UnsupportedProtocolVersionError (-32022, listing what it
 // supports). A non-nil return is the error response to send.
 func (s *server) requireProtocolContext(sess *session, msg rpcMsg) *rpcMsg {
-	if sess.initialized {
+	if sess.isInitialized() {
 		return nil
 	}
 	pv, hasPV, hasCaps := statelessMeta(msg.Params)
@@ -469,7 +516,7 @@ func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage
 		Workflow:  w.Name,
 		Inputs:    p.Arguments,
 		BaseDir:   base,
-		Principal: sess.principal,
+		Principal: sess.getPrincipal(),
 		// A running tool's log()/step output goes to the diagnostics sink
 		// (stderr), never to the protocol stream. The deprecated Logging
 		// feature's own migration guidance for stdio is "log to stderr".

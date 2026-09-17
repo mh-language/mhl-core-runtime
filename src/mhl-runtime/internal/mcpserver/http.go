@@ -518,8 +518,11 @@ func (h *httpServer) serveMCP(w http.ResponseWriter, r *http.Request, pathMethod
 		sess = &session{}
 	}
 	// The principal is verified on every request — a stored legacy session
-	// does not cache it, so an expired credential stops working at once.
-	sess.principal = principal
+	// does not cache it, so an expired credential stops working at once. This
+	// session may already be shared with another in-flight request on the
+	// same Mcp-Session-Id (run/status polling alongside run/start, e.g.), so
+	// the write goes through setPrincipal rather than a bare field assignment.
+	sess.setPrincipal(principal)
 
 	// run/* is this server's async-execution extension: start a workflow,
 	// poll its step, cancel it — gated by the same protocol context as
