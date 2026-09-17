@@ -2,12 +2,14 @@ package mcpserver_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1527,5 +1529,101 @@ func TestHTTPRunStartResourceLink(t *testing.T) {
 	}
 	if !links["mhl://run/"+runID+"/logs"] || !links["mhl://run/"+runID+"/result"] {
 		t.Errorf("mhl_run_start content carried no run resource_link: %v", res["content"])
+	}
+}
+
+// concurrentPostMCP is postMCP's goroutine-safe twin: it reports failure by
+// returning an error instead of calling t.Fatal, which must only ever run on
+// the test's own goroutine, not one spawned by it.
+func concurrentPostMCP(url, sid string, msg map[string]any) (map[string]any, error) {
+	body, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, url+"/mcp", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Mcp-Session-Id", sid)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	return out, nil
+}
+
+// TestHTTPConcurrentRequestsOnSharedSession pins the regression this fixes: a
+// caller polling run/status while another goroutine fires run/start (or a
+// plain tool call) on the *same* Mcp-Session-Id, the way a single mhl-serving
+// process shared by several concurrent callers does in practice.
+// memSessionStore.Get hands every one of the requests below the identical
+// *session pointer — before session grew its mutex, serveMCP's bare
+// `sess.principal = principal` and runs.go's ownerOf/rn.principal reads raced
+// on it on every single request. `go test -race` catches that directly; the
+// corruption it causes in production surfaces as a torn response the client
+// reads as "decode response: EOF", or a wrong derived Owner turning a run
+// that does belong to this session into a spurious "unknown runId" 404 — both
+// reported from a real deployment driving mhl through exactly this pattern.
+func TestHTTPConcurrentRequestsOnSharedSession(t *testing.T) {
+	ts := newHTTPServer(t, "", nil)
+	sid := initHTTPSession(t, ts.URL)
+
+	const workers = 16
+	const itersPerWorker = 25
+
+	var wg sync.WaitGroup
+	errs := make(chan error, workers*itersPerWorker)
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < itersPerWorker; i++ {
+				var body map[string]any
+				var err error
+				switch w % 3 {
+				case 0: // a plain synchronous tool call
+					body, err = concurrentPostMCP(ts.URL, sid, rpcMap(1, "tools/call", map[string]any{
+						"name": "Greet", "arguments": map[string]any{"name": "race"},
+					}))
+				case 1: // the async path — exercises ownerOf/rn.principal
+					body, err = concurrentPostMCP(ts.URL, sid, rpcMap(1, "run/start", map[string]any{
+						"name": "Greet", "arguments": map[string]any{"name": "race"},
+					}))
+				default: // a read that only needs sess.isInitialized()
+					body, err = concurrentPostMCP(ts.URL, sid, rpcMap(1, "tools/list", nil))
+				}
+				if err != nil {
+					errs <- fmt.Errorf("worker %d iter %d: %w", w, i, err)
+					continue
+				}
+				if body["error"] != nil {
+					errs <- fmt.Errorf("worker %d iter %d: rpc error %v", w, i, body["error"])
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errs)
+
+	var n int
+	for err := range errs {
+		if n < 10 {
+			t.Error(err)
+		}
+		n++
+	}
+	if n > 10 {
+		t.Errorf("... and %d more errors", n-10)
 	}
 }
