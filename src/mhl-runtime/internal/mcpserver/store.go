@@ -146,6 +146,37 @@ func newDiskSessionStore(runsDir string) *diskSessionStore {
 
 func (d *diskSessionStore) path(id string) string { return filepath.Join(d.dir, id+".json") }
 
+// atomicWriteFile writes data to finalPath via a uniquely-named temp file in
+// dir, then renames over finalPath. The unique name (os.CreateTemp, not a
+// fixed ".tmp" suffix) is what makes this safe under concurrent callers:
+// Get's LastUsed bump below is called by every in-flight request on a
+// session, so a shared temp name would let two writers race on the temp file
+// itself before either rename runs — corrupting it as badly as writing
+// finalPath directly would have. The rename itself is atomic (POSIX/Win32),
+// so a concurrent reader of finalPath always sees a complete old or new file,
+// never a partial write from os.WriteFile's truncate-then-write.
+func atomicWriteFile(dir, finalPath string, data []byte, perm os.FileMode) error {
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_, werr := f.Write(data)
+	cerr := f.Close()
+	if werr != nil || cerr != nil {
+		os.Remove(tmp)
+		if werr != nil {
+			return werr
+		}
+		return cerr
+	}
+	if err := os.Chmod(tmp, perm); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, finalPath)
+}
+
 func (d *diskSessionStore) Get(id string) (*session, bool) {
 	if id == "" {
 		return nil, false
@@ -158,10 +189,12 @@ func (d *diskSessionStore) Get(id string) (*session, bool) {
 	if json.Unmarshal(b, &rec) != nil {
 		return nil, false
 	}
-	// Bump the idle timer, best-effort.
+	// Bump the idle timer, best-effort. Every in-flight request on this
+	// session calls Get concurrently, so this write must be atomic — see
+	// atomicWriteFile.
 	rec.LastUsed = time.Now()
 	if nb, mErr := json.Marshal(rec); mErr == nil {
-		_ = os.WriteFile(d.path(id), nb, 0o600)
+		_ = atomicWriteFile(d.dir, d.path(id), nb, 0o600)
 	}
 	return &session{id: rec.ID, principal: rec.Principal, initialized: rec.Initialized, protocol: rec.Protocol}, true
 }
@@ -180,10 +213,7 @@ func (d *diskSessionStore) Put(sess *session) {
 	if err != nil {
 		return
 	}
-	tmp := d.path(sess.id) + ".tmp"
-	if os.WriteFile(tmp, b, 0o600) == nil {
-		_ = os.Rename(tmp, d.path(sess.id))
-	}
+	_ = atomicWriteFile(d.dir, d.path(sess.id), b, 0o600)
 }
 
 func (d *diskSessionStore) Delete(id string) bool {
