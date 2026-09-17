@@ -109,8 +109,8 @@ func (s *extSessionStore) Get(id string) (*session, bool) {
 
 func (s *extSessionStore) Put(sess *session) {
 	_ = s.kv.Put(context.Background(), kvSessionPrefix+sess.id, sessionRec{
-		ID: sess.id, Principal: sess.principal, Initialized: sess.initialized,
-		Protocol: sess.protocol, LastUsed: time.Now(),
+		ID: sess.id, Principal: sess.getPrincipal(), Initialized: sess.isInitialized(),
+		Protocol: sess.getProtocol(), LastUsed: time.Now(),
 	})
 }
 
