@@ -1,6 +1,7 @@
 package mcpserver_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1603,6 +1604,68 @@ func TestHTTPConcurrentRequestsOnSharedSession(t *testing.T) {
 				default: // a read that only needs sess.isInitialized()
 					body, err = concurrentPostMCP(ts.URL, sid, rpcMap(1, "tools/list", nil))
 				}
+				if err != nil {
+					errs <- fmt.Errorf("worker %d iter %d: %w", w, i, err)
+					continue
+				}
+				if body["error"] != nil {
+					errs <- fmt.Errorf("worker %d iter %d: rpc error %v", w, i, body["error"])
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errs)
+
+	var n int
+	for err := range errs {
+		if n < 10 {
+			t.Error(err)
+		}
+		n++
+	}
+	if n > 10 {
+		t.Errorf("... and %d more errors", n-10)
+	}
+}
+
+// TestHTTPConcurrentRequestsOnSharedSessionWithStateDir is
+// TestHTTPConcurrentRequestsOnSharedSession's twin for a --state-dir
+// deployment (diskSessionStore instead of memSessionStore). That backend
+// never shared the *session pointer the first race depended on, so it looked
+// immune — but Get's own LastUsed bump wrote the session file with a plain
+// os.WriteFile (truncate then write, not a rename), and every in-flight
+// request on the session calls Get concurrently. A reader catching that
+// write mid-flight got a truncated file, failed to unmarshal it, and the
+// session came back "unknown" — the same decode-error/404 symptom, from a
+// completely different code path than the one server.go's mutex fixed.
+func TestHTTPConcurrentRequestsOnSharedSessionWithStateDir(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, "state")
+	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(httpWF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := mcpserver.HandlerWithState(context.Background(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
+	if err != nil {
+		t.Fatalf("HandlerWithState: %v", err)
+	}
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+
+	sid := initHTTPSession(t, ts.URL)
+
+	const workers = 16
+	const itersPerWorker = 25
+
+	var wg sync.WaitGroup
+	errs := make(chan error, workers*itersPerWorker)
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < itersPerWorker; i++ {
+				body, err := concurrentPostMCP(ts.URL, sid, rpcMap(1, "tools/list", nil))
 				if err != nil {
 					errs <- fmt.Errorf("worker %d iter %d: %w", w, i, err)
 					continue
