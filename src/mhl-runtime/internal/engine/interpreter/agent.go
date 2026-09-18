@@ -257,6 +257,7 @@ func resolveAgentStringArg(ctx *evalCtx, call *ast.Call, name string, depth int)
 type agentCacheParams struct {
 	Command     string   `json:"command,omitempty"`
 	Args        []string `json:"args,omitempty"`
+	Stdin       string   `json:"stdin,omitempty"`
 	Endpoint    string   `json:"endpoint,omitempty"`
 	Model       string   `json:"model,omitempty"`
 	Temperature *float64 `json:"temperature,omitempty"`
@@ -272,13 +273,14 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 
 	var command string
 	var cmdArgs []string
+	var stdinTemplate string
 	var endpoint, model string
 	var temperature *float64
 
 	switch {
 	case engine == "" || strings.HasPrefix(engine, "cli/"):
 		var cfgErr error
-		command, cmdArgs, cfgErr = resolveAgentCommand(ctx, agent, depth)
+		command, cmdArgs, stdinTemplate, cfgErr = resolveAgentCommand(ctx, agent, depth)
 		if cfgErr != nil {
 			return "", cfgErr
 		}
@@ -307,6 +309,7 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 		params := agentCacheParams{
 			Command:     command,
 			Args:        cmdArgs,
+			Stdin:       stdinTemplate,
 			Endpoint:    endpoint,
 			Model:       model,
 			Temperature: temperature,
@@ -354,11 +357,16 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 		var result tools.Result
 		var runErr error
 		if engine == "" || strings.HasPrefix(engine, "cli/") {
-			finalArgs, argErr := injectSchemaArg(injectPromptArg(cmdArgs, promptText), schemaText)
+			promptViaStdin := strings.Contains(stdinTemplate, "${prompt}")
+			finalArgs, argErr := injectSchemaArg(injectPromptArg(cmdArgs, promptText, promptViaStdin), schemaText)
 			if argErr != nil {
 				return traffic.Result{}, fmt.Errorf("agent %q: %w", agentName, argErr)
 			}
-			cmd := tools.Cmd{}
+			stdinText, stdinErr := resolveStdinText(stdinTemplate, promptText, schemaText)
+			if stdinErr != nil {
+				return traffic.Result{}, fmt.Errorf("agent %q: %w", agentName, stdinErr)
+			}
+			cmd := tools.Cmd{Stdin: stdinText}
 			// Under `spawn`, an agent's `log:` file is deliberately ignored:
 			// several goroutines can be running the same agent at once, and
 			// AppendWriter streams many small O_APPEND writes that would
@@ -403,55 +411,72 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 	return response, nil
 }
 
-// resolveAgentCommand evaluates an agent's `command`/`args` properties
-// against ctx's real evalCtx — unlike ast.AgentCommand (the purely-syntactic
-// reader internal/lang/lint uses), this lets `command`/`args` be any
-// expression, not just a string literal, e.g. `command: env("MODEL_CMD")` to
-// pick a backend per environment without duplicating the whole agent
-// declaration (MHL-Melhorias.md #1). Mirrors
+// resolveAgentCommand evaluates an agent's `command`/`args`/`stdin`
+// properties against ctx's real evalCtx — unlike ast.AgentCommand (the
+// purely-syntactic reader internal/lang/lint uses), this lets any of the
+// three be any expression, not just a string literal, e.g.
+// `command: env("MODEL_CMD")` to pick a backend per environment without
+// duplicating the whole agent declaration (MHL-Melhorias.md #1). Mirrors
 // resolveExtensionDeclaration's pattern (extension_ops.go): every credential
-// reference reachable in either property is resolved through
+// reference reachable in any of the three is resolved through
 // internal/features/auth first, so a missing env var fails closed before
 // anything runs and the secret is registered for auth.Redact regardless of
 // which property it came from.
-func resolveAgentCommand(ctx *evalCtx, agent *ast.Agent, depth int) (string, []string, error) {
-	var commandExpr, argsExpr *ast.Expr
+//
+// The returned stdin string is the raw, pre-substitution template exactly
+// as declared (its "${prompt}"/"${schema}" spans, if any, still literal) —
+// resolveStdinText fills them in once promptText/schemaText are known, the
+// same two-phase split resolveAgentCommand's args/injectPromptArg already
+// use. An agent with no `stdin:` property returns "", meaning "route
+// everything through argv as before, this property never existed for it".
+func resolveAgentCommand(ctx *evalCtx, agent *ast.Agent, depth int) (string, []string, string, error) {
+	var commandExpr, argsExpr, stdinExpr *ast.Expr
 	for _, prop := range agent.Props {
 		switch prop.Name {
 		case "command":
 			commandExpr = prop.Value
 		case "args":
 			argsExpr = prop.Value
+		case "stdin":
+			stdinExpr = prop.Value
 		}
 	}
 	if commandExpr == nil {
-		return "", nil, fmt.Errorf("agent %q has no command", agent.Name)
+		return "", nil, "", fmt.Errorf("agent %q has no command", agent.Name)
 	}
 
 	command, err := resolveCommandLikeExpr(ctx, agent.Name, "command", commandExpr, depth)
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 	if command == "" {
-		return "", nil, fmt.Errorf("agent %q has no command", agent.Name)
+		return "", nil, "", fmt.Errorf("agent %q has no command", agent.Name)
+	}
+
+	var stdinTemplate string
+	if stdinExpr != nil {
+		stdinTemplate, err = resolveCommandLikeExpr(ctx, agent.Name, "stdin", stdinExpr, depth)
+		if err != nil {
+			return "", nil, "", err
+		}
 	}
 
 	if argsExpr == nil {
-		return command, nil, nil
+		return command, nil, stdinTemplate, nil
 	}
 	arr := ast.BareArray(argsExpr)
 	if arr == nil {
-		return "", nil, fmt.Errorf("agent %q args must be an array of strings", agent.Name)
+		return "", nil, "", fmt.Errorf("agent %q args must be an array of strings", agent.Name)
 	}
 	args := make([]string, 0, len(arr.Items))
 	for _, item := range arr.Items {
 		s, err := resolveCommandLikeExpr(ctx, agent.Name, "args", item, depth)
 		if err != nil {
-			return "", nil, err
+			return "", nil, "", err
 		}
 		args = append(args, s)
 	}
-	return command, args, nil
+	return command, args, stdinTemplate, nil
 }
 
 // resolveCommandLikeExpr resolves one `command`/`args`-element-shaped
@@ -496,15 +521,24 @@ func resolveCommandLikeExpr(ctx *evalCtx, agentName, propName string, expr *ast.
 //
 // This lets a CLI agent that requires its prompt in a specific position
 // (not necessarily last, e.g. immediately after a flag like `-p`) declare
-// that explicitly. When no placeholder is present, promptText is appended
-// at the end, preserving the previous (and still most common) behavior.
-func injectPromptArg(args []string, promptText string) []string {
+// that explicitly. When no placeholder is present and promptViaStdin is
+// false, promptText is appended at the end, preserving the previous (and
+// still most common) behavior. promptViaStdin is true when the agent's
+// `stdin:` property already claims "${prompt}" (resolveStdinText handles
+// substituting it there) — in that case args is left exactly as declared,
+// since appending the full prompt to argv anyway would defeat the entire
+// point of routing it through stdin instead (MHL-Melhorias.md: Windows
+// CreateProcess's ~32,767-character argv limit).
+func injectPromptArg(args []string, promptText string, promptViaStdin bool) []string {
 	for i, a := range args {
 		if a == "${prompt}" {
 			out := append([]string{}, args...)
 			out[i] = promptText
 			return out
 		}
+	}
+	if promptViaStdin {
+		return args
 	}
 	return append(args, promptText)
 }
@@ -535,6 +569,34 @@ func injectSchemaArg(args []string, schemaText string) ([]string, error) {
 		}
 	}
 	return args, nil
+}
+
+// resolveStdinText fills stdinTemplate's "${prompt}"/"${schema}" spans with
+// the actual prompt/schema text, writing the result to the child process's
+// standard input instead of argv (see the agent `stdin:` property, tools.Cmd
+// docs). Unlike injectPromptArg/injectSchemaArg's args elements — each a
+// discrete, separately-quoted argv slot where only a whole element exactly
+// equal to the placeholder is recognized — stdin is one string an agent is
+// free to compose around the placeholders (e.g. wrapping the prompt in a
+// JSON envelope a backend's own stdin protocol expects), so every
+// occurrence of either span is substituted wherever it appears, not only a
+// stdin value that is nothing but the placeholder.
+//
+// An empty stdinTemplate (no `stdin:` property declared) returns ""; the
+// caller leaves the subprocess's stdin attached to the null device, exactly
+// as before this property existed. "${schema}" in stdinTemplate with no
+// schema supplied is an error, mirroring injectSchemaArg, rather than
+// leaking the literal placeholder text to the real subprocess.
+func resolveStdinText(stdinTemplate, promptText, schemaText string) (string, error) {
+	if stdinTemplate == "" {
+		return "", nil
+	}
+	if schemaText == "" && strings.Contains(stdinTemplate, "${schema}") {
+		return "", fmt.Errorf(`stdin declares "${schema}" but no schema: argument was supplied`)
+	}
+	text := strings.ReplaceAll(stdinTemplate, "${prompt}", promptText)
+	text = strings.ReplaceAll(text, "${schema}", schemaText)
+	return text, nil
 }
 
 // agentEngine reads the agent's engine property. ok is false when the

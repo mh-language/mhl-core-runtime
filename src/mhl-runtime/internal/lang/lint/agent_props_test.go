@@ -38,7 +38,8 @@ func TestKnownAgentPropertiesAreClean(t *testing.T) {
 agent Full {
     engine: "cli/claude-code"
     command: "claude"
-    args: ["-p", "${prompt}"]
+    args: ["--output-format", "json"]
+    stdin: "${prompt}"
     log: "run.log"
     trace: true
     retry: { max_attempts: 2 }
@@ -56,6 +57,36 @@ agent Backup { command: "echo" }
 		if strings.Contains(f.Message, "unknown property") {
 			t.Fatalf("unexpected unknown-property finding: %+v", f)
 		}
+	}
+}
+
+// stdin's placeholder check differs from args': "${prompt}" embedded inside
+// a longer string is fine there (resolveStdinText substitutes wherever it
+// appears), but an unrecognized "${...}" span is still a mistake worth
+// flagging — most likely a typo of "${prompt}"/"${schema}".
+func TestStdinPlaceholderChecks(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Claude {
+    command: "claude"
+    args: ["--output-format", "json"]
+    stdin: "role: user\ncontent: ${prompt}"
+}
+agent Typo {
+    command: "claude"
+    args: ["--output-format", "json"]
+    stdin: "${promtp}"
+}
+`)
+	findings := lint.File(main)
+	for _, f := range findings {
+		if strings.Contains(f.Message, `agent "Claude"`) {
+			t.Fatalf("stdin embedding \"${prompt}\" inside a longer string must not be flagged, got %+v", f)
+		}
+	}
+	if !hasMessage(findings, `agent "Typo": stdin contains ${promtp}`) {
+		t.Fatalf("expected the stdin typo to be flagged, got %+v", findings)
 	}
 }
 

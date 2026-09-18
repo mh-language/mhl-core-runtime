@@ -1,0 +1,40 @@
+// `stdin:` (MHL-Melhorias.md: mhl agent — limite de linha de comando do
+// Windows) lets a cli/* agent hand large content to the child process
+// through its standard input instead of `args:` — on Windows, CreateProcess
+// caps the whole command line at ~32,767 characters, and a large `${prompt}`/
+// `${schema}` interpolated into `args:` runs straight into that ceiling with
+// no diagnostic beyond a raw OS error. `stdin:` never touches argv at all.
+//
+// Like `args:`, `stdin:` substitutes "${prompt}"/"${schema}" — but unlike
+// `args:`, which only recognizes a whole element exactly equal to one of
+// those, `stdin:` substitutes them wherever they appear in the string, since
+// stdin is one value an agent is free to compose around them (e.g. wrapping
+// the prompt in a JSON envelope a backend's own stdin protocol expects).
+agent ViaStdin {
+    command: "sh"
+    args: ["-c", "cat"]
+    stdin: "${prompt}"
+}
+
+// Once `stdin:` already claims "${prompt}", `args:` is left exactly as
+// declared — no fallback appends the prompt to argv too, which would
+// defeat the entire point of routing it through stdin instead.
+agent ViaStdinArgsUntouched {
+    command: "sh"
+    args: ["-c", "printf '%s' \"$0\""]
+    stdin: "${prompt}"
+}
+
+test agent_stdin_keeps_large_content_out_of_argv {
+    describe prompt_is_delivered_through_standard_input {
+        var response = ViaStdin.run(prompt: "hello via stdin")
+        are_equal(response, "hello via stdin")
+    }
+
+    describe prompt_is_not_also_appended_to_args {
+        // sh -c SCRIPT [$0]: with no extra argv element appended, $0 stays
+        // at sh's own default, never the prompt text.
+        var response = ViaStdinArgsUntouched.run(prompt: "a prompt")
+        are_not_equal(response, "a prompt")
+    }
+}

@@ -65,6 +65,7 @@ var agentPropertyItems = []completionItem{
 	propertyItem("engine", `e.g. "cli/claude-code", "ollama/qwen2.5-coder"`),
 	propertyItem("command", "cli/* engine: the executable to run"),
 	propertyItem("args", "cli/* engine: argv (supports ${prompt}/${schema} placeholders)"),
+	propertyItem("stdin", "cli/* engine: text written to the subprocess's standard input (supports ${prompt}/${schema}, substituted wherever they appear). Keeps large content out of argv — needed on Windows, where CreateProcess caps the whole command line at ~32,767 characters"),
 	propertyItem("endpoint", "ollama/* engine: server URL"),
 	propertyItem("temperature", "ollama/* engine only"),
 	propertyItem("log", "cli/* engine: file path every call's raw stdout is appended to (interpolated for ${...} spans, e.g. ${context.session_id}, so each run gets its own file)"),
