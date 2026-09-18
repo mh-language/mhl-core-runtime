@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 )
 
 // Result contains captured subprocess output and its exit status.
@@ -22,6 +23,15 @@ type Cmd struct {
 	// Result.Stdout — so a caller can stream output (e.g. append it to a log
 	// file incrementally) instead of only seeing it once the process exits.
 	Stdout io.Writer
+
+	// Stdin, when non-empty, is written to the subprocess's standard input
+	// in full before Exec waits for it to exit. This is how a caller (e.g.
+	// an agent's `stdin:` property) hands the child process large content —
+	// a prompt, a schema — without it ever becoming part of argv, which on
+	// Windows is capped at ~32,767 characters by CreateProcess regardless of
+	// how much memory is available. Empty leaves the child's stdin attached
+	// to the null device, unchanged from before this field existed.
+	Stdin string
 }
 
 // Exec starts a command in its own process group and kills that group when the
@@ -30,8 +40,14 @@ func (c Cmd) Exec(ctx context.Context, name string, args ...string) (Result, err
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := checkCommandLineLength(name, args); err != nil {
+		return Result{}, fmt.Errorf("tools: %w", err)
+	}
 	command := exec.Command(name, args...)
 	configureProcessGroup(command)
+	if c.Stdin != "" {
+		command.Stdin = strings.NewReader(c.Stdin)
+	}
 	var stdout, stderr captureBuffer
 	var stdoutWriter io.Writer = &stdout
 	if c.Stdout != nil {

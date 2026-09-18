@@ -10,7 +10,7 @@ import (
 )
 
 // checkAgentPlaceholders flags a "${...}" span in an agent's literal
-// `command`/`args` values that will never be substituted at run time
+// `command`/`args`/`stdin` values that will never be substituted at run time
 // (MHL-Melhorias.md #19) — interpreter/agent.go's injectPromptArg/
 // injectSchemaArg only ever recognize a whole `args:` element that is
 // exactly "${prompt}" or exactly "${schema}"; `command:` is never
@@ -21,11 +21,20 @@ import (
 // `mhl lint` or `mhl run` today; the only way to notice was inspecting the
 // real argv the child process received.
 //
-// A non-literal `command`/`args` value (an expression, a variable, a tool
-// call) is left alone — nothing to statically read a "${...}" span out of,
-// and command/args accepting an arbitrary expression (MHL-Melhorias.md #1)
-// is itself the fix this finding steers a caller toward: resolve the value
-// as an expression element instead of a string placeholder.
+// `stdin:` is checked differently from `args:`: resolveStdinText
+// (interpreter/agent.go) substitutes every occurrence of "${prompt}"/
+// "${schema}" anywhere in the string, not only a value that is nothing but
+// the placeholder — an agent is expected to compose stdin around them (e.g.
+// wrapping the prompt in a JSON envelope). So a "${prompt}"/"${schema}" span
+// embedded in a longer stdin string is fine; only some other "${...}" span
+// (a typo, an unsupported name) is flagged.
+//
+// A non-literal `command`/`args`/`stdin` value (an expression, a variable, a
+// tool call) is left alone — nothing to statically read a "${...}" span out
+// of, and command/args/stdin accepting an arbitrary expression
+// (MHL-Melhorias.md #1) is itself the fix this finding steers a caller
+// toward: resolve the value as an expression element instead of a string
+// placeholder.
 func checkAgentPlaceholders(file, agentName string, p *ast.Property) []Finding {
 	var findings []Finding
 	switch p.Name {
@@ -49,16 +58,29 @@ func checkAgentPlaceholders(file, agentName string, p *ast.Property) []Finding {
 				findings = append(findings, agentPlaceholderFinding(file, agentName, "args", span, p.Pos))
 			}
 		}
+	case "stdin":
+		if s, ok := ast.StringValue(p.Value); ok {
+			for _, span := range findPlaceholderSpans(s) {
+				if span == "${prompt}" || span == "${schema}" {
+					continue
+				}
+				findings = append(findings, agentPlaceholderFinding(file, agentName, "stdin", span, p.Pos))
+			}
+		}
 	}
 	return findings
 }
 
 func agentPlaceholderFinding(file, agentName, prop, span string, pos lexer.Position) Finding {
+	recognized := `args: only recognizes a whole element exactly equal to "${prompt}" or "${schema}"; command: recognizes neither`
+	if prop == "stdin" {
+		recognized = `stdin: only substitutes "${prompt}"/"${schema}" spans, wherever they appear in the string`
+	}
 	return Finding{
 		File: file, Line: pos.Line, Column: pos.Column,
 		Message: fmt.Sprintf(
-			"agent %q: %s contains %s, which is never substituted — args: only recognizes a whole element exactly equal to \"${prompt}\" or \"${schema}\"; command: recognizes neither. Pass the value as an expression element instead (a variable, env(...), a tool call — command/args accept any expression), not a \"${...}\" placeholder.",
-			agentName, prop, span),
+			"agent %q: %s contains %s, which is never substituted — %s. Pass the value as an expression element instead (a variable, env(...), a tool call — command/args/stdin accept any expression), not a \"${...}\" placeholder.",
+			agentName, prop, span, recognized),
 	}
 }
 

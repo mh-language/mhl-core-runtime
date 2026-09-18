@@ -145,7 +145,7 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 // error, so an unknown property is one too. Keep in sync with
 // internal/lsp/properties.go's agentPropertyItems.
 var knownAgentProperties = map[string]bool{
-	"engine": true, "command": true, "args": true,
+	"engine": true, "command": true, "args": true, "stdin": true,
 	"endpoint": true, "temperature": true,
 	"log": true, "trace": true,
 	"retry": true, "cache": true, "rate_limit": true, "fallback": true,
@@ -157,7 +157,7 @@ var knownAgentProperties = map[string]bool{
 // knownAgentPropertyList is knownAgentProperties as prose, for the
 // "unknown property" diagnostic — kept as one place so that message and the
 // map above can't drift apart.
-const knownAgentPropertyList = "engine, command, args, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, skills, system_prompt, before, after, description"
+const knownAgentPropertyList = "engine, command, args, stdin, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, skills, system_prompt, before, after, description"
 
 // checkAgentProperties flags any property in an `agent { ... }` body — a
 // top-level agent or an inline `fallback: [agent { ... }]` literal — whose
