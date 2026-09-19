@@ -118,7 +118,7 @@ func (s *server) handle(msg *rpcMessage) {
 			return
 		}
 		text := s.docs[p.TextDocument.URI]
-		locs := definitionAt(uriToPath(p.TextDocument.URI), text, p.Position)
+		locs := definitionAt(uriToPath(p.TextDocument.URI), text, p.Position, nil)
 		if len(locs) == 0 {
 			// LSP: null is the "no definition found" response.
 			s.wr.respond(msg.ID, nil)

@@ -14,20 +14,25 @@ import (
 // This deliberately reuses definitionAt so imports, aliases and member access
 // have identical semantics in Go to Definition, Find References and CodeLens.
 func referencesAt(path, text string, pos position, includeDeclaration bool, openDocs map[string]string, workspaceRoot string) []location {
-	targets := definitionAt(path, text, pos)
+	cache := newRefCache(referenceFiles(path, text, openDocs, workspaceRoot))
+	targets := definitionAt(path, text, pos, cache)
 	if len(targets) == 0 {
 		return []location{}
 	}
-	return referencesTo(targets[0], path, text, includeDeclaration, openDocs, workspaceRoot)
+	return referencesTo(targets[0], cache, includeDeclaration)
 }
 
-func referencesTo(target location, path, text string, includeDeclaration bool, openDocs map[string]string, workspaceRoot string) []location {
-	files := referenceFiles(path, text, openDocs, workspaceRoot)
+// referencesTo scans every file in cache (a references/codeLens-scoped file
+// set — see referenceFiles) for identifier occurrences resolving to target,
+// reusing that same cache for definitionAt's lookups so resolving each of a
+// real file's hundreds of identifiers doesn't re-read and re-scan the
+// project's other files once per identifier.
+func referencesTo(target location, cache *refCache, includeDeclaration bool) []location {
 	var out []location
-	for file, src := range files {
+	for file, src := range cache.files {
 		for _, off := range identifierOffsets(src) {
 			pos := offsetToPos(src, off)
-			defs := definitionAt(file, src, pos)
+			defs := definitionAt(file, src, pos, cache)
 			if len(defs) == 0 || !sameLocation(defs[0], target) {
 				continue
 			}
@@ -37,7 +42,7 @@ func referencesTo(target location, path, text string, includeDeclaration bool, o
 			if pos.Character > 0 && line[pos.Character-1] == '.' {
 				if receiver, ok := identEndingAt(line, pos.Character-1); ok {
 					receiverPos := position{Line: pos.Line, Character: pos.Character - 1 - len(receiver)}
-					if receiverDefs := definitionAt(file, src, receiverPos); len(receiverDefs) > 0 && sameLocation(receiverDefs[0], target) {
+					if receiverDefs := definitionAt(file, src, receiverPos, cache); len(receiverDefs) > 0 && sameLocation(receiverDefs[0], target) {
 						continue
 					}
 				}
@@ -144,7 +149,16 @@ func referenceFiles(path, text string, openDocs map[string]string, workspaceRoot
 	files := map[string]string{filepath.Clean(path): text}
 	root := referenceRoot(path, workspaceRoot)
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".mh") {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if p != root && skipReferenceDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".mh") {
 			return nil
 		}
 		p = filepath.Clean(p)
@@ -163,6 +177,20 @@ func referenceFiles(path, text string, openDocs map[string]string, workspaceRoot
 		}
 	}
 	return files
+}
+
+// skipReferenceDir reports directories referenceFiles' walk never has a
+// reason to enter: dependency trees (node_modules is the one virtually every
+// ecosystem uses) and dot-directories (.git, editor/tool state like .vscode
+// or .mhl) — never where an MHL project keeps its own .mh sources. Skipping
+// them via filepath.SkipDir, rather than filtering by extension after
+// listing every entry, matters once workspaceRoot (see referenceRoot) is a
+// real project root: without it, a references/codeLens request walks the
+// entire node_modules tree and the whole .git object store on every call,
+// which is slow enough on a real-sized project to make the LSP feel like
+// it's hanging or looping.
+func skipReferenceDir(name string) bool {
+	return name == "node_modules" || strings.HasPrefix(name, ".")
 }
 
 // referenceRoot prefers the editor-reported workspace root (workspaceRoot,
@@ -222,10 +250,11 @@ func codeLenses(path, text string, openDocs map[string]string, workspaceRoot str
 
 func referenceCounts(path, text string, openDocs map[string]string, workspaceRoot string) map[string]int {
 	counts := map[string]int{}
-	for file, src := range referenceFiles(path, text, openDocs, workspaceRoot) {
+	cache := newRefCache(referenceFiles(path, text, openDocs, workspaceRoot))
+	for file, src := range cache.files {
 		for _, off := range identifierOffsets(src) {
 			pos := offsetToPos(src, off)
-			defs := definitionAt(file, src, pos)
+			defs := definitionAt(file, src, pos, cache)
 			if len(defs) == 0 {
 				continue
 			}
@@ -233,7 +262,7 @@ func referenceCounts(path, text string, openDocs map[string]string, workspaceRoo
 			if pos.Character > 0 && line[pos.Character-1] == '.' {
 				if receiver, ok := identEndingAt(line, pos.Character-1); ok {
 					receiverPos := position{Line: pos.Line, Character: pos.Character - 1 - len(receiver)}
-					if receiverDefs := definitionAt(file, src, receiverPos); len(receiverDefs) > 0 && sameLocation(receiverDefs[0], defs[0]) {
+					if receiverDefs := definitionAt(file, src, receiverPos, cache); len(receiverDefs) > 0 && sameLocation(receiverDefs[0], defs[0]) {
 						continue
 					}
 				}
@@ -254,6 +283,21 @@ func referenceCounts(path, text string, openDocs map[string]string, workspaceRoo
 func locationKey(loc location) string {
 	return fmt.Sprintf("%s:%d:%d:%d:%d", loc.URI, loc.Range.Start.Line, loc.Range.Start.Character, loc.Range.End.Line, loc.Range.End.Character)
 }
+
+// reservedForMemberDecl is completion.go's own keyword list, reused here to
+// reject a false match: the tool/extensible member regex below only checks
+// "identifier at line start followed by (", a shape a control-flow
+// statement like `if (...)`, `while (...)`, `for (...)` or `return (...)`
+// matches just as well as a real `name(params) -> {` method declaration —
+// this cache never sees the block nesting that would otherwise tell the two
+// apart.
+var reservedForMemberDecl = func() map[string]bool {
+	m := make(map[string]bool, len(keywords))
+	for _, k := range keywords {
+		m[k] = true
+	}
+	return m
+}()
 
 func declarationLocations(path, text string) []location {
 	var out []location
@@ -281,6 +325,9 @@ func declarationLocations(path, text string) []location {
 				}
 				memberOff := start + idx
 				member := identifierRe.FindString(text[memberOff:])
+				if kind != symEnum && reservedForMemberDecl[member] {
+					continue
+				}
 				add(memberOff, member)
 			}
 		}

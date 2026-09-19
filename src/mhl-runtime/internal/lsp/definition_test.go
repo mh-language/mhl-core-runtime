@@ -15,7 +15,7 @@ pipeline Main {
     }
 }
 `)
-	locs := definitionAt("/proj/main.mh", src, pos)
+	locs := definitionAt("/proj/main.mh", src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %d: %+v", len(locs), locs)
 	}
@@ -43,7 +43,7 @@ router Frontdesk {
     select: (prompt) -> nameof(Bil§ling)
 }
 `)
-	locs := definitionAt("/proj/main.mh", src, pos)
+	locs := definitionAt("/proj/main.mh", src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %d: %+v", len(locs), locs)
 	}
@@ -88,7 +88,7 @@ pipeline Flow {
 	for _, c := range cases {
 		// Cursor on the reference (2nd whole-word occurrence), not the decl.
 		pos := positionOfNthWord(t, src, c.name, 2)
-		locs := definitionAt("/p/main.mh", src, pos)
+		locs := definitionAt("/p/main.mh", src, pos, nil)
 		if len(locs) != 1 {
 			t.Fatalf("%s: want 1 location, got %+v", c.name, locs)
 		}
@@ -107,7 +107,7 @@ pipeline P {
     step S { var x = files.read_§file("a") }
 }
 `)
-	locs := definitionAt("/p/main.mh", src, pos)
+	locs := definitionAt("/p/main.mh", src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %+v", locs)
 	}
@@ -134,7 +134,7 @@ pipeline P {
 }
 `
 	pos := positionOfNthWord(t, src, "cache", 2)
-	locs := definitionAt("/p/main.mh", src, pos)
+	locs := definitionAt("/p/main.mh", src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %+v", locs)
 	}
@@ -158,7 +158,7 @@ pipeline P {
     step S { var x = cache.g§et("k") }
 }
 `)
-	locs := definitionAt("/p/main.mh", src, pos)
+	locs := definitionAt("/p/main.mh", src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %+v", locs)
 	}
@@ -177,7 +177,7 @@ pipeline P {
     step S { var x = Status.Pub§lished }
 }
 `)
-	locs := definitionAt("/p/main.mh", src, pos)
+	locs := definitionAt("/p/main.mh", src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %+v", locs)
 	}
@@ -198,7 +198,7 @@ func TestDefinitionCrossFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	locs := definitionAt(main, src, pos)
+	locs := definitionAt(main, src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %+v", locs)
 	}
@@ -226,7 +226,7 @@ func TestDefinitionFollowsImportIntoSubdir(t *testing.T) {
 	}
 
 	// Cursor on the receiver → the imported declaration, in the subdir file.
-	locs := definitionAt(main, src, pos)
+	locs := definitionAt(main, src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("receiver: want 1 location, got %+v", locs)
 	}
@@ -242,7 +242,7 @@ func TestDefinitionFollowsImportIntoSubdir(t *testing.T) {
 	if err := os.WriteFile(main, []byte(src2), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	glocs := definitionAt(main, src2, gpos)
+	glocs := definitionAt(main, src2, gpos, nil)
 	if len(glocs) != 1 || glocs[0].URI != pathToURI(fixture) {
 		t.Fatalf("member: want the fixture declaration, got %+v", glocs)
 	}
@@ -260,7 +260,7 @@ func TestDefinitionFollowsImportAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	locs := definitionAt(main, src, pos)
+	locs := definitionAt(main, src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %+v", locs)
 	}
@@ -288,7 +288,7 @@ func TestDefinitionFollowsImportReExport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	locs := definitionAt(main, src, pos)
+	locs := definitionAt(main, src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %+v", locs)
 	}
@@ -309,7 +309,7 @@ func TestDefinitionImportPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	locs := definitionAt(main, src, pos)
+	locs := definitionAt(main, src, pos, nil)
 	if len(locs) != 1 {
 		t.Fatalf("want 1 location, got %+v", locs)
 	}
@@ -328,21 +328,21 @@ func TestDefinitionImportPathUnresolved(t *testing.T) {
 	if err := os.WriteFile(main, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if locs := definitionAt(main, src, pos); locs != nil {
+	if locs := definitionAt(main, src, pos, nil); locs != nil {
 		t.Fatalf("want nil for unresolved import, got %+v", locs)
 	}
 }
 
 func TestDefinitionUnknownIdentifier(t *testing.T) {
 	src, pos := posAtMarker(t, "pipeline P {\n  step S { var x = Nope§thing.run() }\n}\n")
-	if locs := definitionAt(t.TempDir()+"/main.mh", src, pos); locs != nil {
+	if locs := definitionAt(t.TempDir()+"/main.mh", src, pos, nil); locs != nil {
 		t.Fatalf("want nil, got %+v", locs)
 	}
 }
 
 func TestDefinitionOnWhitespaceReturnsNil(t *testing.T) {
 	src, pos := posAtMarker(t, "agent A {}\n§\npipeline P {}\n")
-	if locs := definitionAt("/p/main.mh", src, pos); locs != nil {
+	if locs := definitionAt("/p/main.mh", src, pos, nil); locs != nil {
 		t.Fatalf("want nil on blank line, got %+v", locs)
 	}
 }
