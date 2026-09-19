@@ -11,9 +11,10 @@ import (
 // runs exactly one of these over stdio for the lifetime of the editor
 // process (internal/cli.runLSP).
 type server struct {
-	rd   *reader
-	wr   *writer
-	docs map[string]string // URI -> current full text (didOpen/didChange keep this in sync)
+	rd            *reader
+	wr            *writer
+	docs          map[string]string // URI -> current full text (didOpen/didChange keep this in sync)
+	workspaceRoot string            // set from "initialize"'s rootUri/workspaceFolders; see referenceRoot
 }
 
 // Serve runs the LSP message loop over in/out until the client sends
@@ -44,6 +45,15 @@ func Serve(in io.Reader, out io.Writer) error {
 func (s *server) handle(msg *rpcMessage) {
 	switch msg.Method {
 	case "initialize":
+		var p initializeParams
+		if json.Unmarshal(msg.Params, &p) == nil {
+			switch {
+			case p.RootURI != nil && *p.RootURI != "":
+				s.workspaceRoot = uriToPath(*p.RootURI)
+			case len(p.WorkspaceFolders) > 0:
+				s.workspaceRoot = uriToPath(p.WorkspaceFolders[0].URI)
+			}
+		}
 		s.wr.respond(msg.ID, initializeResult{
 			Capabilities: serverCapabilities{
 				TextDocumentSync: 1,
@@ -122,7 +132,7 @@ func (s *server) handle(msg *rpcMessage) {
 			return
 		}
 		text := s.docs[p.TextDocument.URI]
-		s.wr.respond(msg.ID, referencesAt(uriToPath(p.TextDocument.URI), text, p.Position, p.Context.IncludeDeclaration, s.docs))
+		s.wr.respond(msg.ID, referencesAt(uriToPath(p.TextDocument.URI), text, p.Position, p.Context.IncludeDeclaration, s.docs, s.workspaceRoot))
 	case "textDocument/codeLens":
 		var p codeLensParams
 		if json.Unmarshal(msg.Params, &p) != nil {
@@ -130,7 +140,7 @@ func (s *server) handle(msg *rpcMessage) {
 			return
 		}
 		text := s.docs[p.TextDocument.URI]
-		s.wr.respond(msg.ID, codeLenses(uriToPath(p.TextDocument.URI), text, s.docs))
+		s.wr.respond(msg.ID, codeLenses(uriToPath(p.TextDocument.URI), text, s.docs, s.workspaceRoot))
 	default:
 		if msg.ID != nil {
 			s.wr.respondError(msg.ID, -32601, "method not found: "+msg.Method)

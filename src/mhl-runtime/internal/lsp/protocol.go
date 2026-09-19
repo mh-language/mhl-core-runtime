@@ -165,6 +165,21 @@ type initializeResult struct {
 	ServerInfo   serverInfo         `json:"serverInfo"`
 }
 
+// initializeParams is the slice of "initialize"'s request params this server
+// reads: the client's project boundary, used to scope find-references/
+// codeLens file scans instead of guessing one from ancestor directory
+// markers (see references.go's referenceRoot). rootUri is preferred when
+// present (deprecated by the spec but still what most clients send
+// alongside workspaceFolders); workspaceFolders[0] is the fallback.
+type initializeParams struct {
+	RootURI          *string           `json:"rootUri"`
+	WorkspaceFolders []workspaceFolder `json:"workspaceFolders"`
+}
+
+type workspaceFolder struct {
+	URI string `json:"uri"`
+}
+
 type serverInfo struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`

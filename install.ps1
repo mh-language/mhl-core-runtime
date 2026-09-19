@@ -81,7 +81,17 @@ try {
     if ($vsixExpected -ne $vsixActual) {
       Info "warning: checksum mismatch for $vsix, skipping extension install"
     } elseif (Get-Command code -ErrorAction SilentlyContinue) {
-      code --install-extension (Join-Path $WorkDir $vsix) --force
+      # Some VS Code CLI builds emit Node DEP0169 from their internal
+      # url.parse() usage. Keep suppression local to this invocation.
+      $hadNodeOptions = Test-Path Env:NODE_OPTIONS
+      $previousNodeOptions = $env:NODE_OPTIONS
+      try {
+        $env:NODE_OPTIONS = "$previousNodeOptions --no-deprecation".Trim()
+        code --install-extension (Join-Path $WorkDir $vsix) --force
+      } finally {
+        if ($hadNodeOptions) { $env:NODE_OPTIONS = $previousNodeOptions }
+        else { Remove-Item Env:NODE_OPTIONS -ErrorAction SilentlyContinue }
+      }
       Info "installed the mhl VS Code extension"
     } else {
       $dest = Join-Path "$env:USERPROFILE\Downloads" $vsix

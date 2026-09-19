@@ -126,7 +126,11 @@ if [ -n "$vsix" ]; then
   if [ "$vsix_expected" != "$vsix_actual" ]; then
     info "warning: checksum mismatch for ${vsix}, skipping extension install"
   elif command -v code >/dev/null 2>&1; then
-    code --install-extension "$work_dir/$vsix" --force
+    # Some VS Code CLI builds still use Node's deprecated url.parse() API and
+    # emit DEP0169. Suppress deprecations for this child process only; command
+    # errors and all installer output remain visible.
+    NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--no-deprecation" \
+      code --install-extension "$work_dir/$vsix" --force
     info "installed the mhl VS Code extension"
   else
     dest="$HOME/Downloads/$vsix"
