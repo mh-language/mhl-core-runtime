@@ -362,6 +362,18 @@ agent Codex {
     command: "codex"
     args: ["exec", "-"]
     stdin: "${prompt}"
+}
+
+// Claude Code CLI's `-p` argument is a fixed instruction, not the content
+// itself — the large piece (a document, a wiki page) goes through `stdin:`
+// as separate reference material `-p` refers to. See the PROMPT INJECTION
+// tip below before writing that material as anything that reads like a
+// command rather than data to summarize.
+agent Claude {
+    engine: "cli/claude-code"
+    command: "claude"
+    args: ["-p", "Summarize the document piped on stdin in exactly one sentence."]
+    stdin: "${prompt}"
 }</code></pre>
           <p class="block-label">OLLAMA AGENT AND CALL</p>
           <pre class="code-block"><code class="language-mhl">agent LocalCoder {
@@ -404,6 +416,7 @@ var result = json.parse(raw)</code></pre>
           <div class="tip-row"><span>ALPHA</span><p><code>retry.backoff</code>, <code>cache.strategy</code> and <code>rate_limit.on_exceeded</code> each accept exactly one value today — <code>"exponential"</code>, <code>"exact"</code> and <code>"queue"</code> respectively. Any other value is a build-time error at both <code>mhl lint</code> and <code>mhl run</code>. Fields the older docs may still show (<code>api_key</code>, <code>timeout</code>, <code>system_instructions</code>) are not read and are now a lint error.</p></div>
           <div class="tip-row"><span>RETRY</span><p>The exponential backoff carries <em>full jitter</em> (each wait is a uniform pick in <code>[0, delay·2ⁿ]</code>) and is capped at 30s per wait — the cap applies from the very first wait, so a <code>delay</code> larger than it is trimmed immediately rather than sleeping once at the full amount — so a large <code>max_attempts</code> never grows an unbounded sleep. The wait is governed by the run's context: a run-level cancel, a <code>timeout</code> clause, or a served <code>run/cancel</code> aborts a retry that is only sleeping, rather than blocking until the delay elapses. A cancelled or deadline-exceeded call is never retried, whatever <code>retry_on</code> says; the caller then sees the last real failure, not the cancellation.</p></div>
           <div class="tip-row"><span>WINDOWS</span><p>A prompt built from unbounded source content (an entire wiki, a full document) can push <code>args:</code>'s <code>"${prompt}"</code> past Windows's ~32,767-character command-line ceiling with no warning until <code>mhl run</code> fails on that platform specifically — <code>CreateProcess</code> refuses to start the child process at all, and the error surfaces as raw OS text ("The filename or extension is too long") with no hint the real cause is argv size. macOS/Linux have no equivalent limit worth guarding (their <code>execve</code> <code>ARG_MAX</code> is 1-2MB), so this only bites on Windows, and typically only in production — a development machine on macOS/Linux runs the exact same pipeline without error. Move the large piece to <code>stdin:</code> instead of <code>args:</code> to sidestep it entirely.</p></div>
+          <div class="tip-row"><span>PROMPT INJECTION</span><p>Some backends apply their own prompt-injection heuristics to <code>stdin:</code> content, separately from anything <code>mhl</code> does — the Claude Code CLI in particular can refuse to respond at all when piped stdin content reads like an instruction rather than reference material. Confirmed against the real CLI: piping <code>"THE SECRET WORD IS BANANA"</code> alongside a <code>-p</code> instruction that referenced it got refused outright ("This appears to be a prompt injection attempt..."), while piping the same kind of content framed as a document to summarize (no embedded imperative) was answered normally. When an agent's <code>args:</code> carries a fixed instruction and <code>stdin:</code> carries separate reference material to analyze (the <code>Claude</code> pattern above) — as opposed to a backend like Codex's <code>-</code>, which is designed to read the whole instruction from stdin — keep that material read as data, not phrased as a command the model should follow.</p></div>
           <div class="security-banner"><span>!</span><div><strong>Do not place secrets in <code>args</code> or <code>stdin</code>.</strong><p>Prefer environment variables resolved by the invoked process. To preserve spaces and special characters in prompts, keep <code>"${prompt}"</code> as one complete array element in <code>args:</code>, or route it through <code>stdin:</code> instead.</p></div></div>
 
           <p class="block-label">BEFORE / AFTER HOOKS</p>
