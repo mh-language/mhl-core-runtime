@@ -10,7 +10,24 @@ let client: LanguageClient | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
-    vscode.commands.registerCommand("mhl.restartLanguageServer", () => restart(context))
+    vscode.commands.registerCommand("mhl.restartLanguageServer", () => restart(context)),
+    vscode.commands.registerCommand(
+      "mhl.showReferences",
+      async (uriValue: string, position: vscode.Position) => {
+        const uri = vscode.Uri.parse(uriValue);
+        const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+          "vscode.executeReferenceProvider",
+          uri,
+          new vscode.Position(position.line, position.character)
+        );
+        await vscode.commands.executeCommand(
+          "editor.action.showReferences",
+          uri,
+          new vscode.Position(position.line, position.character),
+          locations ?? []
+        );
+      }
+    )
   );
 
   start(context);

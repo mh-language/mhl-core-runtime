@@ -55,6 +55,8 @@ func (s *server) handle(msg *rpcMessage) {
 					RetriggerCharacters: []string{","},
 				},
 				DefinitionProvider: true,
+				ReferencesProvider: true,
+				CodeLensProvider:   codeLensOptions{ResolveProvider: false},
 			},
 			ServerInfo: serverInfo{Name: "mhl-lsp", Version: "0.1.0"},
 		})
@@ -113,6 +115,22 @@ func (s *server) handle(msg *rpcMessage) {
 			return
 		}
 		s.wr.respond(msg.ID, locs)
+	case "textDocument/references":
+		var p referenceParams
+		if json.Unmarshal(msg.Params, &p) != nil {
+			s.wr.respond(msg.ID, []location{})
+			return
+		}
+		text := s.docs[p.TextDocument.URI]
+		s.wr.respond(msg.ID, referencesAt(uriToPath(p.TextDocument.URI), text, p.Position, p.Context.IncludeDeclaration, s.docs))
+	case "textDocument/codeLens":
+		var p codeLensParams
+		if json.Unmarshal(msg.Params, &p) != nil {
+			s.wr.respond(msg.ID, []codeLens{})
+			return
+		}
+		text := s.docs[p.TextDocument.URI]
+		s.wr.respond(msg.ID, codeLenses(uriToPath(p.TextDocument.URI), text, s.docs))
 	default:
 		if msg.ID != nil {
 			s.wr.respondError(msg.ID, -32601, "method not found: "+msg.Method)

@@ -40,6 +40,10 @@ func TestInitializeAdvertisesDefinitionProvider(t *testing.T) {
 	var res struct {
 		Capabilities struct {
 			DefinitionProvider bool `json:"definitionProvider"`
+			ReferencesProvider bool `json:"referencesProvider"`
+			CodeLensProvider   struct {
+				ResolveProvider bool `json:"resolveProvider"`
+			} `json:"codeLensProvider"`
 		} `json:"capabilities"`
 	}
 	if err := json.Unmarshal(lastResult(t, &buf), &res); err != nil {
@@ -47,6 +51,12 @@ func TestInitializeAdvertisesDefinitionProvider(t *testing.T) {
 	}
 	if !res.Capabilities.DefinitionProvider {
 		t.Error("initialize did not advertise definitionProvider")
+	}
+	if !res.Capabilities.ReferencesProvider {
+		t.Error("initialize did not advertise referencesProvider")
+	}
+	if res.Capabilities.CodeLensProvider.ResolveProvider {
+		t.Error("codeLensProvider unexpectedly requires resolve")
 	}
 }
 

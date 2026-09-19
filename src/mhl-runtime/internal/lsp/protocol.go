@@ -52,6 +52,20 @@ type textDocumentPositionParams struct {
 	Position     position                        `json:"position"`
 }
 
+type referenceParams struct {
+	TextDocument versionedTextDocumentIdentifier `json:"textDocument"`
+	Position     position                        `json:"position"`
+	Context      referenceContext                `json:"context"`
+}
+
+type referenceContext struct {
+	IncludeDeclaration bool `json:"includeDeclaration"`
+}
+
+type codeLensParams struct {
+	TextDocument versionedTextDocumentIdentifier `json:"textDocument"`
+}
+
 type publishDiagnosticsParams struct {
 	URI         string       `json:"uri"`
 	Diagnostics []diagnostic `json:"diagnostics"`
@@ -99,6 +113,23 @@ type serverCapabilities struct {
 	CompletionProvider    completionOptions    `json:"completionProvider"`
 	SignatureHelpProvider signatureHelpOptions `json:"signatureHelpProvider"`
 	DefinitionProvider    bool                 `json:"definitionProvider"`
+	ReferencesProvider    bool                 `json:"referencesProvider"`
+	CodeLensProvider      codeLensOptions      `json:"codeLensProvider"`
+}
+
+type codeLensOptions struct {
+	ResolveProvider bool `json:"resolveProvider"`
+}
+
+type command struct {
+	Title     string `json:"title"`
+	Command   string `json:"command"`
+	Arguments []any  `json:"arguments,omitempty"`
+}
+
+type codeLens struct {
+	Range   rangeT  `json:"range"`
+	Command command `json:"command"`
 }
 
 type completionOptions struct {
