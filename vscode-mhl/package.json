@@ -6,7 +6,7 @@
     "type": "git",
     "url": "https://github.com/mh-language/mhl-core-runtime.git"
   },
-  "version": "0.6.2",
+  "version": "0.6.3",
   "publisher": "mhl-language",
   "icon": "assets/mhl-logo-rebrand.png",
   "license": "MIT",
@@ -59,6 +59,10 @@
       {
         "command": "mhl.restartLanguageServer",
         "title": "MHL: Restart Language Server"
+      },
+      {
+        "command": "mhl.showReferences",
+        "title": "MHL: Show References"
       }
     ],
     "configuration": {

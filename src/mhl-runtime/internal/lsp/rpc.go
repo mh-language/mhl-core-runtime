@@ -8,8 +8,9 @@
 // Scope is deliberately an MVP: diagnostics (parse errors + lint findings,
 // pushed on open/change), completion (keywords, declared symbol names, and
 // member-call suggestions after "name."), signature help, and
-// go-to-definition for declared names (and `from "..."` import paths). No
-// hover or incremental sync yet — full-document sync only.
+// go-to-definition and references/CodeLens for declared names (plus
+// `from "..."` import paths for definition). No hover or incremental sync
+// yet — full-document sync only.
 package lsp
 
 import (
