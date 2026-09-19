@@ -27,6 +27,33 @@ This installs `mhl` to `~/.mhl/bin` (`%LOCALAPPDATA%\mhl\bin` on Windows) and ad
 PATH. Supported platforms today: `linux-amd64`, `linux-arm64`, `darwin-arm64` (Apple Silicon),
 `windows-amd64`, `windows-arm64`. Intel Mac (`darwin-amd64`) has no published binary.
 
+### Uninstall
+
+The uninstall scripts remove the runtime, the installer-managed PATH entry, and the MHL VS Code
+extension. They preserve user-wide extensions and project-local `.mhl` state by default.
+
+**macOS / Linux:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/uninstall.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/uninstall.ps1 | iex
+```
+
+For a full user-wide cleanup on macOS/Linux, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/uninstall.sh | sh -s -- --purge
+```
+
+On Windows, download the PowerShell script and run `./uninstall.ps1 -Purge`. Purge removes
+`~/.mhl` (and `%LOCALAPPDATA%\mhl` on Windows), including user-wide extensions; it never removes
+project-local `.mhl` directories. Pass `--keep-vscode` / `-KeepVSCode` to keep the editor extension.
+
 ### Manual install
 
 Download a binary and/or the `.vsix` directly from the

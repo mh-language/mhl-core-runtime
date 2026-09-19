@@ -20,6 +20,10 @@ Per-tag release notes are also generated automatically on the
 
 ### Added
 
+- **Safe uninstall scripts for macOS/Linux and Windows.** `uninstall.sh` and
+  `uninstall.ps1` remove the runtime, installer-managed `PATH` entry, and VS
+  Code extension. User-wide extensions and project state are preserved unless
+  the explicit `--purge` / `-Purge` option is supplied.
 - **`mhl serve mcp --http [--addr host:port] [--token t] [dir]`.** The MCP
   server over the Streamable HTTP transport, for clients that connect over
   the network rather than spawning the process: one JSON-RPC message per
