@@ -520,8 +520,59 @@ func documentSymbols(path, text string) []symbol {
 		syms = append(syms, symbolsFromText(path, text)...)
 		syms = append(syms, localVarSymbolsFromText(text)...)
 	}
+	syms = append(syms, importedSymbols(path, text)...)
 	syms = append(syms, workspaceSymbols(path)...)
 	return dedupeSymbols(syms)
+}
+
+// importedSymbols resolves every `import { A, B as C } from "path"` in text
+// (the same importRe/alias shape definition.go's locateDeclaration follows)
+// and returns the imported declarations' symbols under their local name —
+// workspaceSymbols only sees siblings in path's own directory, which misses
+// every name pulled in from a "shared/" tree one or more directories away, a
+// common way to lay out a real MHL project. Declared before workspaceSymbols
+// in documentSymbols so an explicit import wins dedupeSymbols' first-occurrence
+// tie-break over a same-named sibling-directory guess.
+func importedSymbols(path, text string) []symbol {
+	var syms []symbol
+	for _, m := range importRe.FindAllStringSubmatch(text, -1) {
+		rel := m[2]
+		tgt := rel
+		if !filepath.IsAbs(tgt) {
+			tgt = filepath.Join(filepath.Dir(path), rel)
+		}
+		src, err := os.ReadFile(tgt)
+		if err != nil {
+			continue
+		}
+		var tgtSyms []symbol
+		if prog, err := parser.Parse(string(src)); err == nil {
+			tgtSyms = symbolsFromProgram(tgt, prog)
+		} else {
+			tgtSyms = symbolsFromText(tgt, string(src))
+		}
+		byName := make(map[string]symbol, len(tgtSyms))
+		for _, s := range tgtSyms {
+			byName[s.Name] = s
+		}
+		for _, item := range strings.Split(m[1], ",") {
+			fields := strings.Fields(item)
+			orig, local := "", ""
+			switch {
+			case len(fields) == 1:
+				orig, local = fields[0], fields[0]
+			case len(fields) == 3 && fields[1] == "as":
+				orig, local = fields[0], fields[2]
+			default:
+				continue
+			}
+			if s, ok := byName[orig]; ok {
+				s.Name = local
+				syms = append(syms, s)
+			}
+		}
+	}
+	return syms
 }
 
 // workspaceSymbols scans every other .mh file in path's directory (one
