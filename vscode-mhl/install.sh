@@ -16,6 +16,9 @@ echo "Packaging ${VSIX_FILE}..."
 npx --yes @vscode/vsce package
 
 echo "Installing ${VSIX_FILE} in VS Code..."
-code --install-extension "${VSIX_FILE}" --force
+# Some VS Code CLI builds emit Node DEP0169 from their internal url.parse()
+# usage. This affects only the CLI child process, not the packaged extension.
+NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--no-deprecation" \
+  code --install-extension "${VSIX_FILE}" --force
 
 echo "Done."

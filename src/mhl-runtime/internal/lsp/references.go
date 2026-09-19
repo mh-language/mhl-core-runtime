@@ -13,16 +13,16 @@ import (
 // identifier occurrences whose own definition resolves to that exact symbol.
 // This deliberately reuses definitionAt so imports, aliases and member access
 // have identical semantics in Go to Definition, Find References and CodeLens.
-func referencesAt(path, text string, pos position, includeDeclaration bool, openDocs map[string]string) []location {
+func referencesAt(path, text string, pos position, includeDeclaration bool, openDocs map[string]string, workspaceRoot string) []location {
 	targets := definitionAt(path, text, pos)
 	if len(targets) == 0 {
 		return []location{}
 	}
-	return referencesTo(targets[0], path, text, includeDeclaration, openDocs)
+	return referencesTo(targets[0], path, text, includeDeclaration, openDocs, workspaceRoot)
 }
 
-func referencesTo(target location, path, text string, includeDeclaration bool, openDocs map[string]string) []location {
-	files := referenceFiles(path, text, openDocs)
+func referencesTo(target location, path, text string, includeDeclaration bool, openDocs map[string]string, workspaceRoot string) []location {
+	files := referenceFiles(path, text, openDocs, workspaceRoot)
 	var out []location
 	for file, src := range files {
 		for _, off := range identifierOffsets(src) {
@@ -140,9 +140,9 @@ func identifierOffsets(src string) []int {
 
 // referenceFiles scans the current directory recursively. Open buffers win
 // over their on-disk versions, so counts update immediately while typing.
-func referenceFiles(path, text string, openDocs map[string]string) map[string]string {
+func referenceFiles(path, text string, openDocs map[string]string, workspaceRoot string) map[string]string {
 	files := map[string]string{filepath.Clean(path): text}
-	root := referenceRoot(path)
+	root := referenceRoot(path, workspaceRoot)
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".mh") {
 			return nil
@@ -165,11 +165,21 @@ func referenceFiles(path, text string, openDocs map[string]string) map[string]st
 	return files
 }
 
-// referenceRoot uses the nearest project marker when present, otherwise the
-// current file's directory. This lets a declaration in a subdirectory see
-// callers elsewhere in the same workspace without scanning unrelated trees.
-func referenceRoot(path string) string {
+// referenceRoot prefers the editor-reported workspace root (workspaceRoot,
+// from "initialize"'s rootUri/workspaceFolders — see server.go) whenever
+// path is inside it, since that's the project boundary the client actually
+// opened. Absent that (a bare "mhl lsp" session, or a file outside the
+// reported workspace), it falls back to the nearest ancestor project marker,
+// and finally the current file's own directory. This lets a declaration in
+// a subdirectory see callers elsewhere in the same project without scanning
+// unrelated trees — including a project with no ".git"/"go.mod" at all,
+// where the marker fallback alone would wrongly stop at the file's own
+// directory and miss a caller one level up.
+func referenceRoot(path, workspaceRoot string) string {
 	dir := filepath.Dir(path)
+	if workspaceRoot != "" && isWithin(workspaceRoot, path) {
+		return workspaceRoot
+	}
 	for cur := dir; ; cur = filepath.Dir(cur) {
 		for _, marker := range []string{".git", "go.mod"} {
 			if _, err := os.Stat(filepath.Join(cur, marker)); err == nil {
@@ -190,9 +200,9 @@ func isWithin(root, path string) bool {
 
 // codeLenses emits a reference count above top-level declarations and above
 // source-declared tool/extensible methods and enum variants.
-func codeLenses(path, text string, openDocs map[string]string) []codeLens {
+func codeLenses(path, text string, openDocs map[string]string, workspaceRoot string) []codeLens {
 	decls := declarationLocations(path, text)
-	counts := referenceCounts(path, text, openDocs)
+	counts := referenceCounts(path, text, openDocs, workspaceRoot)
 	lenses := make([]codeLens, 0, len(decls))
 	for _, decl := range decls {
 		count := counts[locationKey(decl)]
@@ -210,9 +220,9 @@ func codeLenses(path, text string, openDocs map[string]string) []codeLens {
 	return lenses
 }
 
-func referenceCounts(path, text string, openDocs map[string]string) map[string]int {
+func referenceCounts(path, text string, openDocs map[string]string, workspaceRoot string) map[string]int {
 	counts := map[string]int{}
-	for file, src := range referenceFiles(path, text, openDocs) {
+	for file, src := range referenceFiles(path, text, openDocs, workspaceRoot) {
 		for _, off := range identifierOffsets(src) {
 			pos := offsetToPos(src, off)
 			defs := definitionAt(file, src, pos)
