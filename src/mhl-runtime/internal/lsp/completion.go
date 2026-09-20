@@ -9,8 +9,8 @@ import (
 // offered as a plain keyword completion whenever the cursor isn't in a
 // member-access position.
 var keywords = []string{
-	"agent", "router", "memory", "tool", "prompt", "pipeline", "workflow", "extension", "extensible", "loop",
-	"import", "from", "as", "export", "input", "step", "test", "describe",
+	"agent", "router", "memory", "tool", "prompt", "pipeline", "workflow", "extension", "extensible", "loop", "partial",
+	"import", "from", "as", "export", "input", "step", "entry", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
 	"return", "break", "goto", "route", "spawn", "wait", "parallel", "timeout", "max", "true", "false", "null",
 	"kind", "manifest", "properties",
@@ -31,20 +31,29 @@ var typeAnnotationRe = regexp.MustCompile(`\b[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Za-
 
 // typeKeywords is internal/lang/types' declarable vocabulary, offered
 // whenever the cursor sits in a recognized type-annotation position.
-var typeKeywords = []string{"string", "number", "bool", "array", "object", "any"}
+// SessionContext/StepContext/FailureContext are the three builtin object
+// shapes the pipeline lifecycle hooks bind their lambda parameter to
+// (types.go's `aliases` table) — real global types, usable in any `: Type`
+// position, not just inferred for a hook's own parameter (see
+// hookcontext.go for that inference).
+var typeKeywords = []string{"string", "number", "bool", "array", "object", "any", "SessionContext", "StepContext", "FailureContext"}
 
 // isTypeAnnotationPosition is a pragmatic heuristic, not a real parse —
 // consistent with blockStack/classifyHeader's own best-effort approach
 // elsewhere in this package. It recognizes two shapes: a pipeline `input
 // name: ` line (line itself starts with "input "), and a tool/prompt method
-// parameter list (`name(param: ` — the enclosing block is blockOther, and
-// the line has an unclosed "(" before the match).
+// parameter list (`name(param: ` — the enclosing block is blockOther or
+// blockTool (a tool method's parameter list sits directly inside the
+// tool's own body), and the line has an unclosed "(" before the match).
 func isTypeAnnotationPosition(linePrefix, text string, pos position) bool {
 	if strings.HasPrefix(strings.TrimSpace(linePrefix), "input ") {
 		return true
 	}
 	stack := blockStack(textUpToPosition(text, pos))
-	if len(stack) == 0 || stack[len(stack)-1].Kind != blockOther {
+	if len(stack) == 0 {
+		return false
+	}
+	if top := stack[len(stack)-1].Kind; top != blockOther && top != blockTool {
 		return false
 	}
 	return strings.Count(linePrefix, "(") > strings.Count(linePrefix, ")")
@@ -65,6 +74,12 @@ func completionAt(path, text string, pos position) []completionItem {
 
 	if m := memberAccessRe.FindStringSubmatch(linePrefix); m != nil {
 		target := m[1]
+		if target == "self" {
+			return selfCompletionAt(path, text, pos)
+		}
+		if items, ok := hookParamCompletionAt(text, pos, target); ok {
+			return items
+		}
 		for _, s := range documentSymbols(path, text) {
 			if s.Name == target {
 				return methodItems(path, s)
@@ -100,6 +115,9 @@ func completionAt(path, text string, pos position) []completionItem {
 		})
 	}
 	items = append(items, propertyItemsFor(path, blockStack(textUpToPosition(text, pos)))...)
+	if isGotoTargetPosition(linePrefix) {
+		items = append(items, gotoTargetItems(path, text, pos)...)
+	}
 	return items
 }
 

@@ -188,6 +188,50 @@ var aliases = map[string]Type{
 	"array":   Array,
 	"object":  Object,
 	"any":     Any,
+
+	// SessionContext/StepContext/FailureContext are the three builtin object
+	// shapes a pipeline/workflow's five lifecycle hooks
+	// (ast.PipelineBodyProperties, PipelineBodyProperty.ParamType) bind their
+	// single lambda parameter to — see internal/execsvc/execsvc.go, which is
+	// the one place these maps are actually constructed at runtime. Each
+	// shape is the union of every field the hook family can carry, not just
+	// the fields one specific firing populates (e.g. SessionContext carries
+	// both session_start's `resumed`/`inputs` and session_end's
+	// `vars`/`broke`/`break_reason`/`iterations`): execsvc.go always emits
+	// every key, nil where a particular firing has nothing to say, so Check's
+	// permissive `v == nil` bypass (below) accepts either shape against this
+	// one declared type. Declaring these here — the same table a bare `:
+	// SessionContext` annotation resolves through anywhere else in the
+	// language (a tool method param/return, a pipeline `input`) — is what
+	// makes them real global types, not just LSP-only metadata: internal/lsp
+	// reads their `.Fields` (via Parse) to offer `session.`/`step.`/
+	// `failure.` completion inside a hook body, with no separate,
+	// hand-duplicated field list to keep in sync.
+	"SessionContext": ObjectOf(map[string]Type{
+		"pipeline":     String,
+		"kind":         String,
+		"session_id":   String,
+		"resumed":      Bool,
+		"inputs":       Object,
+		"vars":         Object,
+		"broke":        Bool,
+		"break_reason": Any,
+		"iterations":   Number,
+	}),
+	"StepContext": ObjectOf(map[string]Type{
+		"pipeline": String,
+		"step":     String,
+		"index":    Number,
+		"total":    Number,
+		"error":    String,
+	}),
+	"FailureContext": ObjectOf(map[string]Type{
+		"pipeline": String,
+		"kind":     String,
+		"step":     String,
+		"error":    String,
+		"reason":   String,
+	}),
 }
 
 // Parse resolves a bare keyword spelling to a Type — the base case FromExpr

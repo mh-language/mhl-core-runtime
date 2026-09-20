@@ -23,6 +23,18 @@ func checkAgentCalls(file string, prog *ast.Program, aliases map[string]types.Ty
 		if decl.Pipeline == nil {
 			continue
 		}
+		// A `partial` pipeline resolved without enough of its fragments to
+		// carry exactly one `entry step` (see ast.Step.Entry, mergePartials)
+		// is known-incomplete: its step bodies reference vars/inputs
+		// declared in a sibling fragment this lint pass never saw, so
+		// checking them here would be nothing but false "undefined
+		// variable" positives — the same reasoning mergePartialGroup
+		// already applies to its own entry-count Finding. Full validation
+		// happens once the file that actually assembles the fragments
+		// together is linted.
+		if decl.Pipeline.Partial && decl.Pipeline.EntryStepCount() != 1 {
+			continue
+		}
 		pipelineInputs := pipelineInputTypes(decl.Pipeline, aliases)
 		pipelineVars := collectPipelineVarNames(prog, decl.Pipeline)
 		pipelineMemVars := collectPipelineMemNames(prog, decl.Pipeline)
@@ -506,6 +518,16 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 			continue
 		}
 		p := decl.Pipeline
+		// A `partial` pipeline resolved without enough fragments to carry
+		// exactly one `entry step` is known-incomplete: a route arm or
+		// `goto` naming a step this lint pass never saw (because it's
+		// declared in a sibling fragment) is not a real typo, just a gap
+		// in what's visible from here — see checkAgentCalls' matching
+		// guard for the fuller rationale. Every *other* rule in this
+		// function (route arity/param shape, `route`/`goto` needing a
+		// `workflow`, duplicate route names) is local to what this pass
+		// can already see and still applies.
+		incomplete := p.Partial && p.EntryStepCount() != 1
 
 		steps := map[string]bool{}
 		routes := map[string]*ast.WorkflowRoute{}
@@ -535,7 +557,7 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 				findings = append(findings, Finding{File: file, Line: route.Params[0].Pos.Line, Column: route.Params[0].Pos.Column, Message: fmt.Sprintf("route %q parameter cannot have a default", route.Name)})
 			}
 			for _, arm := range route.Arms {
-				if arm.Fail == nil && !steps[arm.Target] {
+				if arm.Fail == nil && !steps[arm.Target] && !incomplete {
 					findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("route %q targets step %q, which isn't declared in workflow %q", route.Name, arm.Target, p.Name)})
 				}
 			}
@@ -547,7 +569,9 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 				walkGotoRouteCalls(step.Body, func(call *ast.GotoStmt, pos lexer.Position) {
 					route := routes[call.Target]
 					if route == nil {
-						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("workflow route %q isn't declared in workflow %q", call.Target, p.Name)})
+						if !incomplete {
+							findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("workflow route %q isn't declared in workflow %q", call.Target, p.Name)})
+						}
 					} else if len(call.Args) != len(route.Params) {
 						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("route %q expects %d argument(s), got %d", route.Name, len(route.Params), len(call.Args))})
 					}
@@ -564,7 +588,7 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 							Message: fmt.Sprintf("`goto` is only valid inside a `workflow`; pipeline %q runs its steps in order — change `pipeline` to `workflow`, or restructure the jump", p.Name)})
 						return
 					}
-					if !steps[target] {
+					if !steps[target] && !incomplete {
 						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("`goto %s` in workflow %q targets a step that isn't declared in it", target, p.Name)})
 					}
@@ -951,7 +975,7 @@ func checkStatement(file string, prog *ast.Program, statement *ast.Statement, de
 	case statement.Expr != nil:
 		return checkExprCall(file, prog, statement.Pos, statement.Expr.Expr, declared, selfTool, aliases)
 	case statement.Assign != nil:
-		findings := checkAssignTarget(file, statement, declared)
+		findings := checkAssignTarget(file, statement, declared, selfTool)
 		return append(findings, checkExprCall(file, prog, statement.Pos, statement.Assign.Value, declared, selfTool, aliases)...)
 	case statement.If != nil:
 		findings := checkExprCall(file, prog, statement.Pos, statement.If.Cond, declared, selfTool, aliases)
@@ -1038,11 +1062,22 @@ func checkWaitStmt(file string, statement *ast.Statement, declared map[string]ty
 // the target must be a bare variable or an array-index chain (not a nested
 // field), and its base name must have been `var`-declared somewhere in the
 // step (see collectVarNames).
-func checkAssignTarget(file string, statement *ast.Statement, declared map[string]types.Type) []Finding {
-	name, ok := assignTargetBase(statement.Assign.Target)
+func checkAssignTarget(file string, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
+	name, self, ok := assignTargetBase(statement.Assign.Target)
 	if !ok {
 		return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
 			Message: "assignment target must be a plain variable or an array index, not a nested field"}}
+	}
+	if self {
+		if selfTool != nil {
+			return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
+				Message: fmt.Sprintf("self.%s: self.<name> is only valid inside a pipeline/workflow step, not a tool method", name)}}
+		}
+		if _, ok := declared[name]; !ok {
+			return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
+				Message: fmt.Sprintf("self.%s: not a declared input, var, or mem of this pipeline", name)}}
+		}
+		return nil
 	}
 	if _, ok := declared[name]; !ok {
 		return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
@@ -1052,19 +1087,28 @@ func checkAssignTarget(file string, statement *ast.Statement, declared map[strin
 }
 
 // assignTargetBase mirrors internal/engine/interpreter.execAssign's own
-// assignTargetBase: a bare identifier, or an identifier followed only by
-// array-index trailers (`arr[i]`, `matrix[i][j]`) — any Member or Call
-// trailer in the chain makes it not an assignable target.
-func assignTargetBase(p *ast.Postfix) (string, bool) {
+// assignTargetBase: a bare identifier (or one followed only by array-index
+// trailers — `arr[i]`, `matrix[i][j]`), or `self.name` and only that
+// (exactly one Member trailer, nothing else — a trailing index chain on
+// top of `self.name` isn't supported yet, same restriction the interpreter
+// enforces). Any other Member or Call trailer in the chain makes it not an
+// assignable target.
+func assignTargetBase(p *ast.Postfix) (name string, self bool, ok bool) {
 	if p == nil || p.Primary == nil || p.Primary.Ident == "" {
-		return "", false
+		return "", false, false
+	}
+	if p.Primary.Ident == "self" {
+		if len(p.Ops) != 1 || p.Ops[0].Member == "" || p.Ops[0].Optional || p.Ops[0].Call != nil {
+			return "", false, false
+		}
+		return p.Ops[0].Member, true, true
 	}
 	for _, op := range p.Ops {
 		if op.Index == nil {
-			return "", false
+			return "", false, false
 		}
 	}
-	return p.Primary.Ident, true
+	return p.Primary.Ident, false, true
 }
 
 // checkExprCall applies the narrow "is this a bare Agent.run(...) or

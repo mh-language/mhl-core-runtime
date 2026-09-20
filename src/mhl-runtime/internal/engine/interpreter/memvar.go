@@ -90,12 +90,17 @@ func resetMemVar(ctx *evalCtx, name string) error {
 // backing storage with every alias), then writes the whole mutated
 // container back — the in-place mutation alone would update JSONStore's
 // in-memory cache but never reach disk without this explicit write.
-func execMemAssign(ctx *evalCtx, name string, assign *ast.AssignStmt) error {
+// ops is the index-chain to apply on top of name — assign.Target.Ops for an
+// ordinary `pending["key"] = value` target, or nil for a `self.name = value`
+// target (assignTargetBase restricts self to a whole-value assignment, so
+// execAssign always passes nil there regardless of assign.Target.Ops, which
+// for that shape is the unrelated `.name` member trailer, not an index
+// chain).
+func execMemAssign(ctx *evalCtx, name string, ops []*ast.Trailer, assign *ast.AssignStmt) error {
 	v, err := evalExpr(ctx, assign.Value)
 	if err != nil {
 		return err
 	}
-	ops := assign.Target.Ops
 	if len(ops) == 0 {
 		if assign.Op == "+=" {
 			cur, err := readMemVar(ctx, name)

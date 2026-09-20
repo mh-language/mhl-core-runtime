@@ -34,6 +34,46 @@ func TestParse(t *testing.T) {
 	}
 }
 
+// TestPipelineHookContextTypesAreBuiltinObjectShapes proves
+// SessionContext/StepContext/FailureContext resolve as real global object
+// types — the same `aliases` table string/number/... resolve through — with
+// exactly the fields internal/execsvc/execsvc.go actually populates.
+func TestPipelineHookContextTypesAreBuiltinObjectShapes(t *testing.T) {
+	cases := []struct {
+		name   string
+		fields []string
+	}{
+		{"SessionContext", []string{"pipeline", "kind", "session_id", "resumed", "inputs", "vars", "broke", "break_reason", "iterations"}},
+		{"StepContext", []string{"pipeline", "step", "index", "total", "error"}},
+		{"FailureContext", []string{"pipeline", "kind", "step", "error", "reason"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, ok := Parse(c.name)
+			if !ok {
+				t.Fatalf("Parse(%q) not found", c.name)
+			}
+			if got.Kind != ObjectKind {
+				t.Fatalf("Parse(%q).Kind = %v, want ObjectKind", c.name, got.Kind)
+			}
+			if len(got.Fields) != len(c.fields) {
+				t.Errorf("Parse(%q) has %d fields, want %d: %v", c.name, len(got.Fields), len(c.fields), got.Fields)
+			}
+			for _, f := range c.fields {
+				if _, ok := got.Fields[f]; !ok {
+					t.Errorf("Parse(%q) missing field %q", c.name, f)
+				}
+			}
+		})
+	}
+	// A user's own `type SessionContext = ...` must be rejected as a
+	// redeclaration of a builtin name, the same protection a primitive
+	// keyword already gets.
+	if _, ok := aliases["SessionContext"]; !ok {
+		t.Fatal("SessionContext must be registered in the shared aliases table so Aliases() rejects a user redeclaration")
+	}
+}
+
 func TestOf(t *testing.T) {
 	cases := []struct {
 		name   string

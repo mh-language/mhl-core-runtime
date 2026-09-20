@@ -242,8 +242,9 @@ Key packages:
 
 ### Docs vs. implementation
 
-`docs/site/reference.html` is the single source of truth for the language surface — there is no
-separate wiki; keep it in sync with `agent.go`/`agent_hooks.go` rather than
+`docs/site/Docs-Reference.dc.html` (and, for normative language behavior, `Docs-Specification.dc.html`)
+is the single source of truth for the language surface — there is no
+separate wiki; keep it in sync with `agent.go`/`agent_hooks.go`/`pipeline_hooks.go` rather than
 letting a second copy of this explanation drift. For agents specifically,
 `internal/engine/interpreter/agent.go` reads `engine`, `command`, `args`, `endpoint`,
 `temperature`, `log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `before`, `after`.
@@ -262,6 +263,40 @@ declaring any other value is a build-time error (caught by both `mhl lint` and `
 silently accepted. Before relying on a docs example, grep the relevant
 `internal/engine/interpreter` or `internal/features/nativeops` file for the exact property/op
 name.
+
+A pipeline/workflow (and `loop pipeline`/`loop workflow`) has its own, unrelated set of five
+lifecycle hooks — `session_start`, `session_end`, `step_start`, `step_end`, `stop_failure`
+(`internal/engine/interpreter/pipeline_hooks.go`'s `RunPipelineHook`, wired in
+`internal/execsvc/execsvc.go`) — each a single-parameter lambda body property
+(`ast.PipelineBodyProperties`), unlike agent `before`/`after`'s zero parameters. They are
+observation-only: a non-nil return is a runtime error, and a failure inside any of them aborts
+the run like any other error, *except* a failure inside `stop_failure` itself, which is only ever
+logged, never allowed to replace the failure it was reporting. `stop_failure`'s `reason` comes
+from `runtime.StepError.Kind` — a closed set (`"failed"`, `"timeout"`, `"cancelled"`,
+`"max_step_visits"`) plus a `"runtime_error"` fallback for anything not step-shaped — which is
+**not** the same thing as a `loop pipeline`'s `LoopResult.TerminalReason == "max_iterations"`: the
+latter is a soft, non-error stop that fires `session_end`, never `stop_failure`, despite the
+near-identical name. `session_start`/`session_end` fire once per whole run (once per
+`execsvc.Run` call, covering every iteration of a loop); `step_start`/`step_end` fire once per
+step execution, including once per loop iteration and once per `parallel` branch.
+
+Each hook's single lambda parameter is bound to one of three **builtin global types** —
+`SessionContext`, `StepContext`, `FailureContext` — registered in `internal/lang/types/types.go`'s
+package-private `aliases` map right alongside `string`/`number`/`bool`/etc., so a bare `: Type`
+name anywhere in the language (an `input`, a tool method param/return) resolves them exactly like
+a primitive keyword, and a program cannot redeclare one (same "shadows a builtin" static error).
+`ast.PipelineBodyProperty.ParamType` names which one a given hook's parameter carries — read only
+by `internal/lsp` (`hookcontext.go`'s `hookParamCompletionAt`/`objectTypeFieldItems`), which is
+what turns `session.`/`step.`/`failure.` inside a hook body into real field completion, resolved
+from `types.Parse` rather than a second hand-written field list. The hook lambda itself is never
+type-annotated in practice and the runtime never checks `Param.Type` against the bound value —
+mhl lambdas stay fully dynamically typed; the type exists for the annotation surface and the LSP,
+not for runtime enforcement. `execsvc.go` always emits every field of the relevant type on every
+firing (nil where a particular firing has nothing to say, e.g. `session_start`'s `vars`/`broke`),
+never omitting a key — `types.Check`'s `v == nil` bypass is what makes one `SessionContext` shape
+correctly describe both `session_start` and `session_end`'s payload; do not go back to omitting
+inapplicable keys; a missing key trips Check's "missing field" error for a program that does
+type-check against `SessionContext` explicitly.
 
 ## Testing conventions
 

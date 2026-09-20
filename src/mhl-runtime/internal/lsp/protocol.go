@@ -85,6 +85,8 @@ const (
 	kindText     = 1
 	kindMethod   = 2
 	kindFunction = 3
+	kindField    = 5
+	kindVariable = 6
 	kindClass    = 7
 	kindModule   = 9
 	kindProperty = 10

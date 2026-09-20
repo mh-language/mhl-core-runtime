@@ -484,6 +484,9 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	if p.Primary.Ident == "pause" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalPauseCall(ctx, p.Ops[0].Call.Args, depth)
 	}
+	if p.Primary.Ident == "complete" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
+		return evalCompleteCall(p.Ops[0].Call.Args)
+	}
 	// env(...)/nameof(...) both return a real, chainable string — unlike
 	// fail/pause/log (never return normally, so nothing sensible to chain
 	// onto), a caller very plausibly wants env("X").is_empty(),
@@ -536,6 +539,32 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 		if pr, ok := findPrompt(ctx.prog, p.Primary.Ident); ok {
 			return applyTrailers(ctx, promptFrontmatterValue(pr), p.Ops[1:], depth)
 		}
+	}
+	// `self.name` — a member access on `self` NOT immediately followed by a
+	// call — reads a pipeline-scoped `input`/`var`/`mem` from the step's own
+	// pipeline, bypassing step-local shadowing: a step-local `var` of the
+	// same name still wins for a bare `name` reference (evalPrimary checks
+	// ctx.env first), but `self.name` always means "the pipeline's own
+	// binding". The `p.Ops[1].Call != nil` exclusion is what keeps
+	// `self.method(...)` (the enclosing *tool*'s method — a completely
+	// different, pre-existing meaning of self, dispatched by the
+	// `case name == "self"` arm further down) from ever reaching this
+	// branch instead: both shapes start identically (self, then a Member
+	// trailer), and only look ahead one more trailer to diverge. See
+	// evalSelfPipelineRef's doc comment for the full rationale (the
+	// `partial` discoverability problem this exists for) and
+	// execAssign/assignTargetBase for the write side. A trailer *after* the
+	// member that isn't a call (`self.pending_data.field`,
+	// `self.items[0]`) still works — applyTrailers below applies whatever's
+	// left in p.Ops[1:] on top of the resolved value.
+	if p.Primary.Ident == "self" && len(p.Ops) >= 1 &&
+		p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[0].Call == nil &&
+		!(len(p.Ops) >= 2 && p.Ops[1].Call != nil) {
+		v, err := evalSelfPipelineRef(ctx, p.Ops[0].Member)
+		if err != nil {
+			return nil, err
+		}
+		return applyTrailers(ctx, v, p.Ops[1:], depth)
 	}
 	if p.Primary.Ident != "" && !isBoundVar(ctx, p.Primary.Ident) && len(p.Ops) >= 2 && p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[1].Call != nil {
 		name := p.Primary.Ident
@@ -642,6 +671,34 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 		return nil, err
 	}
 	return applyTrailers(ctx, base, p.Ops, depth)
+}
+
+// evalSelfPipelineRef reads `self.name` — a pipeline-scoped `input`, `var`,
+// or `mem` of the step's own pipeline/workflow — added so a `partial`
+// pipeline's fragments stop being implicit about which names are shared
+// state: `self.current_artifact` in a fragment file signals "this comes
+// from the pipeline, not declared here" the same way `self.method()`
+// already signals "the enclosing tool" — and, crucially, it's what makes
+// self-triggered LSP completion possible (internal/lsp), listing every
+// declared input/var/mem across every merged fragment, not just this file's
+// own. Deliberately checks ctx.pipelineEnv/mem directly rather than going
+// through evalPrimary's full step-local-first resolution: `self.x` always
+// means the pipeline's own `x`, bypassing a step-local `var` of the same
+// name that would otherwise shadow a bare `x` reference. ctx.pipelineName
+// (set only by RunStep, and propagated into closures by Closure.callCtx)
+// is what distinguishes "inside a pipeline step" from every other context
+// `self` is meaningless in.
+func evalSelfPipelineRef(ctx *evalCtx, name string) (any, error) {
+	if ctx.pipelineName == "" {
+		return nil, fmt.Errorf("self.%s: self.<name> is only valid inside a pipeline/workflow step, reading a declared input, var, or mem", name)
+	}
+	if v, ok := ctx.pipelineEnv[name]; ok {
+		return v, nil
+	}
+	if isMemVar(ctx, name) {
+		return readMemVar(ctx, name)
+	}
+	return nil, fmt.Errorf("self.%s: not a declared input, var, or mem of this pipeline", name)
 }
 
 // evalLogCall implements the bare log(...) builtin as a real expression —
@@ -763,6 +820,17 @@ func evalPauseCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 		return nil, &pauseSignal{reason: values[0]}
 	}
 	return nil, &pauseSignal{reason: joinValues(values)}
+}
+
+// evalCompleteCall implements the complete() builtin: it raises a
+// completeSignal, ending the run in the normal "completed" state right
+// here — see completeSignal's doc comment (exec.go) for why this exists.
+// Takes no arguments; unlike fail/pause there is no reason to carry.
+func evalCompleteCall(args []*ast.Argument) (any, error) {
+	if len(args) != 0 {
+		return nil, fmt.Errorf("complete() takes no arguments, got %d", len(args))
+	}
+	return nil, &completeSignal{}
 }
 
 // evalEnvCall implements the env(name) builtin: it reads the OS environment

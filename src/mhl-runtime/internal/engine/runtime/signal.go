@@ -38,3 +38,16 @@ func (g *GotoSignal) Error() string { return "goto " + g.Target }
 type PauseSignal struct{ Reason any }
 
 func (p *PauseSignal) Error() string { return "pause" }
+
+// CompleteSignal is the translated signal for a `complete()` builtin call.
+// Run treats it exactly like walking off the end of the merged step list —
+// the run ends in the normal "completed" state, checkpoint cleared, right
+// at this step, regardless of what (if anything) is declared after it. It
+// exists so a convergence/terminal step never has to rely on being
+// physically last: in a `partial` pipeline especially, where the merged
+// order depends on cross-file `import` order rather than one file's own
+// layout, that reliance is exactly the footgun `complete()` removes — see
+// ast.Pipeline.Partial's doc comment.
+type CompleteSignal struct{}
+
+func (c *CompleteSignal) Error() string { return "complete" }

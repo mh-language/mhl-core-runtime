@@ -293,11 +293,11 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 	for ok {
 		if err := runCtx.Err(); err != nil {
 			r.saveCancelCheckpoint(p, perStep, current, result.Executed, ctx)
-			return result, fmt.Errorf("runtime: run cancelled before step %q: %w", current, err)
+			return result, &StepError{Pipeline: p.Name, Step: current, Kind: "cancelled", Err: fmt.Errorf("run cancelled before this step: %w", err)}
 		}
 		visits[current]++
 		if visits[current] > maxStepVisits {
-			return result, fmt.Errorf("runtime: step %q revisited more than %d times (a goto cycle with no break?)", current, maxStepVisits)
+			return result, &StepError{Pipeline: p.Name, Step: current, Kind: "max_step_visits", Err: fmt.Errorf("step %q revisited more than %d times (a goto cycle with no break?)", current, maxStepVisits)}
 		}
 
 		stage, found := p.stageByName(current)
@@ -311,7 +311,20 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 		var brk *BreakSignal
 		var gt *GotoSignal
 		var pause *PauseSignal
+		var complete *CompleteSignal
 		switch {
+		case errors.As(err, &complete):
+			// A `complete()` call ends the run in the normal "completed"
+			// state right here — exactly what happens below when current
+			// has no successor, just reached explicitly instead of by
+			// physical position. Falling out of the loop (ok = false)
+			// reaches that exact same tail: FinalVars captured, checkpoint
+			// cleared if enabled, (result, nil) returned. This is the
+			// primitive that removes the reliance on "the terminal step
+			// must be physically last" a `partial` pipeline's merged
+			// order otherwise imposes — see CompleteSignal's doc comment.
+			ok = false
+
 		case errors.As(err, &pause):
 			// Suspend: write a checkpoint whose NextStep is *this* step, so a
 			// --resume / run/resume re-enters it (with any merged arguments) —
@@ -378,6 +391,9 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 			}
 			if timedOut {
 				return result, &StepError{Pipeline: p.Name, Step: current, Kind: "timeout", Err: ErrStepTimeout}
+			}
+			if runCtx.Err() != nil {
+				return result, &StepError{Pipeline: p.Name, Step: current, Kind: "cancelled", Err: err}
 			}
 			// The prior stage's checkpoint (if any) is already persisted;
 			// surface the failure so a later --resume can continue here.

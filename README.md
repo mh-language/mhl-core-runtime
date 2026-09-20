@@ -103,47 +103,10 @@ feature — run any of them directly with `mhl test <file>`:
 
 ## Official extensions
 
-The repository also maintains the official external extensions used by MHL:
-
-| Package | Kind | Backend |
-| --- | --- | --- |
-| [`mhl-blob-s3`](src/mhl-extensions/mhl-blob-s3/) | `blob` | S3-compatible object storage |
-| [`mhl-cache-redis`](src/mhl-extensions/mhl-cache-redis/) | `cache` | Redis with TTL |
-| [`mhl-sql-postgres`](src/mhl-extensions/mhl-sql-postgres/) | `sql` | PostgreSQL data queries |
-| [`mhl-store-postgres`](src/mhl-extensions/mhl-store-postgres/) | `store` | PostgreSQL |
-| [`mhl-store-redis`](src/mhl-extensions/mhl-store-redis/) | `store` | Redis durable state |
-| [`mhl-store-sqlite`](src/mhl-extensions/mhl-store-sqlite/) | `store` | Local SQLite |
-
-Each extension is a separate Go module with its own manifest, tests, README, and
-multi-platform executable. The complete build and release process is documented
-in [`src/mhl-extensions/README.md`](src/mhl-extensions/README.md).
-
-### Install an official extension
-
-Extension bundles are published independently from the runtime using tags such as
-`extensions-v0.1.0`. A bundle contains one archive for each official extension,
-`SHA256SUMS`, and `release.json`; the latter records package versions, supported
-platforms, and the exact runtime commit tested with the bundle.
-
-Copy the hash for the package you want from `SHA256SUMS` and install it with MHL:
-
-```bash
-mhl extension install \
-  'https://github.com/mh-language/mhl-core-runtime/releases/download/<bundle-tag>/mhl-store-postgres.tar.gz#sha256=<sha256>'
-mhl extension doctor
-```
-
-The runtime selects the matching host binary and records the source and hash in
-`.mhl/extensions.lock`. Runtime releases keep the `vX.Y.Z` tag namespace and
-remain the repository's GitHub `latest`; extension releases use `extensions-vX.Y.Z`
-and do not replace it.
-
-To build and test the official extensions locally:
-
-```bash
-make -C src/mhl-runtime build
-make -C src/mhl-extensions vet test release
-python3 -m unittest discover -s src/mhl-extensions/scripts -p 'test_*.py'
-python3 src/mhl-extensions/scripts/package_release.py prepare \
-  --runtime "$PWD/src/mhl-runtime/dist/mhl"
-```
+The official external extensions used by MHL (`mhl-blob-s3`, `mhl-cache-redis`,
+`mhl-sql-postgres`, `mhl-store-postgres`, `mhl-store-redis`, `mhl-store-sqlite`) live in
+their own repository, [`mh-language/mhl-packages`](https://github.com/mh-language/mhl-packages) —
+split out so their Docker-backed integration CI and six-platform release builds don't slow
+down runtime iteration here. See that repo for source, build/release instructions, and
+`mhl extension install` usage. Releases published before the split remain under this
+repository's `extensions-vX.Y.Z` tags.

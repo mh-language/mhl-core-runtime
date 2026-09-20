@@ -27,13 +27,56 @@ import "github.com/alecthomas/participle/v2/lexer"
 // state machine). The distinction is purely static — the interpreter and
 // runtime treat both the same; internal/lang/lint is what rejects `goto`
 // outside a `workflow` (checkPipelineGoto).
+//
+// Partial marks this declaration as one fragment of a pipeline/workflow
+// whose full input/var/route/step set is assembled from several files —
+// e.g. one file declares `partial workflow Discovery { entry step Dispatch
+// { ... } }` and a sibling, pulled in with a whole-file `import "..."`
+// (Import.Items empty — see program.go), declares `partial workflow
+// Discovery { step BriefGenerate { ... } }`. lint.mergePartials (mirrored at
+// run time by interpreter's resolvePartials, the same way import merging
+// already is) collapses every fragment sharing Name+Kind into one Pipeline —
+// with one concatenated Body — before runtime.PipelineFromAST or any other
+// pipeline-shaped lint check ever runs, so nothing downstream of that merge
+// needs to know a pipeline was ever split. A non-partial declaration is
+// unaffected: `Partial` false means exactly what it means today, one
+// self-contained declaration, and a `Step.Entry` marker is a lint error
+// there (see Step.Entry) since the first physically declared step still
+// wins.
 type Pipeline struct {
-	Pos  lexer.Position
-	Loop bool              `parser:"@'loop'?"`
-	Kind string            `parser:"@( 'pipeline' | 'workflow' )"`
-	Name string            `parser:"@Ident"`
-	Max  string            `parser:"( 'max' @Number )?"`
-	Body []*PipelineMember `parser:"'{' @@* '}'"`
+	Pos     lexer.Position
+	Partial bool              `parser:"@'partial'?"`
+	Loop    bool              `parser:"@'loop'?"`
+	Kind    string            `parser:"@( 'pipeline' | 'workflow' )"`
+	Name    string            `parser:"@Ident"`
+	Max     string            `parser:"( 'max' @Number )?"`
+	Body    []*PipelineMember `parser:"'{' @@* '}'"`
+}
+
+// EntryStepCount counts how many of this declaration's steps (including a
+// `parallel` group's branch steps) are marked `entry`. A `partial`
+// declaration needs exactly one across every fragment merged into it before
+// it's usable — runtime.FindPipeline is where that's actually enforced,
+// deliberately not at import-resolution time: a lone fragment file (its
+// siblings never pulled in, e.g. when a directory of workflows is scanned
+// file-by-file — see execsvc.Load) legitimately has zero, and that's not by
+// itself a bug worth failing an unrelated file's `mhl test`/`mhl serve mcp`
+// over.
+func (p *Pipeline) EntryStepCount() int {
+	n := 0
+	for _, m := range p.Body {
+		if m.Step != nil && m.Step.Entry {
+			n++
+		}
+		if m.Parallel != nil {
+			for _, s := range m.Parallel.Steps {
+				if s.Entry {
+					n++
+				}
+			}
+		}
+	}
+	return n
 }
 
 // IsWorkflow reports whether this declaration used the `workflow` keyword
@@ -57,6 +100,17 @@ type PipelineBodyProperty struct {
 	// pipeline/workflow (today: repeat) — lint still accepts it on a plain
 	// pipeline, but completion only offers it under `loop`.
 	LoopOnly bool
+	// ParamType names the builtin global type (types.go's `aliases` table —
+	// "SessionContext", "StepContext", "FailureContext") this property's
+	// single lambda parameter is bound to, for a lifecycle hook property;
+	// empty for every other property (these aren't lambdas at all). The
+	// runtime never checks a hook lambda's parameter against this — mhl
+	// lambdas stay dynamically typed, exactly like before/after on agent —
+	// it exists solely so internal/lsp can resolve `session.`/`step.`/
+	// `failure.` to real field completion (see internal/lsp/hookcontext.go)
+	// without a second, hand-duplicated field list to keep in sync with
+	// execsvc.go's actual payload construction.
+	ParamType string
 }
 
 // PipelineBodyProperties is the allow-list of pipeline/workflow body
@@ -68,6 +122,11 @@ var PipelineBodyProperties = []PipelineBodyProperty{
 	{Name: "context", Doc: "{ source, require } — populate context.vars from a prior run (context.session_id / .started_at / .resumed / .principal need no block)"},
 	{Name: "output", Doc: "{ name: expr, ... } — explicit result projection; with it declared, only these keys are returned to a caller (and over MCP / A2A) instead of every var"},
 	{Name: "repeat", Doc: "{ stop_when, max_iterations } — the `max <N>` header clause is shorthand for just max_iterations", LoopOnly: true},
+	{Name: "session_start", Doc: "(session: SessionContext) -> { ... } — runs once at the very start of the run, before its first step (fires again with session.resumed=true on --resume)", ParamType: "SessionContext"},
+	{Name: "session_end", Doc: "(session: SessionContext) -> { ... } — runs once when the run completes normally, via complete(), or via break (session.iterations only on a loop) — not on pause() or on a genuine failure (see stop_failure)", ParamType: "SessionContext"},
+	{Name: "step_start", Doc: "(step: StepContext) -> { ... } — runs before every step execution, including each parallel branch and each loop iteration", ParamType: "StepContext"},
+	{Name: "step_end", Doc: `(step: StepContext) -> { ... } — runs after every step execution; step.error is the failure message, or null on success/break/pause()/complete()/goto`, ParamType: "StepContext"},
+	{Name: "stop_failure", Doc: `(failure: FailureContext) -> { ... } — runs once on a genuine failure; failure.reason is "failed"|"timeout"|"cancelled"|"max_step_visits"|"runtime_error" — never on a soft loop stop like max_iterations`, ParamType: "FailureContext"},
 }
 
 // PipelineBodyPropertyNames returns the allow-list as a set, for a membership
@@ -177,8 +236,25 @@ type PipelineInput struct {
 // re-enters the step with a fresh budget. A step literally named `timeout`
 // cannot also carry the clause; the word is reserved in that position, like
 // `parallel`/`any`/`of`.
+//
+// Entry marks this step as the pipeline's starting point — `entry step
+// Dispatch { ... }`. It exists only for a `Pipeline.Partial` declaration:
+// runner.go's execStage otherwise starts at Steps[0], "the first step
+// physically declared", which stops being a stable notion once a pipeline's
+// steps are merged in from more than one file. lint.checkPipelineEntry
+// rejects `entry` entirely on a non-partial declaration (where
+// first-declared-wins is unambiguous already, so a second way to say the
+// same thing would just be redundant surface); lint.mergePartialGroup
+// reports a partial's merged fragments not carrying exactly one as a
+// Finding. runtime.FindPipeline enforces that same "exactly one" as a hard
+// error when a partial pipeline is actually resolved to run — see
+// EntryStepCount and FindPipeline's doc comment for why that check lives
+// there and not earlier, at import-resolution time. runtime.PipelineFromAST
+// is what honors a valid `entry`, moving that step's Stage to the front of
+// Pipeline.Stages/Steps regardless of source order.
 type Step struct {
 	Pos     lexer.Position
+	Entry   bool         `parser:"@'entry'?"`
 	Name    string       `parser:"'step' @Ident"`
 	Timeout string       `parser:"( 'timeout' @Duration )?"`
 	Body    []*Statement `parser:"'{' @@* '}'"`

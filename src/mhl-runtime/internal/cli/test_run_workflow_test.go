@@ -121,6 +121,42 @@ test t {
 	}
 }
 
+// TestRunPipelineCompleteStopsBeforeLaterSteps is complete()'s core
+// contract: it ends the run in the normal "completed" state right where
+// it's called, not just "early-exits this step" the way a bare `return`
+// does (return is swallowed by RunStep and still falls through to the next
+// step — see interpreter.completeSignal's doc comment). A plain `pipeline`
+// (not workflow) proves this doesn't depend on `goto` being available at
+// all — complete() is a general primitive, not workflow-specific.
+func TestRunPipelineCompleteStopsBeforeLaterSteps(t *testing.T) {
+	out, err := runTestFile(t, `
+pipeline Demo {
+    var reached_b = false
+    step A {
+        complete()
+    }
+    step B {
+        reached_b = true
+    }
+}
+
+test t {
+    describe complete_ends_the_run_here {
+        var result = Demo.run()
+        is_true(result.ok)
+        are_equal(result.state, "completed")
+        are_equal(result.executed, ["A"])
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("test: %v\noutput:\n%s", err, out)
+	}
+	if !strings.Contains(out, "3 passed, 0 failed, 0 incomplete") {
+		t.Errorf("unexpected output:\n%s", out)
+	}
+}
+
 // A supplied input overrides its default, and an omitted defaulted input
 // falls back to it — the same contract execsvc.coerceInputs/ValidateInputs
 // give a real `mhl run` (MHL-Melhorias.md #8), exercised here through the

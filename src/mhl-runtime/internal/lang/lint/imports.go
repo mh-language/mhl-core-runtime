@@ -88,6 +88,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			decl.Skill.Frontmatter = fm
 			decl.Skill.Content = content
 		case decl.Import != nil:
+			label := importLabel(decl.Import)
 			modulePath := filepath.Join(dir, decl.Import.Path)
 			key := modulePath
 			if abs, err := filepath.Abs(modulePath); err == nil {
@@ -101,7 +102,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				if err != nil {
 					*findings = append(*findings, Finding{
 						File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
-						Message: fmt.Sprintf("import {%s} from %q: %s", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err),
+						Message: fmt.Sprintf("%s: %s", label, err),
 					})
 					continue
 				}
@@ -113,7 +114,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			if err := mergeAliases(merged, module.AliasMap()); err != nil {
 				*findings = append(*findings, Finding{
 					File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
-					Message: fmt.Sprintf("import {%s} from %q: %s", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err),
+					Message: fmt.Sprintf("%s: %s", label, err),
 				})
 				missing = true
 			}
@@ -121,7 +122,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				if _, found := findExport(module, item.Name); !found {
 					*findings = append(*findings, Finding{
 						File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
-						Message: fmt.Sprintf("import {%s} from %q: %q is not exported", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, item.Name),
+						Message: fmt.Sprintf("%s: %q is not exported", label, item.Name),
 					})
 					missing = true
 					continue
@@ -130,7 +131,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 					if err := addAlias(merged, item.Alias, item.Name); err != nil {
 						*findings = append(*findings, Finding{
 							File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
-							Message: fmt.Sprintf("import {%s} from %q: %s", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err),
+							Message: fmt.Sprintf("%s: %s", label, err),
 						})
 						missing = true
 					}
@@ -142,13 +143,37 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 
 			for _, imported := range module.Decls {
 				kind, name, mergeable := mergeableDecl(imported)
-				if !mergeable || declPresent(merged.Decls, kind, name) {
+				if !mergeable {
+					continue
+				}
+				// See interpreter.resolveImports' matching branch: a
+				// `partial` fragment is deduped by identity, not by
+				// (kind, name), since sharing a name with another fragment
+				// is the whole point.
+				if imported.Pipeline != nil && imported.Pipeline.Partial {
+					if partialFragmentPresent(merged.Decls, imported.Pipeline) {
+						continue
+					}
+					merged.Decls = append(merged.Decls, imported)
+					continue
+				}
+				if declPresent(merged.Decls, kind, name) {
 					continue
 				}
 				merged.Decls = append(merged.Decls, imported)
 			}
 		}
 	}
+}
+
+// importLabel formats an `import` declaration for a Finding message: `import
+// {A, B} from "path"` for the named form, `import "path"` for the bare
+// whole-file form (Import.IsWhole) — mirrors interpreter.importLabel.
+func importLabel(imp *ast.Import) string {
+	if imp.IsWhole() {
+		return fmt.Sprintf("import %q", imp.Path)
+	}
+	return fmt.Sprintf("import {%s} from %q", strings.Join(imp.Names(), ", "), imp.Path)
 }
 
 func addAlias(prog *ast.Program, alias, name string) error {
@@ -230,6 +255,18 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 func declPresent(decls []*ast.Declaration, kind, name string) bool {
 	for _, d := range decls {
 		if k, n, ok := mergeableDecl(d); ok && k == kind && n == name {
+			return true
+		}
+	}
+	return false
+}
+
+// partialFragmentPresent is declPresent's counterpart for a `partial`
+// pipeline/workflow fragment — see interpreter.partialFragmentPresent,
+// which this mirrors.
+func partialFragmentPresent(decls []*ast.Declaration, frag *ast.Pipeline) bool {
+	for _, d := range decls {
+		if d.Pipeline == frag {
 			return true
 		}
 	}

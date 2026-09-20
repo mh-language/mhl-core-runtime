@@ -38,7 +38,7 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 							Message: fmt.Sprintf("%q is already declared as a constant", s.Var.Name)})
 					}
 				case s.Assign != nil:
-					if name, ok := assignTargetBase(s.Assign.Target); ok && consts[name] {
+					if name, _, ok := assignTargetBase(s.Assign.Target); ok && consts[name] {
 						findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column,
 							Message: fmt.Sprintf("cannot assign to constant %q", name)})
 					}
