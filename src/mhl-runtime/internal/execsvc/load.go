@@ -65,6 +65,17 @@ func Load(dir string) (map[string]Workflow, error) {
 			if d.Pipeline == nil {
 				continue
 			}
+			// A directory of workflows is scanned file by file: a `partial`
+			// fragment resolved on its own (nothing here pulled its
+			// siblings in via a whole-file `import`) is expected to be
+			// incomplete — that's not this fragment's file being broken,
+			// it's just not the file that assembles the whole declaration,
+			// so it's skipped rather than registered (or, worse, failing
+			// every other workflow in dir because this one file's Pipeline
+			// decl shares a Name with the file that actually completes it).
+			if d.Pipeline.Partial && d.Pipeline.EntryStepCount() != 1 {
+				continue
+			}
 			name := d.Pipeline.Name
 			if _, dup := out[name]; dup {
 				return nil, fmt.Errorf("%q declared in more than one file under %s", name, dir)

@@ -165,6 +165,7 @@ type PipelineInputSpec struct {
 // case here.
 func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.Program) Pipeline {
 	out := Pipeline{Name: p.Name, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
+	entryStage := -1
 	// `max <N>` header clause — shorthand for `repeat { max_iterations: N }`.
 	// Read first so an explicit `repeat` block below still wins (both being
 	// set is a lint finding); a non-positive / non-integer value is ignored
@@ -179,6 +180,9 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 			out.Steps = append(out.Steps, m.Step.Name)
 			out.Stages = append(out.Stages, Stage{Name: m.Step.Name, Steps: []string{m.Step.Name}})
 			out.setStepTimeout(m.Step.Name, m.Step.Timeout)
+			if m.Step.Entry {
+				entryStage = len(out.Stages) - 1
+			}
 		case m.Parallel != nil:
 			names := make([]string, 0, len(m.Parallel.Steps))
 			for _, s := range m.Parallel.Steps {
@@ -217,6 +221,25 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 				spec.EnumVariants = enumVariants(prog, t.Name)
 			}
 			out.Inputs = append(out.Inputs, spec)
+		}
+	}
+	// A `partial` pipeline/workflow's merged step list is in whatever order
+	// its fragments happened to be pulled in, not execution order — an
+	// `entry step` (ast.Step.Entry, lint-enforced to be exactly one, and
+	// only inside a `partial` declaration) names the real starting point.
+	// Move its Stage to the front — Runner.Run/execStage still simply start
+	// at Stages[0] — and rebuild the flattened Steps list to match, rather
+	// than keep two separately-reordered slices in sync by hand.
+	if entryStage > 0 {
+		reordered := make([]Stage, 0, len(out.Stages))
+		reordered = append(reordered, out.Stages[entryStage])
+		reordered = append(reordered, out.Stages[:entryStage]...)
+		reordered = append(reordered, out.Stages[entryStage+1:]...)
+		out.Stages = reordered
+
+		out.Steps = out.Steps[:0]
+		for _, stage := range out.Stages {
+			out.Steps = append(out.Steps, stage.Steps...)
 		}
 	}
 	return out
@@ -330,6 +353,14 @@ func enumVariants(prog *ast.Program, name string) []string {
 
 // FindPipeline returns the named pipeline from a program, or the first one when
 // name is empty.
+//
+// This is where a `partial` pipeline/workflow's entry-step count is finally
+// validated — deliberately not earlier, at import-resolution time (see
+// interpreter.mergePartialGroup's doc comment): by the time something calls
+// FindPipeline, it's actually about to run, describe, or otherwise use the
+// declaration for real, so "zero entries" and "more than one" both stop
+// being ambiguous with "this fragment's siblings just aren't visible from
+// here" and become the real errors they are.
 func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 	if prog == nil {
 		return Pipeline{}, fmt.Errorf("runtime: nil program")
@@ -340,6 +371,11 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 			continue
 		}
 		if name == "" || d.Pipeline.Name == name {
+			if d.Pipeline.Partial {
+				if n := d.Pipeline.EntryStepCount(); n != 1 {
+					return Pipeline{}, fmt.Errorf("partial %s %q: expected exactly one `entry step` across its fragments, found %d", d.Pipeline.Kind, d.Pipeline.Name, n)
+				}
+			}
 			return PipelineFromAST(d.Pipeline, aliases, prog), nil
 		}
 	}

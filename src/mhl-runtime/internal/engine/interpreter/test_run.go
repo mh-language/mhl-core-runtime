@@ -157,6 +157,9 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 		if target, ok := IsGoto(stepErr); ok {
 			return &runtime.GotoSignal{Target: target}
 		}
+		if IsComplete(stepErr) {
+			return &runtime.CompleteSignal{}
+		}
 		return stepErr
 	}
 	init := func(rc *runtime.RunContext) error {

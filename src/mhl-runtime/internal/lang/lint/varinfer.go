@@ -42,6 +42,17 @@ func inferExprType(prog *ast.Program, expr *ast.Expr, known map[string]types.Typ
 		}
 		return types.Any
 	}
+	// `self.name` — a bare (non-call) member access on `self` — infers the
+	// same as the bare `name` case just above: it's the pipeline's own
+	// input/var/mem, just spelled unambiguously. See
+	// interpreter.evalSelfPipelineRef for the runtime read this mirrors.
+	if p := ast.BarePostfix(expr); p != nil && p.Primary != nil && p.Primary.Ident == "self" &&
+		len(p.Ops) == 1 && p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[0].Call == nil {
+		if t, ok := known[p.Ops[0].Member]; ok {
+			return t
+		}
+		return types.Any
+	}
 	// `Enum.Variant` — a declared enum's qualified access — infers as that
 	// enum type, so a `match` over a `var` holding one can be checked for
 	// exhaustiveness.

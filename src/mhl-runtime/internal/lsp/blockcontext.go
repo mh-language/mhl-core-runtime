@@ -29,14 +29,19 @@ const (
 	blockCache
 	blockRateLimit
 	blockExtension // an `extension <kind> <Name>` body; ExtKind carries the kind
+	blockTool      // a `tool <Name>` body; Name carries the tool's declared name
 )
 
 // blockRef is one classified open "{": its kind plus, for blockExtension, the
 // extension kind ("mcp", "a2a", ...) so property completion can read that
-// kind's DeclarationSpec.
+// kind's DeclarationSpec — and, for blockPipeline/blockLoopPipeline/blockTool,
+// the declaration's own name, so self-completion (completion.go) knows which
+// pipeline/tool the cursor's `self.` belongs to without re-scanning from the
+// document start.
 type blockRef struct {
 	Kind    blockKind
 	ExtKind string
+	Name    string
 }
 
 // headerRe pairs a blockKind with the regex that recognizes the token(s)
@@ -49,8 +54,9 @@ var headerRe = []struct {
 	kind blockKind
 	re   *regexp.Regexp
 }{
-	{blockLoopPipeline, regexp.MustCompile(`\bloop\s+(?:pipeline|workflow)\s+\w+(?:\s+max\s+\d+)?\s*$`)},
-	{blockPipeline, regexp.MustCompile(`\b(?:pipeline|workflow)\s+\w+\s*$`)},
+	{blockLoopPipeline, regexp.MustCompile(`\b(?:partial\s+)?loop\s+(?:pipeline|workflow)\s+(\w+)(?:\s+max\s+\d+)?\s*$`)},
+	{blockPipeline, regexp.MustCompile(`\b(?:partial\s+)?(?:pipeline|workflow)\s+(\w+)\s*$`)},
+	{blockTool, regexp.MustCompile(`\btool\s+(\w+)\s*$`)},
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
 	{blockRouter, regexp.MustCompile(`\brouter\s+\w+\s*$`)},
 	{blockParallel, regexp.MustCompile(`\bparallel\s+\w+\s*$`)},
@@ -87,9 +93,15 @@ func classifyHeader(s string) blockRef {
 		return blockRef{Kind: blockExtension, ExtKind: kind}
 	}
 	for _, h := range headerRe {
-		if h.re.MatchString(s) {
-			return blockRef{Kind: h.kind}
+		m := h.re.FindStringSubmatch(s)
+		if m == nil {
+			continue
 		}
+		name := ""
+		if len(m) > 1 {
+			name = m[1]
+		}
+		return blockRef{Kind: h.kind, Name: name}
 	}
 	return blockRef{Kind: blockOther}
 }

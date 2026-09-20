@@ -88,10 +88,22 @@ type TypeAlias struct {
 // symbol may optionally receive a local alias:
 //
 //	import { SecurityAudit as audit } from "./prompts/seguranca.mh"
+//
+// A bare `import "path"` (no `{ }` list, no `from`) is the whole-file form:
+// it merges every declaration the target module resolves to — not just
+// named/exported ones — the same way a diamond-dependency module's full
+// declaration set already rides along with a named import (see
+// interpreter.resolveImports' doc comment); it just skips the per-name
+// `export` gate because there's no requested-name list to check it against.
+// This is what lets a `partial` pipeline/workflow fragment (ast/pipeline.go)
+// join its siblings without needing to name and `export` itself as an
+// individually importable symbol — a fragment file is pulled in wholesale by
+// the file that assembles it, e.g. `import "discovery.brief.mh"`. Items is
+// nil for this form; IsWhole reports it.
 type Import struct {
 	Pos   lexer.Position
-	Items []*ImportItem `parser:"'import' '{' @@ ( ',' @@ )* '}'"`
-	Path  string        `parser:"'from' @String"`
+	Items []*ImportItem `parser:"'import' ( '{' @@ ( ',' @@ )* '}'"`
+	Path  string        `parser:"'from' @String | @String )"`
 }
 
 // ImportItem is one selectively imported symbol and its optional local alias.
@@ -102,12 +114,20 @@ type ImportItem struct {
 
 // Names returns the source names in an import clause. Keeping this helper avoids
 // making import diagnostics and resolution logic depend on the AST layout.
+// Empty for a whole-file import (IsWhole), which names no individual symbol.
 func (u *Import) Names() []string {
 	names := make([]string, 0, len(u.Items))
 	for _, item := range u.Items {
 		names = append(names, item.Name)
 	}
 	return names
+}
+
+// IsWhole reports whether this is the bare `import "path"` form (no `{ }`
+// list) — every declaration in the target module is merged in, rather than
+// just the named/exported ones a `{ Name, ... }` list requests.
+func (u *Import) IsWhole() bool {
+	return len(u.Items) == 0
 }
 
 // Memory declares a memory backend (kv, vector, ...).

@@ -71,7 +71,7 @@ func TestSignatureCatalogueMatchesSymbolTables(t *testing.T) {
 	// globals + assertions: pinned to the interpreter's own lists (eval.go
 	// evalPostfix special-cases; test.go runAssertion).
 	checkExact(t, "globalSigs", []string{
-		"log", "fail", "pause", "env", "nameof",
+		"log", "fail", "pause", "complete", "env", "nameof",
 		"type_of", "is_string", "is_number", "is_bool", "is_array", "is_object", "is_null", "is_enum",
 	}, globalSigs)
 	checkExact(t, "assertionSigs", []string{

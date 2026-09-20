@@ -52,6 +52,9 @@ func Source(path, src string) []Finding {
 	}
 
 	merged, findings := mergeImports(path, prog)
+	merged, partialFindings := mergePartials(path, merged)
+	findings = append(findings, partialFindings...)
+	findings = append(findings, checkPipelineEntry(path, merged)...)
 	aliases, aliasErrs := types.Aliases(merged)
 	for _, e := range aliasErrs {
 		findings = append(findings, Finding{File: path, Line: e.Line, Column: e.Column, Message: e.Message})

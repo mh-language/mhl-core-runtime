@@ -1,0 +1,15 @@
+// The sibling half of partial_workflow_dispatch.mh — see that file for the
+// primary declaration and the explanation. Pulled in there via a whole-file
+// `import "..."` (no braces), which merges every declaration here, not just
+// exported ones — a fragment has no individual name to `export`.
+//
+// Linted or opened on its own (nothing here pulls Dispatch back in), this
+// file's `partial workflow Discovery` has no `entry` step — expected, not a
+// bug, and `mhl lint` stays quiet about it here specifically because it
+// can't tell that apart from a genuinely forgotten `entry`; see the LONE
+// FRAGMENT note in Docs-Reference.dc.html#pipeline.
+partial workflow Discovery {
+    step Gate {
+        var reached = true
+    }
+}

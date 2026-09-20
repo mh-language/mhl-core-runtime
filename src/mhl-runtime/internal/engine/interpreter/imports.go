@@ -49,7 +49,15 @@ func ResolveImports(file string, prog *ast.Program) error {
 	// guard around it that every other module gets: if something it
 	// (transitively) uses `use`s it back, that lookup finds prog — instead
 	// of loadModule-ing and recursing into file all over again, forever.
-	return resolveImports(file, prog, map[string]*ast.Program{key: prog})
+	if err := resolveImports(file, prog, map[string]*ast.Program{key: prog}); err != nil {
+		return err
+	}
+	// Every import (named or whole-file) is resolved by now, so every
+	// `partial` fragment a whole-file `import "..."` pulled in is sitting in
+	// prog.Decls alongside the declaration that imported it — collapse them
+	// into one Pipeline per Name+Kind before anything downstream (starting
+	// with runtime.FindPipeline/PipelineFromAST) looks at prog.Decls.
+	return resolvePartials(prog)
 }
 
 // resolveImports is ResolveImports' recursive core. resolved caches every
@@ -86,6 +94,7 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 			decl.Skill.Frontmatter = fm
 			decl.Skill.Content = content
 		case decl.Import != nil:
+			label := importLabel(decl.Import)
 			modulePath := filepath.Join(dir, decl.Import.Path)
 			key := modulePath
 			if abs, err := filepath.Abs(modulePath); err == nil {
@@ -97,31 +106,52 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 				var err error
 				module, err = loadModule(dir, decl.Import.Path)
 				if err != nil {
-					return fmt.Errorf("import {%s} from %q: %w", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err)
+					return fmt.Errorf("%s: %w", label, err)
 				}
 				resolved[key] = module
 				if err := resolveImports(modulePath, module, resolved); err != nil {
-					return fmt.Errorf("import {%s} from %q: %w", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err)
+					return fmt.Errorf("%s: %w", label, err)
 				}
 			}
 
 			if err := mergeAliases(prog, module.AliasMap()); err != nil {
-				return fmt.Errorf("import {%s} from %q: %w", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err)
+				return fmt.Errorf("%s: %w", label, err)
 			}
 			for _, item := range decl.Import.Items {
 				if _, ok := findExport(module, item.Name); !ok {
-					return fmt.Errorf("import {%s} from %q: %q is not exported", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, item.Name)
+					return fmt.Errorf("%s: %q is not exported", label, item.Name)
 				}
 				if item.Alias != "" {
 					if err := addAlias(prog, item.Alias, item.Name); err != nil {
-						return fmt.Errorf("import {%s} from %q: %w", strings.Join(decl.Import.Names(), ", "), decl.Import.Path, err)
+						return fmt.Errorf("%s: %w", label, err)
 					}
 				}
 			}
 
 			for _, imported := range module.Decls {
 				kind, name, ok := mergeableDecl(imported)
-				if !ok || declPresent(prog.Decls, kind, name) {
+				if !ok {
+					continue
+				}
+				// A `partial` pipeline/workflow fragment is deliberately
+				// allowed to share (kind, name) with another declaration —
+				// that's the whole point, they're merged by resolvePartials
+				// right after every import is resolved. declPresent's
+				// name-based dedup would otherwise silently drop the very
+				// fragment a whole-file `import` exists to pull in, so a
+				// partial fragment is deduped by object identity instead —
+				// still closing a true diamond (the same fragment reached
+				// through two different import paths, same *ast.Pipeline
+				// since loadModule caches per path), without discarding a
+				// distinct fragment that just happens to share a name.
+				if imported.Pipeline != nil && imported.Pipeline.Partial {
+					if partialFragmentPresent(prog.Decls, imported.Pipeline) {
+						continue
+					}
+					prog.Decls = append(prog.Decls, imported)
+					continue
+				}
+				if declPresent(prog.Decls, kind, name) {
 					continue
 				}
 				prog.Decls = append(prog.Decls, imported)
@@ -129,6 +159,16 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 		}
 	}
 	return nil
+}
+
+// importLabel formats an `import` declaration for an error message: `import
+// {A, B} from "path"` for the named form, `import "path"` for the bare
+// whole-file form (Import.IsWhole).
+func importLabel(imp *ast.Import) string {
+	if imp.IsWhole() {
+		return fmt.Sprintf("import %q", imp.Path)
+	}
+	return fmt.Sprintf("import {%s} from %q", strings.Join(imp.Names(), ", "), imp.Path)
 }
 
 // addAlias records one source-level alias and rejects an ambiguous binding.
@@ -217,6 +257,20 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 func declPresent(decls []*ast.Declaration, kind, name string) bool {
 	for _, d := range decls {
 		if k, n, ok := mergeableDecl(d); ok && k == kind && n == name {
+			return true
+		}
+	}
+	return false
+}
+
+// partialFragmentPresent is declPresent's counterpart for a `partial`
+// pipeline/workflow fragment: identity, not (kind, name), since two
+// distinct fragments are expected to share a name (that's the whole point —
+// resolvePartials merges them), and only the exact same *ast.Pipeline
+// reached twice (a true diamond import) should be deduped.
+func partialFragmentPresent(decls []*ast.Declaration, frag *ast.Pipeline) bool {
+	for _, d := range decls {
+		if d.Pipeline == frag {
 			return true
 		}
 	}

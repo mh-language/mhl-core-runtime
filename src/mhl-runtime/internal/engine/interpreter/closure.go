@@ -88,19 +88,20 @@ func invokeClosureWithValues(c *Closure, args []any, depth int) (any, error) {
 // program/stores/scopes, but with env swapped for the per-call one.
 func (c *Closure) callCtx(callEnv Env) *evalCtx {
 	return &evalCtx{
-		prog:        c.definingCtx.prog,
-		store:       c.definingCtx.store,
-		jsonStore:   c.definingCtx.jsonStore,
-		out:         c.definingCtx.out,
-		env:         callEnv,
-		pipelineEnv: c.definingCtx.pipelineEnv,
-		mem:         c.definingCtx.mem,
-		cctx:        c.definingCtx.cctx,
-		file:        c.definingCtx.file,
-		selfTool:    c.definingCtx.selfTool,
-		aliasTypes:  c.definingCtx.aliasTypes,
-		constNames:  c.definingCtx.constNames,
-		registry:    c.definingCtx.registry,
+		prog:         c.definingCtx.prog,
+		pipelineName: c.definingCtx.pipelineName,
+		store:        c.definingCtx.store,
+		jsonStore:    c.definingCtx.jsonStore,
+		out:          c.definingCtx.out,
+		env:          callEnv,
+		pipelineEnv:  c.definingCtx.pipelineEnv,
+		mem:          c.definingCtx.mem,
+		cctx:         c.definingCtx.cctx,
+		file:         c.definingCtx.file,
+		selfTool:     c.definingCtx.selfTool,
+		aliasTypes:   c.definingCtx.aliasTypes,
+		constNames:   c.definingCtx.constNames,
+		registry:     c.definingCtx.registry,
 	}
 }
 

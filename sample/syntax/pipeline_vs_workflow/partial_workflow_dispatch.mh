@@ -1,0 +1,31 @@
+// `partial` splits a pipeline/workflow *declaration* across files, like
+// C#'s `partial class` — every fragment sharing a name and keyword is
+// combined into one declaration before it ever runs. See
+// partial_workflow_fragment.mh for the other half, and
+// Docs-Reference.dc.html#pipeline ("SPLITTING ACROSS FILES") for the full
+// explanation.
+//
+// The whole-file `import "path"` form (no `{ }` list) merges every
+// declaration in that file, not just exported ones — a partial fragment
+// has no individual name to `export`, so it needs this form rather than
+// `import {Name} from "path"`.
+import "partial_workflow_fragment.mh"
+
+// A pipeline otherwise starts at its first physically declared step; once
+// steps can arrive from more than one file, "first declared" stops meaning
+// anything, so a `partial` declaration's merged step set must carry exactly
+// one `entry step` — the real starting point, regardless of merge order.
+partial workflow Discovery {
+    entry step Dispatch {
+        goto Gate
+    }
+}
+
+test partial_workflow_dispatch {
+    describe entry_step_wins_and_goto_reaches_the_other_file {
+        var result = Discovery.run()
+        is_true(result.ok)
+        are_equal(result.state, "completed")
+        are_equal(result.executed, ["Dispatch", "Gate"])
+    }
+}

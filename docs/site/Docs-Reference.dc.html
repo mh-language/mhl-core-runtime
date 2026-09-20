@@ -133,8 +133,9 @@ pipeline Welcome {
             <div class="table-row"><span>Export</span><code>export prompt Name(...) { ... }</code><span>Make a declaration reusable.</span></div>
             <div class="table-row"><span>Import names</span><code>import {A, B} from "file.mh"</code><span>Bring in explicit contracts only.</span></div>
             <div class="table-row"><span>Local alias</span><code>import {LongName as Short} from "file.mh"</code><span>Avoid collisions and improve readability.</span></div>
+            <div class="table-row"><span>Whole file</span><code>import "file.mh"</code><span>Merge every declaration, exported or not — see <a href="#pipeline">splitting a <code>partial</code> pipeline/workflow across files</a>.</span></div>
           </div>
-          <div class="tip-row"><span>NOTE</span><p><code>import</code> merges the target file's declarations into the program's flat namespace (transitively — an imported file's own <code>import</code>s come along), so a name resolves the same however it arrived. There is no namespace-qualified import.</p></div>
+          <div class="tip-row"><span>NOTE</span><p><code>import</code> merges the target file's declarations into the program's flat namespace (transitively — an imported file's own <code>import</code>s come along), so a name resolves the same however it arrived. There is no namespace-qualified import. The brace-less <code>import "file.mh"</code> form skips the per-name <code>export</code> check entirely (there is no name list to check it against) and merges everything the file declares — mainly useful for a <code>partial</code> fragment, which has no reason to individually name and <code>export</code> itself.</p></div>
         </section>
 
         <section class="feature doc-section" id="syntax" data-title="syntax types string number bool null arrays objects duration comments input type alias">
@@ -207,6 +208,9 @@ pipeline Publish {
           <p class="block-label">PRACTICAL GRAMMAR</p>
           <pre class="grammar-block"><code>declaration  := [export] (import | agent | prompt | memory | tool | extension | pipeline | workflow | type | enum | test)
 import       := "import" "{" name ["as" alias] {"," name ["as" alias]} "}" "from" string
+              | "import" string                                 // whole-file form: merges every declaration, export or not
+pipeline     := ["partial"] ["loop"] ("pipeline" | "workflow") identifier ["max" number] "{" {member} "}"
+step         := ["entry"] "step" identifier ["timeout" duration] "{" {statement} "}"   // "entry" only valid, and required exactly once, inside a "partial" declaration
 extension    := "extension" kind identifier "{" {property} "}"   // kind is "mcp", "a2a" (built in), or an installed adapter's kind
 type-alias   := "type" identifier "=" type
 enum         := "enum" identifier "{" [identifier {"," identifier}] "}"
@@ -303,6 +307,7 @@ var next = ready.find((f) -> f.id == 20)</code></pre>
             <div class="table-row"><span>Dispatch</span><code>goto match artifact { "brief" -&gt; Brief _ -&gt; fail("unknown") }</code><span>Chooses a step by the same first-match equality as expression <code>match</code>. Destinations are declared step identifiers, checked by lint; duplicate patterns and arms after <code>_</code> are reported. Without a matching arm, the run fails.</span></div>
             <div class="table-row"><span>Stop</span><code>break "reason"</code><span>Ends the current pipeline or loop early — a clean stop (exit 0, not a failure) that keeps the run's variable state as its result.</span></div>
             <div class="table-row"><span>Pause</span><code>pause("reason")</code><span>Suspends the run at this step for a human-in-the-loop hand-off — not a failure, not a completion. Keeps the checkpoint; <code>mhl run --resume</code> / <code>run/resume {runId, arguments}</code> re-enters this step with the merged decision.</span></div>
+            <div class="table-row"><span>Complete</span><code>complete()</code><span>Ends the run in the normal "completed" state right here, no matter what's declared after this step — the only other way to reach "completed" is running off the very end of the merged step list. Use it on a convergence/terminal step instead of relying on physical position.</span></div>
           </div>
           <pre class="code-block"><code class="language-mhl">tool Summary {
     count_valid(items: {valid: bool}[]): number -> {
@@ -689,6 +694,7 @@ Audit.append("pipeline started")</code></pre>
           <div class="feature-head"><h2><span class="feature-num">10</span><code>tool</code> and native operations</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">A tool creates a small, reusable API over native operations. Declare <code>const</code> or <code>var</code> in the tool body for values shared by its methods during a call. Methods take positional arguments, may declare types, and use either an expression body or a statement block.</p>
           <div class="tip-row"><span>DEFAULT ARGUMENTS</span><p>A method or lambda parameter may end with <code>= expression</code> — <code>write(path: string, mode: string = "0644")</code> — supplying a value when the caller omits that argument. Positional parameters bind left to right, so a default may read an earlier parameter (<code>close: string = open</code>) but a non-defaulted parameter may not follow a defaulted one (<code>mhl lint</code> flags it). Each default is evaluated in the callee's own scope, once per call that omits it.</p></div>
+          <div class="tip-row"><span>SELF</span><p>Inside one method, <code>self.other_method(...)</code> calls a sibling method of the same tool — useful for composing small, private helpers into a public one (<code>changed_go_files()</code> above could read <code>self.git_root()</code>, say). It resolves to <em>this</em> tool regardless of what else is declared elsewhere, so renaming the tool never breaks its own internal calls. <code>self</code> means something different — a pipeline/workflow's own state — inside a <code>step</code>; see <a href="#pipeline">SELF INSIDE A STEP</a>. Using either <code>self.</code> form in the wrong place (a tool method calling <code>self.some_property</code>, or a step outside any pipeline) is a <code>mhl lint</code> error, not a silent no-op.</p></div>
           <pre class="code-block"><code class="language-mhl">tool Project {
     const test_timeout = 2m
     var directory = "."
@@ -883,6 +889,31 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
     }
 }</code></pre>
           <p><code>goto match</code> evaluates <code>artifact</code> once and selects the first matching arm. To reuse that table, declare <code>route Generate(artifact: string) { ... }</code> in the workflow and call it with <code>goto Generate(artifact)</code> from any step. A route has one typed parameter and static step destinations; <code>mhl lint</code> checks its name, arity, patterns, and targets. It transfers control directly rather than returning a string. Expression <code>nameof(BriefGenerate)</code> cannot name a workflow step because that builtin checks top-level declarations. On <code>--resume</code>, a paused gate runs again with updated inputs and selects the route then. See <code>sample/syntax/pipeline_vs_workflow/goto_match_artifact_review.mh</code>.</p>
+
+          <p class="block-label">SPLITTING ACROSS FILES</p>
+          <p>A large <code>workflow</code> — many artifact types, each its own <code>Generate</code>/<code>Commit</code> pair — can outgrow one file. <code>partial</code> splits the <em>declaration</em>, not the pipeline: every fragment sharing a name and the same <code>pipeline</code>/<code>workflow</code> keyword is combined into one declaration before it ever runs, exactly like C#'s <code>partial class</code>. A fragment is pulled in with the bare, brace-less form of <code>import</code> — <code>import "file.mh"</code> — which merges every declaration in that file, not just named/exported ones; that's what lets a fragment join without itself being <code>export</code>ed. Because steps and pipeline-scoped <code>var</code>s are looked up by name, a <code>goto</code> in one fragment reaches a step declared in another with no extra wiring.</p>
+          <div class="file-example">
+            <div><span>discovery.mh</span><pre class="code-block"><code class="language-mhl">import "discovery.brief.mh"
+
+partial workflow Discovery {
+    var pending_data = null
+
+    entry step Dispatch {
+        goto BriefGenerate
+    }
+}</code></pre></div>
+            <div><span>discovery.brief.mh</span><pre class="code-block"><code class="language-mhl">partial workflow Discovery {
+    step BriefGenerate {
+        pending_data = { title: "brief" }
+        log(pending_data)
+    }
+}</code></pre></div>
+          </div>
+          <p>Because a pipeline otherwise starts at its first physically declared step, and "first" stops meaning anything once steps arrive from more than one file, a <code>partial</code> declaration must mark its real starting point explicitly: exactly one step, anywhere among its fragments, carries the <code>entry</code> keyword — <code>entry step Dispatch { ... }</code> above. <code>entry</code> is rejected outside a <code>partial</code> declaration, where the first step is unambiguous already.</p>
+          <div class="tip-row"><span>SELF INSIDE A STEP</span><p>Inside a step, <code>self.name</code> reads or writes a declared <code>input</code>/<code>var</code>/<code>mem</code> of that step's own pipeline — <code>self.pending_data = json.parse(raw)</code> reads exactly like <code>pending_data = json.parse(raw)</code> does today, and both keep working side by side. The difference is what <code>self.</code> makes visible at the point of use: a bare name gives no hint whether it's this step's own local <code>var</code> or shared pipeline state declared somewhere else entirely (in a <code>partial</code> pipeline, possibly a completely different file) — <code>self.</code> always means the latter, unambiguously, and it's what an editor's completion can act on: typing <code>self.</code> inside a step lists every <code>input</code>/<code>var</code>/<code>mem</code> the pipeline declares, gathered across <em>every</em> merged <code>partial</code> fragment, not just the file currently open. It also settles a real edge case cleanly: if a step-local <code>var</code> happens to share a name with a pipeline-level one, the bare name reads the local shadow (as it always has) while <code>self.name</code> always reaches past it to the pipeline's own binding.</p></div>
+          <div class="tip-row"><span>USE COMPLETE() FOR A CONVERGENCE STEP</span><p>A step with no <code>goto</code> at the end of its body isn't a problem by itself — mhl's execution model defaults to sequential fallthrough everywhere (a plain <code>pipeline</code> has no <code>goto</code> at all), so it's completely normal for a step to just flow into the next one physically declared after it. It only becomes a footgun for one specific kind of step: a shared convergence point every branch <code>goto</code>s to, meant to end the run — its safety depended entirely on happening to be the physically last step, which stops being obvious once a <code>workflow</code> is split across files (the merged order follows <code>import</code> order, not any one file's own layout). <strong>Give that step a body of <code>complete()</code> instead of leaving it empty</strong>: <code>step Done { complete() }</code> ends the run in the normal "completed" state right there, regardless of where the merge puts it — no more reasoning about which fragment gets imported last. This is not a hypothetical: an empty convergence step silently ended up mid-plan after a real split, and a completed run continued into the next artifact's generation step, firing an unwanted LLM call — <code>complete()</code> exists specifically so that can't happen again, not just so <code>mhl lint</code> catches it after the fact (which it still does — see FALLTHROUGH ACROSS FRAGMENTS below — for a step that hasn't been converted yet).</p></div>
+          <div class="tip-row"><span>FALLTHROUGH ACROSS FRAGMENTS</span><p><code>mhl lint</code> checks one specific seam: a fragment's own last step, when another fragment is still merged in after it, must end in an unconditional <code>goto</code>/<code>goto match</code>/<code>fail(...)</code>/<code>pause(...)</code>/<code>complete()</code>/<code>break</code> (or a trailing <code>if</code>/<code>else</code> where both branches do) — otherwise it silently falls through into a step in a different file. A step that isn't its fragment's last member is never checked — reordering steps inside one file is exactly as visible as it always was, and sequential fallthrough there is completely normal, not flagged. Prefer fixing a real terminal step with <code>complete()</code> (above) over just satisfying this check with a <code>goto</code> to nowhere useful.</p></div>
+          <div class="tip-row"><span>LONE FRAGMENT</span><p>A fragment file linted or edited on its own — its siblings not pulled in by anything in that file — stays quiet about being incomplete, since that's the expected shape, not a bug in the fragment: a missing <code>entry</code> step, a <code>goto</code>/route target it can't see, and a step assigning to a pipeline-scoped <code>var</code> declared only in a sibling are all withheld the same way, and for the same reason — this one file genuinely cannot tell "the rest is elsewhere" from "actually wrong." Once a whole-file <code>import</code> somewhere has genuinely merged more than one fragment together, all of that comes back: a still-missing <code>entry</code>, a target that still doesn't resolve, a variable that's still nowhere declared. Either way, <code>mhl run</code> (via <code>runtime.FindPipeline</code>, and a real undefined-variable error at the step that reads it) always catches a truly broken pipeline the moment something tries to actually run the assembled result, lint or no lint. A directory-wide scan (<code>mhl serve mcp &lt;dir&gt;</code>, <code>mhl test &lt;dir&gt;</code>) skips registering an incomplete fragment rather than failing the whole directory over it.</p></div>
           <div class="run-stack">
             <div class="inline-code"><span>start</span><code>mhl run release.mh --input environment=staging</code></div>
             <div class="inline-code"><span>resume</span><code>mhl run release.mh --input environment=staging --resume</code></div>
@@ -1176,7 +1207,7 @@ test guarded_retry_test {
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script>
-const KEYWORDS=new Set('import from as export loop var mem if else while try catch finally return break goto route for in self fail pause'.split(' '));
+const KEYWORDS=new Set('import from as export loop partial entry var mem if else while try catch finally return break goto route for in self fail pause'.split(' '));
 const DECLS=new Set('agent router memory tool pipeline prompt skill extension parallel step input output test describe'.split(' '));
 const CONSTS=new Set(['true','false','null']);
 const esc=(v)=>v.replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

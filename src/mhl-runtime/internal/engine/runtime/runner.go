@@ -311,7 +311,20 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 		var brk *BreakSignal
 		var gt *GotoSignal
 		var pause *PauseSignal
+		var complete *CompleteSignal
 		switch {
+		case errors.As(err, &complete):
+			// A `complete()` call ends the run in the normal "completed"
+			// state right here — exactly what happens below when current
+			// has no successor, just reached explicitly instead of by
+			// physical position. Falling out of the loop (ok = false)
+			// reaches that exact same tail: FinalVars captured, checkpoint
+			// cleared if enabled, (result, nil) returned. This is the
+			// primitive that removes the reliance on "the terminal step
+			// must be physically last" a `partial` pipeline's merged
+			// order otherwise imposes — see CompleteSignal's doc comment.
+			ok = false
+
 		case errors.As(err, &pause):
 			// Suspend: write a checkpoint whose NextStep is *this* step, so a
 			// --resume / run/resume re-enters it (with any merged arguments) —

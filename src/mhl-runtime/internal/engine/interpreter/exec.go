@@ -243,16 +243,37 @@ type pauseSignal struct{ reason any }
 
 func (p *pauseSignal) Error() string { return "pause" }
 
+// completeSignal is the control signal a `complete()` builtin call raises:
+// it unwinds out of RunStep exactly like pauseSignal/breakSignal (never
+// swallowed by try/catch, never caught the way returnSignal is), but
+// execsvc's exec closure translates it into a runtime.CompleteSignal, which
+// Runner.Run treats exactly like walking off the end of the merged step
+// list — the run ends in the normal "completed" state, checkpoint cleared,
+// right there, regardless of what step (if any) comes after this one
+// physically. It exists specifically so a convergence/terminal step never
+// has to rely on being the last item in a `partial` pipeline's merged
+// order — see ast.Pipeline.Partial's doc comment and the FALLTHROUGH ACROSS
+// FRAGMENTS note in docs/site/Docs-Reference.dc.html for the production
+// incident this was added to prevent for good, not just flag via lint.
+// Deliberately takes no payload — unlike pause/break, "completed" is the
+// ordinary, unremarkable outcome, and the run's own vars already carry
+// whatever the caller needs to know.
+type completeSignal struct{}
+
+func (c *completeSignal) Error() string { return "complete" }
+
 // isControlSignal reports whether err is one of the not-a-real-error
-// control-flow signals (return/break/goto/pause) rather than a genuine
-// failure — the shared check execStatement (skip the positionedError wrap)
-// and execTry (skip Catch, still run Finally) both need.
+// control-flow signals (return/break/goto/pause/complete) rather than a
+// genuine failure — the shared check execStatement (skip the
+// positionedError wrap) and execTry (skip Catch, still run Finally) both
+// need.
 func isControlSignal(err error) bool {
 	var retSig *returnSignal
 	var brkSig *breakSignal
 	var gtSig *gotoSignal
 	var pauseSig *pauseSignal
-	return errors.As(err, &retSig) || errors.As(err, &brkSig) || errors.As(err, &gtSig) || errors.As(err, &pauseSig)
+	var completeSig *completeSignal
+	return errors.As(err, &retSig) || errors.As(err, &brkSig) || errors.As(err, &gtSig) || errors.As(err, &pauseSig) || errors.As(err, &completeSig)
 }
 
 // IsBreak reports whether err (as returned by RunStep) came from a `break`
@@ -285,6 +306,13 @@ func IsPause(err error) (reason any, ok bool) {
 		return sig.reason, true
 	}
 	return nil, false
+}
+
+// IsComplete reports whether err (as returned by RunStep) came from a
+// `complete()` builtin call.
+func IsComplete(err error) bool {
+	var sig *completeSignal
+	return errors.As(err, &sig)
 }
 
 // maxLoopIterations caps how many times a `while` loop's body may run, so a
@@ -480,31 +508,53 @@ func execExprStatement(ctx *evalCtx, expr *ast.Expr) error {
 // `var` shadowing a pipeline var would mean, though in practice a step
 // author has no reason to pick the same name on purpose.
 func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
-	name, ok := assignTargetBase(assign.Target)
+	name, self, ok := assignTargetBase(assign.Target)
 	if !ok {
 		return fmt.Errorf("assignment target must be a plain variable or an array index, not a nested field")
 	}
 	if ctx.constNames[name] {
 		return fmt.Errorf("cannot assign to constant %q", name)
 	}
-	target := ctx.env
-	if _, declared := target[name]; !declared {
-		if _, declared = ctx.pipelineEnv[name]; !declared {
-			if isMemVar(ctx, name) {
-				return execMemAssign(ctx, name, assign)
-			}
-			if isContextRef(ctx, name) {
-				return fmt.Errorf("cannot assign to %q: the pipeline's context is read-only", name)
-			}
-			return fmt.Errorf("undefined variable %q", name)
+	var target Env
+	ops := assign.Target.Ops
+	if self {
+		// `self.name = value` — see evalSelfPipelineRef's doc comment for
+		// why this bypasses step-local shadowing on purpose. Restricted to
+		// a whole-value target for now (assignTargetBase only accepts
+		// exactly one `.name` trailer on `self`), so ops is always empty
+		// here regardless of assign.Target.Ops.
+		ops = nil
+		if ctx.pipelineName == "" {
+			return fmt.Errorf("self.%s: self.<name> is only valid inside a pipeline/workflow step, assigning a declared input, var, or mem", name)
 		}
-		target = ctx.pipelineEnv
+		if _, declared := ctx.pipelineEnv[name]; declared {
+			target = ctx.pipelineEnv
+		} else if isMemVar(ctx, name) {
+			return execMemAssign(ctx, name, nil, assign)
+		} else if isContextRef(ctx, name) {
+			return fmt.Errorf("cannot assign to %q: the pipeline's context is read-only", name)
+		} else {
+			return fmt.Errorf("self.%s: not a declared input, var, or mem of this pipeline", name)
+		}
+	} else {
+		target = ctx.env
+		if _, declared := target[name]; !declared {
+			if _, declared = ctx.pipelineEnv[name]; !declared {
+				if isMemVar(ctx, name) {
+					return execMemAssign(ctx, name, ops, assign)
+				}
+				if isContextRef(ctx, name) {
+					return fmt.Errorf("cannot assign to %q: the pipeline's context is read-only", name)
+				}
+				return fmt.Errorf("undefined variable %q", name)
+			}
+			target = ctx.pipelineEnv
+		}
 	}
 	v, err := evalExpr(ctx, assign.Value)
 	if err != nil {
 		return err
 	}
-	ops := assign.Target.Ops
 	if len(ops) == 0 {
 		if assign.Op == "+=" {
 			if v, err = addValues(target[name], v); err != nil {
@@ -530,21 +580,35 @@ func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
 	return indexWrite(ctx, container, ops[len(ops)-1].Index, v, 0)
 }
 
-// assignTargetBase returns the target's base variable name when it has the
-// shape execAssign accepts: a bare identifier, or an identifier followed
-// only by bracket-index trailers (`arr[i]`, `matrix[i][j]`, `config[key]`)
-// — any Member or Call trailer in the chain makes it not an assignable
-// target.
-func assignTargetBase(p *ast.Postfix) (string, bool) {
+// assignTargetBase returns the target's base variable name when it has one
+// of the two shapes execAssign accepts:
+//   - a bare identifier, optionally followed only by bracket-index trailers
+//     (`arr[i]`, `matrix[i][j]`, `config[key]`) — any Member or Call trailer
+//     in the chain makes it not an assignable target;
+//   - `self.name`, and *only* that — exactly one Member trailer, nothing
+//     else. self always names a pipeline-scoped input/var/mem (see
+//     evalSelfPipelineRef); a trailing index chain on top of it
+//     (`self.data[0] = ...`) isn't supported yet and falls through to the
+//     same rejection as any other unsupported shape.
+//
+// Mirrored by lint.assignTargetBase (checks.go), which must stay in step
+// with this.
+func assignTargetBase(p *ast.Postfix) (name string, self bool, ok bool) {
 	if p == nil || p.Primary == nil || p.Primary.Ident == "" {
-		return "", false
+		return "", false, false
+	}
+	if p.Primary.Ident == "self" {
+		if len(p.Ops) != 1 || p.Ops[0].Member == "" || p.Ops[0].Optional || p.Ops[0].Call != nil {
+			return "", false, false
+		}
+		return p.Ops[0].Member, true, true
 	}
 	for _, op := range p.Ops {
 		if op.Index == nil {
-			return "", false
+			return "", false, false
 		}
 	}
-	return p.Primary.Ident, true
+	return p.Primary.Ident, false, true
 }
 
 func execIf(ctx *evalCtx, stmt *ast.IfStmt) error {

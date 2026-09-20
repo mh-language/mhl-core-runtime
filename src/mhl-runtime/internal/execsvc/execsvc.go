@@ -274,6 +274,9 @@ func Run(req Request) (*Result, error) {
 		if reason, ok := interpreter.IsPause(err); ok {
 			return &runtime.PauseSignal{Reason: reason}
 		}
+		if interpreter.IsComplete(err) {
+			return &runtime.CompleteSignal{}
+		}
 		if target, ok := interpreter.IsGoto(err); ok {
 			return &runtime.GotoSignal{Target: target}
 		}
