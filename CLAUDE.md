@@ -242,8 +242,9 @@ Key packages:
 
 ### Docs vs. implementation
 
-`docs/site/reference.html` is the single source of truth for the language surface — there is no
-separate wiki; keep it in sync with `agent.go`/`agent_hooks.go` rather than
+`docs/site/Docs-Reference.dc.html` (and, for normative language behavior, `Docs-Specification.dc.html`)
+is the single source of truth for the language surface — there is no
+separate wiki; keep it in sync with `agent.go`/`agent_hooks.go`/`pipeline_hooks.go` rather than
 letting a second copy of this explanation drift. For agents specifically,
 `internal/engine/interpreter/agent.go` reads `engine`, `command`, `args`, `endpoint`,
 `temperature`, `log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `before`, `after`.
@@ -262,6 +263,22 @@ declaring any other value is a build-time error (caught by both `mhl lint` and `
 silently accepted. Before relying on a docs example, grep the relevant
 `internal/engine/interpreter` or `internal/features/nativeops` file for the exact property/op
 name.
+
+A pipeline/workflow (and `loop pipeline`/`loop workflow`) has its own, unrelated set of five
+lifecycle hooks — `session_start`, `session_end`, `step_start`, `step_end`, `stop_failure`
+(`internal/engine/interpreter/pipeline_hooks.go`'s `RunPipelineHook`, wired in
+`internal/execsvc/execsvc.go`) — each a single-parameter lambda body property
+(`ast.PipelineBodyProperties`), unlike agent `before`/`after`'s zero parameters. They are
+observation-only: a non-nil return is a runtime error, and a failure inside any of them aborts
+the run like any other error, *except* a failure inside `stop_failure` itself, which is only ever
+logged, never allowed to replace the failure it was reporting. `stop_failure`'s `reason` comes
+from `runtime.StepError.Kind` — a closed set (`"failed"`, `"timeout"`, `"cancelled"`,
+`"max_step_visits"`) plus a `"runtime_error"` fallback for anything not step-shaped — which is
+**not** the same thing as a `loop pipeline`'s `LoopResult.TerminalReason == "max_iterations"`: the
+latter is a soft, non-error stop that fires `session_end`, never `stop_failure`, despite the
+near-identical name. `session_start`/`session_end` fire once per whole run (once per
+`execsvc.Run` call, covering every iteration of a loop); `step_start`/`step_end` fire once per
+step execution, including once per loop iteration and once per `parallel` branch.
 
 ## Testing conventions
 

@@ -111,6 +111,11 @@ var PipelineBodyProperties = []PipelineBodyProperty{
 	{Name: "context", Doc: "{ source, require } — populate context.vars from a prior run (context.session_id / .started_at / .resumed / .principal need no block)"},
 	{Name: "output", Doc: "{ name: expr, ... } — explicit result projection; with it declared, only these keys are returned to a caller (and over MCP / A2A) instead of every var"},
 	{Name: "repeat", Doc: "{ stop_when, max_iterations } — the `max <N>` header clause is shorthand for just max_iterations", LoopOnly: true},
+	{Name: "session_start", Doc: "(session) -> { ... } — runs once at the very start of the run, before its first step (fires again with session.resumed on --resume)"},
+	{Name: "session_end", Doc: "(session) -> { ... } — runs once when the run completes normally, via complete(), or via break — not on pause() or on a genuine failure (see stop_failure)"},
+	{Name: "step_start", Doc: "(step) -> { ... } — runs before every step execution, including each parallel branch and each loop iteration"},
+	{Name: "step_end", Doc: "(step) -> { ... } — runs after every step execution, with step.error set on a genuine failure"},
+	{Name: "stop_failure", Doc: "(failure) -> { ... } — runs once when the run ends in a genuine failure (error, unrecovered timeout, cancellation, or a runaway goto cycle) — never on a soft loop stop like max_iterations"},
 }
 
 // PipelineBodyPropertyNames returns the allow-list as a set, for a membership

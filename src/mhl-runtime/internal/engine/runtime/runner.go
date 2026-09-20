@@ -293,11 +293,11 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 	for ok {
 		if err := runCtx.Err(); err != nil {
 			r.saveCancelCheckpoint(p, perStep, current, result.Executed, ctx)
-			return result, fmt.Errorf("runtime: run cancelled before step %q: %w", current, err)
+			return result, &StepError{Pipeline: p.Name, Step: current, Kind: "cancelled", Err: fmt.Errorf("run cancelled before this step: %w", err)}
 		}
 		visits[current]++
 		if visits[current] > maxStepVisits {
-			return result, fmt.Errorf("runtime: step %q revisited more than %d times (a goto cycle with no break?)", current, maxStepVisits)
+			return result, &StepError{Pipeline: p.Name, Step: current, Kind: "max_step_visits", Err: fmt.Errorf("step %q revisited more than %d times (a goto cycle with no break?)", current, maxStepVisits)}
 		}
 
 		stage, found := p.stageByName(current)
@@ -391,6 +391,9 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 			}
 			if timedOut {
 				return result, &StepError{Pipeline: p.Name, Step: current, Kind: "timeout", Err: ErrStepTimeout}
+			}
+			if runCtx.Err() != nil {
+				return result, &StepError{Pipeline: p.Name, Step: current, Kind: "cancelled", Err: err}
 			}
 			// The prior stage's checkpoint (if any) is already persisted;
 			// surface the failure so a later --resume can continue here.

@@ -846,7 +846,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
           <div class="tip-row"><span>STATELESS</span><p>Every method is one or more independent requests with no session between them; a blocking <code>.send</code> that polls keeps no state beyond the task id. A credential that fails to resolve aborts the call before any request. Streaming (<code>message/stream</code>) and push notifications are not implemented yet.</p></div>
         </section>
 
-        <section class="feature doc-section" id="pipeline" data-title="pipeline workflow input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in for item in each spawn over collection array of handles">
+        <section class="feature doc-section" id="pipeline" data-title="pipeline workflow input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in for item in each spawn over collection array of handles session_start session_end step_start step_end stop_failure lifecycle hooks">
           <div class="feature-head"><h2><span class="feature-num">14</span><code>pipeline</code> and <code>workflow</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in declared order. <code>pipeline</code> keeps that order — <code>goto</code> is a lint error. <code>workflow</code> is the same in every other way but allows <code>goto &lt;step&gt;</code>, forward or backward, so its steps form an explicitly branching state machine. Either takes the <code>loop</code> prefix.</p>
 
@@ -962,6 +962,34 @@ partial workflow Discovery {
 }</code></pre>
           <div class="tip-row"><span>OUTPUT</span><p>The optional <code>output: { name: expr, … }</code> block is the run's result contract. With it declared, a <code>mhl run</code> caller — and every <code>mhl serve mcp</code> / <code>serve a2a</code> client — receives <em>only</em> these keys, each evaluated against the final variable state (so a key can be renamed, computed, or dropped). Without it, the legacy behaviour returns every non-internal <code>var</code>. The mapping does not change what a later run's <code>context:</code> reads back — that still sees the full variable state. The value must be an object mapping; anything else fails the run.</p></div>
           <div class="tip-row"><span>OUTPUT &amp; PAUSE</span><p>The mapping is evaluated once, only when the run finishes (a completion or a <code>break</code>). A run parked by <code>pause(...)</code> skips it — its expressions may read a <code>var</code> that step has not reached — and the suspension response returns the partial state; the <code>run/resume</code> (or <code>mhl run --resume</code>) that completes the run produces the real projection. The result is not checkpointed, so a resume re-evaluates it, and a mapping expression observes the run's cancellation/deadline — keep side effects out of it.</p></div>
+
+          <p class="block-label">LIFECYCLE HOOKS</p>
+          <p>Five optional body properties observe a run without taking part in it — a lambda of exactly one parameter, called for its side effects (<code>log</code>, <code>mem</code>, a declared <code>tool</code>/<code>extension</code>); its return value is ignored, and returning anything other than nothing at all is a runtime error.</p>
+          <pre class="code-block"><code class="language-mhl">workflow Discovery {
+    session_start: (session) -&gt; {
+        log("start " + session.session_id + " resumed=" + json.stringify(session.resumed))
+    }
+    session_end: (session) -&gt; {
+        log("end broke=" + json.stringify(session.broke))
+    }
+    step_start: (step) -&gt; { log("-&gt; " + step.step) }
+    step_end:   (step) -&gt; { log("&lt;- " + step.step + " error=" + json.stringify(step.error)) }
+    stop_failure: (failure) -&gt; {
+        log("FAILED " + failure.step + ": " + failure.error + " (" + failure.reason + ")")
+    }
+
+    step Dispatch { ... }
+}</code></pre>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Hook</span><span>Fires</span><span>Payload</span></div>
+            <div class="table-row"><span><code>session_start</code></span><span>once, before the first step — including again on <code>--resume</code></span><span><code>pipeline, kind, session_id, resumed, inputs</code></span></div>
+            <div class="table-row"><span><code>session_end</code></span><span>once, on a normal completion or a <code>break</code> — never on <code>pause()</code> or a genuine failure</span><span><code>pipeline, kind, session_id, vars, broke, break_reason</code> (+ <code>iterations</code> on a <code>loop</code>)</span></div>
+            <div class="table-row"><span><code>step_start</code></span><span>before every step — each <code>parallel</code> branch, each <code>loop</code> iteration</span><span><code>pipeline, step, index, total</code></span></div>
+            <div class="table-row"><span><code>step_end</code></span><span>after every step, whether it succeeded or not</span><span>same, + <code>error</code> (the message, or <code>null</code> on success)</span></div>
+            <div class="table-row"><span><code>stop_failure</code></span><span>once, on a genuine terminal failure</span><span><code>pipeline, kind, step, error, reason</code></span></div>
+          </div>
+          <div class="tip-row"><span>STOP_FAILURE vs. A SOFT STOP</span><p><code>stop_failure</code>'s <code>reason</code> is one of <code>"failed"</code>, <code>"timeout"</code>, <code>"cancelled"</code>, or <code>"max_step_visits"</code> (a <code>goto</code> cycle with no <code>break</code> to escape it) — always a genuine error. A <code>loop</code> exhausting its <code>max_iterations</code> ceiling is <em>not</em> one of these: it is a normal, non-error stop that fires <code>session_end</code> like any other completion, never <code>stop_failure</code>. The two names are one word apart; do not confuse a loop's iteration ceiling with the runaway-goto safety cap.</p></div>
+          <div class="tip-row"><span>OBSERVATION ONLY, FAIL LOUD</span><p>A hook's own error — the wrong parameter count, a runtime error in its body, or a non-nil return — aborts the run exactly like any other failure, and (except inside <code>stop_failure</code> itself) is what a subsequent <code>stop_failure</code> then reports. An error raised <em>by</em> <code>stop_failure</code> is only ever logged alongside the failure that triggered it — it can never mask or replace the original cause. None of the five hooks can suppress, retry, or otherwise change what the run does; they exist to observe it.</p></div>
 
           <p class="block-label">LOOP WITH AN EXPLICIT STOP</p>
           <pre class="code-block"><code class="language-mhl">loop pipeline PollBuild {

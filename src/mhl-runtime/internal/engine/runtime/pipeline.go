@@ -78,6 +78,12 @@ type Stage struct {
 // declaration allowed).
 type Pipeline struct {
 	Name string
+	// Kind is "pipeline" or "workflow" (ast.Pipeline.Kind, projected
+	// verbatim) — purely informational here (the runtime executes both
+	// identically), surfaced to a session_start/session_end hook's payload
+	// as session.kind so a hook shared across many declarations can tell
+	// them apart.
+	Kind string
 	// Description is the optional `description: "..."` body property — a
 	// human-readable summary surfaced as the MCP tool / A2A skill description
 	// by the serve adapters. Empty when the pipeline declares none.
@@ -120,6 +126,18 @@ type Pipeline struct {
 	// types.Any here (best-effort, same as every other reader in this
 	// function) — internal/lang/lint is what reports the typo as a Finding.
 	Inputs []PipelineInputSpec
+
+	// SessionStart, SessionEnd, StepStart, StepEnd, and StopFailure are the
+	// optional `name: (x) -> { ... }` lifecycle hook properties — each a
+	// single-parameter lambda, unevaluated here (mirrors Output above: the raw
+	// *ast.Expr is stored, evaluation happens at the point execsvc.Run
+	// actually fires it, via interpreter.RunPipelineHook). nil when the
+	// pipeline declares none. See PipelineBodyProperties for their semantics.
+	SessionStart *ast.Expr
+	SessionEnd   *ast.Expr
+	StepStart    *ast.Expr
+	StepEnd      *ast.Expr
+	StopFailure  *ast.Expr
 }
 
 // PipelineInputSpec is one `input name: Type` declaration, resolved to the
@@ -164,7 +182,7 @@ type PipelineInputSpec struct {
 // read); adding a body property means adding both its entry there and its
 // case here.
 func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.Program) Pipeline {
-	out := Pipeline{Name: p.Name, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
+	out := Pipeline{Name: p.Name, Kind: p.Kind, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
 	entryStage := -1
 	// `max <N>` header clause — shorthand for `repeat { max_iterations: N }`.
 	// Read first so an explicit `repeat` block below still wins (both being
@@ -211,6 +229,16 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 			out.Output = m.Prop.Value
 		case m.Prop != nil && m.Prop.Name == "description":
 			out.Description, _ = ast.StringValue(m.Prop.Value)
+		case m.Prop != nil && m.Prop.Name == "session_start":
+			out.SessionStart = m.Prop.Value
+		case m.Prop != nil && m.Prop.Name == "session_end":
+			out.SessionEnd = m.Prop.Value
+		case m.Prop != nil && m.Prop.Name == "step_start":
+			out.StepStart = m.Prop.Value
+		case m.Prop != nil && m.Prop.Name == "step_end":
+			out.StepEnd = m.Prop.Value
+		case m.Prop != nil && m.Prop.Name == "stop_failure":
+			out.StopFailure = m.Prop.Value
 		case m.Input != nil:
 			t, ok := types.FromExprAlias(m.Input.Type, aliases)
 			if !ok {

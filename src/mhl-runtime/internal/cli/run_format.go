@@ -85,10 +85,17 @@ func classifyRunError(rj *runJSON, err error) {
 		if stepErr.Pipeline != "" && rj.Pipeline == "" {
 			rj.Pipeline = stepErr.Pipeline
 		}
-		if stepErr.Kind == "timeout" {
+		switch stepErr.Kind {
+		case "timeout":
 			rj.Kind = "step_timeout"
 			rj.Hint = "the step exceeded its `timeout` clause; raise it, or bound the slow operation itself. The budget is per attempt, never persisted."
-		} else {
+		case "cancelled":
+			rj.Kind = "cancelled"
+			rj.Hint = "the run's context ended — a caller cancellation or a server-side drain/shutdown. A checkpoint was saved if per-step checkpointing is enabled; `mhl run --resume` continues it."
+		case "max_step_visits":
+			rj.Kind = "goto_cycle"
+			rj.Hint = "a `goto` cycle revisited this step with no `break` to escape it. Add a terminating condition, or a `break`, so the cycle can end."
+		default:
 			rj.Kind = "step_failed"
 			rj.Hint = "the step raised fail() or an operation errored — see `error`. `mhl run --resume` re-enters this step."
 		}

@@ -181,6 +181,12 @@ type LoopResult struct {
 	PauseReason    any
 	Resumed        bool
 	FinalVars      map[string]any
+	// InstanceID is the `mem` namespace this run used (see Pipeline.InstanceID),
+	// resolved inside Run and handed back here since Run takes its Pipeline by
+	// value — a caller cannot otherwise recover it from the Pipeline it passed
+	// in. execsvc uses it to read the right instance's mem when projecting
+	// `output:` or firing session_end/stop_failure after the loop finishes.
+	InstanceID string
 }
 
 // LoopRunner repeats a `loop pipeline`, once per iteration, checkpointing
@@ -267,6 +273,33 @@ func (lr *LoopRunner) saveLoop(cp *LoopCheckpoint) error {
 // non-resumed run (even a plain re-run with no --resume flag at all) is
 // deliberate: two independent runs of the same loop pipeline must never
 // share `mem` state just because they share a pipeline name.
+// ResolveInstanceID returns the `mem` instance id a call to Run(name, resume)
+// would use, without executing anything — recovered from the loop's own
+// checkpoint when resuming an in-progress run, or freshly generated
+// otherwise, exactly mirroring Run's own resolution (lines below). execsvc
+// calls this once before Run so a `session_start` hook (which fires before
+// the loop's first iteration, ahead of Run's own resolution) can read the
+// correct pipeline-scoped `mem`, instead of falling back to a wrong or empty
+// instance. resumed reports whether an in-progress checkpoint was actually
+// found and reused.
+func (lr *LoopRunner) ResolveInstanceID(name string, resume bool) (id string, resumed bool, err error) {
+	if resume {
+		cp, ok, err := lr.loopCheckpoints().Load(name)
+		if err != nil {
+			return "", false, err
+		}
+		if ok && (cp.TerminalReason == "" || cp.TerminalReason == "pause") {
+			if cerr := cp.CompatibleWith(lr.Runner.definitionDigest); cerr != nil {
+				if !(lr.Runner.forceResume && errors.Is(cerr, ErrCheckpointDefinitionMismatch)) {
+					return "", false, cerr
+				}
+			}
+			return cp.InstanceID, true, nil
+		}
+	}
+	return newInstanceID(), false, nil
+}
+
 func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec StepFunc, evalStopWhen func(instanceID string) (bool, error), resume bool) (*LoopResult, error) {
 	if runCtx == nil {
 		runCtx = context.Background()
@@ -274,7 +307,15 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 	iteration := 0
 	resumed := false
 	var finalVars map[string]any
-	instanceID := ""
+	// A caller (execsvc, via ResolveInstanceID) may have already resolved and
+	// set p.InstanceID ahead of this call — e.g. to fire a session_start hook
+	// with the correct `mem` before the loop's first iteration runs. When so,
+	// trust it instead of resolving (and possibly generating a fresh, and
+	// then mismatched, id) a second time below; the checkpoint is still
+	// loaded unconditionally for iteration/resumed either way. p.InstanceID
+	// is empty for every existing caller that builds a Pipeline literal
+	// directly, so this is a no-op there.
+	instanceID := p.InstanceID
 	if resume {
 		cp, ok, err := lr.loopCheckpoints().Load(p.Name)
 		if err != nil {
@@ -291,7 +332,9 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 				}
 			}
 			iteration = cp.NextIteration
-			instanceID = cp.InstanceID
+			if instanceID == "" {
+				instanceID = cp.InstanceID
+			}
 			resumed = true
 		}
 	}
@@ -308,7 +351,7 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			if err := lr.saveLoop(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "max_iterations", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
-			return &LoopResult{Iterations: iteration, TerminalReason: "max_iterations", Resumed: resumed, FinalVars: finalVars}, nil
+			return &LoopResult{Iterations: iteration, TerminalReason: "max_iterations", Resumed: resumed, FinalVars: finalVars, InstanceID: instanceID}, nil
 		}
 
 		result, err := lr.Runner.Run(runCtx, p, init, exec, false)
@@ -321,14 +364,14 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			}
 			// A break keeps the state built up in the iteration it fired in —
 			// Runner.Run now returns it — rather than the last full iteration's.
-			return &LoopResult{Iterations: iteration + 1, TerminalReason: "break", BreakReason: result.BreakReason, Resumed: resumed, FinalVars: result.FinalVars}, nil
+			return &LoopResult{Iterations: iteration + 1, TerminalReason: "break", BreakReason: result.BreakReason, Resumed: resumed, FinalVars: result.FinalVars, InstanceID: instanceID}, nil
 		}
 		if result.Paused {
 			// Suspend the loop at this iteration; a later --resume re-runs it.
 			if err := lr.saveLoop(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "pause", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
-			return &LoopResult{Iterations: iteration + 1, TerminalReason: "pause", PauseReason: result.PauseReason, Resumed: resumed, FinalVars: result.FinalVars}, nil
+			return &LoopResult{Iterations: iteration + 1, TerminalReason: "pause", PauseReason: result.PauseReason, Resumed: resumed, FinalVars: result.FinalVars, InstanceID: instanceID}, nil
 		}
 		finalVars = result.FinalVars
 
@@ -341,7 +384,7 @@ func (lr *LoopRunner) Run(runCtx context.Context, p Pipeline, init InitFunc, exe
 			if err := lr.saveLoop(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "stop_when", InstanceID: instanceID}); err != nil {
 				return nil, err
 			}
-			return &LoopResult{Iterations: iteration, TerminalReason: "stop_when", Resumed: resumed, FinalVars: finalVars}, nil
+			return &LoopResult{Iterations: iteration, TerminalReason: "stop_when", Resumed: resumed, FinalVars: finalVars, InstanceID: instanceID}, nil
 		}
 
 		if err := lr.saveLoop(&LoopCheckpoint{Loop: p.Name, NextIteration: iteration, TerminalReason: "", InstanceID: instanceID}); err != nil {
