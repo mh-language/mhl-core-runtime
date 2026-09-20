@@ -51,6 +51,32 @@ pipeline P {
 	}
 }
 
+// TestCheckPipelineHookContextTypesAreKnownEverywhere proves
+// SessionContext/StepContext/FailureContext resolve as real global types
+// anywhere a bare `: Type` name already does — a pipeline `input` and a tool
+// method parameter/return alike — not just inside a lifecycle hook's own
+// (unannotated, dynamically-typed) lambda parameter.
+func TestCheckPipelineHookContextTypesAreKnownEverywhere(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+pipeline P {
+    input session: SessionContext
+    input step: StepContext
+    input failure: FailureContext
+    step S {}
+}
+
+tool audit {
+    record(s: SessionContext): SessionContext -> { return s }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+}
+
 // TestCheckToolCallLiteralTypeMismatch confirms a literal argument of the
 // wrong declared type is caught statically by checkToolCall.
 func TestCheckToolCallLiteralTypeMismatch(t *testing.T) {

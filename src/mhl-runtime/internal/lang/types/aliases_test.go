@@ -94,6 +94,16 @@ func TestAliasesReportKeywordShadow(t *testing.T) {
 	}
 }
 
+// TestAliasesRejectShadowingAPipelineHookContextType proves
+// SessionContext/StepContext/FailureContext are protected exactly like a
+// primitive keyword — a program can't redeclare one of its own.
+func TestAliasesRejectShadowingAPipelineHookContextType(t *testing.T) {
+	_, errs := aliasesOf(t, `type SessionContext = number`)
+	if len(errs) != 1 || !strings.Contains(errs[0].Message, "shadows a builtin") {
+		t.Fatalf("unexpected errors: %+v", errs)
+	}
+}
+
 func TestFromExprAliasFallsBackToParseWithoutTable(t *testing.T) {
 	prog, err := parser.Parse(`type Slug = string`)
 	if err != nil {

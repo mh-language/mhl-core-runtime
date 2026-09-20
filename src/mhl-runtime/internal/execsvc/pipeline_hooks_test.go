@@ -109,11 +109,11 @@ pipeline P {
 	}
 	// Order: START A, RAN:A, END A, START B, RAN:B, END B, START C, RAN:C, END C.
 	order := []string{
-		`START {"index":1,"pipeline":"P","step":"A","total":3}`, "RAN:A",
+		`START {"error":null,"index":1,"pipeline":"P","step":"A","total":3}`, "RAN:A",
 		`END {"error":null,"index":1,"pipeline":"P","step":"A","total":3}`,
-		`START {"index":2,"pipeline":"P","step":"B","total":3}`, "RAN:B",
+		`START {"error":null,"index":2,"pipeline":"P","step":"B","total":3}`, "RAN:B",
 		`END {"error":null,"index":2,"pipeline":"P","step":"B","total":3}`,
-		`START {"index":3,"pipeline":"P","step":"C","total":3}`, "RAN:C",
+		`START {"error":null,"index":3,"pipeline":"P","step":"C","total":3}`, "RAN:C",
 		`END {"error":null,"index":3,"pipeline":"P","step":"C","total":3}`,
 	}
 	last := -1

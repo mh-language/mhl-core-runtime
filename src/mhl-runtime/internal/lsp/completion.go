@@ -31,7 +31,12 @@ var typeAnnotationRe = regexp.MustCompile(`\b[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Za-
 
 // typeKeywords is internal/lang/types' declarable vocabulary, offered
 // whenever the cursor sits in a recognized type-annotation position.
-var typeKeywords = []string{"string", "number", "bool", "array", "object", "any"}
+// SessionContext/StepContext/FailureContext are the three builtin object
+// shapes the pipeline lifecycle hooks bind their lambda parameter to
+// (types.go's `aliases` table) — real global types, usable in any `: Type`
+// position, not just inferred for a hook's own parameter (see
+// hookcontext.go for that inference).
+var typeKeywords = []string{"string", "number", "bool", "array", "object", "any", "SessionContext", "StepContext", "FailureContext"}
 
 // isTypeAnnotationPosition is a pragmatic heuristic, not a real parse —
 // consistent with blockStack/classifyHeader's own best-effort approach
@@ -72,6 +77,9 @@ func completionAt(path, text string, pos position) []completionItem {
 		if target == "self" {
 			return selfCompletionAt(path, text, pos)
 		}
+		if items, ok := hookParamCompletionAt(text, pos, target); ok {
+			return items
+		}
 		for _, s := range documentSymbols(path, text) {
 			if s.Name == target {
 				return methodItems(path, s)
@@ -107,6 +115,9 @@ func completionAt(path, text string, pos position) []completionItem {
 		})
 	}
 	items = append(items, propertyItemsFor(path, blockStack(textUpToPosition(text, pos)))...)
+	if isGotoTargetPosition(linePrefix) {
+		items = append(items, gotoTargetItems(path, text, pos)...)
+	}
 	return items
 }
 

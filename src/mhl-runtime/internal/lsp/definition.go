@@ -74,6 +74,18 @@ func definitionAt(path, text string, pos position, cache *refCache) []location {
 	if loc, found := findDeclaration(path, text, word, cache); found {
 		return []location{loc}
 	}
+
+	// A `goto <word>` target names a step, never a top-level declaration —
+	// findDeclaration above only ever finds the latter — so it needs its own
+	// resolution, scoped to the pipeline/workflow directly enclosing pos
+	// (and, for a `partial` declaration, that pipeline's sibling fragments).
+	if isGotoTargetWord(line, start) {
+		if pipelineName, ok := enclosingPipelineName(text, pos); ok {
+			if loc, found := findStepDeclaration(path, text, pipelineName, word); found {
+				return []location{loc}
+			}
+		}
+	}
 	return nil
 }
 

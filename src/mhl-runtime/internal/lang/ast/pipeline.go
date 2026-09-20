@@ -100,6 +100,17 @@ type PipelineBodyProperty struct {
 	// pipeline/workflow (today: repeat) — lint still accepts it on a plain
 	// pipeline, but completion only offers it under `loop`.
 	LoopOnly bool
+	// ParamType names the builtin global type (types.go's `aliases` table —
+	// "SessionContext", "StepContext", "FailureContext") this property's
+	// single lambda parameter is bound to, for a lifecycle hook property;
+	// empty for every other property (these aren't lambdas at all). The
+	// runtime never checks a hook lambda's parameter against this — mhl
+	// lambdas stay dynamically typed, exactly like before/after on agent —
+	// it exists solely so internal/lsp can resolve `session.`/`step.`/
+	// `failure.` to real field completion (see internal/lsp/hookcontext.go)
+	// without a second, hand-duplicated field list to keep in sync with
+	// execsvc.go's actual payload construction.
+	ParamType string
 }
 
 // PipelineBodyProperties is the allow-list of pipeline/workflow body
@@ -111,11 +122,11 @@ var PipelineBodyProperties = []PipelineBodyProperty{
 	{Name: "context", Doc: "{ source, require } — populate context.vars from a prior run (context.session_id / .started_at / .resumed / .principal need no block)"},
 	{Name: "output", Doc: "{ name: expr, ... } — explicit result projection; with it declared, only these keys are returned to a caller (and over MCP / A2A) instead of every var"},
 	{Name: "repeat", Doc: "{ stop_when, max_iterations } — the `max <N>` header clause is shorthand for just max_iterations", LoopOnly: true},
-	{Name: "session_start", Doc: "(session) -> { ... } — runs once at the very start of the run, before its first step (fires again with session.resumed on --resume)"},
-	{Name: "session_end", Doc: "(session) -> { ... } — runs once when the run completes normally, via complete(), or via break — not on pause() or on a genuine failure (see stop_failure)"},
-	{Name: "step_start", Doc: "(step) -> { ... } — runs before every step execution, including each parallel branch and each loop iteration"},
-	{Name: "step_end", Doc: "(step) -> { ... } — runs after every step execution, with step.error set on a genuine failure"},
-	{Name: "stop_failure", Doc: "(failure) -> { ... } — runs once when the run ends in a genuine failure (error, unrecovered timeout, cancellation, or a runaway goto cycle) — never on a soft loop stop like max_iterations"},
+	{Name: "session_start", Doc: "(session: SessionContext) -> { ... } — runs once at the very start of the run, before its first step (fires again with session.resumed=true on --resume)", ParamType: "SessionContext"},
+	{Name: "session_end", Doc: "(session: SessionContext) -> { ... } — runs once when the run completes normally, via complete(), or via break (session.iterations only on a loop) — not on pause() or on a genuine failure (see stop_failure)", ParamType: "SessionContext"},
+	{Name: "step_start", Doc: "(step: StepContext) -> { ... } — runs before every step execution, including each parallel branch and each loop iteration", ParamType: "StepContext"},
+	{Name: "step_end", Doc: `(step: StepContext) -> { ... } — runs after every step execution; step.error is the failure message, or null on success/break/pause()/complete()/goto`, ParamType: "StepContext"},
+	{Name: "stop_failure", Doc: `(failure: FailureContext) -> { ... } — runs once on a genuine failure; failure.reason is "failed"|"timeout"|"cancelled"|"max_step_visits"|"runtime_error" — never on a soft loop stop like max_iterations`, ParamType: "FailureContext"},
 }
 
 // PipelineBodyPropertyNames returns the allow-list as a set, for a membership

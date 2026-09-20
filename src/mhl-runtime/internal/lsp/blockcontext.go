@@ -30,6 +30,21 @@ const (
 	blockRateLimit
 	blockExtension // an `extension <kind> <Name>` body; ExtKind carries the kind
 	blockTool      // a `tool <Name>` body; Name carries the tool's declared name
+
+	// blockSessionStartHook/blockSessionEndHook/blockStepStartHook/
+	// blockStepEndHook/blockStopFailureHook are a pipeline/workflow lifecycle
+	// hook's own lambda body — `session_start: (session) -> { ... }` and its
+	// four siblings (ast.PipelineBodyProperties). Name carries the lambda's
+	// single parameter as the user actually spelled it (not a fixed
+	// "session"/"step"/"failure" — see hookcontext.go), which is what lets
+	// completion.go offer `<param>.` field completion for whichever builtin
+	// type (SessionContext/StepContext/FailureContext) that hook's
+	// PipelineBodyProperty.ParamType names.
+	blockSessionStartHook
+	blockSessionEndHook
+	blockStepStartHook
+	blockStepEndHook
+	blockStopFailureHook
 )
 
 // blockRef is one classified open "{": its kind plus, for blockExtension, the
@@ -67,6 +82,15 @@ var headerRe = []struct {
 	{blockRetry, regexp.MustCompile(`\bretry\s*:\s*$`)},
 	{blockCache, regexp.MustCompile(`\bcache\s*:\s*$`)},
 	{blockRateLimit, regexp.MustCompile(`\brate_limit\s*:\s*$`)},
+	// (?:\s*:\s*\w+)? tolerates an explicit (and unenforced — see
+	// PipelineBodyProperty.ParamType's doc comment) `(session: SessionContext)
+	// -> ...` type annotation without capturing it: the parameter's own name
+	// is always group 1, whichever form was written.
+	{blockSessionStartHook, regexp.MustCompile(`\bsession_start\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
+	{blockSessionEndHook, regexp.MustCompile(`\bsession_end\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
+	{blockStepStartHook, regexp.MustCompile(`\bstep_start\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
+	{blockStepEndHook, regexp.MustCompile(`\bstep_end\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
+	{blockStopFailureHook, regexp.MustCompile(`\bstop_failure\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
 }
 
 // extHeaderRe recognises an `extension <kind> <Name>` header and captures the

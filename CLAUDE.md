@@ -280,6 +280,24 @@ near-identical name. `session_start`/`session_end` fire once per whole run (once
 `execsvc.Run` call, covering every iteration of a loop); `step_start`/`step_end` fire once per
 step execution, including once per loop iteration and once per `parallel` branch.
 
+Each hook's single lambda parameter is bound to one of three **builtin global types** —
+`SessionContext`, `StepContext`, `FailureContext` — registered in `internal/lang/types/types.go`'s
+package-private `aliases` map right alongside `string`/`number`/`bool`/etc., so a bare `: Type`
+name anywhere in the language (an `input`, a tool method param/return) resolves them exactly like
+a primitive keyword, and a program cannot redeclare one (same "shadows a builtin" static error).
+`ast.PipelineBodyProperty.ParamType` names which one a given hook's parameter carries — read only
+by `internal/lsp` (`hookcontext.go`'s `hookParamCompletionAt`/`objectTypeFieldItems`), which is
+what turns `session.`/`step.`/`failure.` inside a hook body into real field completion, resolved
+from `types.Parse` rather than a second hand-written field list. The hook lambda itself is never
+type-annotated in practice and the runtime never checks `Param.Type` against the bound value —
+mhl lambdas stay fully dynamically typed; the type exists for the annotation surface and the LSP,
+not for runtime enforcement. `execsvc.go` always emits every field of the relevant type on every
+firing (nil where a particular firing has nothing to say, e.g. `session_start`'s `vars`/`broke`),
+never omitting a key — `types.Check`'s `v == nil` bypass is what makes one `SessionContext` shape
+correctly describe both `session_start` and `session_end`'s payload; do not go back to omitting
+inapplicable keys; a missing key trips Check's "missing field" error for a program that does
+type-check against `SessionContext` explicitly.
+
 ## Testing conventions
 
 - `internal/cli` tests are largely black-box, end-to-end: write `.mh` source to a temp dir,

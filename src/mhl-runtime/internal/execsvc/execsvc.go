@@ -303,8 +303,10 @@ func Run(req Request) (*Result, error) {
 		if req.OnStep != nil {
 			req.OnStep(step, index, stepTotal)
 		}
+		// error is always present (StepContext declares it, types.go) — nil
+		// here since the step hasn't run yet; step_end below fills it in.
 		if err := runHook(pipeline.StepStart, "step_start", map[string]any{
-			"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal),
+			"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal), "error": nil,
 		}, ctx.InstanceID, ctx.Vars); err != nil {
 			return err
 		}
@@ -369,9 +371,14 @@ func Run(req Request) (*Result, error) {
 		pipeline.InstanceID = id
 		startInstance = id
 	}
+	// Every SessionContext field is emitted on every firing (nil where this
+	// one has nothing to say) so the single declared SessionContext type
+	// (types.go) — shared by session_start and session_end alike — always
+	// structurally matches; see the field's own doc comment there.
 	if err := runHook(pipeline.SessionStart, "session_start", map[string]any{
 		"pipeline": pipeline.Name, "kind": pipeline.Kind, "session_id": sessionID,
 		"resumed": req.Resume, "inputs": coercedInputs,
+		"vars": nil, "broke": nil, "break_reason": nil, "iterations": nil,
 	}, startInstance, nil); err != nil {
 		return nil, err
 	}
@@ -406,7 +413,8 @@ func Run(req Request) (*Result, error) {
 			}
 			if err := runHook(pipeline.SessionEnd, "session_end", map[string]any{
 				"pipeline": pipeline.Name, "kind": pipeline.Kind, "session_id": sessionID,
-				"vars": vars, "broke": res.Broke, "break_reason": res.BreakReason,
+				"resumed": nil, "inputs": nil,
+				"vars": vars, "broke": res.Broke, "break_reason": res.BreakReason, "iterations": nil,
 			}, "default", res.FinalVars); err != nil {
 				return nil, err
 			}
@@ -464,6 +472,7 @@ func Run(req Request) (*Result, error) {
 		}
 		if err := runHook(pipeline.SessionEnd, "session_end", map[string]any{
 			"pipeline": pipeline.Name, "kind": pipeline.Kind, "session_id": sessionID,
+			"resumed": nil, "inputs": nil,
 			"vars": vars, "broke": res.TerminalReason == "break", "break_reason": res.BreakReason,
 			"iterations": float64(res.Iterations),
 		}, loopInstance, res.FinalVars); err != nil {
