@@ -251,6 +251,7 @@ var text = "${label}: ${total}"
 var target = metric?.target?.trim() ?? ""
 var retries = config?.retries ?? 3       // 0 stays 0 — only null is replaced
 var field  = record?.[name] ?? null      // no `is_object(record)` guard needed</code></pre>
+          <div class="tip-row"><span>NESTED QUOTES</span><p>A <code>${...}</code> interpolation may contain its own ordinary, unescaped string literal — <code>"today is ${time.format(time.now(), "yyyy-MM-dd")}"</code> — nested to any depth. Escaping the inner quotes (<code>\"</code>) still works, for source written before this was supported, but is no longer necessary.</p></div>
 
           <p class="block-label">MATCH</p>
           <p><code>match</code> is a multi-way branch in expression position. Arms are tried top to bottom; the first whose pattern is deep-equal to the subject (the same comparison <code>==</code> uses) wins, or the <code>_</code> wildcard. A pattern is an <code>Enum.Variant</code> or a bool/number/string literal. A <code>match</code> over an <code>enum</code> or <code>bool</code> with no <code>_</code> arm must cover every case — <code>mhl lint</code> flags a missing one; any other subject relies on a runtime error if nothing matches.</p>

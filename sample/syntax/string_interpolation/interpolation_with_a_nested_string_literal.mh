@@ -1,0 +1,19 @@
+memory Telemetry {
+    type: "jsonl"
+    path: "projects/telemetry/${time.format(time.now(), "yyyy-MM-dd")}.jsonl"
+}
+
+test interpolation_with_a_nested_string_literal {
+    describe interpolation_with_a_nested_string_literal {
+        var x = "date=${time.format(time.now(), "yyyy")}"
+        is_true(x.starts_with("date=20"))
+
+        // the old workaround (escaping the nested quotes) must keep working
+        var y = "date=${time.format(time.now(), \"yyyy\")}"
+        are_equal(x, y)
+
+        // a nested object literal, and a nested string containing a "}"
+        var z = "${ {a: "b}c", n: 1} } tail"
+        are_equal(z, "{\"a\":\"b}c\",\"n\":1} tail")
+    }
+}

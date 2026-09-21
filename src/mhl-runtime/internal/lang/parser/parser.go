@@ -29,8 +29,10 @@ func rejectBadNumber(t lexer.Token) (lexer.Token, error) {
 var mhlParser = participle.MustBuild[ast.Program](
 	participle.Lexer(mhlLexer),
 	participle.Elide("Comment", "Whitespace"),
-	// Unquote double-quoted String tokens into their literal value.
-	participle.Unquote("String"),
+	// Unquote double-quoted String tokens into their literal value. A plain
+	// participle.Unquote("String") can't be used here — see
+	// unquoteMHLString's doc comment (string_lexer.go).
+	participle.Map(unquoteMHLString, "String"),
 	// Strip the triple-quote delimiters from multi-line strings.
 	participle.Map(trimMultiline, "MLString"),
 	// A BadNumber token can never be valid — fail with a clear message.
@@ -48,7 +50,7 @@ var mhlParser = participle.MustBuild[ast.Program](
 var mhlExprParser = participle.MustBuild[ast.Expr](
 	participle.Lexer(mhlLexer),
 	participle.Elide("Comment", "Whitespace"),
-	participle.Unquote("String"),
+	participle.Map(unquoteMHLString, "String"),
 	participle.Map(trimMultiline, "MLString"),
 	participle.UseLookahead(participle.MaxLookahead),
 )
