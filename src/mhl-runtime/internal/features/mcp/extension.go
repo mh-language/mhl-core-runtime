@@ -29,8 +29,11 @@ func (Extension) Version() string { return ExtensionVersion }
 // instance.Methods both read it.
 var mcpMethods = []extension.MethodSpec{
 	{
-		Name:          "call",
-		Params:        []extension.ParamSpec{{Name: "tool", Type: "string"}, {Name: "arguments", Type: "object", Optional: true}},
+		Name: "call",
+		Params: []extension.ParamSpec{
+			{Name: "tool", Type: "string", Documentation: "Name of the tool to invoke, exactly as it appears in the server's tools/list catalogue (see the discover()/list_tools() methods)."},
+			{Name: "arguments", Type: "object", Optional: true, Documentation: "Tool-specific arguments as a plain object — its shape is whatever that tool's own inputSchema declares. Omit for a tool that takes none."},
+		},
 		Returns:       "any",
 		Signature:     `call(tool: string, arguments?: object) -> any`,
 		Documentation: "Invoke a tool by name via JSON-RPC tools/call; returns the decoded result.",

@@ -66,3 +66,17 @@ func Cwd() (string, error) {
 func Pid() float64 {
 	return float64(os.Getpid())
 }
+
+// Executable returns the path of the running mhl binary itself
+// (os.Executable) — not necessarily resolved through symlinks, and not
+// guaranteed to still exist if the binary was moved or removed after the
+// process started; both are the same caveats os.Executable's own docs
+// carry, inherited as-is rather than silently resolved out from under the
+// caller.
+func Executable() (string, error) {
+	path, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("os.executable: %w", err)
+	}
+	return path, nil
+}

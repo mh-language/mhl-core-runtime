@@ -33,21 +33,27 @@ func (Extension) Version() string { return ExtensionVersion }
 // single source of truth for the DeclarationSpec and instance.Methods.
 var a2aMethods = []extension.MethodSpec{
 	{
-		Name:          "send",
-		Params:        []extension.ParamSpec{{Name: "message", Type: "string"}, {Name: "context", Type: "string", Optional: true}},
+		Name: "send",
+		Params: []extension.ParamSpec{
+			{Name: "message", Type: "string", Documentation: "The message text to send to the remote agent."},
+			{Name: "context", Type: "string", Optional: true, Documentation: "An existing task/context id to continue a prior conversation, instead of starting a new one. Omit to start fresh."},
+		},
 		Returns:       "object",
 		Signature:     `send(message: string, context?: string) -> object`,
 		Documentation: "message/send then poll tasks/get to a terminal state; returns the normalised message or task.",
 	},
 	{Name: "agent_card", Returns: "object", Signature: "agent_card() -> object", Documentation: "GET /.well-known/agent-card.json — the agent's advertised capabilities."},
 	{
-		Name:          "get_task",
-		Params:        []extension.ParamSpec{{Name: "id", Type: "string"}, {Name: "history_length", Type: "number", Optional: true}},
+		Name: "get_task",
+		Params: []extension.ParamSpec{
+			{Name: "id", Type: "string", Documentation: "Task id, as returned by send() (or a prior get_task())."},
+			{Name: "history_length", Type: "number", Optional: true, Documentation: "Maximum number of past messages to include in the returned task's history. Omit for the server's own default (typically full history)."},
+		},
 		Returns:       "object",
 		Signature:     "get_task(id: string, history_length?: number) -> object",
 		Documentation: "tasks/get for one task id.",
 	},
-	{Name: "cancel", Params: []extension.ParamSpec{{Name: "id", Type: "string"}}, Returns: "object", Signature: "cancel(id: string) -> object", Documentation: "tasks/cancel for one task id."},
+	{Name: "cancel", Params: []extension.ParamSpec{{Name: "id", Type: "string", Documentation: "Task id to cancel, as returned by send()."}}, Returns: "object", Signature: "cancel(id: string) -> object", Documentation: "tasks/cancel for one task id."},
 }
 
 func (Extension) Declarations() []extension.DeclarationSpec {

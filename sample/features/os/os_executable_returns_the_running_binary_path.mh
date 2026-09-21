@@ -1,0 +1,6 @@
+test os_executable_returns_the_running_binary_path {
+    describe os_executable_returns_the_running_binary_path {
+        var exe = os.executable()
+        is_true(exe.size() > 0)
+    }
+}

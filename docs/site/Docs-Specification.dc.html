@@ -373,7 +373,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <div class="tip-row"><strong>Immutability and mutation</strong>Collection transforms, concatenation, and slices return new arrays. Plain indexed assignment such as <code>items[0] = value</code> and object-field assignment mutate the addressed collection.</div>
 </section>
 
-<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write dir directory create exists delete list git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7 html get_element get_attribute get_text to_html os user home_dir hostname platform arch cwd pid">
+<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write dir directory create exists delete list git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7 html get_element get_attribute get_text to_html os user home_dir hostname platform arch cwd pid executable">
 <h2>11. Native operations</h2>
 <p>Native namespaces are reserved and can be called from pipeline statements, tool methods, hooks, and other expression positions. They execute host effects and therefore MUST be treated as privileged operations.</p>
 <h3>11.1 Command execution: <code>cmd</code></h3>
@@ -443,6 +443,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <tr><td class="signature">os.arch() → string</td><td>The target architecture the running binary was built for, e.g. <code>"amd64"</code> or <code>"arm64"</code>.</td></tr>
 <tr><td class="signature">os.cwd() → string</td><td>The interpreter process's current working directory — what relative <code>fs.*</code>/<code>dir.*</code> paths resolve against. Raises if it can't be read.</td></tr>
 <tr><td class="signature">os.pid() → number</td><td>The <code>mhl</code> process's OS process id.</td></tr>
+<tr><td class="signature">os.executable() → string</td><td>Path of the running <code>mhl</code> binary itself. Not guaranteed to be resolved through symlinks, and not guaranteed to still exist if the binary was moved or removed after the process started. Raises if it can't be determined.</td></tr>
 </tbody></table>
 </section>
 
