@@ -1,0 +1,8 @@
+test os_user_and_home_dir_are_non_empty {
+    describe os_user_and_home_dir_are_non_empty {
+        var user = os.user()
+        var home = os.home_dir()
+        is_true(user.size() > 0)
+        is_true(home.size() > 0)
+    }
+}
