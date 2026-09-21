@@ -3,8 +3,11 @@ package lsp
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
 )
 
 func hasLabel(items []completionItem, label string) bool {
@@ -497,6 +500,93 @@ func TestPlainTextItemsDowngradesSnippets(t *testing.T) {
 	}
 	if mem.Kind != kindKeyword || mem.InsertText != "" {
 		t.Errorf("memory: want plain keyword after downgrade, got %+v", mem)
+	}
+	// "agent (full)" has no plain-text fallback worth offering — its label
+	// isn't itself valid mhl to insert — so the downgrade drops it entirely
+	// rather than inserting the label text verbatim.
+	if hasLabel(items, "agent (full)") {
+		t.Errorf("agent (full): richer variant should be dropped, not downgraded, got %+v", items)
+	}
+}
+
+// TestCompletionDeclarationFullVariants proves agent/pipeline/workflow each
+// offer a second, richer snippet — labelled "<keyword> (full)" — alongside
+// the minimal one, since their minimal shape doesn't hint at retry/cache/
+// fallback/hooks (agent) or checkpoint/output/lifecycle hooks/goto
+// (pipeline, workflow).
+func TestCompletionDeclarationFullVariants(t *testing.T) {
+	items := completionAt("main.mh", "", position{Line: 0, Character: 0})
+	for _, label := range []string{"agent (full)", "pipeline (full)", "workflow (full)"} {
+		found := false
+		for _, it := range items {
+			if it.Label != label {
+				continue
+			}
+			found = true
+			if it.InsertTextFormat != insertTextFormatSnippet || it.Kind != kindSnippet {
+				t.Errorf("%s: want snippet item, got %+v", label, it)
+			}
+		}
+		if !found {
+			t.Errorf("missing %q", label)
+		}
+	}
+	// The minimal "agent"/"pipeline"/"workflow" items still exist alongside
+	// their "(full)" sibling.
+	for _, label := range []string{"agent", "pipeline", "workflow"} {
+		if !hasLabel(items, label) {
+			t.Errorf("minimal variant %q should still be offered", label)
+		}
+	}
+}
+
+// snippetPlaceholderRe resolves LSP snippet placeholder syntax down to
+// plain text — $0 / ${N} (no default) become "", ${N:default} becomes
+// default — mirroring how an editor renders the snippet before any Tab is
+// pressed. It never needs to handle nested placeholders: none of
+// declarationSnippets' bodies nest one.
+var snippetPlaceholderRe = regexp.MustCompile(`\$(?:\d+|\{\d+(?::([^}]*))?\})`)
+
+func resolveSnippetText(body string) string {
+	resolved := snippetPlaceholderRe.ReplaceAllStringFunc(body, func(m string) string {
+		sub := snippetPlaceholderRe.FindStringSubmatch(m)
+		return sub[1]
+	})
+	return strings.ReplaceAll(resolved, `\$`, "$")
+}
+
+// snippetPreludes supplies whatever a snippet's own body can't be
+// self-contained about — router's default placeholder agent names
+// (AgentA/AgentB) name no real declaration, exactly like a real user's
+// first draft before they rename them to their own agents, so a bare lint
+// of the resolved body alone would always flag "agent is not declared".
+// Not a per-keyword field on declarationSnippet itself: it's test-only
+// scaffolding, irrelevant to what actually gets sent to the editor.
+var snippetPreludes = map[string]string{
+	"router": "agent AgentA { command: \"true\" }\nagent AgentB { command: \"true\" }\n\n",
+}
+
+// TestDeclarationSnippetsAreLintClean resolves every declarationSnippets
+// body to plain mhl source (as an editor would render it before any
+// placeholder is edited) and runs it through the same static checker `mhl
+// lint` uses, catching a typo or an invalid property name in a hand-written
+// template that a Go compile can't — these are string literals, not real
+// .mh source, until this test parses/lints them.
+func TestDeclarationSnippetsAreLintClean(t *testing.T) {
+	for kw, variants := range declarationSnippets {
+		for _, sn := range variants {
+			label := sn.label
+			if label == "" {
+				label = kw
+			}
+			t.Run(label, func(t *testing.T) {
+				src := snippetPreludes[label] + resolveSnippetText(sn.body)
+				findings := lint.Source("snippet.mh", src)
+				if len(findings) != 0 {
+					t.Errorf("lint findings for %q:\n%s\n--- resolved source ---\n%s", label, findings, src)
+				}
+			})
+		}
 	}
 }
 
