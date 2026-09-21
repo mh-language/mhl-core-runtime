@@ -2,7 +2,9 @@ package parser
 
 import "github.com/alecthomas/participle/v2/lexer"
 
-// mhlLexer is the stateless lexer for .mh source.
+// mhlRegexLexer is the regex-rule table for every token except a
+// single-quoted String's own boundary (see string_lexer.go) — wrapped by
+// mhlLexer below into the Definition Participle actually uses.
 //
 // Rule ordering is significant: the first rule that matches at a given
 // position wins. In particular MLString precedes String (three quotes before
@@ -20,7 +22,13 @@ import "github.com/alecthomas/participle/v2/lexer"
 // (the null-coalescing operator, see ast.Expr) and `+=` (compound append/add
 // assignment, see ast.AssignStmt) precede it so a bare `?` never stands alone
 // and `x += y` lexes as one operator rather than `+` then `=`.
-var mhlLexer = lexer.MustSimple([]lexer.SimpleRule{
+//
+// The "String" rule below is never actually matched in practice — mhlLexer
+// intercepts every single-quoted string before delegating here (see
+// string_lexer.go) — but it must stay listed so the token type it names
+// exists in Symbols() for the grammar's `@String` references and for
+// participle.Unquote("String") to key off of.
+var mhlRegexLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Comment", Pattern: `//[^\n]*`},
 	{Name: "Whitespace", Pattern: `[ \t\r\n]+`},
 	{Name: "MLString", Pattern: `"""[\s\S]*?"""`},

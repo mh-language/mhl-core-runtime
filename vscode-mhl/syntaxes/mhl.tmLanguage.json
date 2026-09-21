@@ -194,12 +194,25 @@
           "include": "#calls"
         },
         {
+          "include": "#interpolation-object"
+        },
+        {
           "name": "variable.other.mhl",
           "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
         },
         {
           "name": "punctuation.accessor.mhl",
           "match": "\\?\\.|\\."
+        }
+      ]
+    },
+    "interpolation-object": {
+      "comment": "A bare { ... } object literal inside a ${...} interpolation — e.g. ${ {a: 1} }. Without its own begin/end region here, the object's own closing '}' would be consumed by #interpolation's end pattern instead, ending the interpolation early and leaving the rest (another closing '}', or any trailing text) miscolored as plain string content.",
+      "begin": "\\{",
+      "end": "\\}",
+      "patterns": [
+        {
+          "include": "#interpolation-expression"
         }
       ]
     },

@@ -68,22 +68,13 @@ func interpolateChecked(ctx *evalCtx, s string, checkSpan func(string) error) (s
 }
 
 // matchInterpolationSpan finds the "}" that closes the "${" starting at
-// start, counting brace depth so a nested object literal like
-// "${ {a: 1} }" closes at the right place instead of its first "}".
+// start. Delegates to parser.MatchInterpolationSpan, which — unlike a flat
+// brace-depth count — also recurses into any double-quoted string met
+// along the way, so neither a nested object literal ("${ {a: 1} }") nor a
+// "}" that's really just content inside a nested string literal
+// ("${ f(\"a}b\") }") closes the span in the wrong place.
 func matchInterpolationSpan(s string, start int) (end int, ok bool) {
-	depth := 1
-	for i := start + 2; i < len(s); i++ {
-		switch s[i] {
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return i, true
-			}
-		}
-	}
-	return 0, false
+	return parser.MatchInterpolationSpan(s, start)
 }
 
 // formatValue renders an evaluated value for log(...) output and string
