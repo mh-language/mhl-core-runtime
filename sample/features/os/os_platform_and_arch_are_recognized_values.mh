@@ -1,0 +1,6 @@
+test os_platform_and_arch_are_recognized_values {
+    describe os_platform_and_arch_are_recognized_values {
+        includes(["darwin", "linux", "windows"], os.platform())
+        is_true(os.arch().size() > 0)
+    }
+}

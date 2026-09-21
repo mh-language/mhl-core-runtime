@@ -114,6 +114,13 @@ var nativeSigs = map[string]sig{
 	"time.sleep":       {Label: "time.sleep(duration: duration) -> null", Params: []string{"duration"}, Doc: "Blocks for `duration` (e.g. `500ms`, `2s`). Cancellation-aware: a run-level cancel or the step's `timeout` firing interrupts it and fails the step. A non-positive value is a no-op."},
 	"uuid.v4":          {Label: "uuid.v4() -> string", Params: nil, Doc: "Random (version 4) UUID as a canonical 36-char lowercase string. Raises on entropy failure."},
 	"uuid.v7":          {Label: "uuid.v7() -> string", Params: nil, Doc: "Time-ordered (version 7) UUID as a canonical 36-char lowercase string: 48-bit ms timestamp + random. Sorts in creation order. Raises on entropy failure."},
+	"os.user":          {Label: "os.user() -> string", Params: nil, Doc: "OS account name running the mhl process. Raises if the account can't be looked up (e.g. no matching /etc/passwd entry)."},
+	"os.home_dir":      {Label: "os.home_dir() -> string", Params: nil, Doc: "Current user's home directory. Raises if it can't be determined."},
+	"os.hostname":      {Label: "os.hostname() -> string", Params: nil, Doc: "The host's name as reported by the kernel. Raises if it can't be read."},
+	"os.platform":      {Label: "os.platform() -> string", Params: nil, Doc: "Target OS the running binary was built for: \"darwin\", \"linux\", or \"windows\"."},
+	"os.arch":          {Label: "os.arch() -> string", Params: nil, Doc: "Target architecture the running binary was built for, e.g. \"amd64\" or \"arm64\"."},
+	"os.cwd":           {Label: "os.cwd() -> string", Params: nil, Doc: "The interpreter process's current working directory — what relative fs.*/dir.* paths resolve against. Raises if it can't be read."},
+	"os.pid":           {Label: "os.pid() -> number", Params: nil, Doc: "The mhl process's OS process id."},
 	"html.parse": {
 		Label:  "html.parse(text: string) -> object",
 		Params: []string{"text"},

@@ -373,7 +373,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <div class="tip-row"><strong>Immutability and mutation</strong>Collection transforms, concatenation, and slices return new arrays. Plain indexed assignment such as <code>items[0] = value</code> and object-field assignment mutate the addressed collection.</div>
 </section>
 
-<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write dir directory create exists delete list git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7 html get_element get_attribute get_text to_html">
+<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write dir directory create exists delete list git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7 html get_element get_attribute get_text to_html os user home_dir hostname platform arch cwd pid">
 <h2>11. Native operations</h2>
 <p>Native namespaces are reserved and can be called from pipeline statements, tool methods, hooks, and other expression positions. They execute host effects and therefore MUST be treated as privileged operations.</p>
 <h3>11.1 Command execution: <code>cmd</code></h3>
@@ -432,6 +432,17 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <tr><td class="signature">html.get_attribute(element: object, name: string, default?: any) → any</td><td>The value of <code>element</code>'s <code>attrs[name]</code>, or <code>default</code> (<code>null</code> when omitted) if absent. Never raises — not even when <code>element</code> is <code>null</code> (e.g. a <code>get_element</code> miss passed straight through) or otherwise not an element node.</td></tr>
 <tr><td class="signature">html.get_text(node: object) → string</td><td>Concatenates the content of every <code>"#text"</code> descendant of <code>node</code> — <code>node</code> itself included, if it is one — in document order, with no separator inserted between sibling text runs (the DOM <code>textContent</code> equivalent).</td></tr>
 <tr><td class="signature">html.to_html(node: object) → string</td><td>Serializes <code>node</code> back to an HTML string — the inverse of <code>html.parse</code>. A <code>"#fragment"</code> node serializes each of its children in turn, since a fragment itself is not one real tag. Attribute order is not preserved across a parse→serialize round trip, since <code>attrs</code> is stored as an object keyed by name, not an ordered list.</td></tr>
+</tbody></table>
+<h3>11.11 Host information: <code>os</code></h3>
+<p>Reports facts about the host running the <code>mhl</code> process — not about whoever called it. In <code>mhl serve mcp</code>/<code>mhl serve a2a</code>, that is the server's own host, the same distinction <code>env()</code> (§10) already draws between an operator-supplied environment variable and caller-supplied input. A <code>before</code> hook that folds <code>os.user()</code> or <code>os.hostname()</code> into a prompt sent to a third-party agent MUST be treated as leaking host/process details, not caller identity.</p>
+<table><thead><tr><th>Signature</th><th>Semantics</th></tr></thead><tbody>
+<tr><td class="signature">os.user() → string</td><td>OS account name running the <code>mhl</code> process. Raises if the account can't be looked up.</td></tr>
+<tr><td class="signature">os.home_dir() → string</td><td>The current user's home directory. Raises if it can't be determined.</td></tr>
+<tr><td class="signature">os.hostname() → string</td><td>The host's name as reported by the kernel. Raises if it can't be read.</td></tr>
+<tr><td class="signature">os.platform() → string</td><td>The target OS the running binary was built for: <code>"darwin"</code>, <code>"linux"</code>, or <code>"windows"</code>.</td></tr>
+<tr><td class="signature">os.arch() → string</td><td>The target architecture the running binary was built for, e.g. <code>"amd64"</code> or <code>"arm64"</code>.</td></tr>
+<tr><td class="signature">os.cwd() → string</td><td>The interpreter process's current working directory — what relative <code>fs.*</code>/<code>dir.*</code> paths resolve against. Raises if it can't be read.</td></tr>
+<tr><td class="signature">os.pid() → number</td><td>The <code>mhl</code> process's OS process id.</td></tr>
 </tbody></table>
 </section>
 

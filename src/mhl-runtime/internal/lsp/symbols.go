@@ -480,7 +480,7 @@ func inferKindFromText(rhs string) (symbolKind, bool) {
 	}
 }
 
-// nativeSymbols are the built-in cmd/git/fs/dir/http/json/log/time/uuid/html namespaces —
+// nativeSymbols are the built-in cmd/git/fs/dir/http/json/log/time/uuid/html/os namespaces —
 // never declared in any .mh source, so symbolsFromProgram/symbolsFromText
 // can't find them, yet a .mh author calls their members constantly. Method
 // sets mirror the case labels nativeOpCall actually implements
@@ -498,6 +498,7 @@ var nativeSymbols = []symbol{
 	{Name: "time", Kind: symNative, Methods: []string{"now", "parse", "format", "add", "diff", "compare", "sleep"}},
 	{Name: "uuid", Kind: symNative, Methods: []string{"v4", "v7"}},
 	{Name: "html", Kind: symNative, Methods: []string{"parse", "get_element", "get_elements", "get_element_by_id", "get_attribute", "get_text", "to_html", "escape", "attr_escape"}},
+	{Name: "os", Kind: symNative, Methods: []string{"user", "home_dir", "hostname", "platform", "arch", "cwd", "pid"}},
 }
 
 // documentSymbols returns every symbol visible from path/text: the fixed

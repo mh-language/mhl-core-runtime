@@ -26,11 +26,11 @@ func findTool(prog *ast.Program, name string) (*ast.Tool, bool) {
 }
 
 // nativeNamespaces are the reserved `tool` method-body namespaces
-// (language-design.md §7), plus `dir`, `json`, `log`, `time`, `uuid`, and
-// `html` — never looked up against user declarations, the same way the
-// bare `log(...)` builtin is reserved regardless of what a .mh author
-// might otherwise name a variable.
-var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "dir": true, "http": true, "json": true, "log": true, "time": true, "uuid": true, "html": true}
+// (language-design.md §7), plus `dir`, `json`, `log`, `time`, `uuid`,
+// `html`, and `os` — never looked up against user declarations, the same
+// way the bare `log(...)` builtin is reserved regardless of what a .mh
+// author might otherwise name a variable.
+var nativeNamespaces = map[string]bool{"cmd": true, "git": true, "fs": true, "dir": true, "http": true, "json": true, "log": true, "time": true, "uuid": true, "html": true, "os": true}
 
 // evalToolCall resolves and executes a declared `tool` method call, e.g.
 // `execution.get_diff()`. Arguments bind positionally to the method's
@@ -453,6 +453,20 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		return nativeops.UUIDv4()
 	case "uuid.v7":
 		return nativeops.UUIDv7()
+	case "os.user":
+		return nativeops.User()
+	case "os.home_dir":
+		return nativeops.HomeDir()
+	case "os.hostname":
+		return nativeops.Hostname()
+	case "os.platform":
+		return nativeops.Platform(), nil
+	case "os.arch":
+		return nativeops.Arch(), nil
+	case "os.cwd":
+		return nativeops.Cwd()
+	case "os.pid":
+		return nativeops.Pid(), nil
 	case "html.parse":
 		text, ok := args.stringAt(0)
 		if !ok {

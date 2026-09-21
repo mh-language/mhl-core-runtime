@@ -1,0 +1,10 @@
+test os_hostname_cwd_and_pid_are_reported {
+    describe os_hostname_cwd_and_pid_are_reported {
+        var hostname = os.hostname()
+        var cwd = os.cwd()
+        var pid = os.pid()
+        is_true(hostname.size() > 0)
+        is_true(cwd.size() > 0)
+        is_true(pid > 0)
+    }
+}
