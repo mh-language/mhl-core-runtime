@@ -433,6 +433,73 @@ pipeline P {
 	}
 }
 
+// TestCompletionDeclarationSnippets proves the curated declaration keywords
+// (memory, agent, ...) offer a tab-through example body — snippet syntax,
+// InsertTextFormat=2 — instead of just the bare word, while an untouched
+// keyword like "var" is unaffected.
+func TestCompletionDeclarationSnippets(t *testing.T) {
+	items := completionAt("main.mh", "", position{Line: 0, Character: 0})
+	itemByLabel := func(label string) completionItem {
+		for _, it := range items {
+			if it.Label == label {
+				return it
+			}
+		}
+		t.Fatalf("missing keyword %q", label)
+		return completionItem{}
+	}
+
+	mem := itemByLabel("memory")
+	if mem.InsertTextFormat != insertTextFormatSnippet {
+		t.Errorf("memory: want snippet InsertTextFormat, got %d", mem.InsertTextFormat)
+	}
+	if !strings.Contains(mem.InsertText, "memory ${1:Name}") {
+		t.Errorf("memory: InsertText missing tabstop body, got %q", mem.InsertText)
+	}
+	if mem.Kind != kindSnippet {
+		t.Errorf("memory: want kindSnippet, got %d", mem.Kind)
+	}
+
+	// The agent snippet embeds a literal mhl "${prompt}" interpolation, which
+	// must be escaped ("\$") in the snippet body so a snippet-aware client
+	// doesn't treat it as its own tabstop syntax.
+	agent := itemByLabel("agent")
+	if !strings.Contains(agent.InsertText, `\${prompt}`) {
+		t.Errorf("agent: want escaped literal ${prompt}, got %q", agent.InsertText)
+	}
+
+	// An ordinary keyword outside declarationSnippets keeps today's plain
+	// behavior: no InsertText override, PlainText format.
+	v := itemByLabel("var")
+	if v.InsertTextFormat == insertTextFormatSnippet || v.InsertText != "" {
+		t.Errorf("var: expected plain keyword item, got %+v", v)
+	}
+}
+
+// TestPlainTextItemsDowngradesSnippets proves the server-side fallback for a
+// client that didn't advertise textDocument.completion.completionItem.
+// snippetSupport in "initialize": every snippet item loses its InsertText/
+// InsertTextFormat/Kind override and falls back to a bare keyword, so it
+// never inserts literal "${1:Name}" placeholder syntax as text.
+func TestPlainTextItemsDowngradesSnippets(t *testing.T) {
+	items := completionAt("main.mh", "", position{Line: 0, Character: 0})
+	items = plainTextItems(items)
+	for _, it := range items {
+		if it.InsertTextFormat == insertTextFormatSnippet {
+			t.Errorf("%s: still snippet-format after downgrade: %+v", it.Label, it)
+		}
+	}
+	var mem completionItem
+	for _, it := range items {
+		if it.Label == "memory" {
+			mem = it
+		}
+	}
+	if mem.Kind != kindKeyword || mem.InsertText != "" {
+		t.Errorf("memory: want plain keyword after downgrade, got %+v", mem)
+	}
+}
+
 func TestCompletionTypeAnnotationPosition(t *testing.T) {
 	cases := []struct {
 		name string

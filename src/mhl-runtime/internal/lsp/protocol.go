@@ -91,15 +91,23 @@ const (
 	kindModule   = 9
 	kindProperty = 10
 	kindKeyword  = 14
+	kindSnippet  = 15
 )
 
+// insertTextFormatSnippet marks a completionItem's InsertText as LSP snippet
+// syntax ($1, ${2:default}, $0 final cursor) rather than plain text — see
+// declarationSnippets in completion.go. Omitted (zero value) means
+// PlainText, the LSP default when the field is absent.
+const insertTextFormatSnippet = 2
+
 type completionItem struct {
-	Label         string         `json:"label"`
-	Kind          int            `json:"kind"`
-	Detail        string         `json:"detail,omitempty"`
-	Documentation *markupContent `json:"documentation,omitempty"`
-	InsertText    string         `json:"insertText,omitempty"`
-	SortText      string         `json:"sortText,omitempty"`
+	Label            string         `json:"label"`
+	Kind             int            `json:"kind"`
+	Detail           string         `json:"detail,omitempty"`
+	Documentation    *markupContent `json:"documentation,omitempty"`
+	InsertText       string         `json:"insertText,omitempty"`
+	InsertTextFormat int            `json:"insertTextFormat,omitempty"`
+	SortText         string         `json:"sortText,omitempty"`
 }
 
 // markupContent is LSP's MarkupContent: a string plus how to render it
@@ -174,8 +182,25 @@ type initializeResult struct {
 // present (deprecated by the spec but still what most clients send
 // alongside workspaceFolders); workspaceFolders[0] is the fallback.
 type initializeParams struct {
-	RootURI          *string           `json:"rootUri"`
-	WorkspaceFolders []workspaceFolder `json:"workspaceFolders"`
+	RootURI          *string            `json:"rootUri"`
+	WorkspaceFolders []workspaceFolder  `json:"workspaceFolders"`
+	Capabilities     clientCapabilities `json:"capabilities"`
+}
+
+// clientCapabilities is the one leaf this server reads out of "initialize"'s
+// (large) capabilities tree: whether the client can render a snippet
+// InsertText (tabstops, placeholders) rather than insert it as literal text.
+// Absent/false on an unfamiliar client falls back to plain keyword
+// completion — see declarationSnippets in completion.go and its use in
+// server.go's "textDocument/completion" handler.
+type clientCapabilities struct {
+	TextDocument struct {
+		Completion struct {
+			CompletionItem struct {
+				SnippetSupport bool `json:"snippetSupport"`
+			} `json:"completionItem"`
+		} `json:"completion"`
+	} `json:"textDocument"`
 }
 
 type workspaceFolder struct {

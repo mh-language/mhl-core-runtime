@@ -11,10 +11,11 @@ import (
 // runs exactly one of these over stdio for the lifetime of the editor
 // process (internal/cli.runLSP).
 type server struct {
-	rd            *reader
-	wr            *writer
-	docs          map[string]string // URI -> current full text (didOpen/didChange keep this in sync)
-	workspaceRoot string            // set from "initialize"'s rootUri/workspaceFolders; see referenceRoot
+	rd             *reader
+	wr             *writer
+	docs           map[string]string // URI -> current full text (didOpen/didChange keep this in sync)
+	workspaceRoot  string            // set from "initialize"'s rootUri/workspaceFolders; see referenceRoot
+	snippetSupport bool              // set from "initialize"'s capabilities; see declarationSnippets (completion.go)
 }
 
 // Serve runs the LSP message loop over in/out until the client sends
@@ -53,6 +54,7 @@ func (s *server) handle(msg *rpcMessage) {
 			case len(p.WorkspaceFolders) > 0:
 				s.workspaceRoot = uriToPath(p.WorkspaceFolders[0].URI)
 			}
+			s.snippetSupport = p.Capabilities.TextDocument.Completion.CompletionItem.SnippetSupport
 		}
 		s.wr.respond(msg.ID, initializeResult{
 			Capabilities: serverCapabilities{
@@ -102,6 +104,9 @@ func (s *server) handle(msg *rpcMessage) {
 		}
 		text := s.docs[p.TextDocument.URI]
 		items := completionAt(uriToPath(p.TextDocument.URI), text, p.Position)
+		if !s.snippetSupport {
+			items = plainTextItems(items)
+		}
 		s.wr.respond(msg.ID, items)
 	case "textDocument/signatureHelp":
 		var p textDocumentPositionParams
