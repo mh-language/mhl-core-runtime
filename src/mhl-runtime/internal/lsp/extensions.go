@@ -76,14 +76,21 @@ func extensionMethodSigs(path, kind string) map[string]sig {
 	out := make(map[string]sig, len(spec.Methods))
 	for _, m := range spec.Methods {
 		params := make([]string, 0, len(m.Params))
+		var paramDocs map[string]string
 		for _, p := range m.Params {
 			params = append(params, p.Name)
+			if p.Documentation != "" {
+				if paramDocs == nil {
+					paramDocs = map[string]string{}
+				}
+				paramDocs[p.Name] = p.Documentation
+			}
 		}
 		label := m.Signature
 		if label == "" {
 			label = m.Name + "(...)"
 		}
-		out[m.Name] = sig{Label: label, Params: params, Doc: m.Documentation}
+		out[m.Name] = sig{Label: label, Params: params, Doc: m.Documentation, ParamDocs: paramDocs}
 	}
 	return out
 }

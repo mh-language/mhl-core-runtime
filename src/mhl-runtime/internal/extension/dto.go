@@ -75,11 +75,17 @@ type DeclarationSpec struct {
 	Methods       []MethodSpec   `json:"methods,omitempty"`
 }
 
-// ParamSpec is one method parameter.
+// ParamSpec is one method parameter. Documentation, when given, is this one
+// parameter's own explanation — surfaced by the LSP specifically for
+// whichever argument the cursor is on, the same way a native op's
+// signatures.go ParamDocs entry is (see internal/lsp/extensions.go's
+// extensionMethodSigs); MethodSpec.Documentation remains the whole call's
+// summary.
 type ParamSpec struct {
-	Name     string `json:"name"`
-	Type     string `json:"type,omitempty"`
-	Optional bool   `json:"optional,omitempty"`
+	Name          string `json:"name"`
+	Type          string `json:"type,omitempty"`
+	Optional      bool   `json:"optional,omitempty"`
+	Documentation string `json:"documentation,omitempty"`
 }
 
 // MethodSpec describes one callable operation. Signature and Documentation

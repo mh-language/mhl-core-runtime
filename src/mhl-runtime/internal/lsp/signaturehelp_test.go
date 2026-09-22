@@ -57,6 +57,92 @@ func TestSignatureHelpFirstArgument(t *testing.T) {
 	}
 }
 
+// TestSignatureHelpActiveParameterFollowsNamedArgument is the regression
+// test for the reported gap: mhl calls bind named arguments in any order,
+// so skipping straight to a later optional parameter — `http.post(url:
+// "", body: {}, tls: §)` — must highlight "tls" (its declared index, 10),
+// not "query" (index 2, the raw top-level-comma count), which is what a
+// caller sees if they've filled fewer arguments than tls's position
+// implies. Before this fix, ActiveParameter followed the comma count
+// alone, so skipping ahead like this always pointed at the wrong
+// parameter's documentation.
+func TestSignatureHelpActiveParameterFollowsNamedArgument(t *testing.T) {
+	src, pos := posAtMarker(t, `pipeline P {
+ step S {
+  var r = http.post(url: "", body: {}, tls: §)
+ }
+}
+`)
+	sh := signatureHelpAt("main.mh", src, pos)
+	if sh == nil {
+		t.Fatal("expected signature help inside http.post(...)")
+	}
+	if sh.ActiveParameter != 10 {
+		t.Errorf("ActiveParameter = %d, want 10 (\"tls\")", sh.ActiveParameter)
+	}
+	if sh.Signatures[0].Parameters[sh.ActiveParameter].Label != "tls" {
+		t.Errorf("active parameter label = %q, want \"tls\"", sh.Signatures[0].Parameters[sh.ActiveParameter].Label)
+	}
+
+	// A positional (unnamed) argument in the same position must still fall
+	// back to the plain comma count, unchanged from before this fix.
+	srcPos, posPos := posAtMarker(t, `pipeline P {
+ step S {
+  var r = http.post("", {}, §)
+ }
+}
+`)
+	shPos := signatureHelpAt("main.mh", srcPos, posPos)
+	if shPos == nil {
+		t.Fatal("expected signature help inside http.post(...)")
+	}
+	if shPos.ActiveParameter != 2 {
+		t.Errorf("positional ActiveParameter = %d, want 2 (\"query\")", shPos.ActiveParameter)
+	}
+}
+
+// TestSignatureHelpHttpParamHasFocusedDocumentation is the regression test
+// for the reported gap: http.post's dozen options are all packed into one
+// signature-level paragraph, giving the editor nowhere to show a focused
+// explanation for whichever one argument the cursor is actually on. Each
+// ParameterInformation now carries its own Documentation (signatures.go's
+// httpParamDocs), so e.g. landing on `text` explains that argument
+// specifically instead of just repeating the whole call's summary.
+func TestSignatureHelpHttpParamHasFocusedDocumentation(t *testing.T) {
+	src, pos := posAtMarker(t, `pipeline P {
+ step S {
+  var r = http.post(url: "https://x", text: §)
+ }
+}
+`)
+	sh := signatureHelpAt("main.mh", src, pos)
+	if sh == nil {
+		t.Fatal("expected signature help inside http.post(...)")
+	}
+	params := sh.Signatures[0].Parameters
+	var text *parameterInformation
+	for i := range params {
+		if params[i].Label == "text" {
+			text = &params[i]
+		}
+	}
+	if text == nil {
+		t.Fatalf("http.post signature help has no \"text\" parameter")
+	}
+	if text.Documentation == nil {
+		t.Fatal("expected per-parameter documentation on \"text\", got none")
+	}
+	if !strings.Contains(text.Documentation.Value, "Mutually exclusive with `body`/`form`") {
+		t.Errorf("text.Documentation = %q, missing the mutual-exclusivity note", text.Documentation.Value)
+	}
+	// A parameter with no dedicated doc (there is none left undocumented in
+	// httpParamDocs today, but the mechanism must degrade gracefully) still
+	// falls back to nil rather than an empty non-nil MarkupContent.
+	if sh.Signatures[0].Documentation == nil {
+		t.Error("expected the overall call summary to still be present alongside per-parameter docs")
+	}
+}
+
 func TestSignatureHelpBareAssertion(t *testing.T) {
 	src, pos := posAtMarker(t, "test T {\n describe D {\n  are_equal(x, §)\n }\n}\n")
 	sh := signatureHelpAt("main.mh", src, pos)
@@ -109,7 +195,7 @@ func TestSignatureHelpUnknownCalleeIsNil(t *testing.T) {
 
 func TestEnclosingCallSkipsStringsAndComments(t *testing.T) {
 	// The "(" and "," inside the string and the comment must not count.
-	got, commas, ok := enclosingCall(`foo("a, (b)", bar, ` + "// ),\n" + `baz`)
+	got, commas, _, ok := enclosingCall(`foo("a, (b)", bar, ` + "// ),\n" + `baz`)
 	if !ok {
 		t.Fatal("expected to be inside foo(...)")
 	}

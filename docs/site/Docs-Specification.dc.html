@@ -263,8 +263,8 @@ var decision = match status {
 <tr><td>While</td><td><code>while (condition) statement</code></td><td>Repeats while true; the implementation caps interpreter iterations at 10,000.</td></tr>
 <tr><td>For-in</td><td><code>for (var item in array) statement</code></td><td>Evaluates an array and visits each element in order.</td></tr>
 <tr><td>Try</td><td><code>try { ... } catch (err) { ... } finally { ... }</code></td><td>Catches raised errors and executes <code>finally</code> when present.</td></tr>
-<tr><td>Return</td><td><code>return [expression]</code></td><td>Exits the current tool method or callable block. In a step it returns from the step.</td></tr>
-<tr><td>Break</td><td><code>break [expression]</code></td><td>Stops the current pipeline run and, for a loop pipeline, stops further iterations. It is not a nearest-while/for exit.</td></tr>
+<tr><td>Return</td><td><code>return [expression]</code></td><td>Exits the current tool method or callable block. In a step it returns from the step. An optional value MUST start on the same source line as <code>return</code> itself — see the note below the table.</td></tr>
+<tr><td>Break</td><td><code>break [expression]</code></td><td>Stops the current pipeline run and, for a loop pipeline, stops further iterations. It is not a nearest-while/for exit. An optional value MUST start on the same source line as <code>break</code> itself — see the note below the table.</td></tr>
 <tr><td>Pause</td><td><code>pause([expression])</code></td><td>Suspends the run at this step for a human-in-the-loop hand-off — neither a failure nor a completion. The checkpoint is kept; <code>mhl run --resume</code> (or the server's <code>run/resume</code>) re-enters this step with any merged inputs. It is a control signal, so <code>try/catch</code> does not catch it, and it needs no checkpoint block.</td></tr>
 <tr><td>Complete</td><td><code>complete()</code></td><td>Ends the run in the normal "completed" state at this exact point — the only other way a run reaches "completed" is exhausting the fully merged step list. It is a control signal like <code>pause</code>/<code>break</code>, so <code>try/catch</code> does not catch it. The primitive a convergence/terminal step should call instead of relying on physical last-declared position, particularly in a <code>partial</code> pipeline (§16.6) where that position depends on cross-file <code>import</code> order.</td></tr>
 <tr><td>Goto</td><td><code>goto StepName</code> or <code>goto nameof(StepName)</code></td><td>Transfers to a named step. Legal only in a <code>workflow</code>. The <code>nameof(...)</code>-wrapped spelling is pure grammar sugar for the same bare step name — it is not evaluated as the <code>nameof(...)</code> expression-position builtin (§10) — so a step it names is still checked purely as a step reference, not as a top-level declaration name.</td></tr>
@@ -273,6 +273,10 @@ var decision = match status {
 <tr><td>Expression</td><td><code>call(...)</code> or any expression</td><td>Evaluates for its side effect or discards its value.</td></tr>
 </tbody></table>
 <p><code>fail(...values)</code> raises an error whose message is the formatted, space-joined values. A non-zero process exit code, an HTTP non-2xx response, and a failed assertion are values or test outcomes according to their APIs; they do not automatically become language raises unless documented otherwise.</p>
+<p><code>return</code>/<code>break</code>'s optional value MUST begin on the same line as the keyword. Newlines are not statement terminators in mhl — a value expression starting on a <em>later</em> line than the keyword would otherwise be read as that value, silently absorbing what the author intended as the next, separate statement (its side effects included), rather than being parsed as two statements. This is rejected as a parse error rather than resolved either way, since there is no reading of it a caller could have intended:</p>
+<pre class="code-block"><code class="language-mhl">if (flag) return
+log.info("unreachable")   // parse error: read as `return log.info(...)`, not two statements</code></pre>
+<p>Wrap the inline branch in braces instead — <code>if (flag) { return }</code> — or restructure so nothing follows the bare <code>return</code>/<code>break</code> directly. A value that starts on the same line, even one that itself continues onto further lines (e.g. an object literal opened with <code>{</code> right after <code>return</code>), is unaffected.</p>
 </section>
 
 <section class="feature doc-section" id="modules">
@@ -373,7 +377,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <div class="tip-row"><strong>Immutability and mutation</strong>Collection transforms, concatenation, and slices return new arrays. Plain indexed assignment such as <code>items[0] = value</code> and object-field assignment mutate the addressed collection.</div>
 </section>
 
-<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write dir directory create exists delete list git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7 html get_element get_attribute get_text to_html os user home_dir hostname platform arch cwd pid">
+<section class="feature doc-section" id="native" data-title="native operations cmd exec fs read write dir directory create exists delete list git diff commit http get post json parse stringify log info warn error time now parse format add diff compare sleep uuid v4 v7 html get_element get_attribute get_text to_html os user home_dir hostname platform arch cwd pid executable">
 <h2>11. Native operations</h2>
 <p>Native namespaces are reserved and can be called from pipeline statements, tool methods, hooks, and other expression positions. They execute host effects and therefore MUST be treated as privileged operations.</p>
 <h3>11.1 Command execution: <code>cmd</code></h3>
@@ -443,6 +447,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <tr><td class="signature">os.arch() → string</td><td>The target architecture the running binary was built for, e.g. <code>"amd64"</code> or <code>"arm64"</code>.</td></tr>
 <tr><td class="signature">os.cwd() → string</td><td>The interpreter process's current working directory — what relative <code>fs.*</code>/<code>dir.*</code> paths resolve against. Raises if it can't be read.</td></tr>
 <tr><td class="signature">os.pid() → number</td><td>The <code>mhl</code> process's OS process id.</td></tr>
+<tr><td class="signature">os.executable() → string</td><td>Path of the running <code>mhl</code> binary itself. Not guaranteed to be resolved through symlinks, and not guaranteed to still exist if the binary was moved or removed after the process started. Raises if it can't be determined.</td></tr>
 </tbody></table>
 </section>
 

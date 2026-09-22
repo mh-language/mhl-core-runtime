@@ -69,6 +69,7 @@ func (s *server) handle(msg *rpcMessage) {
 				DefinitionProvider: true,
 				ReferencesProvider: true,
 				CodeLensProvider:   codeLensOptions{ResolveProvider: false},
+				HoverProvider:      true,
 			},
 			ServerInfo: serverInfo{Name: "mhl-lsp", Version: "0.1.0"},
 		})
@@ -116,6 +117,14 @@ func (s *server) handle(msg *rpcMessage) {
 		}
 		text := s.docs[p.TextDocument.URI]
 		s.wr.respond(msg.ID, signatureHelpAt(uriToPath(p.TextDocument.URI), text, p.Position))
+	case "textDocument/hover":
+		var p textDocumentPositionParams
+		if json.Unmarshal(msg.Params, &p) != nil {
+			s.wr.respond(msg.ID, nil)
+			return
+		}
+		text := s.docs[p.TextDocument.URI]
+		s.wr.respond(msg.ID, hoverAt(uriToPath(p.TextDocument.URI), text, p.Position))
 	case "textDocument/definition":
 		var p textDocumentPositionParams
 		if json.Unmarshal(msg.Params, &p) != nil {

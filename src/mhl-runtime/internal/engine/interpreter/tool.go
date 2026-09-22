@@ -467,6 +467,8 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		return nativeops.Cwd()
 	case "os.pid":
 		return nativeops.Pid(), nil
+	case "os.executable":
+		return nativeops.Executable()
 	case "html.parse":
 		text, ok := args.stringAt(0)
 		if !ok {

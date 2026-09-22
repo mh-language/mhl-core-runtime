@@ -324,9 +324,12 @@ func completionAt(path, text string, pos position) []completionItem {
 		if items, ok := hookParamCompletionAt(text, pos, target); ok {
 			return items
 		}
+		if items, ok := paramTypeCompletionAt(text, pos, target); ok {
+			return items
+		}
 		for _, s := range documentSymbols(path, text) {
 			if s.Name == target {
-				return methodItems(path, s)
+				return methodItems(path, text, s)
 			}
 		}
 		return nil
@@ -382,7 +385,7 @@ func completionAt(path, text string, pos position) []completionItem {
 	return items
 }
 
-func methodItems(path string, s symbol) []completionItem {
+func methodItems(path, text string, s symbol) []completionItem {
 	items := make([]completionItem, 0, len(s.Methods))
 	for _, m := range s.Methods {
 		item := completionItem{
@@ -395,7 +398,7 @@ func methodItems(path string, s symbol) []completionItem {
 		// signature, and attach its parameter doc, whenever one is known
 		// (every native op, collection method, and declared-construct
 		// method — see signatures.go).
-		if sg, ok := signatureForMethod(path, s, m); ok {
+		if sg, ok := signatureForMethod(path, text, s, m); ok {
 			item.Detail = sg.Label
 			if sg.Doc != "" {
 				item.Documentation = &markupContent{Kind: "markdown", Value: sg.Doc}

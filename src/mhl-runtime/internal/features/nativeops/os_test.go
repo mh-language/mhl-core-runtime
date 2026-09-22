@@ -66,3 +66,14 @@ func TestPid(t *testing.T) {
 		t.Errorf("Pid() = %v, want %v", got, os.Getpid())
 	}
 }
+
+func TestExecutable(t *testing.T) {
+	got, err := nativeops.Executable()
+	if err != nil {
+		t.Fatalf("Executable: %v", err)
+	}
+	want, _ := os.Executable()
+	if got != want {
+		t.Errorf("Executable() = %q, want %q", got, want)
+	}
+}

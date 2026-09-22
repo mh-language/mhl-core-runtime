@@ -498,7 +498,7 @@ var nativeSymbols = []symbol{
 	{Name: "time", Kind: symNative, Methods: []string{"now", "parse", "format", "add", "diff", "compare", "sleep"}},
 	{Name: "uuid", Kind: symNative, Methods: []string{"v4", "v7"}},
 	{Name: "html", Kind: symNative, Methods: []string{"parse", "get_element", "get_elements", "get_element_by_id", "get_attribute", "get_text", "to_html", "escape", "attr_escape"}},
-	{Name: "os", Kind: symNative, Methods: []string{"user", "home_dir", "hostname", "platform", "arch", "cwd", "pid"}},
+	{Name: "os", Kind: symNative, Methods: []string{"user", "home_dir", "hostname", "platform", "arch", "cwd", "pid", "executable"}},
 }
 
 // documentSymbols returns every symbol visible from path/text: the fixed

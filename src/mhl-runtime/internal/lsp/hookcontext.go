@@ -49,12 +49,26 @@ func hookParamCompletionAt(text string, pos position, target string) ([]completi
 
 // objectTypeFieldItems resolves typeName through types.Parse — the same
 // bare-name resolution any `: Type` annotation in the language goes through
-// — and lists its declared fields as completion items, each field's own
-// Type.String() rendering as Detail. nil for a name that isn't a declared
-// object shape (an unknown name, or a non-object builtin like "string").
+// — and lists its declared fields as completion items. nil for a name that
+// isn't a declared object shape (an unknown name, or a non-object builtin
+// like "string") — or one that's only resolvable through the current file's
+// own `type X = ...` aliases, which types.Parse alone can't see; see
+// paramTypeCompletionAt (paramcompletion.go), which resolves those via
+// types.Aliases instead and shares fieldCompletionItems below.
 func objectTypeFieldItems(typeName string) []completionItem {
 	t, ok := types.Parse(typeName)
-	if !ok || t.Kind != types.ObjectKind || t.Fields == nil {
+	if !ok {
+		return nil
+	}
+	return fieldCompletionItems(t)
+}
+
+// fieldCompletionItems lists t's declared fields as completion items, each
+// field's own Type.String() rendering as Detail, sorted by name. nil for a
+// non-object Type (Kind != ObjectKind) or an unshaped object (Fields ==
+// nil, e.g. a bare `: object` annotation).
+func fieldCompletionItems(t types.Type) []completionItem {
+	if t.Kind != types.ObjectKind || t.Fields == nil {
 		return nil
 	}
 	names := make([]string, 0, len(t.Fields))

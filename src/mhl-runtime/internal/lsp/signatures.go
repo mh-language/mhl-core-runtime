@@ -24,11 +24,31 @@ import "strings"
 // sig is one callable's human-facing signature. Label is the full
 // "name(params) -> ret" line shown in the UI; Params is the ordered
 // parameter list, used by signature help to point at the active argument;
-// Doc is a one-line Markdown explanation.
+// Doc is a one-line Markdown explanation. ParamDocs optionally maps a
+// parameter name (one of Params) to its own focused explanation — shown
+// specifically for whichever argument the cursor is on right now
+// (signaturehelp.go), rather than making the reader find it inside Doc's
+// one paragraph for the whole call. Left nil (the default for every entry
+// that hasn't been given one yet) when Doc alone is enough — a call with
+// few, self-explanatory parameters doesn't need it; one with many
+// same-shaped optional parameters (http.*'s dozen) benefits from it most.
 type sig struct {
-	Label  string
-	Params []string
-	Doc    string
+	Label     string
+	Params    []string
+	Doc       string
+	ParamDocs map[string]string
+}
+
+// htmlElementParamDocs is the per-parameter documentation shared by
+// html.get_element/get_elements (and, for "node", get_element_by_id) — the
+// `class`-vs-everything-else matching rule that get_element's own Doc
+// otherwise buries in the middle of one paragraph about the whole call.
+var htmlElementParamDocs = map[string]string{
+	"node": "Subtree to search — node itself is included in the match, not just its descendants.",
+	"tag":  "Lower-cased tag name to require, e.g. `\"div\"`. Omitted: any tag matches.",
+	"attrs": "`{string: string}` attribute filter — every entry must match. `class` matches by space-separated " +
+		"token (present among the node's own class tokens, in any order, alongside others); every other " +
+		"attribute matches by exact value.",
 }
 
 // --- native operations, keyed "namespace.method" -------------------------
@@ -98,6 +118,8 @@ var nativeSigs = map[string]sig{
 		Params: []string{"url", "path", "headers", "query", "timeout", "raise_for_status", "auth", "tls", "proxy"},
 		Doc: "Streams a GET response straight to `path` — atomic write, parent directories created — instead of returning the body. " +
 			"On a non-2xx response no file is written and `ok` is false (unless `raise_for_status` is set). Shares the http option surface.",
+		ParamDocs: withParamDoc(httpParamDocs, "path",
+			"Destination file path for the downloaded content. Parent directories are created; the write is atomic (nothing partial is left on failure). No file is written for a non-2xx response unless `raise_for_status` is set."),
 	},
 	"json.parse":       {Label: "json.parse(text: string) -> any", Params: []string{"text"}, Doc: "Parses a JSON document. Invalid JSON raises."},
 	"json.parse_lines": {Label: "json.parse_lines(text: string) -> any[]", Params: []string{"text"}, Doc: "Parses JSON-lines (one value per line)."},
@@ -121,30 +143,42 @@ var nativeSigs = map[string]sig{
 	"os.arch":          {Label: "os.arch() -> string", Params: nil, Doc: "Target architecture the running binary was built for, e.g. \"amd64\" or \"arm64\"."},
 	"os.cwd":           {Label: "os.cwd() -> string", Params: nil, Doc: "The interpreter process's current working directory — what relative fs.*/dir.* paths resolve against. Raises if it can't be read."},
 	"os.pid":           {Label: "os.pid() -> number", Params: nil, Doc: "The mhl process's OS process id."},
+	"os.executable":    {Label: "os.executable() -> string", Params: nil, Doc: "Path of the running mhl binary itself (Go's os.Executable). Not guaranteed to be resolved through symlinks, and not guaranteed to still exist if the binary was moved or removed after the process started. Raises if it can't be determined."},
 	"html.parse": {
 		Label:  "html.parse(text: string) -> object",
 		Params: []string{"text"},
 		Doc:    "Parses text as an HTML fragment into {tag, attrs, text, children} nodes (json.parse's plain-value contract, not an opaque handle); root is always a synthetic {tag: \"#fragment\", ...}. Comments and whitespace-only text nodes are dropped. Never raises.",
 	},
 	"html.get_element": {
-		Label:  "html.get_element(node: object, tag?: string, attrs?: {string: string}) -> object | null",
-		Params: []string{"node", "tag", "attrs"},
-		Doc:    "First node in node's subtree (node itself included) matching tag/attrs, depth-first; null if none does. `class` in attrs matches by space-separated token, every other attribute by exact value.",
+		Label:     "html.get_element(node: object, tag?: string, attrs?: {string: string}) -> object | null",
+		Params:    []string{"node", "tag", "attrs"},
+		Doc:       "First node in node's subtree (node itself included) matching tag/attrs, depth-first; null if none does. `class` in attrs matches by space-separated token, every other attribute by exact value.",
+		ParamDocs: htmlElementParamDocs,
 	},
 	"html.get_elements": {
-		Label:  "html.get_elements(node: object, tag?: string, attrs?: {string: string}) -> object[]",
-		Params: []string{"node", "tag", "attrs"},
-		Doc:    "Every node in node's subtree (node itself included) matching tag/attrs, depth-first — the same matching rules as get_element().",
+		Label:     "html.get_elements(node: object, tag?: string, attrs?: {string: string}) -> object[]",
+		Params:    []string{"node", "tag", "attrs"},
+		Doc:       "Every node in node's subtree (node itself included) matching tag/attrs, depth-first — the same matching rules as get_element().",
+		ParamDocs: htmlElementParamDocs,
 	},
 	"html.get_element_by_id": {
 		Label:  "html.get_element_by_id(node: object, id: string) -> object | null",
 		Params: []string{"node", "id"},
 		Doc:    "Shorthand for get_element(node, attrs: {id: id}).",
+		ParamDocs: map[string]string{
+			"node": htmlElementParamDocs["node"],
+			"id":   "Value to match against the node's `id` attribute (exact value, no token splitting — `id` isn't `class`).",
+		},
 	},
 	"html.get_attribute": {
 		Label:  "html.get_attribute(element: object, name: string, default?: any) -> any",
 		Params: []string{"element", "name", "default"},
 		Doc:    "The value of element's attrs[name], or default (null when omitted) if absent — never raises, even when element isn't an element node.",
+		ParamDocs: map[string]string{
+			"element": "The node to read from. Never raises, even when this isn't an element node — e.g. a get_element() miss (`null`) passed straight through.",
+			"name":    "Attribute name to read, e.g. `\"href\"`.",
+			"default": "Value returned when `name` is absent on `element`. Defaults to `null` when omitted.",
+		},
 	},
 	"html.get_text": {
 		Label:  "html.get_text(node: object) -> string",
@@ -171,6 +205,40 @@ var nativeSigs = map[string]sig{
 // httpSig builds the signature entry for one http.<verb> native op — they
 // all share the same parameter surface (internal/engine/interpreter/tool.go
 // httpOptions), so only the verb in the label differs.
+// httpParamDocs is the per-parameter documentation shared by every http.<verb>
+// call (they all take the same option surface) — surfaced by signature help
+// for whichever one argument the cursor is currently on
+// (signaturehelp.go), since the one-paragraph sig.Doc for the whole call
+// has nowhere near enough room to spell out what each of the dozen options
+// actually does or which ones are mutually exclusive.
+var httpParamDocs = map[string]string{
+	"url":              "Request URL. May be given positionally (the first argument) or as the named `url:` argument — both forms are equivalent.",
+	"headers":          "`{string: string}` extra request headers. An explicit `Authorization` here wins over `auth:`; sensitive header/cookie values are redacted from logs.",
+	"query":            "`{string: string}` query parameters — URL-encoded and merged into `url`'s existing query string, so `url` may already carry some.",
+	"body":             "Any JSON-encodable value (object, array, string, number, bool). Serialized as the request body and sets `Content-Type: application/json`. Mutually exclusive with `text`/`form` — use at most one.",
+	"text":             "Raw string request body, sent exactly as written with no encoding and no automatic `Content-Type`. Mutually exclusive with `body`/`form`.",
+	"form":             "`{string: string}` sent as an `application/x-www-form-urlencoded` body. Mutually exclusive with `body`/`text`.",
+	"timeout":          "Request timeout as a duration literal, e.g. `10s`, `2m`. Defaults to 30s if omitted.",
+	"follow_redirects": "`bool`, defaults to `true`. Set `false` to get the 3xx redirect response itself back instead of the request transparently following it.",
+	"raise_for_status": "`bool`, defaults to `false` — a non-2xx response is returned as a normal value (check `.ok`/`.status`), not raised. Set `true` to raise on any non-2xx status instead.",
+	"auth":             "`{bearer: string}` or `{basic: {user: string, password: string}}`. Builds the `Authorization` header for you, unless `headers:` already set one explicitly.",
+	"tls":              "`{cert?: string, key?: string, ca?: string, insecure?: bool}` — `cert`/`key` are PEM client-certificate paths (mutual TLS), `ca` adds a trusted CA bundle, `insecure: true` skips server certificate verification (development only, never for production traffic).",
+	"proxy":            "Explicit `http://`/`https://`/`socks5://` proxy URL for this one call. Omit it to fall back to the standard `HTTP_PROXY`/`HTTPS_PROXY` environment variables.",
+}
+
+// withParamDoc returns a copy of base with name's doc set to doc — used to
+// extend a shared ParamDocs map (httpParamDocs) for one call whose surface
+// is almost, but not quite, identical (http.download's `path`), without
+// mutating the map every other http.<verb> sig still points at.
+func withParamDoc(base map[string]string, name, doc string) map[string]string {
+	out := make(map[string]string, len(base)+1)
+	for k, v := range base {
+		out[k] = v
+	}
+	out[name] = doc
+	return out
+}
+
 func httpSig(verb string) sig {
 	return sig{
 		Label: "http." + verb + "(url: string, headers?, query?, body?, text?, form?, timeout?: duration, " +
@@ -181,6 +249,7 @@ func httpSig(verb string) sig {
 			"`text`/`form` are the raw and form-encoded alternatives (pick one). `tls.cert`/`tls.key` are PEM client-certificate " +
 			"paths. `proxy` overrides `HTTP(S)_PROXY` for this call. A transport failure raises; a non-2xx status is returned in " +
 			"`status` unless `raise_for_status` is set.",
+		ParamDocs: httpParamDocs,
 	}
 }
 
@@ -307,10 +376,12 @@ var assertionSigs = map[string]sig{
 }
 
 // signatureForMethod resolves a `receiver.method` call's signature from the
-// receiver symbol (a native namespace, a declared agent/memory/extension, or a
-// typed variable). ok is false when nothing static is known (a user-declared
-// `tool` method, say).
-func signatureForMethod(path string, s symbol, method string) (sig, bool) {
+// receiver symbol (a native namespace, a declared agent/memory/extension, a
+// typed variable, or — via toolMethodSig — a user-declared `tool`'s own
+// method, read straight from its real Params/Returns rather than from a
+// hand-written table, since there's no way to hand-write one for a name
+// nobody but this program declares).
+func signatureForMethod(path, text string, s symbol, method string) (sig, bool) {
 	switch s.Kind {
 	case symNative:
 		x, ok := nativeSigs[s.Name+"."+method]
@@ -322,8 +393,7 @@ func signatureForMethod(path string, s symbol, method string) (sig, bool) {
 	case symObject:
 		return lookupValueMethod(objectMethodSigs, method)
 	case symMemory:
-		x, ok := memoryMethodSigs[method]
-		return x, ok
+		return memorySig(path, text, s.Name, method)
 	case symExtension:
 		x, ok := extensionMethodSigs(path, s.ExtKind)[method]
 		return x, ok
@@ -336,6 +406,8 @@ func signatureForMethod(path string, s symbol, method string) (sig, bool) {
 	case symPipeline:
 		x, ok := pipelineMethodSigs[method]
 		return x, ok
+	case symTool:
+		return toolMethodSig(path, text, s.Name, method)
 	default:
 		return sig{}, false
 	}
@@ -352,11 +424,15 @@ func lookupValueMethod(own map[string]sig, method string) (sig, bool) {
 }
 
 // signatureForBareCall resolves a call with no receiver — a global builtin
-// (log/fail/env) or a test assertion.
-func signatureForBareCall(name string) (sig, bool) {
+// (log/fail/env), a test assertion, or — via promptCallSig — a
+// user-declared `prompt Name(...)` call, read from its real Params the
+// same way toolMethodSig does for a tool method.
+func signatureForBareCall(path, text, name string) (sig, bool) {
 	if s, ok := globalSigs[name]; ok {
 		return s, true
 	}
-	s, ok := assertionSigs[name]
-	return s, ok
+	if s, ok := assertionSigs[name]; ok {
+		return s, true
+	}
+	return promptCallSig(path, text, name)
 }

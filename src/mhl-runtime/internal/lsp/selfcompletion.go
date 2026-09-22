@@ -46,7 +46,7 @@ func selfCompletionAt(path, text string, pos position) []completionItem {
 		case blockTool:
 			for _, s := range documentSymbols(path, repaired) {
 				if s.Kind == symTool && s.Name == stack[i].Name {
-					return methodItems(path, s)
+					return methodItems(path, repaired, s)
 				}
 			}
 			return nil

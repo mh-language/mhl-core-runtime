@@ -125,6 +125,7 @@ type serverCapabilities struct {
 	DefinitionProvider    bool                 `json:"definitionProvider"`
 	ReferencesProvider    bool                 `json:"referencesProvider"`
 	CodeLensProvider      codeLensOptions      `json:"codeLensProvider"`
+	HoverProvider         bool                 `json:"hoverProvider"`
 }
 
 type codeLensOptions struct {
@@ -167,7 +168,15 @@ type signatureInformation struct {
 }
 
 type parameterInformation struct {
-	Label string `json:"label"`
+	Label         string         `json:"label"`
+	Documentation *markupContent `json:"documentation,omitempty"`
+}
+
+// hover is LSP's Hover response: the explanation shown for whatever's under
+// the cursor (hover.go). Omits the optional "range" field — the client
+// highlights nothing extra, same minimalism as signatureHelp's own response.
+type hover struct {
+	Contents markupContent `json:"contents"`
 }
 
 type initializeResult struct {
