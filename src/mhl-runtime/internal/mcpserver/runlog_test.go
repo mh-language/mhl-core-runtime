@@ -169,6 +169,48 @@ func tailOf(s string, n int) string {
 	return s[len(s)-n:]
 }
 
+// TestRingLogReopenAfterSealHoldsBackTailAgain reproduces the resume-after-
+// failure/cancel leak: a Sealed ringLog is reused by run/resume (see
+// httpServer.execRun), which writes more output before the resumed leg
+// finishes. Without Reopen, read keeps treating the buffer as sealed and
+// stops holding back the safety margin, so a secret fragment written by the
+// resumed leg — before its remainder has arrived — comes back unmasked.
+func TestRingLogReopenAfterSealHoldsBackTailAgain(t *testing.T) {
+	secret := "R3_RESUME_BOUNDARY_SECRET_c0ffee"
+	auth.Register(secret)
+
+	r := newRingLog()
+	r.Write([]byte("first leg completed\n"))
+	r.Seal() // as execRun does for a failed/canceled terminal state
+
+	// run/resume reuses this same ringLog and must reopen it before writing.
+	r.Reopen()
+
+	cut := 12 // less than auth.MaxLen(); the rest of the secret hasn't arrived yet
+	r.Write([]byte(secret[:cut]))
+	text, next, _ := r.read(0)
+	if strings.Contains(text, secret[:cut]) {
+		t.Fatalf("reopened ringLog leaked a still-arriving secret fragment: %q", text)
+	}
+
+	r.Write([]byte(secret[cut:]))
+	rest, _, _ := r.read(next)
+	if strings.Contains(text+rest, secret) {
+		t.Fatalf("secret reconstructable across the resume boundary: %q + %q", text, rest)
+	}
+
+	// Sanity check the counterfactual: without Reopen, the same sequence does
+	// leak — this is what confirms Reopen is load-bearing, not incidental.
+	r2 := newRingLog()
+	r2.Write([]byte("first leg completed\n"))
+	r2.Seal()
+	r2.Write([]byte(secret[:cut])) // no Reopen: still sealed
+	leaked, _, _ := r2.read(0)
+	if !strings.Contains(leaked, secret[:cut]) {
+		t.Fatalf("counterfactual didn't reproduce the leak — test no longer exercises the bug")
+	}
+}
+
 // TestRingLogConcurrentWriteRead runs parallel writers (as parallel steps do)
 // against a poller and asserts, under -race, that no read ever surfaces the
 // registered secret.

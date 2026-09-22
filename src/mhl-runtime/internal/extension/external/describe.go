@@ -23,7 +23,8 @@ func Describe(m *Manifest) ([]extension.DeclarationSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { p.close(); p.kill() }()
+	// A one-shot probe: no grace period, kill unconditionally right after.
+	defer func() { p.close(0); p.kill() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
 	defer cancel()

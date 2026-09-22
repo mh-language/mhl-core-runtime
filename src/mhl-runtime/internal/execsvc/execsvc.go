@@ -259,13 +259,18 @@ func Run(req Request) (*Result, error) {
 	// no-op when the pipeline declares none. instanceID picks which `mem`
 	// namespace the hook body sees: "default" for a plain pipeline, the
 	// loop's resolved instance for a `loop pipeline` (see startInstance /
-	// loopInstance below).
-	runHook := func(hookExpr *ast.Expr, hookName string, arg map[string]any, instanceID string, vars map[string]any) error {
+	// loopInstance below). hookOut is the writer the hook's log()/step
+	// output goes to — callers running inside a `parallel` branch MUST pass
+	// that branch's own stepOut, never the shared, run-wide out: a
+	// step_start/step_end hook fired concurrently by sibling branches onto
+	// one unsynchronized writer is a data race (confirmed by
+	// TestPipelineStepHooksFireForEachParallelBranch under -race).
+	runHook := func(hookExpr *ast.Expr, hookName string, arg map[string]any, instanceID string, vars map[string]any, hookOut io.Writer) error {
 		if hookExpr == nil {
 			return nil
 		}
 		mem := memContextFor(memInit, pipeline.Name, instanceID)
-		return interpreter.RunPipelineHook(runCtx, prog, pipeline.Name, hookName, hookExpr, arg, file, out, store, jsonStore, mem, contextView, vars)
+		return interpreter.RunPipelineHook(runCtx, prog, pipeline.Name, hookName, hookExpr, arg, file, hookOut, store, jsonStore, mem, contextView, vars)
 	}
 
 	// stopFailure fires the pipeline's stop_failure hook (if any) for a
@@ -283,7 +288,7 @@ func Run(req Request) (*Result, error) {
 			arg["reason"] = stepErr.Kind
 			arg["error"] = stepErr.Unwrap().Error()
 		}
-		if hookErr := runHook(pipeline.StopFailure, "stop_failure", arg, instanceID, nil); hookErr != nil {
+		if hookErr := runHook(pipeline.StopFailure, "stop_failure", arg, instanceID, nil, out); hookErr != nil {
 			fmt.Fprintf(out, "warning: %s.stop_failure: %v\n", pipeline.Name, hookErr)
 		}
 		return err
@@ -307,7 +312,7 @@ func Run(req Request) (*Result, error) {
 		// here since the step hasn't run yet; step_end below fills it in.
 		if err := runHook(pipeline.StepStart, "step_start", map[string]any{
 			"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal), "error": nil,
-		}, ctx.InstanceID, ctx.Vars); err != nil {
+		}, ctx.InstanceID, ctx.Vars, stepOut); err != nil {
 			return err
 		}
 		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
@@ -323,7 +328,7 @@ func Run(req Request) (*Result, error) {
 			}
 			if hookErr := runHook(pipeline.StepEnd, "step_end", map[string]any{
 				"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal), "error": hookErrVal,
-			}, ctx.InstanceID, ctx.Vars); hookErr != nil {
+			}, ctx.InstanceID, ctx.Vars, stepOut); hookErr != nil {
 				return hookErr
 			}
 		}
@@ -379,7 +384,7 @@ func Run(req Request) (*Result, error) {
 		"pipeline": pipeline.Name, "kind": pipeline.Kind, "session_id": sessionID,
 		"resumed": req.Resume, "inputs": coercedInputs,
 		"vars": nil, "broke": nil, "break_reason": nil, "iterations": nil,
-	}, startInstance, nil); err != nil {
+	}, startInstance, nil, out); err != nil {
 		return nil, err
 	}
 
@@ -415,7 +420,7 @@ func Run(req Request) (*Result, error) {
 				"pipeline": pipeline.Name, "kind": pipeline.Kind, "session_id": sessionID,
 				"resumed": nil, "inputs": nil,
 				"vars": vars, "broke": res.Broke, "break_reason": res.BreakReason, "iterations": nil,
-			}, "default", res.FinalVars); err != nil {
+			}, "default", res.FinalVars, out); err != nil {
 				return nil, err
 			}
 		}
@@ -475,7 +480,7 @@ func Run(req Request) (*Result, error) {
 			"resumed": nil, "inputs": nil,
 			"vars": vars, "broke": res.TerminalReason == "break", "break_reason": res.BreakReason,
 			"iterations": float64(res.Iterations),
-		}, loopInstance, res.FinalVars); err != nil {
+		}, loopInstance, res.FinalVars, out); err != nil {
 			return nil, err
 		}
 	}

@@ -4,7 +4,8 @@
 The core knows only the shape — kind, name, property bag; whichever extension is
 registered for that `kind` validates the properties, declares the callable
 methods, and executes them. `mcp` and `a2a` are built in; other kinds come from
-an installed external extension (see [../../extensions/](../../extensions/README.md)).
+an installed external extension (see `internal/extension` and
+`Docs-Extensions.dc.html`).
 
 - [extension_declares_a_kind_and_name.mh](extension_declares_a_kind_and_name.mh)
   — the declaration parses and lints with any kind, one or more per file.

@@ -30,6 +30,13 @@ logs-*/
 sample/mhl
 *.nosync/
 
+# tests_e2e/*/mhl and per-scenario copies are built locally/by CI from
+# src/mhl-runtime (see each run-all.sh's pre-flight hint) — never commit a
+# binary here, it goes stale against the actual runtime immediately.
+tests_e2e/**/mhl
+tests_e2e/**/mhl.exe
+tests_e2e/**/bin/
+
 
 # scripts
 release.sh

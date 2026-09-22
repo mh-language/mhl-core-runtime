@@ -1,7 +1,7 @@
 # CENÁRIO-001 — Resultado da Execução
 
 > Registro de execução gerado pelo agente `tester-mcp-server`.
-> O arquivo original [`CENARIO-001.md`](CENARIO-001.md) não foi alterado (restrição do cenário).
+> O arquivo original [`CENARIO-001-conexao.md`](CENARIO-001-conexao.md) não foi alterado (restrição do cenário).
 
 ## Cenário 1: Teste de Conexão com o Servidor MCP
 

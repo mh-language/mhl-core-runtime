@@ -286,6 +286,69 @@ func TestRunLockOwnsLease(t *testing.T) {
 	}
 }
 
+// slowPutKV advances the shared fake clock by delay every time PutIfAbsent or
+// CompareAndSwap is called, simulating a store round-trip that eats into the
+// lease's own TTL before the caller ever sees the result.
+type slowPutKV struct {
+	*fakeLockingKV
+	clock *time.Time
+	delay time.Duration
+}
+
+func (k *slowPutKV) PutIfAbsent(ctx context.Context, key string, value any) (bool, error) {
+	*k.clock = k.clock.Add(k.delay)
+	return k.fakeLockingKV.PutIfAbsent(ctx, key, value)
+}
+
+func (k *slowPutKV) CompareAndSwap(ctx context.Context, key string, expected []byte, newValue any) (bool, error) {
+	*k.clock = k.clock.Add(k.delay)
+	return k.fakeLockingKV.CompareAndSwap(ctx, key, expected, newValue)
+}
+
+// TestRunLockAcquireRefusesWhenRoundTripAteTheTTL is the P1 fix from the
+// maturity audit: leaseRec computes Expires from the clock *before* the store
+// call. If that call is slow enough to eat a meaningful chunk of the TTL, the
+// record we just "won" may already read as stale to another replica by the
+// time we return — trusting it risks two replicas both believing they hold
+// the lease. acquire must instead fail closed, the same way a store error
+// does, and give back what it no longer trusts.
+func TestRunLockAcquireRefusesWhenRoundTripAteTheTTL(t *testing.T) {
+	now := time.Now()
+	// A round trip that eats the whole margin the lease requires to be
+	// trusted (see runLockConfirmMargin) — well past "acceptable latency".
+	kv := &slowPutKV{fakeLockingKV: newFakeLockingKV(), clock: &now, delay: runLockTTL}
+	a := newTestLock(kv, "replica-A", &now)
+
+	lease, held, _, err := a.acquire(context.Background(), "r1")
+	if held || err == nil {
+		t.Fatalf("acquire after a TTL-eating round trip = held:%v err:%v, want held:false err:non-nil", held, err)
+	}
+	if lease.held() {
+		t.Fatal("acquire returned a live lease handle despite refusing the acquisition")
+	}
+
+	// The refused acquisition must have given the record back — a fast
+	// replica can now acquire cleanly.
+	fastNow := now
+	b := newTestLock(kv.fakeLockingKV, "replica-B", &fastNow)
+	if _, held, holder, err := b.acquire(context.Background(), "r1"); err != nil || !held {
+		t.Fatalf("B.acquire after A's refused/released attempt = held:%v holder:%q err:%v", held, holder, err)
+	}
+}
+
+// TestRunLockAcquireAcceptsRoundTripWellUnderTTL is the counterfactual: a
+// normal, fast round trip is unaffected by the new freshness check.
+func TestRunLockAcquireAcceptsRoundTripWellUnderTTL(t *testing.T) {
+	now := time.Now()
+	kv := &slowPutKV{fakeLockingKV: newFakeLockingKV(), clock: &now, delay: time.Millisecond}
+	a := newTestLock(kv, "replica-A", &now)
+
+	lease, held, holder, err := a.acquire(context.Background(), "r1")
+	if err != nil || !held || holder != "replica-A" || !lease.held() {
+		t.Fatalf("acquire with a fast round trip = held:%v holder:%q err:%v", held, holder, err)
+	}
+}
+
 // R4: renew is bounded by its context — a wedged store cannot make the
 // heartbeat loop block past the point a takeover could begin.
 func TestRunLockRenewRespectsContextDeadline(t *testing.T) {

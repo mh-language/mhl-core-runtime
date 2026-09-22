@@ -13,16 +13,21 @@ behaviour is covered by `src/mhl-runtime/internal/extension/external` and
 `src/mhl-runtime/internal/cli`'s tests.
 
 The sources here are references (`store-fs`) and test instrumentation
-(`store-probe`). Production-grade extensions live under `src/mhl-extensions/`,
-each named `mhl-*`:
+(`store-probe`). Production-grade extensions — `mhl-store-s3`,
+`mhl-store-postgres`, `mhl-sql-postgres`, `mhl-cache-redis` — no longer live
+in this repo under `src/mhl-extensions/`; they moved to a separate
+`mhl-packages` repository. Ask the maintainer for the current location if
+you need one of them; the CENARIO-011/013/014/016/017/020 scenarios below
+that exercise them against a real backend are skipped (not failed) when that
+backend isn't reachable, independent of this move.
 
-- [`src/mhl-extensions/mhl-store-s3/`](../../src/mhl-extensions/mhl-store-s3/) — official S3-backed `store`
+- `mhl-store-s3` — official S3-backed `store`
   (real AWS S3 or MinIO/R2/Ceph; SigV4 + retry + IRSA/IMDS, zero deps).
-- [`src/mhl-extensions/mhl-store-postgres/`](../../src/mhl-extensions/mhl-store-postgres/) — official
+- `mhl-store-postgres` — official
   PostgreSQL-backed `store` (`pgx/v5`; `put` = atomic upsert).
-- [`src/mhl-extensions/mhl-sql-postgres/`](../../src/mhl-extensions/mhl-sql-postgres/) — official `sql` kind:
+- `mhl-sql-postgres` — official `sql` kind:
   free-form DQL against PostgreSQL (and DML/DDL with `read_only:false`).
-- [`src/mhl-extensions/mhl-cache-redis/`](../../src/mhl-extensions/mhl-cache-redis/) — official `cache` kind:
+- `mhl-cache-redis` — official `cache` kind:
   TTL key/value + atomic counters on Redis, dependency-free RESP2 client.
 
 Different kinds, so all coexist in one project. Each ships its own
@@ -178,5 +183,5 @@ pipeline sync {
   api_version); non-zero exit if any is broken
 
 The full wire protocol is specified in
-[docs/extension-protocol.md](../../docs/extension-protocol.md) — implement it in
+[extension-protocol.md](extension-protocol.md) — implement it in
 any language.

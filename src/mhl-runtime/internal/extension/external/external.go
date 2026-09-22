@@ -105,12 +105,7 @@ func (e *External) Close() error {
 	if p == nil {
 		return nil
 	}
-	done := make(chan struct{})
-	go func() { p.close(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(shutdownGrace):
-	}
+	p.close(shutdownGrace)
 	if !p.isClosed() {
 		p.kill()
 	}

@@ -600,6 +600,13 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	defer close(rn.done)
 	defer rn.cancel()
 
+	// A failed/canceled run's logs were Sealed on its prior leg (see the Seal
+	// call below); reopen before this leg writes more, or run/logs would stop
+	// holding back the secret-length tail and could leak a fragment of a
+	// secret split across the resume boundary. No-op if never sealed (e.g. a
+	// fresh run, or one resumed from paused, which Seal never touches).
+	rn.logs.Reopen()
+
 	// Cross-replica run lock: exactly one replica may drive a given runId. A
 	// confirmed lease is a hard precondition — if the store cannot be reached
 	// to take it, this run does not start (it cannot rule out another writer).

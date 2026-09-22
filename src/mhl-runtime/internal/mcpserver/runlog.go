@@ -54,6 +54,18 @@ func (r *ringLog) Seal() {
 	r.mu.Unlock()
 }
 
+// Reopen undoes a prior Seal: a failed or canceled run may still be resumed
+// (run/resume), and the resumed leg can write more output that might itself
+// end in a still-arriving secret. Without this, read would keep treating the
+// buffer as sealed and stop holding back the safety margin, leaking a
+// fragment of a secret split across the resume boundary. A no-op when the
+// run was never sealed (e.g. a paused run, which Seal is never called for).
+func (r *ringLog) Reopen() {
+	r.mu.Lock()
+	r.sealed = false
+	r.mu.Unlock()
+}
+
 // read returns the retained output from byte offset since to the current safe
 // end, the cursor to pass as `since` next time, and whether anything between
 // since and the returned data was dropped. since <= 0 means "from the start of

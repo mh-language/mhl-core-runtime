@@ -209,7 +209,30 @@ workflow Ingest {
 	if obj["paused"] != true {
 		t.Fatalf("paused = %v, want true: %#v", obj["paused"], obj)
 	}
+	if obj["pause_reason"] != "hold" {
+		t.Fatalf("pause_reason = %#v, want %q", obj["pause_reason"], "hold")
+	}
 	if _, isErr := obj["error"]; isErr {
 		t.Fatalf("paused run carried an error field: %#v", obj)
+	}
+}
+
+// TestRunFormatJSONPauseReasonOmittedWithoutOne: pause() with no argument
+// must not emit a pause_reason key at all (omitempty on a nil `any`).
+func TestRunFormatJSONPauseReasonOmittedWithoutOne(t *testing.T) {
+	obj, err := runJSONOut(t, `
+workflow Ingest {
+    checkpoint: { enabled: true, strategy: "per_step" }
+    step Gate { pause() }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if obj["paused"] != true {
+		t.Fatalf("paused = %v, want true: %#v", obj["paused"], obj)
+	}
+	if _, has := obj["pause_reason"]; has {
+		t.Fatalf("pause_reason present for a reasonless pause(): %#v", obj)
 	}
 }

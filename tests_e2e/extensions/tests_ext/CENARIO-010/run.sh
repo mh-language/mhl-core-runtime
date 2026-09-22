@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # CENARIO-010 — mhl serve mcp --http com `extension store` como StateStore
+#
+# store-probe não anuncia a capability `cas` no handshake, então cada
+# start_server precisa de --single-replica: sem o flag, o host recusa subir
+# (fail-closed) porque não pode garantir um único escritor coordenado nesta
+# store. As duas subidas deste cenário nunca coexistem (a #1 é encerrada
+# antes da #2 subir), então isso continua sendo exatamente o que o teste
+# exercita, não uma mudança de escopo.
 source "$(dirname "${BASH_SOURCE[0]}")/../_lib.sh"
 
 ensure_env
@@ -53,7 +60,7 @@ tree_of() { find "$STATE" -type f | sed "s|$STATE/||;s|\\.json\$||" | sort; }
 ########################################################################
 # Parte A — estado durável na extensão + resume + restart-reclaim
 ########################################################################
-start_server --max-concurrent-runs 2
+start_server --single-replica --max-concurrent-runs 2
 wait_ready "$SRV" || { tail -20 "$SL" >> "$CLIENT_LOG"; die "servidor 1 não ficou pronto"; }
 SID=$(initsid "$L/init-headers.txt"); log "sessão=$SID"
 
@@ -90,7 +97,7 @@ log "run #2 antes do restart: state=$(jget "$L/status2.json" result.state) resum
 
 stop_server "$SRV"; SRV=""
 log "servidor 1 encerrado — subindo servidor 2 no mesmo dir"
-start_server --max-concurrent-runs 2
+start_server --single-replica --max-concurrent-runs 2
 SRV2="$SRV"; SRV=""
 wait_ready "$SRV2" || { tail -20 "$SL" >> "$CLIENT_LOG"; die "servidor 2 não ficou pronto (ver mcp-server.log)"; }
 SID=$(initsid "$L/init2-headers.txt")

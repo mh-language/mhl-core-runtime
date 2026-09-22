@@ -73,6 +73,16 @@ func runFakeExtension() {
 			}
 			send(message{ID: m.ID, Result: mustRaw(res)})
 		case "shutdown":
+			// Simulates an extension doing real cleanup (flush, close a
+			// connection, ...) before it actually exits — regression fixture
+			// for the B4 shutdown race: a Close that kills too early would
+			// never let this delayed exit print SHUTDOWN_COMPLETE.
+			if ms := os.Getenv("FAKE_SHUTDOWN_DELAY_MS"); ms != "" {
+				if d, err := time.ParseDuration(ms + "ms"); err == nil {
+					time.Sleep(d)
+				}
+			}
+			fmt.Fprintln(os.Stderr, "SHUTDOWN_COMPLETE")
 			out.Flush()
 			os.Exit(0)
 		case "call":
@@ -305,6 +315,44 @@ func TestExternalCallTimeoutDoesNotWedge(t *testing.T) {
 	// The process is still alive; a normal call still works.
 	if _, err := callFake(t, inst, "echo", "still-here"); err != nil {
 		t.Fatalf("call after timeout: %v", err)
+	}
+}
+
+// TestExternalCloseWaitsForActualExit is the B4 regression: Close must not
+// kill the child before it has had a real chance to finish its own
+// notify("shutdown")-triggered cleanup. The fake extension sleeps 150ms and
+// prints SHUTDOWN_COMPLETE to stderr right before exiting on "shutdown" —
+// well under shutdownGrace (3s). Before the fix, process.close() returned
+// the instant stdin closed, so External.Close's select almost always saw
+// isClosed() still false and force-killed the child mid-sleep, and
+// SHUTDOWN_COMPLETE never made it to stderr.
+func TestExternalCloseWaitsForActualExit(t *testing.T) {
+	m := fakeManifest(t, Permissions{}, []string{"FAKE_SHUTDOWN_DELAY_MS=150"})
+	ext := New(m)
+	inst, err := ext.Bind(extension.Declaration{Kind: "fake", Name: "F"}, &recordingHost{})
+	if err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	// Bind only captures the host; the process starts on first Call.
+	if _, err := callFake(t, inst, "echo", "start"); err != nil {
+		t.Fatalf("starting call: %v", err)
+	}
+
+	ext.mu.Lock()
+	p := ext.proc
+	ext.mu.Unlock()
+	if p == nil {
+		t.Fatal("process did not start")
+	}
+
+	if err := ext.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if !p.isClosed() {
+		t.Fatal("process not marked closed after Close returned")
+	}
+	if !strings.Contains(p.stderr.String(), "SHUTDOWN_COMPLETE") {
+		t.Fatalf("Close killed the process before its graceful shutdown finished — stderr: %q", p.stderr.String())
 	}
 }
 
