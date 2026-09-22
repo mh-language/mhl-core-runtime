@@ -112,15 +112,23 @@ func Parse(source string) (*ast.Program, error) {
 			}
 		}
 	}
+	if err := checkAmbiguousBareReturn(prog); err != nil {
+		return nil, err
+	}
 	return prog, nil
 }
 
 // ParseExpr parses source as a single MHL expression (the grammar rooted at
 // ast.Expr rather than ast.Program), e.g. the snippet inside a "${...}"
-// string interpolation span.
+// string interpolation span. A lambda literal reachable from source (e.g.
+// `${items.filter((x) -> { ... })}`) still gets checkAmbiguousBareReturn's
+// own "return"/"break" validation — see checkExprForAmbiguousReturn.
 func ParseExpr(source string) (*ast.Expr, error) {
 	expr, err := mhlExprParser.ParseString("", source)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkExprForAmbiguousReturn(expr); err != nil {
 		return nil, err
 	}
 	return expr, nil

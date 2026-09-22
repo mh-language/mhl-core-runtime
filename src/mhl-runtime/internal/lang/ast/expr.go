@@ -14,6 +14,7 @@ import "github.com/alecthomas/participle/v2/lexer"
 // for `expr.Or` still compile; `Tail` is empty for every expression that
 // doesn't use `??`.
 type Expr struct {
+	Pos  lexer.Position
 	Or   *OrExpr       `parser:"@@"`
 	Tail []*CoalesceOp `parser:"@@*"`
 }

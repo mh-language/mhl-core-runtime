@@ -334,6 +334,9 @@ pipeline SafeRead {
     }
 }</code></pre>
           <div class="tip-row"><span>ERRORS</span><p><code>fail("message")</code> creates a failure that <code>catch</code> can handle. Without a handler, the failure stops execution and the CLI returns a nonzero status.</p></div>
+          <pre class="code-block"><code class="language-mhl">if (flag) return
+log.info("unreachable")   // parse error: read as `return log.info(...)`, not two statements</code></pre>
+          <div class="security-banner"><span>!</span><div><strong>return/break's value must start on the same line.</strong><p>mhl has no statement terminator — a newline is ordinary whitespace. <code>return</code>/<code>break</code>'s optional value is parsed greedily, so one left on its own line (as above) reads the <em>next</em> statement as that value instead of a separate statement — a parse error rather than a silent misread. Fix it by bracing the inline branch (<code>if (flag) { return }</code>) or restructuring so nothing follows the bare keyword directly. A value on the <em>same</em> line is unaffected, even one that itself continues onto further lines (<code>return {</code> then more fields below).</p></div></div>
         </section>
 
         <section class="feature doc-section" id="agent" data-title="agent cli ollama run prompt schema retry cache rate limit fallback before after hooks">
