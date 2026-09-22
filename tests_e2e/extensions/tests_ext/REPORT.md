@@ -4,14 +4,17 @@ Suíte que exercita `extension <kind> <Name> { ... }` na linguagem mhl, com foco
 no **StateStore** (kind `store`) e em **concorrência**. Sujeitos de teste:
 [`../store-probe/`](../store-probe/) — um `store` instrumentado (superset de
 [`../store-fs/`](../store-fs/)) — nos cenários 001–010; a extensão **oficial**
-[`../../../src/mhl-extensions/mhl-store-s3/`](../../../src/mhl-extensions/mhl-store-s3/) — `store` sobre Amazon
+`mhl-store-s3` — `store` sobre Amazon
 S3 / MinIO — nos cenários 011–013; a extensão **oficial**
-[`../../../src/mhl-extensions/mhl-store-postgres/`](../../../src/mhl-extensions/mhl-store-postgres/) — `store`
+`mhl-store-postgres` — `store`
 sobre PostgreSQL — nos cenários 014–016; e a extensão **oficial**
-[`../../../src/mhl-extensions/mhl-sql-postgres/`](../../../src/mhl-extensions/mhl-sql-postgres/) — kind `sql`,
+`mhl-sql-postgres` — kind `sql`,
 consultas livres (DQL) + DML/DDL — nos cenários 017–019; e a extensão
-**oficial** [`../../../src/mhl-extensions/mhl-cache-redis/`](../../../src/mhl-extensions/mhl-cache-redis/) —
-kind `cache`, TTL sobre Redis — nos cenários 020–021.
+**oficial** `mhl-cache-redis` —
+kind `cache`, TTL sobre Redis — nos cenários 020–021. Essas quatro extensões
+oficiais saíram deste repositório (`src/mhl-extensions/`) para um repositório
+`mhl-packages` separado; os cenários que dependem delas continuam sendo
+pulados (SKIP, não FAIL) quando o backend real não está disponível.
 
 | Item | Valor |
 |---|---|

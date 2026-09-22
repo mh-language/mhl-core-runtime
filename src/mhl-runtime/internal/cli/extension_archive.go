@@ -19,9 +19,40 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/extension/external"
 )
 
-// maxArchiveBytes caps a downloaded extension archive (and any single file
-// inside it) so a hostile or truncated URL cannot exhaust memory or disk.
+// maxArchiveBytes caps a downloaded extension archive, any single file inside
+// it, AND the cumulative decompressed size of every entry combined — so a
+// hostile or truncated URL cannot exhaust memory or disk, and a "zip/tar
+// bomb" (many small compressed entries that individually pass the per-file
+// check but together expand far past the download's own compressed size
+// limit) cannot either.
 const maxArchiveBytes = 256 << 20 // 256 MiB
+
+// maxArchiveEntries caps the number of entries an archive may contain,
+// independent of their size — a bomb built from many empty/tiny entries
+// would otherwise pass both the per-file and cumulative byte checks.
+const maxArchiveEntries = 10_000
+
+// archiveBudget tracks the cumulative decompressed bytes and entry count
+// across every file in one archive's extraction, shared between extractTarGz
+// and extractZip's per-entry loops.
+type archiveBudget struct {
+	bytes   int64
+	entries int
+}
+
+// take accounts for one entry of size n, erroring once either the per-archive
+// entry count or the cumulative decompressed byte budget is exceeded.
+func (b *archiveBudget) take(n int64) error {
+	b.entries++
+	if b.entries > maxArchiveEntries {
+		return fmt.Errorf("archive has more than %d entries", maxArchiveEntries)
+	}
+	b.bytes += n
+	if b.bytes > maxArchiveBytes {
+		return fmt.Errorf("archive's cumulative decompressed size exceeds %d bytes", maxArchiveBytes)
+	}
+	return nil
+}
 
 // archiveSource is a parsed `mhl extension install` argument that points at a
 // packaged extension archive over HTTP — the shape `make release` produces —
@@ -178,6 +209,7 @@ func extractTarGz(data []byte, dest string) error {
 	}
 	defer gz.Close()
 	tr := tar.NewReader(gz)
+	budget := &archiveBudget{}
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -199,6 +231,9 @@ func extractTarGz(data []byte, dest string) error {
 			if hdr.Size > maxArchiveBytes {
 				return fmt.Errorf("entry %q exceeds %d bytes", hdr.Name, maxArchiveBytes)
 			}
+			if err := budget.take(hdr.Size); err != nil {
+				return err
+			}
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
@@ -209,6 +244,7 @@ func extractTarGz(data []byte, dest string) error {
 			_, cErr := io.CopyN(f, tr, hdr.Size)
 			f.Close()
 			if cErr != nil {
+				os.Remove(target) // don't leave a partial file behind on failure
 				return cErr
 			}
 		default:
@@ -223,6 +259,7 @@ func extractZip(data []byte, dest string) error {
 	if err != nil {
 		return err
 	}
+	budget := &archiveBudget{}
 	for _, zf := range zr.File {
 		target, err := safeJoin(dest, zf.Name)
 		if err != nil {
@@ -233,6 +270,12 @@ func extractZip(data []byte, dest string) error {
 				return err
 			}
 			continue
+		}
+		if zf.UncompressedSize64 > maxArchiveBytes {
+			return fmt.Errorf("entry %q exceeds %d bytes", zf.Name, maxArchiveBytes)
+		}
+		if err := budget.take(int64(zf.UncompressedSize64)); err != nil {
+			return err
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
@@ -246,10 +289,18 @@ func extractZip(data []byte, dest string) error {
 			rc.Close()
 			return err
 		}
-		_, cErr := io.Copy(f, io.LimitReader(rc, maxArchiveBytes+1))
+		// LimitReader is defense-in-depth against a header that understates
+		// its own entry's real size; n is checked so an oversized entry is a
+		// hard error, never a silent truncation (io.Copy treats the limit
+		// reader's early EOF as ordinary success on its own).
+		n, cErr := io.Copy(f, io.LimitReader(rc, maxArchiveBytes+1))
 		f.Close()
 		rc.Close()
+		if cErr == nil && n > maxArchiveBytes {
+			cErr = fmt.Errorf("entry %q exceeds %d bytes", zf.Name, maxArchiveBytes)
+		}
 		if cErr != nil {
+			os.Remove(target) // don't leave a partial/truncated file behind
 			return cErr
 		}
 	}

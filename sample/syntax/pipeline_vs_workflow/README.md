@@ -37,8 +37,7 @@ the duration is measured fresh on each attempt, never persisted — and
 
 - [linear_pipeline_and_branching_workflow.mh](linear_pipeline_and_branching_workflow.mh)
   — a linear `pipeline` beside a `workflow` whose `Gate` step jumps back to
-  `Review`. Runnable state-machine behaviour built on `goto` is exercised by
-  [../../mhl.workflow.development/](../../mhl.workflow.development/README.md).
+  `Review`, exercising runnable state-machine behaviour built on `goto`.
 - [goto_nameof_target.mh](goto_nameof_target.mh) — `goto nameof(Review)`, the
   `nameof(...)`-wrapped spelling of a goto target: pure grammar sugar for the
   bare `goto Review` form (not the real `nameof(...)` builtin evaluated as a

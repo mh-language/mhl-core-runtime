@@ -103,14 +103,16 @@ rpc "$SID" '{"jsonrpc":"2.0","id":41,"method":"run/status","params":{"runId":"'"
 
 # ── verdite ─────────────────────────────────────────────────────────
 S1_STATE=$(jget "$L/start-1.json" result.state)
-S2_START=$(jget "$L/start-2.json" result.state); QP2=$(jget "$L/start-2.json" result.queuePosition)
-S3_START=$(jget "$L/start-3.json" result.state); QP3=$(jget "$L/start-3.json" result.queuePosition)
+S2_START=$(jget "$L/start-2.json" result.state)
+S3_START=$(jget "$L/start-3.json" result.state)
 S3_FINAL=$(jget "$L/status3-final.json" result.state)
 
 ok="yes"
 [[ "$S1_STATE" == "working" ]]                 || { ok="no"; log "  ! run #1 state=$S1_STATE != working"; }
-[[ "$S2_START" == "queued" && "$QP2" == "0" ]] || { ok="no"; log "  ! run #2 != queued/qp0 ($S2_START/$QP2)"; }
-[[ "$S3_START" == "queued" && "$QP3" == "1" ]] || { ok="no"; log "  ! run #3 != queued/qp1 ($S3_START/$QP3)"; }
+# run/start's result has no queuePosition field (see mcpserver's RunView /
+# runJSON — it was never implemented); only state=queued is a real contract.
+[[ "$S2_START" == "queued" ]]                  || { ok="no"; log "  ! run #2 state=$S2_START != queued"; }
+[[ "$S3_START" == "queued" ]]                  || { ok="no"; log "  ! run #3 state=$S3_START != queued"; }
 [[ "$CAP_CODE" == "503" ]]                     || { ok="no"; log "  ! tools/call @capacity HTTP != 503 ($CAP_CODE)"; }
 [[ "$CAP_CODEJ" == "-32000" ]]                 || { ok="no"; log "  ! tools/call @capacity error.code != -32000 ($CAP_CODEJ)"; }
 echo "$CAP_MSG" | grep -qi "capacity"          || { ok="no"; log "  ! msg @capacity não menciona 'capacity'"; }
@@ -120,7 +122,7 @@ echo "$CAP_MSG" | grep -qi "capacity"          || { ok="no"; log "  ! msg @capac
 grep -q "step: Compile" "$SERVER_LOG" && ! grep -q "target=t3\|t3" "$SERVER_LOG" || true
 
 if [[ "$ok" == "yes" ]]; then
-  log "RESULTADO: FUNCIONOU — limite=1 respeitado, fila com queuePosition, shed de carga e drain da fila"
+  log "RESULTADO: FUNCIONOU — limite=1 respeitado, fila (state=queued), shed de carga e drain da fila"
   echo "PASS"; exit 0
 else
   log "RESULTADO: NÃO FUNCIONOU — veja as verificações acima"

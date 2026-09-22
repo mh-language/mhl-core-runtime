@@ -48,10 +48,36 @@ tag="${MHL_VERSION:-}"
 if [ -z "$tag" ]; then
   info "resolving latest runtime release..."
   # /releases/latest ignores prereleases and can resolve to a non-runtime
-  # release (extensions-v*), so scan the list for the newest v* tag instead.
-  tag="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=100" \
-    | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/' \
-    | grep -E '^v[0-9]' | head -n1)"
+  # release (extensions-v*), so scan the list ourselves instead. GitHub
+  # returns releases newest-first, and within one release object "tag_name"
+  # always precedes "prerelease" — so the sed script below can hold the most
+  # recently seen tag_name and only print it once it sees that same
+  # release's prerelease field.
+  releases="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=100")"
+
+  # The stable channel: the newest non-prerelease runtime tag. Once a stable
+  # v1.x.y exists, this is what a plain `curl | sh` installs by default —
+  # never a newer beta (e.g. a v1.5.0-beta.1 published after v1.4.0).
+  tag="$(printf '%s\n' "$releases" | sed -n '
+/"tag_name"/{
+s/.*"tag_name": *"\([^"]*\)".*/\1/
+h
+}
+/"prerelease": *false/{
+g
+p
+}
+' | grep -E '^v[0-9]' | head -n1)"
+
+  if [ -z "$tag" ]; then
+    # No stable runtime release published yet — every runtime tag is a beta.
+    # Falling back keeps the installer usable during this project's current
+    # all-beta phase; set MHL_VERSION explicitly to pin a specific one.
+    info "no stable runtime release published yet — using the newest beta"
+    tag="$(printf '%s\n' "$releases" \
+      | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/' \
+      | grep -E '^v[0-9]' | head -n1)"
+  fi
   [ -n "$tag" ] || die "could not resolve latest runtime release version"
 fi
 # A manual MHL_VERSION may be given with or without the leading "v" the repo's

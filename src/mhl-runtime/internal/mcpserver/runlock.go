@@ -116,20 +116,39 @@ func (l *runLock) leaseRec(runID, token string) lockRec {
 // acquire tries to take the lease for runID. On success it returns a leaseHandle
 // the caller keeps for the duration of this attempt and passes to renew/release;
 // held is true. When held is false and err is nil, holder names the replica that
-// still holds a fresh lease. A non-nil err means the store could not be reached:
-// the caller must not start work (it cannot rule out another writer).
+// still holds a fresh lease. A non-nil err means the store could not be reached
+// (or the store round-trip ate too much of the lease's own TTL to trust the
+// result — see confirmFresh below): the caller must not start work (it cannot
+// rule out another writer).
 func (l *runLock) acquire(ctx context.Context, runID string) (lease leaseHandle, held bool, holder string, err error) {
 	key := runLockKey(runID)
 	token := newLeaseToken()
 	rec := l.leaseRec(runID, token)
 	mine := leaseHandle{runID: runID, token: token}
+	start := l.now()
+
+	// confirmFresh is called right after a store write reports this replica
+	// won the lease. Expires was computed from `start`, before the round
+	// trip — if the call itself took long enough to eat a meaningful chunk
+	// of the TTL (a stalled/contended store), the record we just wrote may
+	// already read as expired to another replica by the time we return, and
+	// two replicas could both believe they hold the lease. Rather than trust
+	// a lease acquired that close to its own expiry, give it back and fail
+	// closed like a store error would.
+	confirmFresh := func() (leaseHandle, bool, string, error) {
+		if l.now().Sub(start) >= runLockTTL-runLockConfirmMargin() {
+			_ = l.release(ctx, mine) // best-effort: give back what we no longer trust
+			return leaseHandle{}, false, "", fmt.Errorf("acquiring run %q's execution lease: store round-trip took too long to trust the lease's remaining TTL", runID)
+		}
+		return mine, true, l.replicaID, nil
+	}
 
 	ok, err := l.kv.PutIfAbsent(ctx, key, rec)
 	if err != nil {
 		return leaseHandle{}, false, "", err
 	}
 	if ok {
-		return mine, true, l.replicaID, nil
+		return confirmFresh()
 	}
 	// Someone has (or had) it. Take over only if their lease has lapsed.
 	raw, found, err := l.kv.Get(ctx, key)
@@ -143,7 +162,7 @@ func (l *runLock) acquire(ctx context.Context, runID string) (lease leaseHandle,
 			return leaseHandle{}, false, "", err
 		}
 		if ok {
-			return mine, true, l.replicaID, nil
+			return confirmFresh()
 		}
 		return leaseHandle{}, false, l.replicaID, nil
 	}
@@ -155,7 +174,7 @@ func (l *runLock) acquire(ctx context.Context, runID string) (lease leaseHandle,
 			return leaseHandle{}, false, "", serr
 		}
 		if swapped {
-			return mine, true, l.replicaID, nil
+			return confirmFresh()
 		}
 		return leaseHandle{}, false, l.replicaID, nil
 	}
@@ -167,10 +186,16 @@ func (l *runLock) acquire(ctx context.Context, runID string) (lease leaseHandle,
 		return leaseHandle{}, false, "", err
 	}
 	if swapped {
-		return mine, true, l.replicaID, nil
+		return confirmFresh()
 	}
 	return leaseHandle{}, false, l.replicaID, nil
 }
+
+// runLockConfirmMargin is how much of the TTL a successful acquire must still
+// have left, once the store round-trip is accounted for, to be trusted. A
+// quarter of the TTL leaves room for at least one heartbeat cycle
+// (runLockHeartbeat ~= TTL/3) before the lease would need renewing anyway.
+func runLockConfirmMargin() time.Duration { return runLockTTL / 4 }
 
 // renew extends the acquisition named by lease. stillMine is false (nil error)
 // when the lease is gone or no longer that exact acquisition — the caller must

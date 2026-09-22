@@ -13,8 +13,6 @@ declarations live in [fixtures/router.mh](fixtures/router.mh).
 - [router_cascades_to_llm_decision_when_select_is_inconclusive.mh](router_cascades_to_llm_decision_when_select_is_inconclusive.mh)
   — an absent (`null`) `select` result falls back to a decision call run through `decider: ...`
   (an ordinary declared agent), which then runs the agent it chose
-- [router_delegate_errors_when_agent_is_not_declared.mh](router_delegate_errors_when_agent_is_not_declared.mh)
-  — an `agents: [...]` entry naming an undeclared agent fails `.delegate(...)` with a clear error
 - [router_delegates_without_any_llm_decision_engine.mh](router_delegates_without_any_llm_decision_engine.mh)
   — the LLM cascade is entirely optional: a router with only `select` (no `decider` at all) is a
   purely deterministic router, as long as `select` is exhaustive

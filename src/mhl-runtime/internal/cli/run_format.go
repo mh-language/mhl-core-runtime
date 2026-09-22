@@ -25,6 +25,7 @@ type runJSON struct {
 	Skipped        []string       `json:"skipped,omitempty"`
 	Resumed        bool           `json:"resumed,omitempty"`
 	Paused         bool           `json:"paused,omitempty"`
+	PauseReason    any            `json:"pause_reason,omitempty"`
 	Broke          bool           `json:"broke,omitempty"`
 	Loop           bool           `json:"loop,omitempty"`
 	Iterations     int            `json:"iterations,omitempty"`
@@ -64,6 +65,7 @@ func writeRunJSON(out io.Writer, res *execsvc.Result, runErr error, file, logTex
 		rj.Skipped = res.Skipped
 		rj.Resumed = res.Resumed
 		rj.Paused = res.Paused
+		rj.PauseReason = redactPauseReason(res.PauseReason)
 		rj.Broke = res.Broke
 		rj.Loop = res.Loop
 		rj.Iterations = res.Iterations
@@ -74,6 +76,17 @@ func writeRunJSON(out io.Writer, res *execsvc.Result, runErr error, file, logTex
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(rj)
+}
+
+// redactPauseReason masks a resolved credential in a string pause(...)
+// reason before it is serialised; a non-string reason (or nil, the common
+// case — most pauses pass no reason at all) passes through unchanged, since
+// auth.Redact only operates on strings.
+func redactPauseReason(reason any) any {
+	if s, ok := reason.(string); ok {
+		return auth.Redact(s)
+	}
+	return reason
 }
 
 // classifyRunError fills kind / step / hint / missing / unknown from the

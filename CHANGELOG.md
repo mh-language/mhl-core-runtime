@@ -8,7 +8,64 @@ during the alpha series.
 Per-tag release notes are also generated automatically on the
 [GitHub Releases](https://github.com/mh-language/mhl-core-runtime/releases) page.
 
-## [1.2.0-alpha] — Unreleased
+## 1.4.0-beta — v1.4.0-beta.2 .. v1.4.0-beta.24 (2026-09-06 → 2026-09-22)
+
+Everything below shipped across the `v1.4.0-beta.2` .. `v1.4.0-beta.24` tags —
+grouped by theme rather than per-beta, since the betas themselves are cut
+frequently and each carries `docs/site`/CI fixes alongside features. See the
+[GitHub Releases](https://github.com/mh-language/mhl-core-runtime/releases)
+page for the exact per-tag notes.
+
+### Added
+
+- **Pipeline/workflow lifecycle hooks.** `session_start`, `session_end`,
+  `step_start`, `step_end`, `stop_failure` — five single-parameter lambda body
+  properties, each bound to a builtin global type (`SessionContext` /
+  `StepContext` / `FailureContext`). Observation-only: a non-nil return is a
+  runtime error, and a `stop_failure` failure is only ever logged, never
+  allowed to replace the failure it was reporting.
+- **Partial pipelines/workflows.** `partial` + `entry step` + a bare `import`
+  let a single pipeline/workflow definition be split across files, with
+  `complete()` closing a partial fragment explicitly (removing the old
+  fallthrough footgun) and `self.name` reading/writing the pipeline's own
+  input/var/mem scope regardless of which fragment is executing.
+- **`router` declarations.** `router <Name> { agents: […], select: (prompt) ->
+  {…}, decider: … }` — a hybrid decision between a deterministic `select` hook
+  and an LLM decision call through a separately declared `agent`, with
+  `.delegate(prompt: …)` and `nameof(...)`-based typo-safe, IDE-navigable
+  agent references.
+- **`goto match` for static step dispatch**, and stricter lint diagnostics
+  around `goto` cycles and ambiguous `return`/`break` (a bare `return`/`break`
+  followed by more code — even a guard clause — is now a parse error instead
+  of silently swallowing the next statement).
+- **Skills support and scoped declarations.**
+- **`stdin` property for agents**, for handling large content without
+  round-tripping it through a rendered prompt string.
+- **`os` native namespace**: user, home directory, hostname, platform,
+  architecture, current working directory, process ID, and an `executable`
+  method — plus a `dev-install` script.
+- **Nested string literals inside `${...}` interpolation** — an unescaped
+  string literal nested in an interpolation expression now parses correctly.
+- **LSP: "Find References" and "Go to Definition"**, with caching for
+  imported-symbol resolution across partial fragments.
+- **Completion snippets** for full agent/pipeline/workflow declarations, and
+  general declaration/snippet-syntax completion items.
+- The four official extensions (`mhl-store-s3`, `mhl-store-postgres`,
+  `mhl-sql-postgres`, `mhl-cache-redis`) moved out of this repository
+  (`src/mhl-extensions/`) into a separate `mhl-packages` repository — an
+  organizational change, not a behavior change for a project already
+  depending on one of them via `mhl extension install`.
+
+### Changed
+
+- Session handling hardened for concurrent requests (explicit getters instead
+  of shared mutable access), and test reliability improved around it.
+- Pipeline input handling and several security-relevant paths hardened
+  (credential/secret handling, request guards).
+- CI trigger fixes and improved runtime-release resolution for the
+  installers.
+
+## 1.2.0-alpha — 2026-08-30 → 2026-09-19
 
 ### Breaking
 
@@ -79,7 +136,7 @@ Per-tag release notes are also generated automatically on the
   `crypto/rand`; an entropy failure raises like any other native-op error. No
   new dependency — the runtime still builds on participle alone.
 
-## [1.1.0-alpha] — 2026-08-30
+## 1.1.0-alpha — 2026-08-30
 
 Serving workflows to other agents, and the run-core work that enables it. The
 language surface is unchanged from `1.0.0-alpha`.
@@ -115,7 +172,7 @@ language surface is unchanged from `1.0.0-alpha`.
   inside a blocking `cmd`/`git`/`http` native op or agent call — what
   `tasks/cancel` and a server request timeout use.
 
-## [1.0.1-alpha] — 2026-08-30
+## 1.0.1-alpha — 2026-08-30
 
 ### Added
 
@@ -123,7 +180,7 @@ language surface is unchanged from `1.0.0-alpha`.
   an agent's `log:` path already used — `path: ".mhl/s.${context.session_id}.json"`
   gives each run its own store.
 
-## [1.0.0-alpha] — 2026-08-29
+## 1.0.0-alpha — 2026-08-29
 
 First tag of the **language-surface freeze**: the grammar, standard library, and
 execution semantics are the contract from here on. External integrations
@@ -168,7 +225,7 @@ execution semantics are the contract from here on. External integrations
 - Documentation: the language reference gains an `extension` section framing the
   `extension <kind> <Name>` form; the `pipeline` section documents `workflow`.
 
-## [0.1.0-alpha] – [0.5.3-alpha] — 2026-08-26 → 2026-08-29
+## 0.1.0-alpha – 0.5.3-alpha — 2026-08-26 → 2026-08-29
 
 The alpha bring-up series. Capabilities that landed across these tags:
 
@@ -193,6 +250,7 @@ The alpha bring-up series. Capabilities that landed across these tags:
 - **Tooling** — `mhl lsp` (completion, diagnostics, signature help), the
   `vscode-mhl` extension, `mhl init` / `run` / `test` / `lint`.
 
-[1.1.0-alpha]: https://github.com/mh-language/mhl-core-runtime/compare/v1.0.1-alpha...HEAD
-[1.0.1-alpha]: https://github.com/mh-language/mhl-core-runtime/compare/v1.0.0-alpha...v1.0.1-alpha
-[1.0.0-alpha]: https://github.com/mh-language/mhl-core-runtime/compare/v0.5.3-alpha...v1.0.0-alpha
+Compare links for the alpha-era entries above are omitted: none of those
+`-alpha` tags were ever pushed (only the `v1.4.0-beta.*` series is), so a
+`.../compare/vX.Y.Z-alpha...` URL 404s. For the current beta series, compare
+the actual tags directly: https://github.com/mh-language/mhl-core-runtime/compare/v1.4.0-beta.2...v1.4.0-beta.24

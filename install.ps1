@@ -27,9 +27,22 @@ $Tag = $env:MHL_VERSION
 if (-not $Tag) {
   Info "resolving latest runtime release..."
   # /releases/latest ignores prereleases and can resolve to a non-runtime
-  # release (extensions-v*), so scan the list for the newest v* tag instead.
+  # release (extensions-v*), so scan the list ourselves instead. GitHub
+  # returns releases newest-first.
   $releases = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$Repo/releases?per_page=100"
-  $Tag = ($releases | Where-Object { $_.tag_name -match '^v[0-9]' } | Select-Object -First 1).tag_name
+  $runtimeReleases = $releases | Where-Object { $_.tag_name -match '^v[0-9]' }
+
+  # The stable channel: the newest non-prerelease runtime tag. Once a stable
+  # v1.x.y exists, this is what a plain `irm | iex` installs by default —
+  # never a newer beta (e.g. a v1.5.0-beta.1 published after v1.4.0).
+  $Tag = ($runtimeReleases | Where-Object { -not $_.prerelease } | Select-Object -First 1).tag_name
+  if (-not $Tag) {
+    # No stable runtime release published yet — every runtime tag is a beta.
+    # Falling back keeps the installer usable during this project's current
+    # all-beta phase; set $env:MHL_VERSION explicitly to pin a specific one.
+    Info "no stable runtime release published yet — using the newest beta"
+    $Tag = ($runtimeReleases | Select-Object -First 1).tag_name
+  }
   if (-not $Tag) { Die "could not resolve latest runtime release version" }
 }
 # A manual $env:MHL_VERSION may be given with or without the leading "v" the

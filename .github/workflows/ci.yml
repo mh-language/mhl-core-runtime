@@ -1,44 +1,17 @@
 name: CI
 
+# No paths: filter — the previous scoping to src/mhl-runtime/** let changes
+# under vscode-mhl/, tests_e2e/, docs/site/, install.sh/install.ps1 merge
+# with zero validation (maturity-audit finding B5). The gate itself already
+# separates concerns into independent jobs, so a change confined to one area
+# only pays for the jobs relevant to it.
 on:
   push:
     branches: [main, develop]
-    paths:
-      - "src/mhl-runtime/**"
-      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main, develop]
-    paths:
-      - "src/mhl-runtime/**"
-      - ".github/workflows/ci.yml"
   workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: src/mhl-runtime
-
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: src/mhl-runtime/go.mod
-          cache: true
-          cache-dependency-path: src/mhl-runtime/go.sum
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Build
-        run: make build
-
-      - name: Test
-        run: make test
-
-      - name: Functional Test
-        run: make functional-test
+  gate:
+    uses: ./.github/workflows/gate.yml

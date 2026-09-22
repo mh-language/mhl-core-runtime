@@ -9,7 +9,15 @@ permissions:
   contents: write
 
 jobs:
+  # The same mandatory checks ci.yml runs on every push/PR — a tag must come
+  # from a commit that already passed this, not just `make test` (see the
+  # maturity-audit's B5 finding: the previous release.yml only ran `make
+  # test`, missing -race, govulncheck, functional-test, and every E2E suite).
+  gate:
+    uses: ./.github/workflows/gate.yml
+
   release:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,10 +43,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-
-      - name: Test
-        run: make test
-        working-directory: src/mhl-runtime
 
       - name: Build VS Code extension
         working-directory: vscode-mhl

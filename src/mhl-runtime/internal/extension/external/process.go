@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // maxLine bounds a single wire line so a malicious or broken extension can't
@@ -46,6 +47,7 @@ type process struct {
 	pending map[uint64]chan message
 	closed  bool
 	exitErr error
+	done    chan struct{} // closed by shutdown() once the child has actually exited
 }
 
 // startProcess spawns bin with args, wires its pipes, and launches the reader
@@ -76,6 +78,7 @@ func startProcess(bin string, args, env []string, host inboundHandler) (*process
 		stderr:  tail,
 		host:    host,
 		pending: map[uint64]chan message{},
+		done:    make(chan struct{}),
 	}
 	go p.readLoop(stdout)
 	return p, nil
@@ -238,14 +241,24 @@ func (p *process) shutdown(cause error) {
 	for _, ch := range pending {
 		ch <- message{Error: &wireError{Message: fail.Error()}}
 	}
+	close(p.done)
 }
 
-// close asks the extension to stop, closes its stdin, and waits for readLoop
-// to observe the exit. The caller is expected to bound this with its own
-// timeout and fall back to Kill.
-func (p *process) close() {
+// close asks the extension to stop, closes its stdin, and waits up to grace
+// for readLoop to actually observe the exit (its sc.Scan() loop returning,
+// then cmd.Wait(), then shutdown() closing p.done) — not just for this call
+// to return, which notify+stdin.Close() do immediately on their own and
+// don't by themselves mean the child has exited. Returns once the process
+// has genuinely stopped, or grace elapses, whichever comes first; the caller
+// decides whether to kill() afterward (isClosed() tells them which case it
+// was).
+func (p *process) close(grace time.Duration) {
 	_ = p.notify("shutdown", nil)
 	_ = p.stdin.Close()
+	select {
+	case <-p.done:
+	case <-time.After(grace):
+	}
 }
 
 // kill force-terminates the child.
