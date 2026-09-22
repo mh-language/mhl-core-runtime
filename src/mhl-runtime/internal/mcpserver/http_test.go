@@ -105,7 +105,10 @@ func initHTTPSession(t *testing.T, url string) string {
 // returning the last status object.
 func pollRun(t *testing.T, url, sid, runID string) map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	// Generous on purpose: under -race (significant per-access overhead) on a
+	// shared CI runner, a fixed 5s margin was tight enough to fail a run that
+	// was already on its last step — a false negative, not a real hang.
+	deadline := time.Now().Add(20 * time.Second)
 	for {
 		_, body := postMCP(t, url, sid, rpcMap(9, "run/status", map[string]any{"runId": runID}), nil)
 		res, ok := body["result"].(map[string]any)
@@ -874,7 +877,7 @@ func TestHTTPRunLiveStatusAndCancelAcrossReplicas(t *testing.T) {
 	// From B: the run is working, and its step advances across polls.
 	steps := map[string]bool{}
 	sawWorking := false
-	deadline := time.Now().Add(6 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) && len(steps) < 2 {
 		time.Sleep(400 * time.Millisecond)
 		_, sb := postMCP(t, b.URL, sidB, rpcMap(3, "run/status", map[string]any{"runId": runID}), nil)
@@ -1120,7 +1123,7 @@ func TestHTTPReconstructBoundToPrincipal(t *testing.T) {
 // pollRun2 is pollRun with caller-supplied headers.
 func pollRun2(t *testing.T, url, sid, runID string, hdr map[string]string) map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for {
 		_, body := postMCP(t, url, sid, rpcMap(9, "run/status", map[string]any{"runId": runID}), hdr)
 		res := body["result"].(map[string]any)
@@ -1268,7 +1271,7 @@ func structured(t *testing.T, res map[string]any) map[string]any {
 // pollRunTool polls mhl_run_status (the control tool) until terminal.
 func pollRunTool(t *testing.T, url, sid, runID string) map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for {
 		sc := structured(t, callTool(t, url, sid, 91, "mhl_run_status", map[string]any{"runId": runID}))
 		switch sc["state"] {

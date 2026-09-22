@@ -39,7 +39,7 @@ func TestDurableIntakeClaimLoopRunsPendingRun(t *testing.T) {
 
 	// The claim loop (nudged by run/start) drives it to a terminal state.
 	var st map[string]any
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		st = decodeResult(t, h.runStatus(sess, mkMsg("run/status", map[string]any{"runId": runID})))
 		if s, _ := st["state"].(string); s == string(RunStateCompleted) || s == string(RunStateFailed) {
@@ -223,7 +223,7 @@ func TestDurableIntakeReplicaDeathRecoveredByPeer(t *testing.T) {
 	hB.drainClaims(context.Background())
 
 	var st map[string]any
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		st = decodeResult(t, hB.runStatus(sess, mkMsg("run/status", map[string]any{"runId": runID})))
 		if s, _ := st["state"].(string); s == string(RunStateCompleted) || s == string(RunStateFailed) {
