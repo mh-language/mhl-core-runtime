@@ -67,7 +67,7 @@ html { scroll-behavior:smooth; }
           <div class="spec-meta" aria-label="Document metadata">
             <span><b>Document</b> MHL-SPEC</span>
             <span><b>Edition</b> Current runtime profile</span>
-            <span><b>Status</b> Evolving / alpha</span>
+            <span><b>Status</b> v1.4 release candidate</span>
             <span><b>Language</b> English</span>
           </div>
         </div>
@@ -573,7 +573,7 @@ Events.append({event: "started", at: time.now()})</code></pre>
 <table><thead><tr><th>Memory signature</th><th>Returns and behavior</th></tr></thead><tbody>
 <tr><td class="signature">set(key: string, value: any) → any</td><td>Stores and returns <code>value</code>. JSON memory also accepts <code>set(values: object) → object</code> as a bulk form.</td></tr>
 <tr><td class="signature">get(key: string, default?: any) → any</td><td>Returns the value or the supplied default; absent values otherwise yield null. JSON and KV keys support <code>::</code> navigation.</td></tr>
-<tr><td class="signature">remove(key: string) → bool</td><td>Supported by JSON memory; removes a top-level or <code>::</code>-nested key and reports whether it existed. <em>Current profile:</em> the interpreter implements it, but <code>mhl lint</code> does not yet list it among the JSON methods and reports it as an unknown method.</td></tr>
+<tr><td class="signature">remove(key: string) → bool</td><td>Supported by JSON memory; removes a top-level or <code>::</code>-nested key and reports whether it existed.</td></tr>
 <tr><td class="signature">append(text: string) → string</td><td>Append-log operation. Writes one line and returns the text.</td></tr>
 <tr><td class="signature">append(value: any) → any</td><td>JSONL operation. Writes <code>{value, ts}</code> and returns the original value.</td></tr>
 </tbody></table>
@@ -814,7 +814,7 @@ test RecascadeTest {
 <h3>18.1 Commands</h3>
 <table><thead><tr><th>Command</th><th>Purpose</th></tr></thead><tbody>
 <tr><td><code>mhl init</code></td><td>Creates a starter program without overwriting existing files.</td></tr>
-<tr><td><code>mhl run file.mh [--input key=value] [--resume [--force]] [--session id] [--format text|json] [--dry-run]</code></td><td>Runs a pipeline/workflow with typed inputs and optional checkpoint resume. <code>--force</code> (with <code>--resume</code>) resumes through a changed pipeline definition, warning instead of refusing. <code>--format json</code> emits one object — the result on success, or a typed error (<code>kind</code>, <code>step</code>, <code>hint</code>, and for bad inputs <code>missing</code>/<code>unknown</code>) on failure — with the run's own output moved to a <code>log</code> field; the process still exits non-zero on failure. Registered secrets are masked recursively in <code>vars</code>, both for legacy results and explicit <code>output:</code> projections; non-sensitive values and JSON types are preserved. Log and error text are also masked. <code>--dry-run</code> validates parse, imports, lint and the input contract — required inputs present, no undeclared keys, and each supplied value fitting its declared <code>input name: Type</code> (the same coercion a real run applies) — and prints the static step plan (order, parallel groups, checkpoint policy) without executing any step or calling any agent; it exits non-zero on a lint finding or an unsatisfied input contract, and cannot be combined with <code>--resume</code>.</td></tr>
+<tr><td><code>mhl run file.mh [--input key=value] [--resume [--force]] [--session id] [--format text|json] [--dry-run]</code></td><td>Runs a pipeline/workflow with typed inputs and optional checkpoint resume. <code>--force</code> (with <code>--resume</code>) resumes through a changed pipeline definition, warning instead of refusing. <code>--format json</code> emits one object — the result on success, or a typed error (<code>kind</code>, <code>step</code>, <code>hint</code>, and for bad inputs <code>missing</code>/<code>unknown</code>) on failure — with the run's own output moved to a <code>log</code> field; paused and broken runs include <code>pause_reason</code> / <code>break_reason</code>, and the process still exits non-zero on failure. Registered secrets are masked recursively in <code>vars</code>, object keys and stop reasons, both for legacy results and explicit <code>output:</code> projections; non-sensitive values and JSON types are preserved. Log and error text are also masked. <code>--dry-run</code> validates parse, imports, lint and the input contract — required inputs present, no undeclared keys, and each supplied value fitting its declared <code>input name: Type</code> (the same coercion a real run applies) — and prints the static step plan (order, parallel groups, checkpoint policy) without executing any step or calling any agent; it exits non-zero on a lint finding or an unsatisfied input contract, and cannot be combined with <code>--resume</code>.</td></tr>
 <tr><td><code>mhl test file.mh|directory</code></td><td>Runs test declarations and exits non-zero for failed assertions.</td></tr>
 <tr><td><code>mhl lint [directory|file]</code></td><td>Checks syntax, imports, names, configuration, types, parameters, and control-flow legality.</td></tr>
 <tr><td><code>mhl lsp</code></td><td>Starts the language server used by editor integrations.</td></tr>

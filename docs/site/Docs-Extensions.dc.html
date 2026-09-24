@@ -274,7 +274,7 @@ extensible crm {
           </div>
           <div class="syntax-columns">
             <div><h3>Initialize once</h3><pre class="code-block"><code class="language-json">{ "id": 1, "method": "initialize",
-  "params": { "api_version": "1", "host": "mhl", "host_version": "1.3.4-beta.3" } }
+  "params": { "api_version": "1", "host": "mhl", "host_version": "1.4.0-rc.2" } }
 
 { "id": 1, "result": {
   "api_version": "1",
@@ -363,7 +363,7 @@ mhl extension install https://.../mhl-crm.tar.gz#sha256=&lt;hex from SHA256SUMS&
             <div><span>✓</span><p>Build a reproducible executable, run <code>mhl extension doctor</code>, and commit the lock entry.</p></div>
             <div><span>✓</span><p>Build a binary for <em>every</em> OS/architecture your consumers run — the runtime will not cross-compile for them — and state the supported set in the extension's README.</p></div>
           </div>
-          <div class="tip-row"><span>FULL CONTRACT</span><p>For the exact message contract, see the <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/tests_e2e/extensions/extension-protocol.md" target="_blank" rel="noreferrer">external extension protocol ↗</a>. The source walkthrough and manifest examples are in <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/tests_e2e/extensions/README.md" target="_blank" rel="noreferrer"><code>tests_e2e/extensions/README.md</code> ↗</a>.</p></div>
+          <div class="tip-row"><span>IMPLEMENTATIONS</span><p>Official extension sources, manifests, integration tests, and release instructions live in the separate <a href="https://github.com/mh-language/mhl-packages" target="_blank" rel="noreferrer"><code>mh-language/mhl-packages</code> repository ↗</a>.</p></div>
         </section>
 
         </div>

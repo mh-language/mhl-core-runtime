@@ -86,7 +86,7 @@ html { scroll-behavior:smooth; }
 
       <div class="content reference-content">
         <section class="ref-hero doc-section" id="overview" data-title="reference how to use legend status alpha">
-          <p class="eyebrow accent">MHL · SELF-CONTAINED REFERENCE · v1.3.4-beta.3</p>
+          <p class="eyebrow accent">MHL · SELF-CONTAINED REFERENCE · v1.4 RELEASE CANDIDATE</p>
           <h1>The language, from literals to loops.</h1>
           <p class="lead">Everything you need to read and write an MHL program is on this page: practical grammar, behavior, commands, and complete examples. No explanation depends on internal project documents.</p>
           <div class="legend">
@@ -669,7 +669,7 @@ Audit.append("pipeline started")</code></pre>
             <div class="table-row"><span>Text log</span><code>type: "append_log" · path: "audit.log"</code><span><code>append</code>; one text line per call.</span></div>
             <div class="table-row"><span>JSONL</span><code>type: "jsonl" · path: "events.jsonl"</code><span><code>append</code>; writes <code>{value, ts}</code> as one JSON line.</span></div>
           </div>
-          <div class="tip-row"><span>PATHS</span><p>A store's <code>path:</code> is interpolated for <code>${...}</code> spans the same way an agent's <code>log:</code> path is — <code>path: ".mhl/state.${context.session_id}.json"</code> gives every run (and every <code>--session</code>) its own file, so concurrent runs never share a store. <code>context.session_id</code> and the other run-metadata fields are available with no <code>context:</code> block, exactly like in <code>log:</code>. Within JSON memory, <code>Session.get("config::retry")</code> navigates nested objects and <code>remove("config::retry")</code> removes only that field. <strong>Current profile:</strong> <code>remove</code> executes correctly under <code>mhl run</code>, but <code>mhl lint</code> does not yet list it among the JSON methods and reports <em>json memory has no method "remove"</em>. Until lint catches up, treat a <code>remove</code> finding as a false positive.</p></div>
+          <div class="tip-row"><span>PATHS</span><p>A store's <code>path:</code> is interpolated for <code>${...}</code> spans the same way an agent's <code>log:</code> path is — <code>path: ".mhl/state.${context.session_id}.json"</code> gives every run (and every <code>--session</code>) its own file, so concurrent runs never share a store. <code>context.session_id</code> and the other run-metadata fields are available with no <code>context:</code> block, exactly like in <code>log:</code>. Within JSON memory, <code>Session.get("config::retry")</code> navigates nested objects and <code>remove("config::retry")</code> removes only that field.</p></div>
           <div class="tip-row"><span>PATH TRAVERSAL</span><p>Interpolation does not sanitize by default: <code>path: "projects/${project_id}/f.json"</code> with a caller-controlled <code>project_id</code> of <code>"../../../../tmp/x"</code> really does write there. Add <code>path_guard: "no_traversal"</code> to fail closed instead — it checks each <code>${...}</code> span's own value (never the whole templated path, which may legitimately start absolute) for <code>..</code> or an absolute shape, before anything touches disk. Opt-in, not the default; any other <code>path_guard</code> value is a build-time error.</p></div>
 
           <p class="block-label">PERSISTENT PIPELINE VARIABLE</p>
@@ -1165,7 +1165,7 @@ test guarded_retry_test {
             <div class="cli-command"><code>mhl run flow.mh --resume</code><span>resume the most recent session's checkpoint (refused if the pipeline definition changed)</span></div>
             <div class="cli-command"><code>mhl run flow.mh --resume --force</code><span>resume through a changed definition — warn, don't refuse</span></div>
             <div class="cli-command"><code>mhl run flow.mh --session &lt;id&gt;</code><span>pin an exact session directory (combine with <code>--resume</code>)</span></div>
-            <div class="cli-command"><code>mhl run flow.mh --format json</code><span>one machine-readable object: result on success, a typed <code>{kind, step, hint}</code> error on failure; the run's own output goes to a <code>log</code> field; registered secrets are masked recursively in result values (including nested objects and arrays), and in log/error text</span></div>
+            <div class="cli-command"><code>mhl run flow.mh --format json</code><span>one machine-readable object: result on success, a typed <code>{kind, step, hint}</code> error on failure; paused and broken runs include <code>pause_reason</code> / <code>break_reason</code>; the run's own output goes to a <code>log</code> field; registered secrets are masked recursively in result values, object keys, stop reasons, and log/error text</span></div>
             <div class="cli-command"><code>mhl run flow.mh --dry-run</code><span>validate (parse, imports, lint, input contract incl. declared value types) and print the static step plan — no step runs, no agent is called; combine with <code>--format json</code></span></div>
             <div class="cli-command"><code>mhl test file.mh</code><span>run assertions</span></div>
             <div class="cli-command"><code>mhl test directory/</code><span>discover tests recursively</span></div>

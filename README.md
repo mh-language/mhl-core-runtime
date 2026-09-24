@@ -74,9 +74,8 @@ Then install the `.vsix` in VS Code via **Extensions → ⋯ → Install from VS
 
 ## Documentation
 
-> [!NOTE]  
-> **Note:** The docs are a work in progress. The language is still evolving, and the docs
-> 
+The v1.4 language profile is in release-candidate stabilization.
+
 The full language reference lives at **[mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html](https://mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html)**.
 
 
@@ -98,8 +97,8 @@ feature — run any of them directly with `mhl test <file>`:
   completion), a thin wrapper around `mhl lsp`
 - [`docs/site/`](docs/site) — the canonical language reference, deployed to GitHub Pages
 - [`sample/`](sample) — worked `.mh` examples, doubling as the docs-facing test suite
-- [`tests_e2e/`](tests_e2e) — scenario suites that aren't `go test`: `mhl serve mcp` across a
-  pod fleet (`tests_e2e/cloud/`) and external-extension behavior (`tests_e2e/extensions/`)
+- [`tests_e2e/cloud/`](tests_e2e/cloud) — scenarios that aren't `go test`, exercising
+  `mhl serve mcp` across a pod fleet
 
 ## Official extensions
 

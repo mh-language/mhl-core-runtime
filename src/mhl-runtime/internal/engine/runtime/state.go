@@ -11,10 +11,12 @@
 package runtime
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
@@ -257,15 +259,14 @@ func (s *Store) Clear(pipeline string) error {
 	return nil
 }
 
-// RedactVars returns a deep copy of vars with every string value scrubbed
-// through auth.Redact, recursing into nested objects and arrays so a secret
-// stored one level down (`{"creds": {"token": "…"}}`, `["…"]`) is masked too.
-// Numbers and bools pass through untouched. It is shared by checkpoint Save
-// and result.json WriteResult so both persist resolved secrets the same way;
-// an alternative StateStore implementation (an extension-backed store) must
-// call it before persisting too, and any other output boundary that returns
-// run variables (protocol replies, run logs) should route through
-// redactValue as well.
+// RedactVars returns a deep copy of vars with every nested string value and
+// object key scrubbed through auth.Redact, so a secret stored one level down
+// (`{"creds": {"token": "…"}}`, `["…"]`) or used as a dynamic key is masked
+// too. Top-level keys are source-level variable names, not runtime values, and
+// are preserved. Numbers and bools pass through untouched. WriteResult and
+// protocol output boundaries use this directly; resumable checkpoints use the
+// equivalent RedactVarsForCheckpoint policy so exact credential references can
+// be rehydrated instead of becoming dead masks.
 func RedactVars(vars map[string]any) map[string]any {
 	out := make(map[string]any, len(vars))
 	for key, value := range vars {
@@ -285,12 +286,15 @@ func redactValue(v any) any {
 	case map[string]any:
 		m := make(map[string]any, len(t))
 		for k, val := range t {
-			m[k] = redactValue(val)
+			m[auth.Redact(k)] = redactValue(val)
 		}
 		return m
 	case map[any]any:
 		m := make(map[any]any, len(t))
 		for k, val := range t {
+			if key, ok := k.(string); ok {
+				k = auth.Redact(key)
+			}
 			m[k] = redactValue(val)
 		}
 		return m
@@ -321,6 +325,12 @@ func RedactValue(v any) any { return redactValue(v) }
 // RehydrateVars re-resolves it on load, so a fresh-process --resume recovers
 // the live value instead of a dead mask.
 const secretRefKey = "__mhl_secret_ref__"
+
+// secretKeyRefPrefix marks an object key that was itself a resolved secret.
+// JSON object keys cannot carry the object-shaped secretRefKey placeholder
+// used for values, so the credential reference is encoded into a reserved
+// string key and resolved again by RehydrateVars.
+const secretKeyRefPrefix = "__mhl_secret_key_ref__:"
 
 // ErrNonSerializableVar is wrapped by the error CheckpointableVars returns
 // for a pipeline variable holding a value a checkpoint cannot faithfully
@@ -384,11 +394,10 @@ func firstUnserializable(v any) (string, bool) {
 }
 
 // RedactVarsForCheckpoint is RedactVars for state that will be resumed: a
-// string that is exactly a resolved secret with a known reference
-// (auth.RefFor) is replaced by a {secretRefKey: ref} placeholder rather than
-// the "[REDACTED]" mask, so RehydrateVars can restore it. Every other string
-// (including a secret only embedded as a substring) is masked exactly as
-// RedactVars does.
+// string value or object key that is exactly a resolved secret with a known
+// reference (auth.RefFor) is replaced by a rehydratable marker rather than the
+// "[REDACTED]" mask. Every other string (including a secret only embedded as a
+// substring) is masked exactly as RedactVars does.
 func RedactVarsForCheckpoint(vars map[string]any) map[string]any {
 	out := make(map[string]any, len(vars))
 	for key, value := range vars {
@@ -407,12 +416,15 @@ func redactValueForCheckpoint(v any) any {
 	case map[string]any:
 		m := make(map[string]any, len(t))
 		for k, val := range t {
-			m[k] = redactValueForCheckpoint(val)
+			m[redactCheckpointKey(k)] = redactValueForCheckpoint(val)
 		}
 		return m
 	case map[any]any:
 		m := make(map[any]any, len(t))
 		for k, val := range t {
+			if key, ok := k.(string); ok {
+				k = redactCheckpointKey(key)
+			}
 			m[k] = redactValueForCheckpoint(val)
 		}
 		return m
@@ -431,6 +443,13 @@ func redactValueForCheckpoint(v any) any {
 	default:
 		return v
 	}
+}
+
+func redactCheckpointKey(key string) string {
+	if ref, ok := auth.RefFor(key); ok {
+		return secretKeyRefPrefix + base64.RawURLEncoding.EncodeToString([]byte(ref))
+	}
+	return auth.Redact(key)
 }
 
 // RehydrateVars walks a checkpoint's decoded variables and replaces every
@@ -459,16 +478,27 @@ func rehydrateValue(v any) (any, error) {
 		}
 		m := make(map[string]any, len(t))
 		for k, val := range t {
+			rk, err := rehydrateCheckpointKey(k)
+			if err != nil {
+				return nil, err
+			}
 			rv, err := rehydrateValue(val)
 			if err != nil {
 				return nil, err
 			}
-			m[k] = rv
+			m[rk] = rv
 		}
 		return m, nil
 	case map[any]any:
 		m := make(map[any]any, len(t))
 		for k, val := range t {
+			if key, ok := k.(string); ok {
+				rk, err := rehydrateCheckpointKey(key)
+				if err != nil {
+					return nil, err
+				}
+				k = rk
+			}
 			rv, err := rehydrateValue(val)
 			if err != nil {
 				return nil, err
@@ -489,6 +519,22 @@ func rehydrateValue(v any) (any, error) {
 	default:
 		return v, nil
 	}
+}
+
+func rehydrateCheckpointKey(key string) (string, error) {
+	if !strings.HasPrefix(key, secretKeyRefPrefix) {
+		return key, nil
+	}
+	encoded := strings.TrimPrefix(key, secretKeyRefPrefix)
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(raw) == 0 {
+		return "", fmt.Errorf("invalid credential reference in checkpoint object key")
+	}
+	value, err := auth.Resolve(string(raw))
+	if err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
 // placeholderRef reports whether m is exactly a {secretRefKey: "<ref>"}

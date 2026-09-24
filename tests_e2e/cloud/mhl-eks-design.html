@@ -394,7 +394,7 @@
       <span>scope: <code>mhl serve mcp --http</code></span>
       <span>transport: Streamable HTTP (<code>POST /mcp</code>)</span>
       <span>refs: <code>internal/mcpserver</code>, <code>internal/execsvc</code></span>
-      <span>status: <code>tests_mcp_pods</code> 18/18 + <code>tests_ext</code> 21/21 &mdash; 2026-08-31</span>
+      <span>status: <code>tests_mcp_pods</code> 18/18 + extension integration 21/21 &mdash; 2026-08-31</span>
     </div>
   </header>
 
@@ -535,20 +535,22 @@
           <rect class="d-mhl" x="300" y="421" width="30" height="16" rx="4"/>
           <text class="d-lab" x="340" y="434">mhl runtime</text>
           <line class="d-edge-done" x1="470" y1="430" x2="506" y2="430" marker-end="url(#ahd)"/>
-          <text class="d-lab" x="516" y="434">gap fechado &mdash; verificado por teste (tests_mcp_pods + tests_ext + tests_mcp_targets, 2026-09-01)</text>
+          <text class="d-lab" x="516" y="434">gap fechado &mdash; verificado por teste (tests_mcp_pods + extension integration + tests_mcp_targets, 2026-09-01)</text>
         </svg>
       </div>
       <figcaption>
         <b>Gap 1</b> &mdash; <b>resolvido para o estado durável</b>: um
         <code>extension store</code> com backends de produção &mdash; S3
-        (<code>src/mhl-extensions/mhl-store-s3</code>: SigV4 + retry + IRSA/IMDSv2) ou PostgreSQL
-        (<code>src/mhl-extensions/mhl-store-postgres</code>: upsert atômico) &mdash; recebe
+        (<a href="https://github.com/mh-language/mhl-packages"><code>mhl-store-s3</code></a>:
+        SigV4 + retry + IRSA/IMDSv2) ou PostgreSQL
+        (<a href="https://github.com/mh-language/mhl-packages"><code>mhl-store-postgres</code></a>:
+        upsert atômico) &mdash; recebe
         <code>session/*</code>, <code>run/&lt;id&gt;/checkpoint/*</code> e o owner. Um segundo
         processo no mesmo bucket/tabela <b>reconstrói e retoma</b> a run
         (<code>run/resume</code> &rarr; <code>completed</code>), e <code>run/start</code>
         concorrentes gravam chaves <code>run/&lt;id&gt;/</code> disjuntas
-        (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> /
-        <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>;
+        (suíte de integração das extensões, hoje mantida em
+        <a href="https://github.com/mh-language/mhl-packages"><code>mhl-packages</code></a>;
         FS local + <code>--state-dir</code> em
         <a href="tests_mcp_pods/CENARIO-011/CENARIO-011-state-dir-restart.resultado.md">CENARIO-011</a>).
         <b>Registro live entre pods:</b> a réplica dona publica um <code>run-status</code> por
@@ -686,8 +688,8 @@
         (<code>CheckpointStore.WriteOwner</code>); as sessões vão para
         <code>diskSessionStore</code> (<code>--state-dir</code>) ou um
         <code>extension store</code> S3/Postgres, que também carrega checkpoints e owner
-        (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> /
-        <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>);
+        (suíte de integração hoje mantida em
+        <a href="https://github.com/mh-language/mhl-packages"><code>mhl-packages</code></a>);
         e o registro <i>live</i> + <code>run/cancel</code> cruzam entre réplicas
         (ITEM-01/02). Toda a lista de distribuição está fechada. (Auth e authz de aprovador
         ficam no service mesh.)
@@ -706,15 +708,16 @@
       <code>distroless</code> sem <code>/bin/sh</code> (&rarr; base <code>alpine</code>) e
       <code>--drain-timeout</code> virando no-op porque <code>runsCtx</code> herdava o
       cancelamento do sinal (&rarr; <code>context.WithoutCancel</code>).</p>
-      <p>Uma segunda suíte, <code>tests/extensions/tests_ext/</code>
-      (<a href="../extensions/tests_ext/REGRESSION.md">21/21 <span class="pill done">PASS</span></a>),
-      exercita o <code>extension store</code> pela linguagem <b>e pelo caminho
+      <p>A suíte de integração das extensões, hoje mantida em
+      <a href="https://github.com/mh-language/mhl-packages"><code>mh-language/mhl-packages</code></a>,
+      registrou 21/21 <span class="pill done">PASS</span> nesta revisão e exercitou o
+      <code>extension store</code> pela linguagem <b>e pelo caminho
       <code>mhl serve mcp --http</code></b>: com <code>extension store S { ... }</code> no
       diretório de workflows, sessões + checkpoints de <code>run/*</code> + owner vão para o
       backend externo, e um segundo processo no mesmo backend reconstrói e retoma a run.
       Backends de produção verificados: <b>S3</b>
-      (<code>src/mhl-extensions/mhl-store-s3</code> &mdash; SigV4 + retry + IRSA/IMDSv2) e <b>PostgreSQL</b>
-      (<code>src/mhl-extensions/mhl-store-postgres</code> &mdash; <code>INSERT ... ON CONFLICT</code> atômico).
+      (<code>mhl-store-s3</code> &mdash; SigV4 + retry + IRSA/IMDSv2) e <b>PostgreSQL</b>
+      (<code>mhl-store-postgres</code> &mdash; <code>INSERT ... ON CONFLICT</code> atômico).
       Um defeito de LSP foi achado e corrigido (falso positivo <code>memory "S" not found</code>
       para <code>S.get()</code> numa <code>extension store</code>).</p>
 
@@ -744,7 +747,7 @@
         <tbody>
           <tr><td>01</td><td>Async run state node-local</td>
             <td><span class="pill done">atendido</span></td>
-            <td>Estado durável (checkpoints + owner) num <code>extension store</code> S3/Postgres, reclaim/resume por outro processo (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> / <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>). E o <b>registro live</b> agora cruza: a réplica que executa publica um <code>run-status</code> por passo no store compartilhado, então <code>run/status</code> noutra réplica reporta <code>working</code> + o step corrente; <code>run/cancel</code> noutra réplica grava um flag <code>cancel</code> que a réplica dona lê (poll de 1&nbsp;s + step boundary) e para a goroutine &mdash; a run alcança <code>canceled</code>, não <code>completed</code> (<a href="tests_mcp_targets/ITEM-01/ITEM-01-live-registry-distributed-cancel.md">tests_mcp_targets/ITEM-01</a> &rarr; <b>MET</b>; <code>TestHTTPRunLiveStatusAndCancelAcrossReplicas</code>).</td></tr>
+            <td>Estado durável (checkpoints + owner) num <code>extension store</code> S3/Postgres, com reclaim/resume por outro processo, coberto pela suíte de integração em <a href="https://github.com/mh-language/mhl-packages"><code>mhl-packages</code></a>. E o <b>registro live</b> agora cruza: a réplica que executa publica um <code>run-status</code> por passo no store compartilhado, então <code>run/status</code> noutra réplica reporta <code>working</code> + o step corrente; <code>run/cancel</code> noutra réplica grava um flag <code>cancel</code> que a réplica dona lê (poll de 1&nbsp;s + step boundary) e para a goroutine &mdash; a run alcança <code>canceled</code>, não <code>completed</code> (<a href="tests_mcp_targets/ITEM-01/ITEM-01-live-registry-distributed-cancel.md">tests_mcp_targets/ITEM-01</a> &rarr; <b>MET</b>; <code>TestHTTPRunLiveStatusAndCancelAcrossReplicas</code>).</td></tr>
           <tr><td>02</td><td>Sessões MCP na memória de um pod</td>
             <td><span class="pill done">atendido</span></td>
             <td>Com <code>--state-dir</code> as sessões passam a <code>diskSessionStore</code> (um JSON por <code>Mcp-Session-Id</code> em <code>.mhl/state/sessions/</code>) &mdash; ou ao <code>extension store</code> quando há uma <code>extension store</code> declarada. Um <code>Mcp-Session-Id</code> cunhado no Pod A responde <code>200</code> no Pod B (sem re-<code>initialize</code>), e <code>run/start</code> no A + <code>run/status</code> no B com a mesma sessão funciona. Regressão: <code>--principal-header</code> mantém a partição por identidade entre os dois pods (<a href="tests_mcp_targets/ITEM-02/ITEM-02-shared-sessions.md">tests_mcp_targets/ITEM-02</a> &rarr; <b>MET</b>; <code>TestHTTPSharedSessionsAcrossReplicas</code>, <code>TestDiskSessionStoreSharesAcrossInstances</code>). Sem <code>--state-dir</code>: <code>memSessionStore</code> por processo, como antes.</td></tr>
@@ -831,16 +834,15 @@
           <code>SessionStore</code> existe e roteia por um <code>extension store</code>. Além do
           disco (<code>--state-dir</code>, <a href="tests_mcp_pods/CENARIO-011/CENARIO-011-state-dir-restart.resultado.md">CENARIO-011</a>),
           há dois backends de <b>produção</b> verificados ponta a ponta com
-          <code>mhl serve mcp --http</code>: <b>S3</b> (<code>src/mhl-extensions/mhl-store-s3</code> &mdash; cliente
+          <code>mhl serve mcp --http</code>: <b>S3</b> (<a href="https://github.com/mh-language/mhl-packages"><code>mhl-store-s3</code></a> &mdash; cliente
           SigV4 sem dependências, retry com backoff, credenciais IRSA
           <code>AssumeRoleWithWebIdentity</code> / IMDSv2) e <b>PostgreSQL</b>
-          (<code>src/mhl-extensions/mhl-store-postgres</code> &mdash; <code>INSERT ... ON CONFLICT DO UPDATE</code>).
+          (<a href="https://github.com/mh-language/mhl-packages"><code>mhl-store-postgres</code></a> &mdash; <code>INSERT ... ON CONFLICT DO UPDATE</code>).
           Com <code>extension store S { ... }</code> no dir de workflows, <code>session/*</code>,
           <code>run/&lt;id&gt;/checkpoint/*</code> e o owner vão para o backend; um segundo processo
           no mesmo bucket/tabela reconstrói a run e <code>run/resume</code> chega a
           <code>completed</code>; <code>run/start</code> concorrentes gravam chaves disjuntas
-          (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> /
-          <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>).
+          (suíte de integração em <a href="https://github.com/mh-language/mhl-packages"><code>mhl-packages</code></a>).
           <b>Pendente:</b> o registro <i>live</i> (<code>h.runs</code>, goroutine, <code>cancel</code>)
           multi-pod e o cancel distribuído &mdash; o store não carrega o progresso em memória.</dd>
         </dl>
@@ -873,8 +875,7 @@
           <code>TestHTTPSharedSessionsAcrossReplicas</code>,
           <code>TestDiskSessionStoreSharesAcrossInstances</code>. Backend externo:
           <code>session/&lt;sid&gt;</code> num <code>extension store</code>
-          (<a href="../extensions/tests_ext/CENARIO-013/CENARIO-013-store-s3-serve.md">CENARIO-013</a> /
-          <a href="../extensions/tests_ext/CENARIO-016/CENARIO-016-store-postgres-serve.md">CENARIO-016</a>).</dd>
+          (suíte de integração em <a href="https://github.com/mh-language/mhl-packages"><code>mhl-packages</code></a>).</dd>
         </dl>
       </article>
 
@@ -1178,10 +1179,11 @@
       <p><b>Situação (2026-08-31):</b> a coluna esquerda inteira está entregue e verificada
       (<a href="tests_mcp_pods/REGRESSION.md"><code>tests_mcp_pods/</code></a> 18/18). O
       <b>store compartilhado saiu do papel</b>: <code>extension store</code> sobre S3
-      (<code>src/mhl-extensions/mhl-store-s3</code>) e PostgreSQL (<code>src/mhl-extensions/mhl-store-postgres</code>),
-      verificado ponta a ponta com <code>mhl serve</code> incluindo reclaim pós-restart
-      (<a href="../extensions/tests_ext/REGRESSION.md"><code>tests_ext/</code></a> 21/21,
-      CENARIO-013/016). Com o <code>--state-dir</code> compartilhado (ou um
+      (<code>mhl-store-s3</code>) e PostgreSQL (<code>mhl-store-postgres</code>),
+      verificado ponta a ponta com <code>mhl serve</code> incluindo reclaim pós-restart pela
+      suíte de integração hoje mantida em
+      <a href="https://github.com/mh-language/mhl-packages"><code>mhl-packages</code></a>.
+      Com o <code>--state-dir</code> compartilhado (ou um
       <code>extension store</code>), o <b>multi-réplica</b> está fechado: sessões e registro
       <i>live</i> de runs cruzam entre pods, e <code>run/cancel</code> alcança a réplica dona
       (ITEM-01/02). Falta só observabilidade: tracing/custo (OTLP). Auth (JWT/JWKS) e authz de
@@ -1198,12 +1200,11 @@
   server single-pod; CENARIO-K8S-001 sob Docker Desktop),
   <a href="tests_mcp_targets/REGRESSION.md"><code>tests/cloud/tests_mcp_targets/</code></a>
   (3 MET / 0 PENDING &mdash; 01, 02 e 11 <span class="pill done">MET</span>; lista de distribuição fechada; 04/10/12 em <code>_delegated/</code>) e
-  <a href="../extensions/tests_ext/REGRESSION.md"><code>tests/extensions/tests_ext/</code></a>
+  a suíte de integração de <a href="https://github.com/mh-language/mhl-packages"><code>mhl-packages</code></a>
   (21/21, <code>extension store</code>/<code>sql</code>/<code>cache</code> pela linguagem e pelo
   <code>mhl serve</code>). Empacotamento em <code>tests/cloud/Dockerfile</code> +
-  <code>tests/cloud/k8s/</code>; extensões oficiais em <code>src/mhl-extensions/mhl-store-s3</code>,
-  <code>src/mhl-extensions/mhl-store-postgres</code>, <code>src/mhl-extensions/mhl-sql-postgres</code>,
-  <code>src/mhl-extensions/mhl-cache-redis</code>.</p>
+  <code>tests/cloud/k8s/</code>; extensões oficiais no repositório
+  <code>mh-language/mhl-packages</code>.</p>
 
 </div>
 </body>

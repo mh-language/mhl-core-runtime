@@ -21,10 +21,9 @@ editor support, and runtime changes.
   and built-in features.
 - `sample/` contains executable `.mh` examples under `syntax/` and `features/`. These double as the
   documentation-facing functional test suite (`make functional-test`).
-- `tests_e2e/` contains scenario suites that are not `go test`: `tests_e2e/cloud/` exercises
-  `mhl serve mcp` across a pod fleet (and `tests_e2e/cloud/k8s/` under a real cluster), and
-  `tests_e2e/extensions/` exercises external extensions plus the `store-fs` / `store-probe` reference
-  adapters. Each subdirectory has a `run-all.sh` regression runner.
+- `tests_e2e/cloud/` contains scenarios that are not `go test`: it exercises `mhl serve mcp`
+  across a pod fleet (and `tests_e2e/cloud/k8s/` under a real cluster). Its
+  `tests_mcp_pods/` subdirectory has a `run-all.sh` regression runner.
 - `vscode-mhl/` contains the VS Code extension.
 - `docs/` contains the public documentation: the language reference and guides under `docs/site/`,
   plus the standalone spec and design notes (`docs/mhl-language-spec.html`, `docs/mhl-eks-plan.html`).
@@ -182,9 +181,9 @@ start a beta for a later version instead, such as `1.6.1-beta.1` or `1.7.0-beta.
 versions and tags are immutable: never move or reuse a release tag. If a beta needs correction,
 publish the next beta number.
 
-Examples of runtime tags are `v1.6.0-beta.1`, `v1.6.0-beta.2`, and `v1.6.0`. Extension bundles
-are versioned independently with the same SemVer rules and use the `extensions-v` prefix, for
-example `extensions-v0.3.0-beta.1` and `extensions-v0.3.0`.
+Examples of runtime tags are `v1.6.0-beta.1`, `v1.6.0-beta.2`, and `v1.6.0`. Official extension
+packages are versioned and released independently from the
+[`mh-language/mhl-packages`](https://github.com/mh-language/mhl-packages) repository.
 
 ## Commit messages
 

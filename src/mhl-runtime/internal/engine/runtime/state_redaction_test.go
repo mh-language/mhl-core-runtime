@@ -95,6 +95,7 @@ func TestRedactVarsRecursesIntoObjectsAndArrays(t *testing.T) {
 		},
 		"array":        []any{secret, "safe"},
 		"arrayOfObj":   []any{map[string]any{"k": secret}},
+		"secretKey":    map[string]any{secret: "value"},
 		"strings":      []string{secret},
 		"passthrough":  42,
 		"passthroughB": true,
@@ -107,9 +108,12 @@ func TestRedactVarsRecursesIntoObjectsAndArrays(t *testing.T) {
 		t.Fatalf("recursive redaction missed a secret: %s", blob)
 	}
 	// map[any]any (a decoded bare-object literal) is redacted too.
-	gotMap := runtime.RedactValue(map[any]any{"k": secret}).(map[any]any)
+	gotMap := runtime.RedactValue(map[any]any{"k": secret, secret: "value"}).(map[any]any)
 	if gotMap["k"] != "[REDACTED]" {
 		t.Fatalf("map[any]any not redacted: %#v", gotMap)
+	}
+	if gotMap["[REDACTED]"] != "value" {
+		t.Fatalf("map[any]any key not redacted: %#v", gotMap)
 	}
 	// The original must be left untouched (redactValue returns copies).
 	if got := vars["object"].(map[string]any)["token"]; got != secret {
@@ -117,6 +121,41 @@ func TestRedactVarsRecursesIntoObjectsAndArrays(t *testing.T) {
 	}
 	if clean["passthrough"] != 42 || clean["passthroughB"] != true {
 		t.Fatalf("RedactVars altered non-string scalars: %#v", clean)
+	}
+}
+
+func TestCheckpointRehydratesResolvedSecretObjectKey(t *testing.T) {
+	const secret = "checkpoint-secret-object-key-7631"
+	t.Setenv("MHL_CHECKPOINT_SECRET_KEY", secret)
+	resolved, err := auth.Resolve(`env("MHL_CHECKPOINT_SECRET_KEY")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	cp := &runtime.Checkpoint{
+		Pipeline: "secret-key",
+		Variables: map[string]any{
+			"lookup": map[string]any{resolved: "value"},
+		},
+	}
+	if err := runtime.NewStore(root).Save(cp); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, runtime.StateDirName, "secret-key.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), secret) {
+		t.Fatalf("checkpoint leaked a secret object key: %s", data)
+	}
+
+	got, ok, err := runtime.NewStore(root).Load("secret-key")
+	if err != nil || !ok {
+		t.Fatalf("Load: ok=%v err=%v", ok, err)
+	}
+	lookup, _ := got.Variables["lookup"].(map[string]any)
+	if lookup[secret] != "value" {
+		t.Fatalf("secret object key was not rehydrated: %#v", lookup)
 	}
 }
 

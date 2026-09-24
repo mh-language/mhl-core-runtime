@@ -564,6 +564,65 @@ pipeline P {
 	}
 }
 
+func TestCheckJSONMemoryRemoveValid(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+memory session_mem {
+    type: "json"
+    path: "./.mhl/session.json"
+}
+
+pipeline P {
+    step S {
+        session_mem.remove("attempt")
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings, got %d: %+v", len(findings), findings)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".mhl", "session.json")); err == nil {
+		t.Error("lint must not write to the json memory file")
+	}
+}
+
+func TestCheckJSONMemoryRemoveValidatesArguments(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call string
+		want string
+	}{
+		{name: "wrong count", call: `session_mem.remove("key", "extra")`, want: `remove requires (key)`},
+		{name: "wrong key type", call: `session_mem.remove(42)`, want: `key must be a string`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			main := filepath.Join(dir, "main.mh")
+			write(t, main, `
+memory session_mem {
+    type: "json"
+    path: "./.mhl/session.json"
+}
+
+pipeline P {
+    step S {
+        `+tc.call+`
+    }
+}
+`)
+			findings := lint.File(main)
+			if len(findings) != 1 {
+				t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
+			}
+			if !strings.Contains(findings[0].Message, tc.want) {
+				t.Errorf("unexpected message: %q", findings[0].Message)
+			}
+		})
+	}
+}
+
 func TestCheckJSONLMemoryValid(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")

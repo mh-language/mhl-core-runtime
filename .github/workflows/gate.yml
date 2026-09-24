@@ -7,9 +7,12 @@ name: Release Gate
 # green, not two that can drift apart — see the maturity-audit follow-up
 # (B5): the previous ci.yml/release.yml pair covered vet/build/test/
 # functional-test only, with no -race, no govulncheck, and no coverage of
-# vscode-mhl, docs/site, install.sh/install.ps1, or tests_e2e.
+# vscode-mhl, docs/site, installers, or the MCP host E2E suite.
 on:
   workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   go:
@@ -50,7 +53,7 @@ jobs:
       - name: Cross-build (verify-release)
         run: make verify-release
 
-      - name: Stage binary for E2E jobs
+      - name: Stage binary for MCP E2E
         run: cp dist/mhl ../../mhl-e2e-linux-amd64
       - uses: actions/upload-artifact@v4
         with:
@@ -59,7 +62,7 @@ jobs:
           retention-days: 1
 
   e2e:
-    name: E2E (MCP host + extensions)
+    name: E2E (MCP host)
     needs: go
     runs-on: ubuntu-latest
     steps:
@@ -68,21 +71,15 @@ jobs:
         with:
           name: mhl-e2e-linux-amd64
 
-      - name: Install fresh binary where each run-all.sh expects it
-        # Never a committed binary (see .gitignore's tests_e2e/**/mhl) — each
-        # suite's own run-all.sh copies this reference binary into its
-        # per-scenario scratch dirs.
+      - name: Install fresh binary for the MCP host suite
+        # Never a committed binary (see .gitignore's tests_e2e/**/mhl) — the
+        # suite copies this reference binary into its per-scenario scratch dirs.
         run: |
           chmod +x mhl-e2e-linux-amd64
           cp mhl-e2e-linux-amd64 tests_e2e/cloud/mhl
-          cp mhl-e2e-linux-amd64 tests_e2e/extensions/mhl
 
       - name: MCP host E2E
         working-directory: tests_e2e/cloud/tests_mcp_pods
-        run: ./run-all.sh
-
-      - name: Extensions E2E
-        working-directory: tests_e2e/extensions/tests_ext
         run: ./run-all.sh
 
       - name: Upload E2E logs on failure
@@ -90,9 +87,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-logs
-          path: |
-            tests_e2e/cloud/tests_mcp_pods/logs-regression/
-            tests_e2e/extensions/tests_ext/logs-regression/
+          path: tests_e2e/cloud/tests_mcp_pods/logs-regression/
           retention-days: 7
 
   vscode:
@@ -122,3 +117,30 @@ jobs:
         with:
           node-version: "20"
       - run: node --test playground.test.cjs
+
+  installers:
+    name: Installer smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/mhl-runtime/go.mod
+          cache: true
+          cache-dependency-path: src/mhl-runtime/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build, install, execute and uninstall a local artifact
+        if: runner.os != 'Windows'
+        run: sh .github/scripts/installer-smoke.sh
+
+      - name: Build, install, execute and uninstall a local artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./.github/scripts/installer-smoke.ps1

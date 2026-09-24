@@ -236,3 +236,102 @@ workflow Ingest {
 		t.Fatalf("pause_reason present for a reasonless pause(): %#v", obj)
 	}
 }
+
+func TestRunFormatJSONRedactsStructuredPauseReason(t *testing.T) {
+	const secret = "synthetic-pause-secret-42791"
+	t.Setenv("MHL_PAUSE_REASON_TOKEN", secret)
+	obj, err := runJSONOut(t, `
+workflow Guard {
+    checkpoint: { enabled: true, strategy: "per_step" }
+    step Gate {
+        var token = env("MHL_PAUSE_REASON_TOKEN")
+        pause({message: "review", nested: {token: token}, values: [token], parsed: json.parse("{\"" + token + "\":true}")})
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	blob, err := json.Marshal(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(blob), secret) {
+		t.Fatalf("JSON pause reason leaked a secret: %s", blob)
+	}
+	want := map[string]any{
+		"message": "review",
+		"nested":  map[string]any{"token": "[REDACTED]"},
+		"parsed":  map[string]any{"[REDACTED]": true},
+		"values":  []any{"[REDACTED]"},
+	}
+	if !reflect.DeepEqual(obj["pause_reason"], want) {
+		t.Errorf("pause_reason = %#v, want %#v", obj["pause_reason"], want)
+	}
+}
+
+func TestRunFormatJSONIncludesRedactedBreakReason(t *testing.T) {
+	const secret = "synthetic-break-secret-79214"
+	t.Setenv("MHL_BREAK_REASON_TOKEN", secret)
+	obj, err := runJSONOut(t, `
+pipeline Guard {
+    step Gate { break env("MHL_BREAK_REASON_TOKEN") }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if obj["broke"] != true {
+		t.Fatalf("broke = %v, want true: %#v", obj["broke"], obj)
+	}
+	if obj["break_reason"] != "[REDACTED]" {
+		t.Fatalf("break_reason = %#v, want [REDACTED]", obj["break_reason"])
+	}
+	blob, err := json.Marshal(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(blob), secret) {
+		t.Fatalf("JSON break reason leaked a secret: %s", blob)
+	}
+}
+
+func TestRunFormatTextRedactsStopReasons(t *testing.T) {
+	const secret = "synthetic-text-stop-secret-58103"
+	t.Setenv("MHL_TEXT_STOP_TOKEN", secret)
+	for _, tc := range []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "pause structured reason",
+			src: `workflow Guard {
+    checkpoint: { enabled: true, strategy: "per_step" }
+    step Gate { pause({nested: {token: env("MHL_TEXT_STOP_TOKEN")}}) }
+}`,
+		},
+		{
+			name: "break string reason",
+			src: `pipeline Guard {
+    step Gate { break env("MHL_TEXT_STOP_TOKEN") }
+}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chdirTemp(t)
+			if err := os.WriteFile("p.mh", []byte(tc.src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			if err := cli.Run([]string{"run", "p.mh"}, &buf); err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if strings.Contains(buf.String(), secret) {
+				t.Fatalf("text output leaked a secret: %s", buf.String())
+			}
+			if !strings.Contains(buf.String(), "[REDACTED]") {
+				t.Fatalf("text output did not contain a redaction marker: %s", buf.String())
+			}
+		})
+	}
+}

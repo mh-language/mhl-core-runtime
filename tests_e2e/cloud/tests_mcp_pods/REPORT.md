@@ -1,5 +1,9 @@
 # Relatório de Execução — Cenários de Teste do Módulo de Cloud (MCP server)
 
+> **Registro histórico:** este documento preserva a execução de 31/08/2026 e
+> as versões dos binários usadas naquele dia. O estado atual é determinado por
+> `run-all.sh` no gate de release; os números abaixo não descrevem a RC atual.
+
 Execução conduzida pelo agente `tester-mcp-server` contra `mhl serve mcp --http`.
 
 | Item | Valor |

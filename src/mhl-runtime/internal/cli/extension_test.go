@@ -238,6 +238,13 @@ func TestExtensionInitScaffoldsAValidManifest(t *testing.T) {
 	if !strings.Contains(string(raw), `"com.example.my-crm"`) {
 		t.Fatalf("manifest missing derived id:\n%s", raw)
 	}
+	readme, err := os.ReadFile(filepath.Join(dir, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(readme), "Docs-Extensions.dc.html#protocol") {
+		t.Fatalf("scaffold README missing canonical protocol documentation link:\n%s", readme)
+	}
 
 	// Running init again into the now-populated dir must refuse, not clobber.
 	var buf2 bytes.Buffer

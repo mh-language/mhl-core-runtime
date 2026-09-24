@@ -48,9 +48,10 @@ Recommended: one replica plus the shared store for lossless restarts, and a
 - **`--state-dir /state`** — checkpoints as JSON files on that path (a PVC in
   K8s). Simple; one pod.
 - **`extension store S { dir: ... }`** in a `.mh` file under the serve dir —
-  binds a `store`-kind extension (`tests/extensions/store-fs` is the reference;
-  DynamoDB/Redis backends are separate binaries). All `run/*` and `session/*`
-  keys go there. `--state-dir` then only holds the interpreter's scratch files.
+  binds a `store`-kind extension. Official store implementations live in
+  [`mh-language/mhl-packages`](https://github.com/mh-language/mhl-packages). All
+  `run/*` and `session/*` keys go there. `--state-dir` then only holds the
+  interpreter's scratch files.
 
 ## Build
 
