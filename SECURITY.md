@@ -2,15 +2,16 @@
 
 ## Supported versions
 
-**mhl is currently in beta** (`v1.4.0-beta.x`) — there is no stable release
-yet. Security fixes land on the newest beta; older betas are not patched.
+**mhl is currently a release candidate** (`v1.4.0-rc.x`) — there is no stable
+release yet. Security fixes land on the newest release candidate; older
+prereleases are not patched.
 Once a stable `v1.x` line ships, this section will list which minor versions
 receive security fixes and for how long.
 
-| Version              | Supported          |
-| --------------------- | ------------------ |
-| latest `v1.4.0-beta.*` | :white_check_mark: |
-| older betas            | :x:                 |
+| Version                | Supported          |
+| ---------------------- | ------------------ |
+| latest `v1.4.0-rc.*`   | :white_check_mark: |
+| older prereleases      | :x:                |
 
 ## Reporting a vulnerability
 
@@ -27,7 +28,7 @@ we'll explain why.
 ## Scope and known limitations
 
 A few things worth knowing before relying on mhl for anything security-
-sensitive, while it is still in beta:
+sensitive, while it is still a release candidate:
 
 - **Extension processes are not sandboxed.** An extension's manifest may
   declare `permissions.secrets`, `network`, `filesystem`, and `subprocess`.

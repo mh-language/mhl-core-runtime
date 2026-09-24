@@ -112,7 +112,9 @@ func extensionInit(args []string, out io.Writer) error {
 	}
 	readme := "# " + id + "\n\nAn mhl external extension. Build your executable to `" +
 		manifest["executable"].(string) + "` — it must speak the newline-delimited JSON-RPC\n" +
-		"protocol on stdin/stdout (see docs/extension-protocol.md). Then:\n\n" +
+		"protocol on stdin/stdout. See the extension guide:\n\n" +
+		"    https://mh-language.github.io/mhl-core-runtime/Docs-Extensions.dc.html#protocol\n\n" +
+		"Then:\n\n" +
 		"    mhl extension test .        # smoke-test the protocol\n" +
 		"    mhl extension package .     # refresh declarations.json from the running extension\n" +
 		"    mhl extension install .     # vendor it into a project's .mhl/extensions/\n"

@@ -15,10 +15,10 @@ import (
 // (`error`, `kind`, `step`, `hint`, `missing`, `unknown`) are absent on
 // success and the run fields (`vars`, `executed`, ...) absent on failure.
 type runJSON struct {
-	OK       bool           `json:"ok"`
-	Pipeline string         `json:"pipeline,omitempty"`
-	Session  string         `json:"session,omitempty"`
-	File     string         `json:"file,omitempty"`
+	OK       bool   `json:"ok"`
+	Pipeline string `json:"pipeline,omitempty"`
+	Session  string `json:"session,omitempty"`
+	File     string `json:"file,omitempty"`
 
 	// success
 	Executed       []string       `json:"executed,omitempty"`
@@ -27,6 +27,7 @@ type runJSON struct {
 	Paused         bool           `json:"paused,omitempty"`
 	PauseReason    any            `json:"pause_reason,omitempty"`
 	Broke          bool           `json:"broke,omitempty"`
+	BreakReason    any            `json:"break_reason,omitempty"`
 	Loop           bool           `json:"loop,omitempty"`
 	Iterations     int            `json:"iterations,omitempty"`
 	TerminalReason string         `json:"terminal_reason,omitempty"`
@@ -65,8 +66,9 @@ func writeRunJSON(out io.Writer, res *execsvc.Result, runErr error, file, logTex
 		rj.Skipped = res.Skipped
 		rj.Resumed = res.Resumed
 		rj.Paused = res.Paused
-		rj.PauseReason = redactPauseReason(res.PauseReason)
+		rj.PauseReason = runtime.RedactValue(res.PauseReason)
 		rj.Broke = res.Broke
+		rj.BreakReason = runtime.RedactValue(res.BreakReason)
 		rj.Loop = res.Loop
 		rj.Iterations = res.Iterations
 		rj.TerminalReason = auth.Redact(res.TerminalReason)
@@ -76,17 +78,6 @@ func writeRunJSON(out io.Writer, res *execsvc.Result, runErr error, file, logTex
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(rj)
-}
-
-// redactPauseReason masks a resolved credential in a string pause(...)
-// reason before it is serialised; a non-string reason (or nil, the common
-// case — most pauses pass no reason at all) passes through unchanged, since
-// auth.Redact only operates on strings.
-func redactPauseReason(reason any) any {
-	if s, ok := reason.(string); ok {
-		return auth.Redact(s)
-	}
-	return reason
 }
 
 // classifyRunError fills kind / step / hint / missing / unknown from the

@@ -2,11 +2,29 @@
 
 All notable changes to **mhl** (the Meta-Harness Language and its `mhl` CLI) are
 recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
-versioning is [semantic](https://semver.org/), tagged `vMAJOR.MINOR.PATCH-alpha`
-during the alpha series.
+versioning is [semantic](https://semver.org/), with prerelease suffixes while a
+release is being stabilized.
 
 Per-tag release notes are also generated automatically on the
 [GitHub Releases](https://github.com/mh-language/mhl-core-runtime/releases) page.
+
+## Unreleased
+
+### Fixed
+
+- Redact registered secrets recursively—including dynamic object keys—from
+  structured `pause` reasons and from `break` reasons in text, JSON and MCP
+  status output; checkpointed secret keys remain rehydratable.
+- Include `break_reason` in `mhl run --format json`, matching the workflow-run
+  result contract.
+- Recognize `remove(key)` as a valid JSON-memory operation in `mhl lint`, with
+  the same argument validation enforced by the runtime.
+
+### Changed
+
+- Move package-specific extension fixtures and end-to-end tests to the
+  `mh-language/mhl-packages` repository. The core keeps its generic extension
+  creation, installation, protocol and interpretation coverage.
 
 ## 1.4.0-beta — v1.4.0-beta.2 .. v1.4.0-beta.24 (2026-09-06 → 2026-09-22)
 
@@ -210,7 +228,8 @@ execution semantics are the contract from here on. External integrations
   `shutdown`, plus inbound `log` / `secret.resolve`). Ships with an
   `extension.json` manifest format, a `.mhl/extensions.lock` allow-list, and
   `mhl extension list | doctor | init | test | package | install`. See
-  `docs/site/extensions.html` and `docs/extension-protocol.md`.
+  `docs/site/Docs-Extensions.dc.html`; official packages and their integration
+  suites live in `mh-language/mhl-packages`.
 - **`goto` target validation.** `mhl lint` now reports a `goto` whose target is
   not a step of the same `workflow`, instead of it only failing at run time.
 - **Unknown agent-property lint.** `mhl lint` rejects any `agent { … }` property

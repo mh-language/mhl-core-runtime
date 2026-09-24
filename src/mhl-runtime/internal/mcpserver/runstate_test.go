@@ -9,7 +9,34 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
+	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 )
+
+func TestRunViewRedactsStructuredPauseReason(t *testing.T) {
+	const secret = "synthetic-mcp-pause-secret-30471"
+	auth.Register(secret)
+
+	rn := &asyncRun{
+		id:      "paused-secret",
+		tool:    execsvc.Workflow{Name: "Approval"},
+		state:   RunStatePaused,
+		started: time.Now(),
+		errMsg: pauseReasonText(map[string]any{
+			"message": "review",
+			"nested":  map[string]any{"token": "Bearer " + secret},
+			"parsed":  map[string]any{secret: true},
+			"values":  []any{secret},
+		}),
+	}
+	view := (&httpServer{}).runView(rn)
+	reason, _ := view["reason"].(string)
+	if strings.Contains(reason, secret) {
+		t.Fatalf("run/status reason leaked a secret: %q", reason)
+	}
+	if !strings.Contains(reason, "[REDACTED]") {
+		t.Fatalf("run/status reason did not contain a redaction marker: %q", reason)
+	}
+}
 
 func TestCheckRunInputs(t *testing.T) {
 	if err := checkRunInputs(nil); err != nil {

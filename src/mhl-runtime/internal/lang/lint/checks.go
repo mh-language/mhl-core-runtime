@@ -1768,6 +1768,11 @@ func checkMemoryOp(mem *ast.Memory, method string, call *ast.Call, known map[str
 				return fmt.Errorf("memory %q: get requires (key) or (key, default)", mem.Name)
 			}
 			return checkStringArg(0, "key")
+		case "remove":
+			if n != 1 {
+				return fmt.Errorf("memory %q: remove requires (key)", mem.Name)
+			}
+			return checkStringArg(0, "key")
 		default:
 			return fmt.Errorf("memory %q: json memory has no method %q", mem.Name, method)
 		}

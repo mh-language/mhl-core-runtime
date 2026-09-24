@@ -236,7 +236,7 @@ func runPipeline(args []string, out io.Writer) error {
 
 func printBreakReason(out io.Writer, name string, reason any) {
 	if reason != nil {
-		fmt.Fprintf(out, "%q stopped by break: %v\n", name, reason)
+		fmt.Fprintf(out, "%q stopped by break: %v\n", name, runtime.RedactValue(reason))
 	} else {
 		fmt.Fprintf(out, "%q stopped by break\n", name)
 	}
@@ -244,7 +244,7 @@ func printBreakReason(out io.Writer, name string, reason any) {
 
 func printPauseReason(out io.Writer, name string, reason any) {
 	if reason != nil {
-		fmt.Fprintf(out, "%q paused (resume with --resume): %v\n", name, reason)
+		fmt.Fprintf(out, "%q paused (resume with --resume): %v\n", name, runtime.RedactValue(reason))
 	} else {
 		fmt.Fprintf(out, "%q paused (resume with --resume)\n", name)
 	}
