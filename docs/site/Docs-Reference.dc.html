@@ -187,6 +187,7 @@ type Violation = { code: string, severity: string }
 tool Report {
     add(slug: Slug, issues: Violation[]): Ids -> issues.map((v) -> v.code)
 }</code></pre>
+          <div class="tip-row"><span>OPTIONAL FIELDS</span><p>A trailing <code>?</code> on a shape field's name — <code>type ReviewInput = { diff: string, base?: string }</code> — makes that field optional: a value may omit it, and when present it is still checked against its type. An optional field is left out of the JSON Schema's <code>"required"</code> list (an MCP <code>inputSchema</code>/<code>outputSchema</code>). A type carries no default values; when a typed signature's param omits an optional field it reads as <code>null</code>, so the default is written where it is used: <code>req.base ?? "main"</code>. A <code>?</code> is valid only there — never as an operator.</p></div>
           <div class="tip-row"><span>BUILTIN OBJECT TYPES</span><p>Three object shapes — <code>SessionContext</code>, <code>StepContext</code>, <code>FailureContext</code> — are declared by the runtime itself, resolving anywhere a name like <code>string</code>/<code>object</code> already does, alongside any alias your own program declares (and, like a keyword, none of the three can be redeclared). They are what a pipeline/workflow's five lifecycle hooks (<a href="#pipeline">§14</a>, LIFECYCLE HOOKS) bind their own lambda parameter to — that parameter is never annotated in practice, since the shape follows from which hook it is, but the type still exists for real: an editor lists <code>SessionContext</code>'s fields the moment you type <code>session.</code> inside <code>session_start</code>/<code>session_end</code>, exactly as it would list a declared alias's fields anywhere else a <code>: Type</code> position resolves one.</p></div>
 
           <p class="block-label">ENUMS</p>
@@ -974,6 +975,38 @@ partial workflow Discovery {
           <div class="tip-row"><span>OUTPUT</span><p>The optional <code>output: { name: expr, … }</code> block is the run's result contract. With it declared, a <code>mhl run</code> caller — and every <code>mhl serve mcp</code> / <code>serve a2a</code> client — receives <em>only</em> these keys, each evaluated against the final variable state (so a key can be renamed, computed, or dropped). Without it, the legacy behaviour returns every non-internal <code>var</code>. The mapping does not change what a later run's <code>context:</code> reads back — that still sees the full variable state. The value must be an object mapping; anything else fails the run.</p></div>
           <div class="tip-row"><span>OUTPUT &amp; PAUSE</span><p>The mapping is evaluated once, only when the run finishes (a completion or a <code>break</code>). A run parked by <code>pause(...)</code> skips it — its expressions may read a <code>var</code> that step has not reached — and the suspension response returns the partial state; the <code>run/resume</code> (or <code>mhl run --resume</code>) that completes the run produces the real projection. The result is not checkpointed, so a resume re-evaluates it, and a mapping expression observes the run's cancellation/deadline — keep side effects out of it.</p></div>
 
+          <p class="block-label">TYPED SIGNATURE</p>
+          <pre class="code-block"><code class="language-mhl">type Finding      = { file: string, message: string }
+type ReviewInput  = { diff: string, base?: string }
+type ReviewOutput = { approved: bool, findings: Finding[], summary: string }
+
+workflow ReviewPullRequest(req: ReviewInput): ReviewOutput {
+    var findings = []
+    var summary  = ""
+
+    step Review {
+        var base = req.base ?? "main"            // optional field → null when omitted
+        var review = json.parse(Reviewer.run(prompt: "Review against ${base}:\n${req.diff}"))
+        findings = review.findings
+        summary  = review.summary
+    }
+
+    output: {                                    // required alongside a result type
+        approved: findings.size() == 0
+        findings: findings
+        summary:  summary
+    }
+}</code></pre>
+          <p>A <code>pipeline</code>/<code>workflow</code> (and its <code>loop</code> form — <code>loop workflow Refine(req: In): Out max 3 { ... }</code>) may declare a signature in the same <code>name(param): Type</code> shape a tool method uses. Both halves are optional and independent; a declaration with neither behaves exactly as before.</p>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Part</span><span>Rule</span><span>Effect</span></div>
+            <div class="table-row"><span><code>(req: In)</code></span><code>In: object type</code><span>The fields of <code>In</code> are the pipeline's inputs — for <code>--input</code>, <code>tools/call</code> arguments, and the <code>inputSchema</code> (a <code>field?:</code> is optional there). A step reads them as one object, <code>req.diff</code>, never as bare vars. It replaces per-line <code>input x: T</code>: mixing the two, or a pipeline-level <code>var</code>/<code>const</code>/<code>mem</code> named like the param, is a lint error. The param is <strong>read-only</strong>, like a <code>const</code>: <code>req = …</code>, <code>self.req = …</code>, <code>req["x"] = …</code> and a step-local <code>var req</code> are refused by <code>mhl lint</code> and at run time. To change a value, copy it into a <code>var</code> first (<code>var base = req.base ?? "main"</code>).</span></div>
+            <div class="table-row"><span><code>: Out</code></span><code>Out: object type</code><span>The run's result type. An explicit <code>output: { ... }</code> is <em>required</em> alongside it — the result is never projected implicitly from same-named vars. When <code>output:</code> is an object literal, <code>mhl lint</code> checks its keys are exactly <code>Out</code>'s fields (every required field present, none undeclared); either way the projected value is checked against <code>Out</code> when the run finishes — a normal finish or a <code>break</code> — and a mismatch fails it with an <code>output_contract</code> error (<code>mhl run --format json</code> <code>kind</code>) instead of returning a result that breaks the contract.</span></div>
+          </div>
+          <div class="tip-row"><span>OVER MCP / A2A</span><p>A typed result is advertised as the tool's <code>outputSchema</code> in <code>tools/list</code> (titled with the type name), and a successful <code>tools/call</code>'s <code>structuredContent</code> is the checked projection. The <code>mhl://workflow/&lt;name&gt;</code> manifest resource carries <code>outputSchema</code> too, plus <code>input: {param, type}</code> and <code>output: {type}</code> naming the declared types. Because the MCP spec requires structured results to conform to <code>outputSchema</code>, an error or a paused run of a typed tool is reported in the text content only, with no <code>structuredContent</code>; an untyped tool keeps its structured error object. An A2A skill carries the same schema as a non-standard <code>metadata.outputSchema</code> hint. An <code>enum</code>-typed field at any depth — inside an object field or array items, on input or output — is advertised with its <code>"enum": [...]</code> variant list.</p></div>
+          <div class="tip-row"><span>RESUME</span><p>A <code>run/resume</code> that supplies some of the param's fields merges them onto the checkpointed <code>req</code> object; a key the pipeline does not declare (a <code>pause</code> decision) still binds as a top-level var. A lifecycle hook's <code>session.inputs</code> is the caller's arguments as sent — flat, keyed by field — not the bound <code>req</code> object. Adding a signature to an existing pipeline changes its definition digest, so a checkpoint from before the edit needs <code>--resume --force</code>; a pipeline that doesn't use one keeps the digest older builds wrote.</p></div>
+          <div class="tip-row"><span>EDITOR</span><p>Inside a step, <code>req.</code> lists the param type's fields (an optional one marked as such) and <code>self.</code> lists the param. The header's type positions complete type names. Signature types in the header should be named aliases: an inline <code>{ ... }</code> shape there is valid mhl, but the editor's block detection loses track of the declaration body after it.</p></div>
+
           <p class="block-label">LIFECYCLE HOOKS</p>
           <p>Five optional body properties observe a run without taking part in it — a lambda of exactly one parameter, called for its side effects (<code>log</code>, <code>mem</code>, a declared <code>tool</code>/<code>extension</code>); its return value is ignored, and returning anything other than nothing at all is a runtime error. Each parameter is bound to one of three builtin, globally declared types — <code>SessionContext</code>, <code>StepContext</code>, <code>FailureContext</code> — the same vocabulary a <code>string</code>/<code>number</code>/<code>bool</code> annotation already resolves through, so <code>session.</code>/<code>step.</code>/<code>failure.</code> is a real, navigable member access: an editor lists that type's fields the moment you type the dot, with no annotation required (mhl lambdas stay unannotated everywhere else too). The parameter's name is whatever you write — <code>session</code> below is just a convention, not a keyword.</p>
           <pre class="code-block"><code class="language-mhl">workflow Discovery {
@@ -1148,7 +1181,8 @@ test guarded_retry_test {
             <div class="table-row"><span><code>ok</code></span><code>bool</code><span>false only when state is "failed"</span></div>
             <div class="table-row"><span><code>state</code></span><code>string</code><span>"completed" · "paused" · "broke" · "failed"</span></div>
             <div class="table-row"><span><code>executed</code></span><code>string[]</code><span>step names that ran, in order</span></div>
-            <div class="table-row"><span><code>vars</code></span><code>object</code><span>final state; {} when state is "failed"</span></div>
+            <div class="table-row"><span><code>vars</code></span><code>object</code><span>final state; {} when state is "failed" (except an output-contract failure: every step ran, so the state is kept)</span></div>
+            <div class="table-row"><span><code>output</code></span><code>object</code><span>what a real caller receives — the <code>output:</code> projection, checked against a declared result type, or every var when there's no <code>output:</code>; null unless state is "completed" / "broke". A projection that breaks the result type reports state "failed" with the contract error</span></div>
             <div class="table-row"><span><code>error</code> / <code>step</code></span><code>string</code><span>set only when state is "failed"</span></div>
             <div class="table-row"><span><code>break_reason</code> / <code>pause_reason</code></span><code>any</code><span>null unless state is "broke" / "paused"</span></div>
           </div>

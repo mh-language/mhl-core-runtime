@@ -13,9 +13,9 @@ import "sort"
 //   - bool       → {"type": "boolean"}
 //   - T[]        → {"type": "array", "items": <schema(T)>}   (items omitted when Elem is nil)
 //   - {a: T, …}  → {"type": "object", "properties": {a: <schema(T)>, …},
-//     "required": [<every declared field>],
+//     "required": [<every non-optional field>],
 //     "additionalProperties": true}
-//     Every declared field is required and extra fields are allowed, matching
+//     Every non-optional field is required and extra fields are allowed, matching
 //     Check's structural (not exact) object rule.
 //   - enum X     → {"type": "string", "description": "mhl enum X"}
 //     Best-effort: a Type of Kind EnumKind carries no variant list (see the
@@ -45,7 +45,9 @@ func (t Type) JSONSchema() map[string]any {
 		required := make([]string, 0, len(t.Fields))
 		for name, ft := range t.Fields {
 			props[name] = ft.JSONSchema()
-			required = append(required, name)
+			if !t.IsOptional(name) {
+				required = append(required, name)
+			}
 		}
 		sort.Strings(required)
 		return map[string]any{

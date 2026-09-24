@@ -152,6 +152,16 @@ A pipeline/workflow body property (`checkpoint`, `spawn`, `repeat`, `context`, `
 `output`) is declared once in `ast.PipelineBodyProperties` (`internal/lang/ast/pipeline.go`);
 `lint.checkPipelineProperties` and `internal/lsp/properties.go` both derive from it, so adding
 one is that entry plus its value-reading case in `runtime.PipelineFromAST`.
+A pipeline/workflow may also carry a typed signature, `workflow X(req: In): Out` (`ast.Pipeline.Param`
+/`Returns`, projected onto `runtime.Pipeline.InputParam`/`OutputType`): the param type's fields
+become `Pipeline.Inputs` (so `ValidateInputs`/`InputSchema`/coercion are unchanged) but are bound
+as one object by `Pipeline.BindInputs`; `Out` requires an explicit `output:` (lint
+`checkPipelineSignature`) and `execsvc` checks the projection → `runtime.OutputContractError`;
+`Pipeline.OutputSchema()` feeds MCP `outputSchema` (enum variants filled in at any depth from
+`Pipeline.Enums`). The param is read-only: `interpreter.pipelineConstNames` and
+`lint.checkConstReassign` seed it as a const. Shape fields may be optional (`base?: T`,
+`types.Type.Optional`). New AST fields are tagged `digest:"omitzero"` so unused ones don't change
+`DefinitionDigest` (pinned by `TestDefinitionDigestUnchangedByOmitzeroFields`).
 
 VS Code extension, from `vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
 `mhl` on `PATH`):

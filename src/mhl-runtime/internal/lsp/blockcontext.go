@@ -59,6 +59,10 @@ type blockRef struct {
 	Name    string
 }
 
+// sigRe matches a pipeline/workflow header's optional typed signature,
+// `(req: ReviewInput): ReviewOutput`, without capturing it.
+const sigRe = `(?:\s*\(\s*\w+\s*:\s*[\w\[\]]+\s*\))?(?:\s*:\s*[\w\[\]]+)?`
+
 // headerRe pairs a blockKind with the regex that recognizes the token(s)
 // immediately preceding a "{" that opens it — each anchored at $ so it only
 // has to match the *tail* of everything scanned since the previous brace
@@ -69,8 +73,12 @@ var headerRe = []struct {
 	kind blockKind
 	re   *regexp.Regexp
 }{
-	{blockLoopPipeline, regexp.MustCompile(`\b(?:partial\s+)?loop\s+(?:pipeline|workflow)\s+(\w+)(?:\s+max\s+\d+)?\s*$`)},
-	{blockPipeline, regexp.MustCompile(`\b(?:partial\s+)?(?:pipeline|workflow)\s+(\w+)\s*$`)},
+	// A typed signature — `workflow W(req: In): Out` — may sit between the
+	// name and the `{` (sigRe). Only named types (optionally `[]`-suffixed)
+	// are recognized there: an inline `{ ... }` shape in the header opens
+	// braces of its own, which this brace-counting scan can't tell apart.
+	{blockLoopPipeline, regexp.MustCompile(`\b(?:partial\s+)?loop\s+(?:pipeline|workflow)\s+(\w+)` + sigRe + `(?:\s+max\s+\d+)?\s*$`)},
+	{blockPipeline, regexp.MustCompile(`\b(?:partial\s+)?(?:pipeline|workflow)\s+(\w+)` + sigRe + `\s*$`)},
 	{blockTool, regexp.MustCompile(`\btool\s+(\w+)\s*$`)},
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
 	{blockRouter, regexp.MustCompile(`\brouter\s+\w+\s*$`)},

@@ -145,11 +145,15 @@ func partialSiblingScopeItems(path string, target *ast.Pipeline) []completionIte
 	return items
 }
 
-// pipelineMemberItems returns a self.<name> completion item for each
-// input/var/mem declared directly in p's own Body (no cross-file merging —
+// pipelineMemberItems returns a self.<name> completion item for p's typed
+// signature param (if any) and each input/var/mem declared directly in p's
+// own Body (no cross-file merging —
 // that's pipelineScopeItems' job).
 func pipelineMemberItems(p *ast.Pipeline) []completionItem {
 	var items []completionItem
+	if p.Param != nil {
+		items = append(items, completionItem{Label: p.Param.Name, Kind: kindVariable, Detail: p.Param.Type.String()})
+	}
 	for _, m := range p.Body {
 		switch {
 		case m.Input != nil:

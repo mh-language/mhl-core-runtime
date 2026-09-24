@@ -17,6 +17,9 @@ succeed:
     state: "completed" | "paused" | "broke" | "failed",
     executed: string[],   // step names that ran, in order
     vars: object,          // final (or {} on failure) variable state
+    output: object,        // what a real caller gets: the `output:` projection
+                           // (checked against a result type) or every var;
+                           // null unless state is "completed" / "broke"
     error: string,          // "" unless state == "failed"
     step: string,            // the failing step's name, "" unless state == "failed"
     break_reason: any,        // null unless state == "broke"
@@ -42,3 +45,11 @@ pipeline's own steps do is reported in the returned object.
   needed
 - [run_workflow_missing_required_input_raises.mh](run_workflow_missing_required_input_raises.mh)
   — a missing required input raises (a problem with the call, not the workflow's own logic)
+- [run_workflow_typed_signature.mh](run_workflow_typed_signature.mh) — a typed signature
+  `workflow Review(req: ReviewInput): ReviewOutput`: inputs arrive as the `req` object, an
+  omitted optional field (`base?: string`) reads as null, and `output` is the checked projection
+- [run_workflow_output_projection.mh](run_workflow_output_projection.mh) — `output` is the
+  `output:` projection when declared (renamed/computed keys, internal vars dropped), every var
+  otherwise; `vars` stays the full state
+- [run_workflow_output_contract_fails.mh](run_workflow_output_contract_fails.mh) — a projection
+  that breaks the declared result type reports `ok: false`, `state: "failed"`, `output: null`

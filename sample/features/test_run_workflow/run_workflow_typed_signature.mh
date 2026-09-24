@@ -1,0 +1,44 @@
+// A typed signature — `workflow Name(req: In): Out` — binds the caller's
+// inputs as one object (`req.diff`), whose fields come from the param type.
+// An optional field (`base?: string`) may be omitted and then reads as null,
+// so a step spells its default with `??`. The result type requires an
+// explicit `output:` projection, checked against Out when the run ends.
+type ReviewInput = {
+    diff: string
+    base?: string
+}
+
+type ReviewOutput = {
+    approved: bool
+    summary: string
+}
+
+workflow Review(req: ReviewInput): ReviewOutput {
+    var summary = ""
+
+    step Inspect {
+        summary = req.diff + " vs " + (req.base ?? "main")
+    }
+
+    output: {
+        approved: true
+        summary: summary
+    }
+}
+
+test run_workflow_typed_signature {
+    describe optional_field_omitted_reads_null {
+        var result = Review.run(inputs: {diff: "abc"})
+        is_true(result.ok)
+        are_equal(result.vars["summary"], "abc vs main")
+        are_equal(result.vars["req"]["base"], null)
+    }
+    describe optional_field_supplied {
+        var result = Review.run(inputs: {diff: "abc", base: "dev"})
+        are_equal(result.vars["summary"], "abc vs dev")
+    }
+    describe output_is_the_checked_projection {
+        var result = Review.run(inputs: {diff: "abc"})
+        are_equal(result.output, {approved: true, summary: "abc vs main"})
+    }
+}

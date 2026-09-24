@@ -27,6 +27,11 @@ var memberAccessRe = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)\.[A-Za-z0-9_]*
 // isTypeAnnotationPosition additionally
 // restricts where this fires so it never fires on an ordinary `key: value`
 // property (e.g. `agent { command: }`).
+// signatureTypeRe matches a pipeline/workflow header's type positions —
+// the param's (`workflow W(req: ▮`) and the result's (`workflow W(req: In):
+// ▮`, `pipeline W: ▮`) — where the same type vocabulary is offered.
+var signatureTypeRe = regexp.MustCompile(`^\s*(?:partial\s+)?(?:loop\s+)?(?:pipeline|workflow)\s+\w+\s*(?:\(\s*\w+\s*:\s*\w*|(?:\([^()]*\))?\s*:\s*\w*)$`)
+
 var typeAnnotationRe = regexp.MustCompile(`\b[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Za-z_]*$`)
 
 // declarationSnippet is one keyword's tab-through example body, in LSP
@@ -327,6 +332,9 @@ func completionAt(path, text string, pos position) []completionItem {
 		if items, ok := paramTypeCompletionAt(text, pos, target); ok {
 			return items
 		}
+		if items, ok := pipelineParamCompletionAt(text, pos, target); ok {
+			return items
+		}
 		for _, s := range documentSymbols(path, text) {
 			if s.Name == target {
 				return methodItems(path, text, s)
@@ -335,7 +343,7 @@ func completionAt(path, text string, pos position) []completionItem {
 		return nil
 	}
 
-	if typeAnnotationRe.MatchString(linePrefix) && isTypeAnnotationPosition(linePrefix, text, pos) {
+	if signatureTypeRe.MatchString(linePrefix) || (typeAnnotationRe.MatchString(linePrefix) && isTypeAnnotationPosition(linePrefix, text, pos)) {
 		items := make([]completionItem, 0, len(typeKeywords))
 		for _, kw := range typeKeywords {
 			items = append(items, completionItem{Label: kw, Kind: kindKeyword})

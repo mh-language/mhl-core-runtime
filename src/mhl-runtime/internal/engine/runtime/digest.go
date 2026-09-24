@@ -80,6 +80,13 @@ func hashValue(h interface{ Write([]byte) (int, error) }, v reflect.Value) {
 			if t.Field(i).PkgPath != "" {
 				continue // unexported
 			}
+			// A field added to the AST after checkpoints already exist is
+			// tagged `digest:"omitzero"`: left unset, it is hashed as if it
+			// didn't exist, so a program that doesn't use it keeps the
+			// digest an older build stamped and its checkpoints still resume.
+			if t.Field(i).Tag.Get("digest") == "omitzero" && v.Field(i).IsZero() {
+				continue
+			}
 			h.Write([]byte(t.Field(i).Name))
 			h.Write([]byte{':'})
 			hashValue(h, v.Field(i))

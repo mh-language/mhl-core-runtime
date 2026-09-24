@@ -78,7 +78,11 @@ func fieldCompletionItems(t types.Type) []completionItem {
 	sort.Strings(names)
 	items := make([]completionItem, 0, len(names))
 	for _, name := range names {
-		items = append(items, completionItem{Label: name, Kind: kindField, Detail: t.Fields[name].String()})
+		detail := t.Fields[name].String()
+		if t.IsOptional(name) {
+			detail += " (optional)"
+		}
+		items = append(items, completionItem{Label: name, Kind: kindField, Detail: detail})
 	}
 	return items
 }

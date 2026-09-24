@@ -181,7 +181,7 @@ func memoryMethodsForType(memType string) []string {
 // pipeline X`) is skipped, not captured — it's a modifier on `pipeline`, not
 // a declaration kind of its own.
 var (
-	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|router|memory|tool|prompt|pipeline|workflow)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|router|memory|tool|prompt|pipeline|workflow|type|enum)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 	// extDeclRe recognises `extension <kind> <Name>`, which unlike every
 	// other declaration keyword is followed by two identifiers.
 	extDeclRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?extension\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)`)
@@ -301,6 +301,10 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 		return symPrompt, true
 	case "pipeline", "workflow":
 		return symPipeline, true
+	case "type":
+		return symType, true
+	case "enum":
+		return symEnum, true
 	}
 	return 0, false
 }

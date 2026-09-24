@@ -94,3 +94,41 @@ func toolMethodAtLine(tool *ast.Tool, line int) *ast.ToolMethod {
 	}
 	return best
 }
+
+// pipelineParamCompletionAt is paramTypeCompletionAt for a pipeline/workflow's
+// typed signature param: `workflow W(req: ReviewInput) { step S { req.§ } }`
+// lists ReviewInput's fields. Same approach — blockStack for the enclosing
+// declaration's name, then a real parse (alias-aware) for its param type.
+// Only the declaration's own header is consulted; a `partial` fragment
+// whose signature lives in a sibling file gets no field items.
+func pipelineParamCompletionAt(text string, pos position, target string) ([]completionItem, bool) {
+	repaired := repairForParse(text, pos)
+	stack := blockStack(textUpToPosition(repaired, pos))
+	name, found := "", false
+	for i := len(stack) - 1; i >= 0; i-- {
+		if k := stack[i].Kind; k == blockPipeline || k == blockLoopPipeline {
+			name, found = stack[i].Name, true
+			break
+		}
+	}
+	if !found {
+		return nil, false
+	}
+	prog, err := parser.Parse(repaired)
+	if err != nil {
+		return nil, false
+	}
+	for _, decl := range prog.Decls {
+		p := decl.Pipeline
+		if p == nil || p.Name != name || p.Param == nil || p.Param.Name != target {
+			continue
+		}
+		aliasTypes, _ := types.Aliases(prog)
+		t, ok := types.FromExprAlias(p.Param.Type, aliasTypes)
+		if !ok {
+			return nil, false
+		}
+		return fieldCompletionItems(t), true
+	}
+	return nil, false
+}

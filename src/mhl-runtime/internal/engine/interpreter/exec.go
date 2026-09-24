@@ -168,7 +168,10 @@ func EvalPipelineVars(prog *ast.Program, pipelineName, file string, out io.Write
 
 // pipelineConstNames is the set of names a pipeline binds with a top-level
 // `const` — seeded into every step's evalCtx so execAssign refuses to
-// reassign one.
+// reassign one. A typed signature's param (`workflow X(req: T)`) is in the
+// set too: it is read-only, since the runtime rebinds it from the run's
+// inputs before every step (runtime.Pipeline.BindInputs) and a write would
+// silently vanish at the next one. readOnlyMessage words the refusal.
 func pipelineConstNames(prog *ast.Program, stepName string) map[string]bool {
 	for _, decl := range prog.Decls {
 		if decl.Pipeline == nil {
@@ -182,6 +185,9 @@ func pipelineConstNames(prog *ast.Program, stepName string) map[string]bool {
 			if m.Const != nil {
 				out[m.Const.Name] = true
 			}
+		}
+		if decl.Pipeline.Param != nil {
+			out[decl.Pipeline.Param.Name] = true
 		}
 		return out
 	}
@@ -396,6 +402,9 @@ func execStatementBody(ctx *evalCtx, statement *ast.Statement) error {
 		return nil
 	case statement.Var != nil:
 		if ctx.constNames[statement.Var.Name] {
+			if isInputParam(ctx, statement.Var.Name) {
+				return fmt.Errorf("%q is the typed parameter of %s and can't be redeclared", statement.Var.Name, ctx.pipelineName)
+			}
 			return fmt.Errorf("%q is already declared as a constant", statement.Var.Name)
 		}
 		v, err := evalExpr(ctx, statement.Var.Value)
@@ -513,6 +522,9 @@ func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
 		return fmt.Errorf("assignment target must be a plain variable or an array index, not a nested field")
 	}
 	if ctx.constNames[name] {
+		if isInputParam(ctx, name) {
+			return fmt.Errorf("cannot assign to %q: the typed parameter of %s is read-only (copy it into a var to change it)", name, ctx.pipelineName)
+		}
 		return fmt.Errorf("cannot assign to constant %q", name)
 	}
 	var target Env
@@ -698,4 +710,15 @@ func execTry(ctx *evalCtx, stmt *ast.TryStmt) error {
 		}
 	}
 	return result
+}
+
+// isInputParam reports whether name is the typed signature param of the
+// pipeline ctx is running a step of.
+func isInputParam(ctx *evalCtx, name string) bool {
+	for _, decl := range ctx.prog.Decls {
+		if p := decl.Pipeline; p != nil && p.Name == ctx.pipelineName && p.Param != nil {
+			return p.Param.Name == name
+		}
+	}
+	return false
 }

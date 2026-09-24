@@ -32,6 +32,7 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // Request describes one execution.
@@ -183,6 +184,11 @@ func Run(req Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Also a lint error; checked here so a run never starts with a result
+	// type it has no projection to check against.
+	if pipeline.OutputType != nil && pipeline.Output == nil {
+		return nil, fmt.Errorf("%s %q declares result type %s but no `output: { ... }` projection", pipeline.Kind, pipeline.Name, pipeline.OutputTypeName)
+	}
 
 	// Admission check: enforce the pipeline's input contract (InputSchema) —
 	// required inputs present, no undeclared keys — before creating a session,
@@ -241,12 +247,26 @@ func Run(req Request) (*Result, error) {
 	// behaviour returns every non-internal `var`. It is only ever called for a
 	// terminal run — a paused run reports publicVars(partial state) instead,
 	// since its `output:` expressions may read vars that are not set yet.
+	//
+	// A typed signature's result type (`workflow X(...): T`) is checked here
+	// against the projection — on a normal finish and on `break` alike: a
+	// caller gets exactly the shape the pipeline advertises, or an
+	// *runtime.OutputContractError, never a partial result.
 	projectVars := func(finalVars map[string]any, instanceID string) (map[string]any, error) {
 		if pipeline.Output == nil {
 			return publicVars(finalVars), nil
 		}
 		mem := memContextFor(memInit, pipeline.Name, instanceID)
-		return interpreter.EvalOutputs(runCtx, prog, pipeline.Output, file, out, store, jsonStore, mem, contextView, finalVars)
+		projected, err := interpreter.EvalOutputs(runCtx, prog, pipeline.Output, file, out, store, jsonStore, mem, contextView, finalVars)
+		if err != nil {
+			return nil, err
+		}
+		if pipeline.OutputType != nil {
+			if err := types.Check("output", *pipeline.OutputType, projected); err != nil {
+				return nil, &runtime.OutputContractError{Pipeline: pipeline.Name, Type: pipeline.OutputTypeName, Err: err}
+			}
+		}
+		return projected, nil
 	}
 
 	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
@@ -295,9 +315,7 @@ func Run(req Request) (*Result, error) {
 	}
 
 	exec := func(stepCtx context.Context, step string, ctx *runtime.RunContext) error {
-		for k, v := range coercedInputs {
-			ctx.Vars[k] = v
-		}
+		pipeline.BindInputs(ctx.Vars, coercedInputs)
 		ctx.Vars["__last_step"] = step
 		stepOut := out
 		if ctx.Out != nil {

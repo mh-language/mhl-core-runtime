@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -93,10 +94,17 @@ func resolveInputsArg(ctx *evalCtx, call *ast.Call, depth int) (map[string]any, 
 // pipeline's own steps do — fail(), break, pause(), goto, a normal finish —
 // is reported in the returned object instead, so a test can assert on a
 // workflow that is *expected* to fail or break exactly as easily as one
-// expected to complete: {ok, state, executed, vars, error, step,
+// expected to complete: {ok, state, executed, vars, output, error, step,
 // break_reason, pause_reason}. state is one of "completed", "paused",
 // "broke", "failed". vars is {} on failure (RunResult.FinalVars is nil
 // then — nothing was captured to report).
+//
+// output is what a real caller (`mhl run`, an MCP tools/call) would
+// receive: the `output: { ... }` projection when one is declared, else
+// every non-internal var — evaluated on a completion or a `break`, null
+// otherwise. With a declared result type (`workflow X(...): T`) the
+// projection is checked against T exactly as execsvc does; a mismatch
+// reports state "failed" with the contract error, output null.
 func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth int) (map[string]any, error) {
 	pipeline, err := runtime.FindPipeline(ctx.prog, name)
 	if err != nil {
@@ -144,9 +152,7 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 	spawnSem := NewSpawnSem(pipeline.Spawn.MaxConcurrency)
 
 	exec := func(stepCtx context.Context, step string, rc *runtime.RunContext) error {
-		for k, v := range inputs {
-			rc.Vars[k] = v
-		}
+		pipeline.BindInputs(rc.Vars, inputs)
 		stepErr := RunStep(stepCtx, ctx.prog, step, ctx.file, ctx.out, ctx.store, ctx.jsonStore, rc.Vars, mem, contextView, spawnSem)
 		if reason, ok := IsBreak(stepErr); ok {
 			return &runtime.BreakSignal{Reason: reason}
@@ -181,6 +187,7 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 		"state":        "completed",
 		"executed":     stringsToAny(res.Executed),
 		"vars":         map[string]any{},
+		"output":       nil,
 		"error":        "",
 		"step":         "",
 		"break_reason": nil,
@@ -205,7 +212,42 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 		out["state"] = "broke"
 		out["break_reason"] = res.BreakReason
 	}
+	if runErr == nil && !res.Paused {
+		projected, err := testRunOutput(goctxOf(ctx), ctx, pipeline, mem, contextView, res.FinalVars)
+		if err != nil {
+			out["ok"] = false
+			out["state"] = "failed"
+			out["error"] = err.Error()
+		} else {
+			out["output"] = projected
+		}
+	}
 	return out, nil
+}
+
+// testRunOutput is execsvc's projectVars for a test's Name.run(): the
+// `output:` projection (checked against a declared result type) or, with no
+// `output:`, every var minus the runtime's own `__`-prefixed bookkeeping.
+func testRunOutput(goctx context.Context, ctx *evalCtx, pipeline runtime.Pipeline, mem *MemContext, cctx *ContextView, finalVars map[string]any) (map[string]any, error) {
+	if pipeline.Output == nil {
+		clean := make(map[string]any, len(finalVars))
+		for k, v := range finalVars {
+			if !strings.HasPrefix(k, "__") {
+				clean[k] = v
+			}
+		}
+		return clean, nil
+	}
+	projected, err := EvalOutputs(goctx, ctx.prog, pipeline.Output, ctx.file, ctx.out, ctx.store, ctx.jsonStore, mem, cctx, finalVars)
+	if err != nil {
+		return nil, err
+	}
+	if pipeline.OutputType != nil {
+		if err := types.Check("output", *pipeline.OutputType, projected); err != nil {
+			return nil, &runtime.OutputContractError{Pipeline: pipeline.Name, Type: pipeline.OutputTypeName, Err: err}
+		}
+	}
+	return projected, nil
 }
 
 func stringsToAny(ss []string) []any {

@@ -43,14 +43,33 @@ import "github.com/alecthomas/participle/v2/lexer"
 // self-contained declaration, and a `Step.Entry` marker is a lint error
 // there (see Step.Entry) since the first physically declared step still
 // wins.
+//
+// Param and Returns are the optional typed signature —
+// `workflow Review(req: ReviewInput): ReviewOutput { ... }`, the same
+// `name(param): Type` shape a tool method uses. Param binds the caller's
+// arguments as one object whose fields are the inputs (so it replaces, and
+// lint forbids mixing it with, per-line `input x: T` members); Returns
+// declares the result type the `output: { ... }` projection must satisfy
+// (lint requires an explicit `output:` alongside it). Both nil means the
+// untyped, per-line-input form, unchanged.
 type Pipeline struct {
 	Pos     lexer.Position
 	Partial bool              `parser:"@'partial'?"`
 	Loop    bool              `parser:"@'loop'?"`
 	Kind    string            `parser:"@( 'pipeline' | 'workflow' )"`
 	Name    string            `parser:"@Ident"`
+	Param   *PipelineParam    `parser:"( '(' @@ ')' )?" digest:"omitzero"`
+	Returns *TypeExpr         `parser:"( ':' @@ )?" digest:"omitzero"`
 	Max     string            `parser:"( 'max' @Number )?"`
 	Body    []*PipelineMember `parser:"'{' @@* '}'"`
+}
+
+// PipelineParam is the single `name: Type` parameter of a typed
+// pipeline/workflow signature (see Pipeline.Param).
+type PipelineParam struct {
+	Pos  lexer.Position
+	Name string    `parser:"@Ident ':'"`
+	Type *TypeExpr `parser:"@@"`
 }
 
 // EntryStepCount counts how many of this declaration's steps (including a

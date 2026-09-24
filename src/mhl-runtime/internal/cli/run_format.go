@@ -106,6 +106,14 @@ func classifyRunError(rj *runJSON, err error) {
 		return
 	}
 
+	var contract *runtime.OutputContractError
+	if errors.As(err, &contract) {
+		rj.Kind = "output_contract"
+		rj.Pipeline = contract.Pipeline
+		rj.Hint = "every step ran, but the `output:` projection does not match the declared result type; fix the projection or the type."
+		return
+	}
+
 	var badInputs *runtime.InvalidInputsError
 	if errors.As(err, &badInputs) {
 		rj.Kind = "invalid_inputs"

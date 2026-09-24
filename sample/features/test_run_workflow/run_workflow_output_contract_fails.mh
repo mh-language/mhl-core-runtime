@@ -1,0 +1,27 @@
+// A declared result type (`workflow X: T`) is a contract on the `output:`
+// projection: when the projection doesn't satisfy T, the run is reported as
+// failed — `ok: false`, `state: "failed"`, no `output` — even though every
+// step ran. `mhl lint` already rejects an `output:` literal whose keys don't
+// match T; a projection built from a var, like this one, is only checked
+// when the run ends.
+type Status = {
+    ok: bool
+    count: number
+}
+
+workflow Broken: Status {
+    var result = {ok: "yes", count: 1}
+    step S { log("ran") }
+    output: result
+}
+
+test run_workflow_output_contract_fails {
+    describe mismatched_projection_fails_the_run {
+        var result = Broken.run()
+        is_false(result.ok)
+        are_equal(result.state, "failed")
+        are_equal(result.executed, ["S"])
+        is_null(result.output)
+        is_true(result.error.contains("output.ok must be bool"))
+    }
+}

@@ -40,6 +40,7 @@ func FromExprAlias(e *ast.TypeExpr, aliases map[string]Type) (Type, bool) {
 	}
 	if e.Shape != nil {
 		fields := make(map[string]Type, len(e.Shape.Fields))
+		var optional map[string]bool
 		for _, f := range e.Shape.Fields {
 			if _, dup := fields[f.Name]; dup {
 				return Any, false // duplicate field name in the same shape
@@ -49,8 +50,14 @@ func FromExprAlias(e *ast.TypeExpr, aliases map[string]Type) (Type, bool) {
 				return Any, false
 			}
 			fields[f.Name] = ft
+			if f.Optional {
+				if optional == nil {
+					optional = map[string]bool{}
+				}
+				optional[f.Name] = true
+			}
 		}
-		return ObjectOf(fields), true
+		return ObjectOfOptional(fields, optional), true
 	}
 	if t, ok := aliases[e.Name]; ok {
 		return t, true

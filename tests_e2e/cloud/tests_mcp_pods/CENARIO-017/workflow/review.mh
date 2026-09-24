@@ -1,0 +1,22 @@
+// CENARIO-017 — workflow com assinatura tipada.
+type ReviewInput = { diff: string, base?: string, approved?: string }
+type ReviewOutput = { approved: bool, summary: string }
+
+workflow Review(req: ReviewInput): ReviewOutput {
+    description: "Revisão tipada com gate de aprovação."
+    var summary = ""
+    step Prepare { summary = req.diff + "@" + (req.base ?? "main") }
+    step Gate { if (req.approved != "yes") { pause("awaiting approval") } }
+    output: {
+        approved: req.approved == "yes"
+        summary: summary
+    }
+}
+
+type Status = { ok: bool }
+
+workflow Broken: Status {
+    var result = { ok: "yes" }
+    step S { log("ran") }
+    output: result
+}

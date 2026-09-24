@@ -42,11 +42,15 @@ type ObjectShape struct {
 	Fields []*ShapeField `parser:"'{' ( @@ ( ','? @@ )* ','? )? '}'"`
 }
 
-// ShapeField is one `name: TypeExpr` entry of an ObjectShape.
+// ShapeField is one `name: TypeExpr` entry of an ObjectShape. A trailing
+// `?` on the name (`base?: string`) marks the field optional: a value may
+// omit it entirely (see types.Type.Optional). A default for an optional
+// field lives in code (`req.base ?? "main"`), never in the type.
 type ShapeField struct {
-	Pos  lexer.Position
-	Name string    `parser:"@Ident ':'"`
-	Type *TypeExpr `parser:"@@"`
+	Pos      lexer.Position
+	Name     string    `parser:"@Ident"`
+	Optional bool      `parser:"@'?'? ':'" digest:"omitzero"`
+	Type     *TypeExpr `parser:"@@"`
 }
 
 // String reconstructs e's surface syntax exactly as written (e.g. "sting[]",
@@ -82,7 +86,11 @@ func (s *ObjectShape) String() string {
 	}
 	parts := make([]string, len(s.Fields))
 	for i, f := range s.Fields {
-		parts[i] = f.Name + ": " + f.Type.String()
+		opt := ""
+		if f.Optional {
+			opt = "?"
+		}
+		parts[i] = f.Name + opt + ": " + f.Type.String()
 	}
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
