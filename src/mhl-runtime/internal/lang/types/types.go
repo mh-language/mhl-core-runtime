@@ -71,6 +71,12 @@ func EnumType(name string) Type { return Type{Kind: EnumKind, Name: name} }
 // package importing internal/engine.
 type EnumCarrier interface{ EnumName() string }
 
+// ObjectCarrier is implemented by a runtime reference object
+// (internal/engine/value.Ref) so Of/Check treat it as an object — checked
+// field by field like a plain map — without this package importing
+// internal/engine.
+type ObjectCarrier interface{ ObjectFields() map[string]any }
+
 // Any/String/Number/Bool/Array/Object are the unshaped base values for each
 // Kind — Array/Object here mean "no declared element type / field shape",
 // exactly matching a bare `: array` / `: object` annotation. Use ArrayOf/
@@ -292,6 +298,8 @@ func Of(v any) (Type, bool) {
 		return Object, true
 	case EnumCarrier:
 		return EnumType(tv.EnumName()), true
+	case ObjectCarrier:
+		return Object, true
 	default:
 		return Any, false
 	}
@@ -346,7 +354,10 @@ func Check(label string, declared Type, v any) error {
 		if declared.Fields == nil {
 			return nil
 		}
-		obj := v.(map[string]any)
+		obj, isMap := v.(map[string]any)
+		if !isMap {
+			obj = v.(ObjectCarrier).ObjectFields()
+		}
 		names := make([]string, 0, len(declared.Fields))
 		for k := range declared.Fields {
 			names = append(names, k)

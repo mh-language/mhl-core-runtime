@@ -5,8 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"io"
-	"reflect"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -512,8 +513,16 @@ func (r *Runner) execStage(runCtx context.Context, p Pipeline, stage Stage, ctx 
 // writes are merged back into ctx.Vars — a key two branches set to different
 // values is a hard error, so a parallel group's variable outcome is always
 // deterministic.
+//
+// Ref objects (value.Ref) are merged by identity, not by variable: each
+// branch mutates its own clones (same IDs), and at the barrier every field a
+// branch changed on a ref is applied to the parent's object with that ID —
+// two branches changing different fields of one ref both land; the same
+// field set to different values is a conflict, like a pipeline var. A
+// variable only counts as "assigned" when it points somewhere else, not
+// when a ref it holds was mutated (value.Equal compares refs by ID).
 func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stage, ctx *RunContext, exec StepFunc) error {
-	base := deepCopyVars(ctx.Vars)
+	base := cloneVars(ctx.Vars)
 	n := len(stage.Steps)
 	bctxs := make([]*RunContext, n)
 	branchCtxs := make([]context.Context, n)
@@ -525,7 +534,7 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 		buf := &bytes.Buffer{}
 		bufs[i] = buf
 		bctx := &RunContext{
-			Vars:       deepCopyVars(ctx.Vars),
+			Vars:       cloneVars(ctx.Vars),
 			InstanceID: ctx.InstanceID,
 			SessionID:  ctx.SessionID,
 			Out:        buf,
@@ -578,11 +587,11 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 			if strings.HasPrefix(k, "__") {
 				continue // interpreter bookkeeping (e.g. __last_step)
 			}
-			if reflect.DeepEqual(base[k], v) {
+			if value.Equal(base[k], v) {
 				continue
 			}
 			if prev, ok := writtenBy[k]; ok {
-				if !reflect.DeepEqual(bctxs[prev].Vars[k], v) {
+				if !value.Equal(bctxs[prev].Vars[k], v) {
 					return fmt.Errorf("parallel group %q: steps %q and %q both assigned pipeline var %q",
 						stage.Name, stage.Steps[prev], stage.Steps[i], k)
 				}
@@ -592,38 +601,118 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 			ctx.Vars[k] = v
 		}
 	}
+	if err := mergeRefFields(stage, ctx.Vars, base, bctxs); err != nil {
+		return err
+	}
 	ctx.Vars["__last_step"] = stage.Name
 	return nil
 }
 
-// deepCopyVars clones the JSON-shaped part of a variable map (arrays and
-// objects) so a concurrently-running parallel branch reading it cannot
-// observe another branch — or the parent — mutating the same structure.
-// Scalars are immutable and shared as-is; this mirrors
-// interpreter.deepCopyValue, which spawn.go uses for the same reason.
-func deepCopyVars(in map[string]any) map[string]any {
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = deepCopyValue(v)
+// mergeRefFields applies each branch's field changes on ref objects back to
+// the parent's objects (by ID), then canonicalizes vars so every ID is one
+// object again — the branch clones that just got merged into vars
+// included. See runParallelStage's doc comment for the conflict rule.
+func mergeRefFields(stage Stage, vars, base map[string]any, bctxs []*RunContext) error {
+	baseRefs := map[string]*value.Ref{}
+	for _, v := range base {
+		value.CollectRefs(v, baseRefs)
 	}
+	// canon starts as the parent's own objects: the identity every name
+	// held before the fork keeps pointing at.
+	canon := map[string]*value.Ref{}
+	for k, v := range vars {
+		if !strings.HasPrefix(k, "__") {
+			value.CollectRefs(v, canon)
+		}
+	}
+	type change struct {
+		branch int
+		val    any
+		del    bool
+	}
+	changes := map[string]map[string]change{} // ref id → field → change
+	for i, bctx := range bctxs {
+		branchRefs := map[string]*value.Ref{}
+		for _, v := range bctx.Vars {
+			value.CollectRefs(v, branchRefs)
+		}
+		for id, br := range branchRefs {
+			orig, existed := baseRefs[id]
+			if !existed {
+				if _, ok := canon[id]; !ok {
+					canon[id] = br // created in this branch
+				}
+				continue
+			}
+			for _, f := range fieldUnion(orig.Fields, br.Fields) {
+				bv, present := br.Fields[f]
+				if present && value.Equal(orig.Fields[f], bv) {
+					continue
+				}
+				if _, inBase := orig.Fields[f]; !present && !inBase {
+					continue
+				}
+				c := change{branch: i, val: bv, del: !present}
+				if changes[id] == nil {
+					changes[id] = map[string]change{}
+				}
+				if prev, ok := changes[id][f]; ok {
+					if prev.del != c.del || !value.Equal(prev.val, c.val) {
+						return fmt.Errorf("parallel group %q: steps %q and %q both changed field %q of the same ref object",
+							stage.Name, stage.Steps[prev.branch], stage.Steps[i], f)
+					}
+					continue
+				}
+				changes[id][f] = c
+			}
+		}
+	}
+	for id, fields := range changes {
+		target, ok := canon[id]
+		if !ok {
+			continue // no longer reachable from any var
+		}
+		for f, c := range fields {
+			if c.del {
+				delete(target.Fields, f)
+			} else {
+				target.Fields[f] = c.val
+			}
+		}
+	}
+	done := map[*value.Ref]bool{}
+	for k, v := range vars {
+		if !strings.HasPrefix(k, "__") {
+			vars[k] = value.Canonicalize(v, canon, done)
+		}
+	}
+	return nil
+}
+
+func fieldUnion(a, b map[string]any) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	var out []string
+	for _, m := range []map[string]any{a, b} {
+		for k := range m {
+			if !seen[k] {
+				seen[k] = true
+				out = append(out, k)
+			}
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 
-func deepCopyValue(v any) any {
-	switch t := v.(type) {
-	case []any:
-		c := make([]any, len(t))
-		for i := range t {
-			c[i] = deepCopyValue(t[i])
-		}
-		return c
-	case map[string]any:
-		c := make(map[string]any, len(t))
-		for k := range t {
-			c[k] = deepCopyValue(t[k])
-		}
-		return c
-	default:
-		return v
+// cloneVars gives a parallel branch (or the pre-fork snapshot) its own copy
+// of every variable — plain structures and ref objects alike (value.
+// CloneRefs keeps each ref's ID, and identity within the copy) — so
+// concurrent branches never share a mutable Go map.
+func cloneVars(in map[string]any) map[string]any {
+	clones := map[*value.Ref]*value.Ref{}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = value.CloneRefs(v, clones)
 	}
+	return out
 }

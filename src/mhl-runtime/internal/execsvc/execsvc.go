@@ -29,6 +29,7 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
@@ -254,7 +255,7 @@ func Run(req Request) (*Result, error) {
 	// *runtime.OutputContractError, never a partial result.
 	projectVars := func(finalVars map[string]any, instanceID string) (map[string]any, error) {
 		if pipeline.Output == nil {
-			return publicVars(finalVars), nil
+			return publicVars(finalVars)
 		}
 		mem := memContextFor(memInit, pipeline.Name, instanceID)
 		projected, err := interpreter.EvalOutputs(runCtx, prog, pipeline.Output, file, out, store, jsonStore, mem, contextView, finalVars)
@@ -266,7 +267,7 @@ func Run(req Request) (*Result, error) {
 				return nil, &runtime.OutputContractError{Pipeline: pipeline.Name, Type: pipeline.OutputTypeName, Err: err}
 			}
 		}
-		return projected, nil
+		return value.MaterializeVars(projected)
 	}
 
 	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
@@ -426,7 +427,7 @@ func Run(req Request) (*Result, error) {
 		// resume that completes the run evaluates the real projection. Same
 		// reasoning excludes it from session_end/stop_failure: a paused run
 		// isn't finished, in either direction.
-		vars := publicVars(res.FinalVars)
+		vars := pausedVars(res.FinalVars)
 		if !res.Paused {
 			if err := persistContextResult(resultSink, pipeline, res.FinalVars); err != nil {
 				return nil, stopFailure(err, "default")
@@ -485,7 +486,7 @@ func Run(req Request) (*Result, error) {
 	}
 	// As in the non-loop path: a paused loop reports its partial state, not the
 	// `output:` projection, which is evaluated only once the run terminates.
-	vars := publicVars(res.FinalVars)
+	vars := pausedVars(res.FinalVars)
 	if !paused {
 		if err := persistContextResult(loopResultSink, pipeline, res.FinalVars); err != nil {
 			return nil, stopFailure(err, loopInstance)
@@ -536,10 +537,14 @@ func pipelineVarsInit(prog *ast.Program, pipelineName, file string, out io.Write
 
 // publicVars strips the runtime's own bookkeeping keys (e.g. __last_step) so
 // what a caller sees — Result.Vars and the persisted result.json alike — is
-// only the pipeline's declared inputs and vars. Returns nil for nil.
-func publicVars(vars map[string]any) map[string]any {
+// only the pipeline's declared inputs and vars. Returns nil for nil. Ref
+// objects are materialized (value.MaterializeVars): a result leaves the
+// interpreter, so it is plain data — and RedactVars, which walks plain
+// maps, can then mask a secret held inside one. A ref cycle has no plain
+// form and is an error.
+func publicVars(vars map[string]any) (map[string]any, error) {
 	if vars == nil {
-		return nil
+		return nil, nil
 	}
 	clean := make(map[string]any, len(vars))
 	for k, v := range vars {
@@ -547,6 +552,22 @@ func publicVars(vars map[string]any) map[string]any {
 			continue
 		}
 		clean[k] = v
+	}
+	return value.MaterializeVars(clean)
+}
+
+// pausedVars is the display-only view of a paused run's partial state:
+// publicVars, except a ref cycle is shown as "[circular ref]" rather than
+// failing — a pause isn't a result, and the checkpoint keeps the cycle.
+func pausedVars(vars map[string]any) map[string]any {
+	if vars == nil {
+		return nil
+	}
+	clean := make(map[string]any, len(vars))
+	for k, v := range vars {
+		if !strings.HasPrefix(k, "__") {
+			clean[k] = value.MaterializeLossy(v)
+		}
 	}
 	return clean
 }
@@ -560,12 +581,9 @@ func persistContextResult(store runtime.StateStore, pipeline runtime.Pipeline, f
 	if pipeline.Context == nil || finalVars == nil {
 		return nil
 	}
-	clean := make(map[string]any, len(finalVars))
-	for k, v := range finalVars {
-		if strings.HasPrefix(k, "__") {
-			continue
-		}
-		clean[k] = v
+	clean, err := publicVars(finalVars)
+	if err != nil {
+		return err
 	}
 	return store.WriteResult(pipeline.Name, clean)
 }

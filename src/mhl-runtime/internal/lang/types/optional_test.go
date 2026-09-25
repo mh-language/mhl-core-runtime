@@ -112,3 +112,20 @@ type Out = { findings: Finding[], meta: { note?: string, id: string } }
 		t.Fatalf("a nested required field is still required, got %v", err)
 	}
 }
+
+type fakeRef struct{ fields map[string]any }
+
+func (f fakeRef) ObjectFields() map[string]any { return f.fields }
+
+func TestCheckTreatsARefAsAnObject(t *testing.T) {
+	shape := types.ObjectOf(map[string]types.Type{"n": types.Number})
+	if err := types.Check("r", shape, fakeRef{map[string]any{"n": 1.0}}); err != nil {
+		t.Fatalf("a ref whose fields match passes: %v", err)
+	}
+	if err := types.Check("r", shape, fakeRef{map[string]any{"n": "x"}}); err == nil || !strings.Contains(err.Error(), "r.n must be number") {
+		t.Fatalf("a ref's fields are checked, got %v", err)
+	}
+	if ty, ok := types.Of(fakeRef{}); !ok || ty.Kind != types.ObjectKind {
+		t.Fatalf("Of(ref) = %v, %v", ty, ok)
+	}
+}

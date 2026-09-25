@@ -39,3 +39,5 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
   vocabulary
 - [type_introspection/](type_introspection/README.md) — `type_of()` and the `is_*` predicates
 - [tool_scope/](tool_scope/README.md) — `const` and `var` declarations shared by methods of one `tool` call
+- [value_vs_ref/](value_vs_ref/README.md) — objects/arrays are values (copied); `ref { ... }`
+  objects are shared and keep their identity across a resume

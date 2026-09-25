@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/extension"
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
@@ -564,7 +565,8 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return applyTrailers(ctx, v, p.Ops[1:], depth)
+		v, err = applyTrailers(ctx, v, p.Ops[1:], depth)
+		return value.DeepCopy(v), err
 	}
 	if p.Primary.Ident != "" && !isBoundVar(ctx, p.Primary.Ident) && len(p.Ops) >= 2 && p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[1].Call != nil {
 		name := p.Primary.Ident
@@ -670,7 +672,16 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return applyTrailers(ctx, base, p.Ops, depth)
+	v, err := applyTrailers(ctx, base, p.Ops, depth)
+	if err != nil || p.Primary.Ident == "" {
+		return v, err
+	}
+	// A plain object/array is a value: reading a variable (or a part of
+	// one) yields an independent copy, so `b = a` or `f(a)` never lets two
+	// names share — and mutate — one structure. A `ref { ... }` inside it is
+	// shared, not copied (value.DeepCopy). Writes don't come through here:
+	// execAssign walks the stored value itself.
+	return value.DeepCopy(v), nil
 }
 
 // evalSelfPipelineRef reads `self.name` — a pipeline-scoped `input`, `var`,
@@ -946,6 +957,11 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 	v := base
 	for i := 0; i < len(ops); i++ {
 		op := ops[i]
+		// A ref object reads, indexes and answers methods exactly like the
+		// plain object its fields form; only its identity differs.
+		if r, ok := v.(*value.Ref); ok && op.Call == nil {
+			v = r.Fields
+		}
 		switch {
 		case op.Member != "" && i+1 < len(ops) && ops[i+1].Call != nil:
 			// Optional chaining: `x?.method()` on a null `x` collapses the
@@ -1047,6 +1063,7 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 // reusing get_index()'s (callValueMethod) so that method's existing,
 // test-asserted error strings stay untouched.
 func resolveIndexKey(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int) (any, error) {
+	receiver = unref(receiver)
 	idxVal, err := evalExprAt(ctx, indexExpr, depth)
 	if err != nil {
 		return nil, err
@@ -1081,6 +1098,7 @@ func resolveIndexKey(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int)
 // key, unlike the static `.field` trailer which only accepts a literal
 // identifier known at parse time. See resolveIndexKey for key validation.
 func indexRead(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int) (any, error) {
+	receiver = unref(receiver)
 	key, err := resolveIndexKey(ctx, receiver, indexExpr, depth)
 	if err != nil {
 		return nil, err
@@ -1107,6 +1125,7 @@ func indexRead(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int) (any,
 // the rest of the chain the same way `x?.name` does. A key whose *type* is
 // wrong for the receiver is still returned as an error.
 func optionalIndexRead(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth int) (value any, present bool, err error) {
+	receiver = unref(receiver)
 	idxVal, err := evalExprAt(ctx, indexExpr, depth)
 	if err != nil {
 		return nil, false, err
@@ -1144,6 +1163,7 @@ func optionalIndexRead(ctx *evalCtx, receiver any, indexExpr *ast.Expr, depth in
 // same value, exactly like the array-only behavior this generalizes (see
 // execAssign, exec.go).
 func indexWrite(ctx *evalCtx, receiver any, indexExpr *ast.Expr, value any, depth int) error {
+	receiver = unref(receiver)
 	key, err := resolveIndexKey(ctx, receiver, indexExpr, depth)
 	if err != nil {
 		return err
@@ -1231,6 +1251,7 @@ func sliceBoundValue(ctx *evalCtx, bound *ast.SliceBound, def, size, depth int) 
 // added alongside it since it's free once size() exists and is what
 // language-design.md's own pipeline example (§8) expects.
 func callValueMethod(receiver any, name string, args []any, depth int) (any, error) {
+	receiver = unref(receiver)
 	size := func() (int, error) {
 		switch v := receiver.(type) {
 		case []any:
@@ -1913,6 +1934,8 @@ func evalPrimary(ctx *evalCtx, p *ast.Primary, depth int) (any, error) {
 		return evalIfExpr(ctx, p.IfExpr, depth)
 	case p.Match != nil:
 		return evalMatchExpr(ctx, p.Match, depth)
+	case p.Ref != nil:
+		return evalRefExpr(ctx, p.Ref, depth)
 	case p.Ident != "":
 		if v, ok := ctx.env[p.Ident]; ok {
 			return v, nil
@@ -1972,7 +1995,41 @@ func typeName(v any) string {
 		return "task"
 	case enumValue:
 		return "enum"
+	case *value.Ref:
+		return "object"
 	default:
 		return fmt.Sprintf("%T", v)
+	}
+}
+
+// unref returns a ref object's field map, and any other value unchanged.
+func unref(v any) any {
+	if r, ok := v.(*value.Ref); ok {
+		return r.Fields
+	}
+	return v
+}
+
+// evalRefExpr creates a reference object from `ref { ... }` or
+// `ref (expr)`: the object's fields are a copy of the evaluated object, so
+// the new ref shares nothing with where they came from.
+func evalRefExpr(ctx *evalCtx, r *ast.RefExpr, depth int) (any, error) {
+	var v any
+	var err error
+	if r.Object != nil {
+		v, err = evalPrimary(ctx, &ast.Primary{Object: r.Object}, depth)
+	} else {
+		v, err = evalExprAt(ctx, r.Sub, depth)
+	}
+	if err != nil {
+		return nil, err
+	}
+	switch t := v.(type) {
+	case map[string]any:
+		return value.NewRef(value.DeepCopy(t).(map[string]any)), nil
+	case *value.Ref:
+		return nil, fmt.Errorf("ref: the value is already a ref object — assign it to share it")
+	default:
+		return nil, fmt.Errorf("ref: needs an object, got %s", typeName(v))
 	}
 }

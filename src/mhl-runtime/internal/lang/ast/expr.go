@@ -198,8 +198,23 @@ type Primary struct {
 	Lambda   *Lambda    `parser:"| @@"`
 	IfExpr   *IfExpr    `parser:"| @@"`
 	Match    *MatchExpr `parser:"| @@"`
+	Ref      *RefExpr   `parser:"| @@" digest:"omitzero"`
 	Ident    string     `parser:"| @Ident"`
 	Sub      *Expr      `parser:"| '(' @@ ')' )"`
+}
+
+// RefExpr creates a reference object: `ref { name: "a" }` from an object
+// literal, or `ref (expr)` from any expression that evaluates to an object
+// (copied). Unlike a plain `{ ... }` — a value, copied whenever a variable
+// holding it is read — a reference object is shared: every name holding it
+// sees every mutation, and its identity survives a checkpoint/resume (see
+// internal/engine/value). `ref` is contextual: only `ref {` / `ref (` start
+// one, so `ref` stays usable as an identifier or argument name
+// (`git.rev_parse(ref: "HEAD")`).
+type RefExpr struct {
+	Pos    lexer.Position
+	Object *Object `parser:"'ref' ( @@"`
+	Sub    *Expr   `parser:"| '(' @@ ')' )"`
 }
 
 // MatchExpr is an expression-position multi-way branch:

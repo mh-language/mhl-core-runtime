@@ -51,6 +51,9 @@ func evalExtensionCall(ctx *evalCtx, decl *ast.Declaration, member string, call 
 	if err != nil {
 		return nil, err
 	}
+	if args, err = args.materialized(); err != nil {
+		return nil, err
+	}
 
 	return reg.Call(goctxOf(ctx), extension.CallRequest{
 		Declaration: edecl,

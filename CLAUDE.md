@@ -230,6 +230,17 @@ Key packages:
   projected onto `runtime.Pipeline.MaxIterations` in `PipelineFromAST` (an explicit
   `repeat` block's `max_iterations` still wins). `lint.checkLoopMax` rejects a non-positive
   value, use without the `loop` prefix, and use alongside `repeat { max_iterations }`.
+- **`internal/engine/value`** — value vs. reference semantics. Plain `[]any`/`map[string]any`
+  are values: `interpreter.evalPostfix` returns `value.DeepCopy` of any variable read, so names
+  never alias (writes go through `execAssign` on the stored value). `ref { ... }` / `ref (expr)`
+  (`ast.RefExpr`) builds a `*value.Ref` (ID + Fields), shared by pointer; `applyTrailers`/index
+  helpers/`callValueMethod` `unref` it. Identity is persisted: `RedactVarsForCheckpoint` runs
+  `value.EncodeRefs` and `RehydrateVars` runs `value.DecodeRefs` (StateSchemaVersion 2), so both
+  the disk store and an `extension store` keep it. A Ref never leaves the interpreter: native-op/
+  extension args (`callArgs.materialized`), `memory`/`mem` writes and execsvc results
+  (`publicVars`) are `value.Materialize`d; `Ref.MarshalJSON` covers json.Marshal paths.
+  `parallel` branches get `value.CloneRefs` copies and `runtime.mergeRefFields` merges them by
+  ID + field (same field, different values → conflict).
 - **`internal/execsvc`** — `Run(Request) (*Result, error)`: the reusable "run a pipeline,
   get a structured result" entry point extracted from `cli.runPipeline`. `internal/cli`'s
   `run` and (later) the MCP/A2A server adapters call it. `Request.Context` carries the

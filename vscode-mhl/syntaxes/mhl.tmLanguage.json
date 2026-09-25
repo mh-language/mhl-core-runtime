@@ -65,12 +65,87 @@
     "declarations": {
       "patterns": [
         {
+          "comment": "type alias declaration: `type ReviewInput = { ... }` — the declared name and its right-hand side are types",
+          "begin": "\\b(type)[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*(=)[ \\t]*",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.declaration.mhl"
+            },
+            "2": {
+              "name": "entity.name.type.mhl"
+            },
+            "3": {
+              "name": "keyword.operator.mhl"
+            }
+          },
+          "end": "(?=//)|$",
+          "patterns": [
+            {
+              "include": "#type-annotation"
+            }
+          ]
+        },
+        {
+          "comment": "enum declaration name: `enum Severity { ... }`",
+          "match": "\\b(enum)[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.declaration.mhl"
+            },
+            "2": {
+              "name": "entity.name.type.mhl"
+            }
+          }
+        },
+        {
+          "comment": "result type with no param: `workflow Broken: Status {`",
+          "match": "\\b(pipeline|workflow)[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*:[ \\t]*([a-zA-Z_][a-zA-Z0-9_]*(?:\\[\\])*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.declaration.mhl"
+            },
+            "2": {
+              "name": "entity.name.function.mhl"
+            },
+            "3": {
+              "name": "entity.name.type.mhl"
+            }
+          }
+        },
+        {
+          "comment": "per-line pipeline input: `input level: Severity = Severity.Low`",
+          "begin": "\\b(input)[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*(:)[ \\t]*",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.declaration.mhl"
+            },
+            "2": {
+              "name": "entity.name.tag.property.mhl"
+            }
+          },
+          "end": "(?=[ \\t]*(?:=|//))|$",
+          "patterns": [
+            {
+              "include": "#type-annotation"
+            }
+          ]
+        },
+        {
           "name": "storage.type.declaration.mhl",
           "match": "\\b(from|import|as|export|extension|extensible|agent|router|memory|tool|loop|partial|pipeline|workflow|prompt|parallel|step|route|timeout|input|test|describe|type|enum)\\b"
         },
         {
           "comment": "`max <N>` header clause on a `loop pipeline` / `loop workflow` — matched only after the declaration name so it never lights up an ordinary identifier, `.max(` call, or `max:` key",
           "match": "(?<=\\b(?:pipeline|workflow)[ \\t]{1,64}[a-zA-Z_][a-zA-Z0-9_]{0,128}[ \\t]{1,64})(max)(?=[ \\t]+[0-9])",
+          "captures": {
+            "1": {
+              "name": "storage.type.declaration.mhl"
+            }
+          }
+        },
+        {
+          "comment": "`max <N>` after a typed signature — workflow W(req: In): Out max 3 { — `max N {` only ever occurs in a declaration header",
+          "match": "(?<=[)\\]a-zA-Z0-9_])[ \\t]+(max)(?=[ \\t]+[0-9]+[ \\t]*\\{)",
           "captures": {
             "1": {
               "name": "storage.type.declaration.mhl"
@@ -93,6 +168,11 @@
         {
           "name": "keyword.control.mhl",
           "match": "\\b(if|else|while|for|in|try|catch|finally|fail|pause|complete|return|mem|var|const|match|goto|break|spawn|wait|self)\\b"
+        },
+        {
+          "comment": "`ref { ... }` / `ref (expr)` — contextual: a bare `ref` stays an identifier",
+          "name": "keyword.other.ref.mhl",
+          "match": "\\bref(?=\\s*[{(])"
         }
       ]
     },
@@ -219,6 +299,30 @@
     "function-parameters": {
       "patterns": [
         {
+          "comment": "A typed pipeline/workflow signature: workflow Review(req: ReviewInput): ReviewOutput { ... }",
+          "begin": "\\b(?:(partial)[ \\t]+)?(?:(loop)[ \\t]+)?(pipeline|workflow)[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\([ \\t]*",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.declaration.mhl"
+            },
+            "2": {
+              "name": "storage.type.declaration.mhl"
+            },
+            "3": {
+              "name": "storage.type.declaration.mhl"
+            },
+            "4": {
+              "name": "entity.name.function.mhl"
+            }
+          },
+          "end": "\\)",
+          "patterns": [
+            {
+              "include": "#parameter-list"
+            }
+          ]
+        },
+        {
           "comment": "A workflow-local reusable route declaration: route Generate(artifact: string) { ... }",
           "begin": "\\b(route)[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\([ \\t]*",
           "beginCaptures": {
@@ -315,10 +419,34 @@
         },
         {
           "begin": ":[ \\t]*",
-          "end": "(?=,|\\))",
+          "end": "(?=,|\\)|=)",
           "patterns": [
             {
               "include": "#type-annotation"
+            }
+          ]
+        },
+        {
+          "comment": "a parameter's default value: `lang: string = \"en\"` — an expression, not part of the type",
+          "begin": "=[ \\t]*",
+          "beginCaptures": {
+            "0": {
+              "name": "keyword.operator.mhl"
+            }
+          },
+          "end": "(?=,|\\))",
+          "patterns": [
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#constants"
+            },
+            {
+              "include": "#calls"
             }
           ]
         }
@@ -332,6 +460,11 @@
         },
         {
           "include": "#type-object-shape"
+        },
+        {
+          "comment": "a user-declared type (`type X = ...` alias or `enum`) — any other identifier in a type position",
+          "name": "entity.name.type.mhl",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
         }
       ]
     },
@@ -341,11 +474,16 @@
       "patterns": [
         {
           "name": "entity.name.tag.property.mhl",
-          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=[ \\t]*:)"
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=[ \\t]*\\??[ \\t]*:)"
+        },
+        {
+          "comment": "optional shape field marker: base?: string",
+          "name": "keyword.operator.optional.mhl",
+          "match": "\\?(?=[ \\t]*:)"
         },
         {
           "begin": ":[ \\t]*",
-          "end": "(?=,|\\})",
+          "end": "(?=,|\\})|$",
           "patterns": [
             {
               "include": "#type-annotation"
@@ -358,7 +496,7 @@
       "patterns": [
         {
           "name": "entity.name.tag.property.mhl",
-          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*:)"
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\??\\s*:)"
         },
         {
           "name": "variable.other.mhl",
@@ -373,6 +511,15 @@
           "captures": {
             "1": {
               "name": "storage.type.mhl"
+            }
+          }
+        },
+        {
+          "comment": "a user-declared return/result type right after a parameter list — `workflow W(req: In): Out`, `m(p: Point): Point ->` (builtins are the rule above)",
+          "match": "(?<=\\))[ \\t]*:[ \\t]*(?!(?:string|number|int|integer|float|bool|boolean|array|object|any|prompt|void)\\b)([a-zA-Z_][a-zA-Z0-9_]*(?:\\[\\])*)",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.mhl"
             }
           }
         },

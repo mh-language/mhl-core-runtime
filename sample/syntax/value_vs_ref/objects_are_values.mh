@@ -1,0 +1,27 @@
+// A plain object or array is a value: assigning it, passing it, or putting
+// it inside another object hands over an independent copy. Changing the
+// copy never changes the original.
+test objects_are_values {
+    describe assignment_copies {
+        var a = { x: 1 }
+        var b = a
+        b["x"] = 2
+        are_equal(a.x, 1)
+        are_equal(b.x, 2)
+    }
+    describe a_nested_part_is_copied_too {
+        var a = { inner: { x: 1 } }
+        var part = a.inner
+        part["x"] = 2
+        are_equal(a.inner.x, 1)
+    }
+    describe a_lambda_gets_its_own_copy {
+        var a = [1, 2, 3]
+        var zero_first = (list) -> {
+            list[0] = 0
+            return list
+        }
+        are_equal(zero_first(a), [0, 2, 3])
+        are_equal(a, [1, 2, 3])
+    }
+}
