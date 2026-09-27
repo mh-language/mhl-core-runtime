@@ -938,6 +938,11 @@ func collectVarNames(prog *ast.Program, statements []*ast.Statement, seed map[st
 				walk(s.ForIn.Body)
 			case s.Try != nil:
 				walk(s.Try.Body)
+				if s.Try.ErrName != "" {
+					if _, declared := known[s.Try.ErrName]; !declared {
+						known[s.Try.ErrName] = types.Any
+					}
+				}
 				walk(s.Try.Catch)
 				walk(s.Try.Finally)
 			}

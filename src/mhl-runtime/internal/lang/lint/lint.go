@@ -71,6 +71,7 @@ func Source(path, src string) []Finding {
 	findings = append(findings, checkRouterDeciderRef(path, merged)...)
 	findings = append(findings, checkRouterDecidable(path, merged)...)
 	findings = append(findings, checkRouterSelectBody(path, merged, aliases)...)
+	findings = append(findings, checkPipelineHookBody(path, merged, aliases)...)
 	findings = append(findings, checkToolBlocks(path, merged, aliases)...)
 	findings = append(findings, checkLoopStopWhen(path, merged)...)
 	findings = append(findings, checkLoopMax(path, merged)...)
