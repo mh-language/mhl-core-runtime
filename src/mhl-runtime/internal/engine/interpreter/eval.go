@@ -1718,6 +1718,19 @@ func callValueMethod(receiver any, name string, args []any, depth int) (any, err
 			}
 		}
 		return out, nil
+	case "enumerate":
+		arr, ok := receiver.([]any)
+		if !ok {
+			return nil, fmt.Errorf("enumerate() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 0 {
+			return nil, fmt.Errorf("enumerate() takes no arguments")
+		}
+		out := make([]any, len(arr))
+		for i, item := range arr {
+			out[i] = map[string]any{"index": float64(i), "value": item}
+		}
+		return out, nil
 	case "get":
 		obj, ok := receiver.(map[string]any)
 		if !ok {

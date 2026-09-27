@@ -248,7 +248,7 @@ optional     := expression "?." "[" expression "]"  // same, with a dynamic key
 coalesce     := expression "??" expression      // left unless it is null</code></pre>
         </section>
 
-        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort map reduce any all append join unique equals deep_equal slice interpolation optional chaining optional index dynamic key null coalescing get default match wildcard exhaustive enum">
+        <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort map reduce any all append join unique enumerate equals deep_equal slice interpolation optional chaining optional index dynamic key null coalescing get default match wildcard exhaustive enum">
           <div class="feature-head"><h2><span class="feature-num">03</span>Expressions and collections</h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">Expressions produce values. They compose inside variables, arguments, properties, conditions, returns, and string interpolation.</p>
 
@@ -281,7 +281,7 @@ var field  = record?.[name] ?? null      // no `is_object(record)` guard needed<
           <div class="method-grid">
             <article><h3>Common</h3><code>size()</code><code>is_empty()</code><code>equals()</code><code>deep_equal()</code><p>Strings, arrays, and objects. <code>equals</code> works on any value.</p></article>
             <article><h3>String</h3><code>split()</code><code>replace()</code><code>contains()</code><code>starts_with()</code><code>ends_with()</code><code>matches()</code><code>trim()</code><code>to_upper()</code><code>to_lower()</code><code>substring()</code><code>remove()</code><code>remove_content()</code><code>extract_content()</code></article>
-            <article><h3>Array</h3><code>get_index()</code><code>index_of()</code><code>contains()</code><code>filter()</code><code>find()</code><code>sort_by()</code><code>map()</code><code>reduce()</code><code>any()</code><code>all()</code><code>append()</code><code>join()</code><code>unique()</code></article>
+            <article><h3>Array</h3><code>get_index()</code><code>index_of()</code><code>contains()</code><code>filter()</code><code>find()</code><code>sort_by()</code><code>map()</code><code>reduce()</code><code>any()</code><code>all()</code><code>append()</code><code>join()</code><code>unique()</code><code>enumerate()</code></article>
             <article><h3>Object</h3><code>keys()</code><code>values()</code><code>get()</code><p>Keys are returned in stable order. <code>get(key, default?)</code> never raises on a missing field.</p></article>
           </div>
           <div class="tip-row"><span>SIGNATURES</span><p>Every method's parameters, types, and return value are in the <a href="Docs-Specification.dc.html#stdlib">specification’s standard-library clause</a>.</p></div>
