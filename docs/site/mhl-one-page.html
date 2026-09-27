@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MHL — A camada que conecta qualquer harness</title>
+  <meta name="description" content="Uma apresentação executiva do MHL: uma camada de orquestração que conecta workflows a qualquer AI harness.">
+  <link rel="icon" href="assets/mhl-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #f7f8f7;
+      --muted: #a8b0bc;
+      --muted-2: #707987;
+      --bg: #090b10;
+      --panel: rgba(18, 22, 31, .82);
+      --line: rgba(255,255,255,.12);
+      --orange: #ff633b;
+      --orange-soft: #ff9b77;
+      --violet: #655bff;
+      --green: #68e5b2;
+      --mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      --sans: Manrope, ui-sans-serif, system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font: 16px/1.5 var(--sans);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .25;
+      background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 76px 76px;
+      mask-image: radial-gradient(ellipse at 65% 45%, black 0%, transparent 72%);
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; }
+
+    .page { min-height: 100vh; position: relative; isolation: isolate; }
+    .glow { position: absolute; border-radius: 999px; filter: blur(80px); pointer-events: none; z-index: -1; }
+    .glow.orange { width: 340px; height: 340px; right: 7vw; top: 2vh; background: rgba(255, 82, 43, .14); }
+    .glow.violet { width: 300px; height: 300px; right: 31vw; bottom: 8vh; background: rgba(86, 73, 255, .12); }
+
+    .topbar {
+      width: min(1240px, calc(100% - 64px));
+      height: 78px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .brand img { width: 32px; height: 32px; object-fit: contain; }
+    .brand-copy { display: grid; gap: 2px; line-height: 1; }
+    .brand-copy strong { font-size: 16px; letter-spacing: -.03em; }
+    .brand-copy span { color: var(--muted-2); font: 9px var(--mono); letter-spacing: .11em; }
+    .topbar-right { display: flex; align-items: center; gap: 14px; color: var(--muted-2); font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .status { display: inline-flex; align-items: center; gap: 7px; }
+    .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 5px rgba(104,229,178,.09); }
+    .version { padding-left: 14px; border-left: 1px solid var(--line); }
+
+    main { width: min(1240px, calc(100% - 64px)); margin: 0 auto; }
+    .hero { min-height: calc(100vh - 78px); display: grid; grid-template-columns: minmax(280px, .8fr) minmax(540px, 1.2fr); align-items: center; gap: clamp(40px, 7vw, 116px); padding: 50px 0 70px; }
+    .eyebrow { margin: 0 0 22px; color: var(--orange-soft); font: 500 11px var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 0; max-width: 9.5ch; font-size: clamp(48px, 6.5vw, 86px); line-height: .98; letter-spacing: -.07em; font-weight: 800; text-wrap: balance; }
+    h1 em { color: var(--orange); font-style: normal; }
+    .hero-copy > p:not(.eyebrow) { max-width: 39ch; color: var(--muted); font-size: clamp(16px, 1.55vw, 20px); line-height: 1.62; margin: 27px 0 0; }
+    .hero-note { display: flex; align-items: center; gap: 12px; margin-top: 34px; color: var(--muted-2); font: 11px var(--mono); }
+    .hero-note span { width: 28px; height: 1px; background: var(--orange); }
+    .hero-note strong { color: var(--ink); font-weight: 500; }
+
+    .network-shell { position: relative; min-height: 600px; display: grid; place-items: center; }
+    .network-shell::before { content: ''; position: absolute; width: min(560px, 100%); aspect-ratio: 1; border: 1px solid rgba(255,255,255,.06); border-radius: 50%; box-shadow: 0 0 0 60px rgba(255,255,255,.012), 0 0 0 120px rgba(255,255,255,.008); }
+    .network-shell::after { content: ''; position: absolute; width: 1px; height: 100%; top: 0; background: linear-gradient(transparent, rgba(255,255,255,.08), transparent); opacity: .5; }
+    .hub { width: 174px; height: 174px; position: relative; z-index: 4; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(circle at 38% 32%, #232b3a, #111720 65%); border: 1px solid rgba(255,255,255,.21); box-shadow: 0 0 0 13px rgba(255,255,255,.025), 0 0 70px rgba(255, 99, 59, .21), inset 0 0 40px rgba(255,255,255,.04); animation: hub-breathe 4.8s ease-in-out infinite; }
+    .hub::before { content: ''; position: absolute; inset: -9px; border: 1px solid rgba(255,99,59,.34); border-radius: 50%; border-top-color: transparent; border-bottom-color: transparent; animation: spin 12s linear infinite; }
+    .hub::after { content: ''; position: absolute; width: 9px; height: 9px; top: 16px; right: 26px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 18px var(--orange); }
+    .hub img { width: 82px; height: 82px; object-fit: contain; filter: drop-shadow(0 0 18px rgba(255,99,59,.2)); }
+    .hub-label { position: absolute; bottom: -42px; color: var(--muted-2); font: 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+
+    .network-lines { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+    .network-path { fill: none; stroke: url(#line-gradient); stroke-width: 1.7; stroke-dasharray: 8 12; stroke-linecap: round; opacity: .95; marker-end: url(#arrowhead); animation: line-travel 2.2s linear infinite; }
+    .network-path:nth-of-type(2) { animation-delay: .35s; }
+    .network-path:nth-of-type(3) { animation-delay: .7s; }
+    .network-path:nth-of-type(4) { animation-delay: 1.05s; }
+    .network-path:nth-of-type(5) { animation-delay: 1.4s; }
+
+    .harness { position: absolute; z-index: 3; width: 146px; padding: 12px 13px 13px; display: grid; grid-template-columns: 29px 1fr; gap: 9px; align-items: center; background: rgba(16,20,29,.92); border: 1px solid var(--line); border-radius: 13px; box-shadow: 0 18px 36px rgba(0,0,0,.25); transition: transform .25s ease, border-color .25s ease, background .25s ease; }
+    .harness:hover, .harness.is-active { transform: translateY(-4px); border-color: rgba(255,155,119,.7); background: rgba(28,31,41,.96); }
+    .harness-icon { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 9px; color: #fff; font: 700 11px var(--mono); }
+    .harness strong { display: block; font-size: 12px; letter-spacing: -.02em; }
+    .harness span { display: block; margin-top: 1px; color: var(--muted-2); font: 9px var(--mono); }
+    .claude { top: 5%; left: 4%; }.claude .harness-icon { background: #c66a3d; }
+    .devin { top: 16%; right: 1%; }.devin .harness-icon { background: #3d79ec; }
+    .codex { right: 0; bottom: 16%; }.codex .harness-icon { background: #24a678; }
+    .kimi { left: 6%; bottom: 9%; }.kimi .harness-icon { background: #7a60ee; }
+    .more { left: 46%; bottom: 0; transform: translateX(-50%); grid-template-columns: 1fr; text-align: center; width: auto; min-width: 158px; padding: 9px 13px; border-style: dashed; color: var(--muted); }
+    .more:hover, .more.is-active { transform: translate(-50%, -4px); }
+    .more span { margin: 0; }
+
+    .network-caption { position: absolute; right: 2%; top: 50%; transform: translateY(-50%) rotate(90deg); color: var(--muted-2); font: 9px var(--mono); letter-spacing: .17em; text-transform: uppercase; }
+    .legend { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); display: flex; gap: 13px; color: var(--muted-2); font: 9px var(--mono); white-space: nowrap; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 14px; height: 1px; background: var(--orange); display: inline-block; }
+    .legend b { width: 5px; height: 5px; background: var(--orange-soft); border-radius: 50%; display: inline-block; }
+
+    .bottom-strip { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; border-top: 1px solid var(--line); padding-top: 19px; margin-top: -3px; }
+    .proof { display: flex; align-items: baseline; gap: 11px; color: var(--muted); font-size: 11px; }
+    .proof strong { color: var(--ink); font: 500 11px var(--mono); letter-spacing: .04em; }
+    .proof span { color: var(--muted-2); }
+
+    .senpai-hero { position: relative; min-height: 100vh; display: grid; align-content: center; padding: 100px 0 120px; border-top: 1px solid var(--line); }
+    .senpai-heading { margin-bottom: 42px; }
+    .senpai-title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; }
+    .senpai-logo-standalone { flex: 0 0 auto; width: 220px; height: 220px; padding: 0; object-fit: contain; filter: drop-shadow(0 0 22px rgba(255,99,59,.25)) drop-shadow(0 0 48px rgba(101,91,255,.16)); transform-origin: center; animation: senpai-logo-breathe 4.8s ease-in-out infinite; }
+    .senpai-heading h2 { margin: 0; max-width: 13ch; font-size: clamp(42px, 5vw, 70px); line-height: .99; letter-spacing: -.065em; }
+    .senpai-heading h2 em { color: var(--orange); font-style: normal; }
+    .senpai-heading p:not(.eyebrow) { max-width: 56ch; margin: 20px 0 0; color: var(--muted); font-size: 16px; line-height: 1.65; }
+    .senpai-grid { position: relative; display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); align-items: center; gap: clamp(34px, 6vw, 86px); }
+    .code-card { position: relative; min-width: 0; border: 1px solid rgba(255,255,255,.15); border-radius: 16px; overflow: hidden; background: #0d1119; box-shadow: 0 28px 75px rgba(0,0,0,.28); }
+    .code-card::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, rgba(255,99,59,.05), transparent 32%, rgba(101,91,255,.05)); }
+    .window-bar { height: 42px; display: flex; align-items: center; gap: 7px; padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,.1); color: var(--muted-2); font: 10px var(--mono); }
+    .window-bar i { width: 7px; height: 7px; border-radius: 50%; background: #f65b51; }.window-bar i:nth-child(2) { background: #f5b94e; }.window-bar i:nth-child(3) { background: #4bc17e; }
+    .window-bar span { margin-left: 9px; letter-spacing: .06em; }
+    .code-body { padding: 23px 22px 25px; overflow: hidden; font: 12px/1.42 var(--mono); tab-size: 2; white-space: normal; }
+    .code-line { display: block; min-width: 0; line-height: 1.42; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .code-line:has(.line-number:only-child) { line-height: .58; }
+    .line-number { display: inline-block; width: 27px; color: #3f4b5b; user-select: none; }
+    .tok-comment { color: #667586; }.tok-key { color: #ff9071; }.tok-name { color: #ffd080; }.tok-string { color: #b9dc9a; }.tok-prop { color: #87cae6; }.tok-number { color: #d4abf5; }.tok-fn { color: #f2cf78; }.tok-punct { color: #8d9ba9; }.tok-muted { color: #91a0af; }
+    .code-callout { position: absolute; top: 15px; right: 16px; z-index: 1; display: flex; align-items: center; gap: 7px; color: var(--orange-soft); font: 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .code-callout::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 12px var(--orange); }
+    .screen-card { position: relative; min-width: 0; width: 100%; padding: 10px; border: 1px solid rgba(255,255,255,.15); border-radius: 16px; background: #11151d; box-shadow: 0 28px 75px rgba(0,0,0,.32); transform: rotate(1deg) scale(1.045); z-index: 2; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+    .screen-card::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: 16px; background: linear-gradient(135deg, rgba(255,99,59,.45), transparent 35%, rgba(101,91,255,.42)); opacity: .8; filter: blur(15px); }
+    .screen-image { display: block; width: 100%; height: auto; border-radius: 9px; }
+    .screen-play { position: absolute; top: 24px; left: 24px; display: inline-flex; align-items: center; gap: 8px; padding: 8px 11px; border: 1px solid rgba(255,255,255,.2); border-radius: 999px; color: #fff; background: rgba(9,11,16,.78); font: 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; opacity: .9; transition: transform .2s ease, background .2s ease; }
+    .screen-play span { color: var(--orange-soft); font-size: 11px; }
+    .screen-card:hover .screen-play, .screen-card:focus-visible .screen-play { transform: translateY(-2px); background: rgba(255,99,59,.88); }
+    .screen-card:focus-visible { outline: 2px solid var(--orange-soft); outline-offset: 5px; }
+    .screen-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 7px 3px; color: var(--muted); font: 10px var(--mono); }
+    .screen-caption strong { color: var(--ink); font-weight: 500; }
+    .senpai-bridge { position: absolute; left: calc(50% - 23px); top: 53%; z-index: 5; width: 55px; height: 32px; transform: translate(-50%, -50%); pointer-events: none; }
+    .senpai-bridge::before { content: ''; position: absolute; left: 0; top: 15px; width: 43px; height: 1px; background: linear-gradient(90deg, var(--orange), var(--orange-soft)); box-shadow: 0 0 10px rgba(255,99,59,.8); }
+    .senpai-bridge::after { content: ''; position: absolute; right: 3px; top: 10px; width: 10px; height: 10px; border-top: 1px solid var(--orange-soft); border-right: 1px solid var(--orange-soft); transform: rotate(45deg); }
+    .bridge-label { position: absolute; left: -35px; top: -11px; width: 128px; color: var(--orange-soft); font: 9px var(--mono); letter-spacing: .09em; text-align: center; text-transform: uppercase; }
+    .senpai-proof { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 38px; }
+    .senpai-proof div { padding: 15px 16px; border: 1px solid var(--line); border-radius: 10px; background: rgba(18,22,31,.55); }
+    .senpai-proof strong { display: block; color: var(--orange-soft); font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .senpai-proof span { display: block; margin-top: 7px; color: var(--muted); font-size: 12px; }
+    .governance-section { padding: 100px 0 120px; border-top: 1px solid var(--line); }
+    .governance-head { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: end; gap: 52px; margin-bottom: 36px; }
+    .governance-head h2 { max-width: 12ch; margin: 0; font-size: clamp(40px, 5vw, 66px); line-height: .99; letter-spacing: -.065em; }
+    .governance-head h2 em { color: var(--orange); font-style: normal; }
+    .governance-copy p { max-width: 51ch; margin: 0; color: var(--muted); font-size: 16px; line-height: 1.65; }
+    .metrics-frame { position: relative; padding: 11px; border: 1px solid rgba(255,255,255,.15); border-radius: 17px; background: #11151d; box-shadow: 0 28px 75px rgba(0,0,0,.32); }
+    .metrics-frame::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: 17px; background: linear-gradient(100deg, rgba(255,99,59,.42), transparent 32%, rgba(101,91,255,.36)); opacity: .7; filter: blur(15px); }
+    .metrics-image { display: block; width: 100%; height: auto; border-radius: 9px; }
+    .metrics-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 7px 3px; color: var(--muted); font: 10px var(--mono); }
+    .metrics-caption strong { color: var(--ink); font-weight: 500; }
+    .metrics-insights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 24px; }
+    .metrics-insights div { padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: rgba(18,22,31,.55); }
+    .metrics-insights strong { display: block; color: var(--orange-soft); font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .metrics-insights span { display: block; margin-top: 7px; color: var(--muted); font-size: 12px; }
+    .planning-section { padding: 100px 0 130px; border-top: 1px solid var(--line); }
+    .planning-layout { display: grid; grid-template-columns: minmax(260px, .7fr) minmax(0, 1.3fr); align-items: center; gap: clamp(36px, 6vw, 86px); }
+    .planning-copy h2 { max-width: 10ch; margin: 0; font-size: clamp(42px, 5vw, 68px); line-height: .99; letter-spacing: -.065em; }
+    .planning-copy h2 em { color: var(--orange); font-style: normal; }
+    .planning-copy > p:not(.eyebrow) { max-width: 38ch; margin: 22px 0 0; color: var(--muted); font-size: 16px; line-height: 1.65; }
+    .planning-flow { display: grid; gap: 8px; margin-top: 30px; }
+    .planning-flow div { display: grid; grid-template-columns: 25px 1fr; gap: 10px; align-items: start; color: var(--muted); font-size: 12px; }
+    .planning-flow b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; background: var(--orange); font: 10px var(--mono); }
+    .planning-flow div:nth-child(2) b { background: #715fff; }.planning-flow div:nth-child(3) b { background: #2ba87b; }
+    .planning-frame { position: relative; padding: 11px; border: 1px solid rgba(255,255,255,.15); border-radius: 17px; background: #11151d; box-shadow: 0 28px 75px rgba(0,0,0,.32); transform: scale(1.07); z-index: 2; }
+    .planning-frame::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: 17px; background: linear-gradient(120deg, rgba(255,99,59,.4), transparent 35%, rgba(101,91,255,.36)); opacity: .7; filter: blur(15px); }
+    .planning-image { display: block; width: 100%; height: auto; border-radius: 9px; }
+    .planning-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 7px 3px; color: var(--muted); font: 10px var(--mono); }
+    .planning-caption strong { color: var(--ink); font-weight: 500; }
+    .planning-tag { position: absolute; top: 26px; right: 26px; padding: 6px 9px; border: 1px solid rgba(255,99,59,.45); border-radius: 999px; color: var(--orange-soft); background: rgba(9,11,16,.8); font: 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .video-modal { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 28px; }
+    .video-modal[hidden] { display: none; }
+    .video-backdrop { position: absolute; inset: 0; background: rgba(3,5,8,.84); backdrop-filter: blur(14px); }
+    .video-dialog { position: relative; width: min(1040px, 100%); padding: 15px; border: 1px solid rgba(255,255,255,.18); border-radius: 17px; background: #11151d; box-shadow: 0 30px 90px rgba(0,0,0,.52); }
+    .video-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 4px 4px 14px; }
+    .video-dialog-head .eyebrow { margin: 0 0 3px; font-size: 9px; }
+    .video-dialog-head h2 { margin: 0; font-size: 21px; letter-spacing: -.035em; }
+    .video-close { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: rgba(255,255,255,.05); cursor: pointer; font-size: 22px; line-height: 1; }
+    .video-close:hover { color: #fff; border-color: var(--orange); background: var(--orange); }
+    .video-dialog video { display: block; width: 100%; max-height: 72vh; border-radius: 10px; background: #05070a; }
+    .video-error { display: none; margin: 12px 0 0; padding: 10px 12px; border: 1px solid rgba(255,99,59,.35); border-radius: 8px; color: var(--orange-soft); background: rgba(255,99,59,.08); font: 11px var(--mono); }
+    .video-error.is-visible { display: block; }
+    .feature-modal { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 22px; }
+    .feature-modal[hidden] { display: none; }
+    .feature-backdrop { position: absolute; inset: 0; background: rgba(3,5,8,.88); backdrop-filter: blur(14px); }
+    .feature-dialog { position: relative; display: flex; flex-direction: column; width: min(1480px, 100%); height: min(92vh, 930px); border: 1px solid rgba(255,255,255,.18); border-radius: 18px; background: #10141c; box-shadow: 0 30px 100px rgba(0,0,0,.55); overflow: hidden; }
+    .feature-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 21px 14px; border-bottom: 1px solid var(--line); }
+    .feature-dialog-head .eyebrow { margin: 0 0 3px; font-size: 9px; }
+    .feature-dialog-head h2 { margin: 0; font-size: 22px; letter-spacing: -.04em; }
+    .feature-tabs { display: flex; gap: 7px; padding: 12px 21px 0; }
+    .feature-tab { border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; color: var(--muted); background: rgba(255,255,255,.03); cursor: pointer; font: 10px var(--mono); }
+    .feature-tab:hover, .feature-tab.is-active { border-color: var(--orange); color: #fff; background: rgba(255,99,59,.13); }
+    .feature-stage { flex: 1; min-height: 0; padding: 16px 20px 12px; overflow: auto; }
+    .feature-canvas { position: relative; width: 100%; max-width: 1390px; margin: 0 auto; }
+    .feature-canvas[hidden] { display: none; }
+    .feature-canvas > img { display: block; width: 100%; height: auto; border: 1px solid rgba(255,255,255,.16); border-radius: 11px; box-shadow: 0 20px 55px rgba(0,0,0,.3); }
+    .annotation-lines { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+    .annotation-line { fill: none; stroke: var(--orange-soft); stroke-width: 1.6; stroke-dasharray: 7 8; opacity: .82; marker-end: url(#annotation-arrow); animation: annotation-travel 2s linear infinite; }
+    .annotation-line:nth-of-type(2) { animation-delay: .3s; }.annotation-line:nth-of-type(3) { animation-delay: .6s; }.annotation-line:nth-of-type(4) { animation-delay: .9s; }.annotation-line:nth-of-type(5) { animation-delay: 1.2s; }
+    .feature-callout { position: absolute; z-index: 3; width: max-content; max-width: 205px; padding: 9px 11px; border: 1px solid rgba(255,155,119,.38); border-radius: 9px; color: #fff; background: rgba(10,13,19,.92); box-shadow: 0 10px 26px rgba(0,0,0,.28); text-align: left; cursor: pointer; transition: transform .25s ease, border-color .25s ease, background .25s ease; }
+    .feature-callout strong { display: block; color: var(--orange-soft); font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .feature-callout span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .feature-callout.is-active, .feature-callout:hover { transform: translateY(-4px); border-color: var(--orange); background: rgba(39,24,25,.96); }
+    .feature-callout::before { content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 14px var(--orange); }
+    .feature-callout[data-anchor="bottom"]::before { left: 50%; bottom: -4px; transform: translateX(-50%); }
+    .feature-callout[data-anchor="top"]::before { left: 50%; top: -4px; transform: translateX(-50%); }
+    .feature-callout[data-anchor="right"]::before { right: -4px; top: 50%; transform: translateY(-50%); }
+    .feature-callout[data-anchor="left"]::before { left: -4px; top: 50%; transform: translateY(-50%); }
+    .overview-governance { left: 55%; top: 1%; }.overview-artifacts { left: 4%; top: 63%; }.overview-preview { right: 3%; top: 1%; }.overview-export { left: 49%; top: 63%; }.overview-handoff { left: 27%; top: 63%; }
+    .logs-models { left: 15%; top: 35%; max-width: 230px; }
+    .feature-footer { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 10px 21px 14px; color: var(--muted-2); font: 10px var(--mono); }
+    .feature-footer strong { color: var(--ink); font-weight: 500; }
+    @keyframes annotation-travel { from { stroke-dashoffset: 30; } to { stroke-dashoffset: 0; } }
+
+    @keyframes line-travel { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes hub-breathe { 0%, 100% { box-shadow: 0 0 0 13px rgba(255,255,255,.025), 0 0 70px rgba(255, 99, 59, .21), inset 0 0 40px rgba(255,255,255,.04); } 50% { box-shadow: 0 0 0 18px rgba(255,255,255,.032), 0 0 98px rgba(255, 99, 59, .32), inset 0 0 40px rgba(255,255,255,.06); } }
+    @keyframes senpai-logo-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; } }
+
+    @media (max-width: 960px) {
+      .hero { grid-template-columns: 1fr; padding-top: 70px; }
+      .hero-copy { max-width: 650px; }
+      .network-shell { min-height: 620px; }
+      .bottom-strip { margin-top: 5px; }
+      .senpai-grid { grid-template-columns: 1fr; }
+      .senpai-heading { margin-bottom: 32px; }
+      .senpai-title-row { align-items: flex-start; }
+      .senpai-logo-standalone { width: 150px; height: 150px; }
+      .senpai-bridge { display: none; }
+      .screen-card { transform: scale(1.02); }
+      .screen-play { top: 18px; left: 18px; }
+      .governance-head { grid-template-columns: 1fr; gap: 24px; }
+      .planning-layout { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .topbar, main { width: min(100% - 36px, 520px); }
+      .topbar { height: 66px; }
+      .topbar-right .version { display: none; }
+      .hero { min-height: auto; gap: 25px; padding: 55px 0 40px; }
+      h1 { font-size: clamp(47px, 14vw, 70px); }
+      .network-shell { min-height: 510px; margin: 0 -9px; transform: scale(.95); transform-origin: top center; }
+      .network-shell::before { width: 430px; }
+      .harness { width: 130px; padding: 10px; }
+      .claude { left: 0; top: 4%; }.devin { right: 0; top: 12%; }.codex { right: 0; bottom: 17%; }.kimi { left: 0; bottom: 9%; }
+      .more { left: 50%; }
+      .network-caption { display: none; }
+      .bottom-strip { grid-template-columns: 1fr; gap: 8px; margin-top: -80px; padding-bottom: 28px; }
+      .legend { bottom: 15px; }
+      .senpai-hero { min-height: auto; padding: 80px 0 70px; }
+      .senpai-logo-standalone { width: 122px; height: 122px; }
+      .senpai-proof { grid-template-columns: 1fr; margin-top: 25px; }
+      .code-body { padding: 18px 12px 21px; font-size: 10px; line-height: 1.4; }
+      .screen-caption { align-items: flex-start; flex-direction: column; gap: 5px; }
+      .governance-section { padding: 80px 0 70px; }
+      .metrics-insights { grid-template-columns: 1fr; }
+      .metrics-caption { align-items: flex-start; flex-direction: column; gap: 5px; }
+      .planning-section { padding: 80px 0 85px; }
+      .planning-frame { transform: scale(1.02); }
+      .planning-caption { align-items: flex-start; flex-direction: column; gap: 5px; }
+      .planning-tag { top: 20px; right: 20px; }
+      .video-modal { padding: 14px; }
+      .video-dialog { padding: 10px; }
+      .feature-modal { padding: 10px; }
+      .feature-dialog { height: min(94vh, 900px); border-radius: 13px; }
+      .feature-dialog-head { padding: 14px 15px 11px; }
+      .feature-dialog-head h2 { font-size: 18px; }
+      .feature-tabs { padding: 10px 15px 0; overflow-x: auto; }
+      .feature-tab { white-space: nowrap; }
+      .feature-stage { padding: 12px 12px 7px; }
+      .feature-callout { max-width: 160px; padding: 7px 8px; }
+      .feature-callout span { font-size: 10px; }
+      .overview-governance { left: 52%; top: 1%; }.overview-artifacts { left: 3%; top: 66%; }.overview-preview { right: 2%; top: 1%; }.overview-export { left: 47%; top: 66%; }.overview-handoff { left: 24%; top: 66%; }
+      .feature-footer { align-items: flex-start; flex-direction: column; gap: 5px; padding: 8px 15px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="glow orange"></div>
+    <div class="glow violet"></div>
+    <header class="topbar">
+      <a class="brand" href="index.html" aria-label="MHL — voltar para a documentação">
+        <img src="assets/mhl-logo.png" alt="">
+        <span class="brand-copy"><strong>MHL</strong><span>META-HARNESS LANGUAGE</span></span>
+      </a>
+      <div class="topbar-right"><span class="status">SYSTEM READY</span><span class="version">EXECUTIVE BRIEF · 01</span></div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">A camada de orquestração para a era dos agentes</p>
+          <h1 id="hero-title">Um workflow. <em>Qualquer harness.</em></h1>
+          <p>O MHL transforma intenção em execução controlada — conectando o mesmo workflow ao harness mais adequado para cada momento.</p>
+          <div class="hero-note"><span></span><strong>Você define o fluxo.</strong> O harness executa.</div>
+        </div>
+
+        <div class="network-shell" aria-label="O MHL se conecta a múltiplos AI harnesses">
+          <svg class="network-lines" aria-hidden="true" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="line-gradient" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#ff633b" stop-opacity=".9" />
+                <stop offset="1" stop-color="#8e78ff" stop-opacity=".72" />
+              </linearGradient>
+              <marker id="arrowhead" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff9b77" />
+              </marker>
+            </defs>
+            <path class="network-path" data-target="claude"></path>
+            <path class="network-path" data-target="devin"></path>
+            <path class="network-path" data-target="codex"></path>
+            <path class="network-path" data-target="kimi"></path>
+            <path class="network-path" data-target="more"></path>
+          </svg>
+
+          <div class="harness claude" data-harness="Claude"><div class="harness-icon">C</div><div><strong>Claude</strong><span>reasoning</span></div></div>
+          <div class="harness devin" data-harness="Devin"><div class="harness-icon">D</div><div><strong>Devin</strong><span>software agent</span></div></div>
+          <div class="harness codex" data-harness="Codex"><div class="harness-icon">⌘</div><div><strong>Codex</strong><span>coding agent</span></div></div>
+          <div class="harness kimi" data-harness="Kimi"><div class="harness-icon">K</div><div><strong>Kimi</strong><span>long context</span></div></div>
+          <div class="harness more" data-harness="Other harnesses"><span>+ qualquer outro harness</span></div>
+
+          <div class="hub"><img src="assets/mhl-logo.png" alt="MHL"><div class="hub-label">workflow control layer</div></div>
+          <div class="network-caption">one control plane · many execution surfaces</div>
+          <div class="legend"><span><i></i> MHL protocol</span><span><b></b> live handoff</span></div>
+        </div>
+
+        <div class="bottom-strip" aria-label="Princípios do MHL">
+          <div class="proof"><strong>01</strong><span>Workflow independente do fornecedor</span></div>
+          <div class="proof"><strong>02</strong><span>Execução observável e auditável</span></div>
+          <div class="proof"><strong>03</strong><span>Troca de harness sem reescrever a lógica</span></div>
+        </div>
+      </section>
+
+      <section class="senpai-hero" aria-labelledby="senpai-title">
+        <div class="senpai-heading">
+          <div class="senpai-title-row">
+            <div>
+              <p class="eyebrow">Case study · Senpai Refiner</p>
+              <h2 id="senpai-title">Interface simples. <em>O controle fica no motor.</em></h2>
+            </div>
+            <img class="senpai-logo-standalone" src="assets/SENPAI_REFINER_Senpai_Kohai_Dark_Transparent.png" alt="Logo do Senpai Refiner">
+          </div>
+          <p>O Senpai foi reescrito para usar o MHL como seu motor harness: a experiência permanece familiar, enquanto cada etapa passa a ter governança, limites claros e uma escolha de IA mais eficiente.</p>
+        </div>
+
+        <div class="senpai-grid">
+          <div class="code-card" aria-label="Exemplo de workflow MHL do Senpai">
+            <div class="window-bar"><i></i><i></i><i></i><span>senpai-workflow.mh</span></div>
+            <div class="code-callout">macroestrutura MHL</div>
+            <pre class="code-body"><code><span class="code-line"><span class="line-number">01</span><span class="tok-key">agent</span> <span class="tok-name">SenpaiAgent</span> <span class="tok-punct">{</span></span>
+<span class="code-line"><span class="line-number">02</span>  <span class="tok-prop">engine:</span> <span class="tok-string">"cli/codex"</span></span>
+<span class="code-line"><span class="line-number">03</span>  <span class="tok-prop">command:</span> <span class="tok-string">"codex"</span></span>
+<span class="code-line"><span class="line-number">04</span>  <span class="tok-prop">args:</span> <span class="tok-punct">[</span><span class="tok-string">"exec"</span><span class="tok-punct">,</span> <span class="tok-string">"--full-auto"</span><span class="tok-punct">,</span> <span class="tok-string">"${prompt}"</span><span class="tok-punct">]</span></span>
+<span class="code-line"><span class="line-number">05</span><span class="tok-punct">}</span></span>
+<span class="code-line"><span class="line-number">06</span></span>
+<span class="code-line"><span class="line-number">07</span><span class="tok-key">workflow</span> <span class="tok-name">SenpaiBrief</span> <span class="tok-key">max</span> <span class="tok-number">12</span> <span class="tok-punct">{</span></span>
+<span class="code-line"><span class="line-number">08</span>  <span class="tok-key">input</span> work_item<span class="tok-punct">:</span> <span class="tok-name">string</span></span>
+<span class="code-line"><span class="line-number">09</span>  <span class="tok-key">var</span> artifacts <span class="tok-punct">=</span> <span class="tok-punct">[</span><span class="tok-string">"brief"</span><span class="tok-punct">,</span> <span class="tok-string">"decisions"</span><span class="tok-punct">,</span> <span class="tok-string">"diagram"</span><span class="tok-punct">]</span></span>
+<span class="code-line"><span class="line-number">10</span>  <span class="tok-key">var</span> approved <span class="tok-punct">=</span> <span class="tok-number">false</span></span>
+<span class="code-line"><span class="line-number">11</span></span>
+<span class="code-line"><span class="line-number">12</span>  <span class="tok-key">step</span> <span class="tok-name">Discover</span> <span class="tok-key">timeout</span> <span class="tok-number">2m</span> <span class="tok-punct">{</span></span>
+<span class="code-line"><span class="line-number">13</span>    context <span class="tok-punct">=</span> <span class="tok-name">SenpaiAgent</span><span class="tok-punct">.</span><span class="tok-fn">run</span><span class="tok-punct">(</span><span class="tok-prop">prompt:</span> <span class="tok-string">"map ${work_item}"</span><span class="tok-punct">)</span></span>
+<span class="code-line"><span class="line-number">14</span>  <span class="tok-punct">}</span></span>
+<span class="code-line"><span class="line-number">15</span></span>
+<span class="code-line"><span class="line-number">16</span>  <span class="tok-key">step</span> <span class="tok-name">Fanout</span> <span class="tok-key">timeout</span> <span class="tok-number">4m</span> <span class="tok-punct">{</span></span>
+<span class="code-line"><span class="line-number">17</span>    <span class="tok-key">spawn</span> reviews <span class="tok-punct">=</span> <span class="tok-name">SenpaiAgent</span><span class="tok-punct">.</span><span class="tok-fn">run</span><span class="tok-punct">(</span><span class="tok-prop">prompt:</span> <span class="tok-string">"review ${item}"</span><span class="tok-punct">)</span></span>
+<span class="code-line"><span class="line-number">18</span>      <span class="tok-key">for</span> item <span class="tok-key">in</span> artifacts</span>
+<span class="code-line"><span class="line-number">19</span>    <span class="tok-key">wait</span> reviews <span class="tok-key">timeout:</span> <span class="tok-number">3m</span></span>
+<span class="code-line"><span class="line-number">20</span>  <span class="tok-punct">}</span></span>
+<span class="code-line"><span class="line-number">21</span></span>
+<span class="code-line"><span class="line-number">22</span>  <span class="tok-key">step</span> <span class="tok-name">Approval</span> <span class="tok-key">timeout</span> <span class="tok-number">1m</span> <span class="tok-punct">{</span></span>
+<span class="code-line"><span class="line-number">23</span>    <span class="tok-key">if</span> <span class="tok-punct">(</span>!approved<span class="tok-punct">)</span> <span class="tok-fn">pause</span><span class="tok-punct">(</span><span class="tok-string">"human approval required"</span><span class="tok-punct">)</span></span>
+<span class="code-line"><span class="line-number">24</span>  <span class="tok-punct">}</span></span>
+<span class="code-line"><span class="line-number">25</span><span class="tok-punct">}</span></span></code></pre>
+          </div>
+
+          <div class="screen-card" role="button" tabindex="0" aria-label="Abrir demonstração em vídeo do Senpai">
+            <img class="screen-image" src="assets/senpai-screen.png" alt="Tela do Senpai Refiner mostrando artefatos, produtividade e uso de tokens">
+            <span class="screen-play"><span>▶</span> abrir demonstração</span>
+            <div class="screen-caption"><span><strong>Senpai Refiner</strong> · produto reescrito sobre MHL</span><span>governed execution</span></div>
+          </div>
+          <div class="senpai-bridge"><span class="bridge-label">MHL powers Senpai</span></div>
+        </div>
+
+        <div class="senpai-proof" aria-label="Resultados da arquitetura">
+          <div><strong>Governança</strong><span>Limite de visitas, timeout por step e pausa para aprovação humana.</span></div>
+          <div><strong>Uso de IA</strong><span>Fan-out controlado, execução observável e harness escolhido por tarefa.</span></div>
+          <div><strong>Custo melhor</strong><span>Menos chamadas desperdiçadas e mais previsibilidade operacional.</span></div>
+        </div>
+      </section>
+
+      <section class="governance-section" aria-labelledby="governance-title">
+        <div class="governance-head">
+          <div>
+            <p class="eyebrow">Operational intelligence · Senpai</p>
+            <h2 id="governance-title">Governar também é <em>enxergar.</em></h2>
+          </div>
+          <div class="governance-copy">
+            <p>Com o MHL no motor, o Senpai transforma cada execução em uma visão operacional: quanto custa, quanto demora, onde espera e quanto do trabalho pode ser reaproveitado.</p>
+          </div>
+        </div>
+
+        <figure class="metrics-frame">
+          <img class="metrics-image" src="assets/senpai-metrics.png" alt="Painel do Senpai com indicadores de artefatos, produtividade, aprovações, tempo de processamento e uso de tokens">
+          <figcaption class="metrics-caption"><span><strong>Senpai Refiner</strong> · gestão de custos e produtividade por work-item</span><span>cost &amp; productivity governance</span></figcaption>
+        </figure>
+
+        <div class="metrics-insights" aria-label="Visões operacionais do Senpai">
+          <div><strong>Gestão de custos</strong><span>Tokens de entrada e saída, cache e estimativa parcial por execução.</span></div>
+          <div><strong>Visão de produtividade</strong><span>Tempo de processamento, ciclo até aprovação e espera por revisão.</span></div>
+          <div><strong>Governança</strong><span>Artefatos prontos, dependências, aprovações e pedidos de mudança em um só lugar.</span></div>
+        </div>
+      </section>
+
+      <section class="planning-section" aria-labelledby="planning-title">
+        <div class="planning-layout">
+          <div class="planning-copy">
+            <p class="eyebrow">From intent to delivery</p>
+            <h2 id="planning-title">Da ideia ao <em>plano de desenvolvimento.</em></h2>
+            <p>O MHL organiza o caminho entre uma oportunidade e aquilo que o time realmente precisa construir — com rastreabilidade, contexto e um próximo passo claro.</p>
+            <div class="planning-flow" aria-label="Fluxo de planejamento">
+              <div><b>01</b><span>Oportunidade e contexto de negócio</span></div>
+              <div><b>02</b><span>Decisões, modelos e artefatos conectados</span></div>
+              <div><b>03</b><span>Features, histórias e plano de implementação</span></div>
+            </div>
+          </div>
+
+          <figure class="planning-frame">
+            <span class="planning-tag">traceable planning</span>
+            <img class="planning-image" src="assets/senpai-backlog.png" alt="Mapa de artefatos do Senpai com features, histórias e planos de implementação">
+            <figcaption class="planning-caption"><span><strong>Mapa de artefatos</strong> · do work-item ao backlog executável</span><span>idea → plan → build</span></figcaption>
+          </figure>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="feature-modal" id="feature-modal" hidden role="dialog" aria-modal="true" aria-labelledby="feature-title">
+    <div class="feature-backdrop" data-close-feature></div>
+    <div class="feature-dialog">
+      <div class="feature-dialog-head">
+        <div><p class="eyebrow">Senpai Refiner · guided tour</p><h2 id="feature-title">O trabalho inteiro, sob controle</h2></div>
+        <button class="video-close" type="button" aria-label="Fechar exploração">×</button>
+      </div>
+      <div class="feature-tabs" role="tablist" aria-label="Visões do Senpai">
+        <button class="feature-tab is-active" type="button" data-feature-view="overview" role="tab" aria-selected="true">Visão do work-item</button>
+        <button class="feature-tab" type="button" data-feature-view="logs" role="tab" aria-selected="false">Logs · interações com modelos</button>
+      </div>
+      <div class="feature-stage">
+        <div class="feature-canvas" data-feature-canvas="overview">
+          <img src="assets/senpai-overview.png" alt="Visão do Senpai com governança, mapa de artefatos e preview">
+          <svg class="annotation-lines" aria-hidden="true">
+            <defs><marker id="annotation-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ff9b77"></path></marker></defs>
+            <path class="annotation-line" data-target-key="governance" data-target-x="56" data-target-y="17"></path>
+            <path class="annotation-line" data-target-key="artifacts" data-target-x="34" data-target-y="48"></path>
+            <path class="annotation-line" data-target-key="preview" data-target-x="82" data-target-y="47"></path>
+            <path class="annotation-line" data-target-key="export" data-target-x="47" data-target-y="31"></path>
+            <path class="annotation-line" data-target-key="handoff" data-target-x="41" data-target-y="31"></path>
+          </svg>
+          <button class="feature-callout overview-governance is-active" data-tour-key="governance" data-anchor="bottom"><strong>Janela de governança</strong><span>Produtividade, tokens, tempo e aprovação.</span></button>
+          <button class="feature-callout overview-artifacts" data-tour-key="artifacts" data-anchor="right"><strong>Área de artefatos</strong><span>Do backlog ao plano de implementação.</span></button>
+          <button class="feature-callout overview-preview" data-tour-key="preview" data-anchor="bottom"><strong>Área de preview</strong><span>Leia o artefato antes de aprovar ou pedir mudança.</span></button>
+          <button class="feature-callout overview-export" data-tour-key="export" data-anchor="top"><strong>Exportar</strong><span>Leve o artefato para o próximo sistema.</span></button>
+          <button class="feature-callout overview-handoff" data-tour-key="handoff" data-anchor="top"><strong>Pacote de handoff</strong><span>Entrega estruturada para o time de desenvolvimento.</span></button>
+        </div>
+        <div class="feature-canvas" data-feature-canvas="logs" hidden>
+          <img src="assets/senpai-logs.png" alt="Janela de logs do Senpai mostrando chamadas de modelos Codex">
+          <svg class="annotation-lines" aria-hidden="true">
+            <defs><marker id="annotation-arrow-logs" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ff9b77"></path></marker></defs>
+            <path class="annotation-line" data-target-key="logs" data-target-x="31" data-target-y="47" marker-end="url(#annotation-arrow-logs)"></path>
+          </svg>
+          <button class="feature-callout logs-models is-active" data-tour-key="logs" data-anchor="right"><strong>Logs · interações com modelos</strong><span>Cada chamada, tokens, duração e etapa ficam visíveis para auditoria.</span></button>
+        </div>
+      </div>
+      <div class="feature-footer"><span><strong>Explore a camada de controle.</strong> Os balões destacam como o Senpai transforma execução em governança.</span><span>click a callout · esc to close</span></div>
+    </div>
+  </div>
+  <script>
+    const network = document.querySelector('.network-shell');
+    const hub = document.querySelector('.hub');
+    const paths = document.querySelectorAll('.network-path');
+    const harnesses = document.querySelectorAll('.harness');
+    let current = 0;
+
+    function drawConnections() {
+      const networkRect = network.getBoundingClientRect();
+      const hubRect = hub.getBoundingClientRect();
+      const hubCenter = {
+        x: hubRect.left - networkRect.left + hubRect.width / 2,
+        y: hubRect.top - networkRect.top + hubRect.height / 2
+      };
+      const hubRadius = Math.min(hubRect.width, hubRect.height) / 2 + 9;
+      paths.forEach((path) => {
+        const target = document.querySelector('.' + path.dataset.target);
+        if (!target) return;
+        const targetRect = target.getBoundingClientRect();
+        const targetCenter = {
+          x: targetRect.left - networkRect.left + targetRect.width / 2,
+          y: targetRect.top - networkRect.top + targetRect.height / 2
+        };
+        const dx = targetCenter.x - hubCenter.x;
+        const dy = targetCenter.y - hubCenter.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const ux = dx / distance;
+        const uy = dy / distance;
+        const start = { x: hubCenter.x + ux * hubRadius, y: hubCenter.y + uy * hubRadius };
+        const targetHalfWidth = targetRect.width / 2;
+        const targetHalfHeight = targetRect.height / 2;
+        const edgeDistance = Math.min(
+          targetHalfWidth / Math.max(Math.abs(ux), .001),
+          targetHalfHeight / Math.max(Math.abs(uy), .001)
+        ) + 2;
+        const end = { x: targetCenter.x - ux * edgeDistance, y: targetCenter.y - uy * edgeDistance };
+        path.setAttribute('d', `M ${start.x} ${start.y} L ${end.x} ${end.y}`);
+      });
+    }
+
+    drawConnections();
+    window.addEventListener('resize', drawConnections);
+    function activate(index) {
+      harnesses.forEach((item, itemIndex) => item.classList.toggle('is-active', itemIndex === index));
+    }
+    setInterval(() => { activate(current); current = (current + 1) % harnesses.length; }, 2600);
+    harnesses.forEach((item, index) => item.addEventListener('mouseenter', () => activate(index)));
+
+    const screenCard = document.querySelector('.screen-card');
+    const featureModal = document.querySelector('#feature-modal');
+    const featureCloseButton = document.querySelector('.feature-dialog .video-close');
+    const featureTabs = document.querySelectorAll('.feature-tab');
+    const featureCanvases = document.querySelectorAll('.feature-canvas');
+    const featureCallouts = document.querySelectorAll('.feature-callout');
+
+    function drawAnnotations() {
+      const canvas = [...featureCanvases].find((item) => !item.hidden);
+      if (!canvas) return;
+      const canvasRect = canvas.getBoundingClientRect();
+      canvas.querySelectorAll('.annotation-line').forEach((path) => {
+        const callout = canvas.querySelector(`[data-tour-key="${path.dataset.targetKey}"]`);
+        if (!callout) return;
+        const calloutRect = callout.getBoundingClientRect();
+        let startX = calloutRect.left - canvasRect.left + calloutRect.width / 2;
+        let startY = calloutRect.top - canvasRect.top + calloutRect.height / 2;
+        if (callout.dataset.anchor === 'bottom') startY = calloutRect.bottom - canvasRect.top;
+        if (callout.dataset.anchor === 'top') startY = calloutRect.top - canvasRect.top;
+        if (callout.dataset.anchor === 'right') startX = calloutRect.right - canvasRect.left;
+        if (callout.dataset.anchor === 'left') startX = calloutRect.left - canvasRect.left;
+        const targetX = canvasRect.width * Number(path.dataset.targetX) / 100;
+        const targetY = canvasRect.height * Number(path.dataset.targetY) / 100;
+        path.setAttribute('d', `M ${startX} ${startY} L ${targetX} ${targetY}`);
+      });
+    }
+
+    function setFeatureView(view) {
+      featureCanvases.forEach((canvas) => { canvas.hidden = canvas.dataset.featureCanvas !== view; });
+      featureTabs.forEach((tab) => {
+        const active = tab.dataset.featureView === view;
+        tab.classList.toggle('is-active', active);
+        tab.setAttribute('aria-selected', String(active));
+      });
+      requestAnimationFrame(drawAnnotations);
+    }
+
+    function activateTour(key) {
+      const view = key === 'logs' ? 'logs' : 'overview';
+      setFeatureView(view);
+      featureCallouts.forEach((callout) => callout.classList.toggle('is-active', callout.dataset.tourKey === key));
+    }
+
+    function closeFeature() {
+      featureModal.hidden = true;
+      document.body.style.overflow = '';
+    }
+
+    function openFeature() {
+      featureModal.hidden = false;
+      document.body.style.overflow = 'hidden';
+      featureCloseButton.focus();
+      activateTour('governance');
+    }
+
+    screenCard.addEventListener('click', openFeature);
+    screenCard.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openFeature();
+      }
+    });
+    featureCloseButton.addEventListener('click', closeFeature);
+    featureModal.querySelector('[data-close-feature]').addEventListener('click', closeFeature);
+    featureTabs.forEach((tab) => tab.addEventListener('click', () => {
+      setFeatureView(tab.dataset.featureView);
+      const firstCallout = [...featureCallouts].find((callout) => callout.dataset.tourKey === tab.dataset.featureView || (tab.dataset.featureView === 'overview' && callout.dataset.tourKey !== 'logs'));
+      if (firstCallout) activateTour(firstCallout.dataset.tourKey);
+    }));
+    featureCallouts.forEach((callout) => callout.addEventListener('click', () => activateTour(callout.dataset.tourKey)));
+    window.addEventListener('resize', drawAnnotations);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !featureModal.hidden) closeFeature();
+    });
+  </script>
+</body>
+</html>
