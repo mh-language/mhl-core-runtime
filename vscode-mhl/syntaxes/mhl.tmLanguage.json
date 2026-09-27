@@ -173,6 +173,11 @@
           "comment": "`ref { ... }` / `ref (expr)` — contextual: a bare `ref` stays an identifier",
           "name": "keyword.other.ref.mhl",
           "match": "\\bref(?=\\s*[{(])"
+        },
+        {
+          "comment": "`expr with { ... }` — contextual: a bare `with` stays an identifier",
+          "name": "keyword.other.with.mhl",
+          "match": "\\bwith(?=\\s*\\{)"
         }
       ]
     },

@@ -475,7 +475,21 @@ func evalIfExpr(ctx *evalCtx, e *ast.IfExpr, depth int) (any, error) {
 // tool's own get/set naturally would), and such a name must still resolve
 // to that tool rather than being shadowed into a "memory not found" error
 // for a memory that was never declared.
+// evalPostfix evaluates p's primary+trailer chain (evalPostfixOps, the
+// pre-existing giant special-case dispatch) then applies any `with { ... }`
+// continuations left to right (evalWithTail) — kept as a thin wrapper around
+// evalPostfixOps's many early returns, rather than touching each one, since
+// a with-suffix can follow *any* of those shapes uniformly (an agent.run()
+// result, a router.select() result, a plain variable read, ...).
 func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
+	v, err := evalPostfixOps(ctx, p, depth)
+	if err != nil {
+		return nil, err
+	}
+	return evalWithTail(ctx, v, p.WithTail, depth)
+}
+
+func evalPostfixOps(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	if p.Primary.Ident == "log" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalLogCall(ctx, p.Ops[0].Call.Args, depth)
 	}
@@ -2029,6 +2043,34 @@ func unref(v any) any {
 		return r.Fields
 	}
 	return v
+}
+
+// evalWithTail applies each `with { ... }` continuation in tail, left to
+// right: value.DeepCopy the current value — a *value.Ref is unref'd first,
+// so `with` always returns a plain, newly-owned object, never a second name
+// sharing the same identity, mirroring ref{...}'s own "copied, not shared"
+// contract for its own initial fields — then overrides the listed fields on
+// that copy. The override side reuses the object-literal evaluator
+// (evalPrimary with an ast.Primary{Object: ...} wrapper, the same trick
+// evalRefExpr uses) so it gets identical semantics — interpolation, nested
+// refs, the depth limit — to any other object literal.
+func evalWithTail(ctx *evalCtx, v any, tail []*ast.WithOp, depth int) (any, error) {
+	for _, op := range tail {
+		base, ok := unref(v).(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("with: left side must be an object, got %s", typeName(v))
+		}
+		overridesVal, err := evalPrimary(ctx, &ast.Primary{Object: op.Object}, depth)
+		if err != nil {
+			return nil, err
+		}
+		copied := value.DeepCopy(base).(map[string]any)
+		for k, val := range overridesVal.(map[string]any) {
+			copied[k] = val
+		}
+		v = copied
+	}
+	return v, nil
 }
 
 // evalRefExpr creates a reference object from `ref { ... }` or

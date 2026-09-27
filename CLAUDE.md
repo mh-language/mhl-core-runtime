@@ -240,7 +240,14 @@ Key packages:
   extension args (`callArgs.materialized`), `memory`/`mem` writes and execsvc results
   (`publicVars`) are `value.Materialize`d; `Ref.MarshalJSON` covers json.Marshal paths.
   `parallel` branches get `value.CloneRefs` copies and `runtime.mergeRefFields` merges them by
-  ID + field (same field, different values → conflict).
+  ID + field (same field, different values → conflict). `obj with { field: value, ... }`
+  (`ast.Postfix.WithTail`/`ast.WithOp`, `interpreter.evalWithTail`) copies `obj`
+  (`value.DeepCopy`, so a `ref`-typed field keeps its shared identity the same way any other
+  object-literal field does) and overrides the listed fields on that copy — added as a field on
+  `Postfix` rather than a new `Unary.Operand` wrapper type specifically so `DefinitionDigest`
+  (`runtime/digest.go`) stays byte-identical for every program that doesn't use it (`digest:
+  "omitzero"` alone isn't enough once a *wrapper* type is introduced between two already-hashed
+  fields — the wrapper's own field name changes the hash regardless of omitzero on its contents).
 - **`internal/execsvc`** — `Run(Request) (*Result, error)`: the reusable "run a pipeline,
   get a structured result" entry point extracted from `cli.runPipeline`. `internal/cli`'s
   `run` and (later) the MCP/A2A server adapters call it. `Request.Context` carries the

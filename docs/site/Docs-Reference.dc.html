@@ -204,6 +204,15 @@ ref { n: 1 } == ref { n: 1 }   // false: two objects</code></pre>
           <div class="tip-row"><span>ACROSS A RESUME</span><p>A reference object keeps its identity through a checkpoint: it is saved with an internal id, and names that shared it before a <code>pause</code> (or a crash) share it again after <code>--resume</code> / <code>run/resume</code> — so a resumed run behaves exactly like one that never stopped. A reference object may even contain itself. Checkpoints written before this (state schema 1) still load.</p></div>
           <div class="tip-row"><span>AT THE BOUNDARY</span><p>A reference object never leaves the interpreter as one. JSON (<code>json.stringify</code>, <code>log</code>, <code>${…}</code>), native ops, extensions, <code>memory</code>, <code>mem</code> and a run's result (<code>output:</code>, MCP, A2A) all see the plain object it holds at that moment; a secret inside it is masked like any other. A <code>mem</code> therefore stores a snapshot, not the shared object. One that contains itself has no JSON form: returning it is an error (a paused run's partial state shows the loop as <code>"[circular ref]"</code>).</p></div>
           <div class="tip-row"><span>ref IS CONTEXTUAL</span><p>Only <code>ref {</code> and <code>ref (</code> start a reference object; <code>ref</code> is still usable as a variable or argument name (<code>git.rev_parse(ref: "HEAD")</code>). <code>ref</code> of something that isn't an object, or that already is a reference object (assign it to share it), is an error.</p></div>
+          <p><code>obj with { field: value, ... }</code> copies <code>obj</code> and overrides the listed fields on the copy, leaving <code>obj</code> itself untouched — "the same object, except for these fields", without rewriting every other field by hand.</p>
+          <pre class="code-block"><code class="language-mhl">var d = { titulo: "x", avisos: [], outro: 1 }
+var d2 = d with { avisos: ["a"] }
+// d.avisos is still [] — d2 is a copy with just avisos overridden
+// d2.titulo and d2.outro are unchanged: "x" and 1
+
+var chained = { a: 1 } with { b: 2 } with { c: 3 }   // { a: 1, b: 2, c: 3 }, applied left to right</code></pre>
+          <div class="tip-row"><span>with AND REFERENCES</span><p><code>with</code> copies the same way an ordinary object literal does: a plain field is deep-copied, a <code>ref { ... }</code>-typed field keeps its shared identity. <code>with</code> on a reference object itself always returns a plain copy — never a second name for the same shared identity.</p></div>
+          <div class="tip-row"><span>with IS CONTEXTUAL</span><p>Only <code>with {</code> continues an expression this way; <code>with</code> is still usable as a variable or argument name — there is no bare-object-after-identifier construct anywhere else in the grammar to collide with. The left side must already be an object: <code>5 with { x: 1 }</code> is an error. A field access on a <code>with</code> result needs parens: <code>(obj with { x: 1 }).x</code>.</p></div>
 
           <p class="block-label">ENUMS</p>
           <p><code>enum Name { A, B, C }</code> declares a closed set of named constants. A value is produced only by qualified access — <code>Name.A</code> — and at run time it is a distinct tagged value, not a string: <code>Status.Draft == "Draft"</code> is <code>false</code>, <code>type_of(Status.Draft)</code> is <code>"enum"</code>, and <code>"${Status.Draft}"</code> / <code>json.stringify</code> render the bare variant (<code>Draft</code>). <code>: Name</code> is a type annotation like any other. A <code>match</code> over an enum value is checked for exhaustiveness by <code>mhl lint</code>.</p>
@@ -245,7 +254,8 @@ if-expr      := "if" "(" expression ")" expression "else" expression
 match-expr   := "match" expression "{" {(pattern | "_") "->" expression} "}"   // pattern: Enum.Variant or a bool/number/string literal
 optional     := expression "?." identifier      // null / non-object / missing-field safe
 optional     := expression "?." "[" expression "]"  // same, with a dynamic key
-coalesce     := expression "??" expression      // left unless it is null</code></pre>
+coalesce     := expression "??" expression      // left unless it is null
+with-expr    := expression "with" object        // copy of expression with object's fields overridden; chains left to right</code></pre>
         </section>
 
         <section class="feature doc-section" id="expressions" data-title="expressions operators precedence array object string methods lambda filter find sort map reduce any all append join unique enumerate equals deep_equal slice interpolation optional chaining optional index dynamic key null coalescing get default match wildcard exhaustive enum">
