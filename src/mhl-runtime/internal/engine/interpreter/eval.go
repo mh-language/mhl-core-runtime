@@ -602,6 +602,14 @@ func evalPostfix(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 				}
 				return applyTrailers(ctx, v, p.Ops[2:], depth)
 			}
+		case member == "select":
+			if router, ok := findRouter(ctx.prog, name); ok {
+				v, err := runRouterSelect(ctx, name, router, call, depth)
+				if err != nil {
+					return nil, err
+				}
+				return applyTrailers(ctx, v, p.Ops[2:], depth)
+			}
 		case name == "self":
 			if ctx.selfTool == nil {
 				return nil, fmt.Errorf("self is only valid inside a tool method")

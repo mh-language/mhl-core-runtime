@@ -513,7 +513,7 @@ Reviewer.run(skills: [CodeReview], prompt: "Review this diff.")</code></pre>
 
 <section class="feature doc-section" id="routers">
 <h2>13. Routers</h2>
-<p>A router declaration selects one of a fixed set of already-declared agents to handle a given prompt. The call form is <code>Name.delegate(prompt: ...)</code>; the prompt MUST be non-empty. The chosen agent then runs with the same call arguments and its response is returned unchanged.</p>
+<p>A router declaration selects one of a fixed set of already-declared agents to handle a given prompt. The call form is <code>Name.delegate(prompt: ...)</code>; the prompt MUST be non-empty. The chosen agent then runs with the same call arguments and its response is returned unchanged. A second call form, <code>Name.select(prompt: ...)</code>, resolves the same decision — via the <code>select</code> hook only, never the <code>decider</code> cascade — without running the chosen agent: it returns the chosen agent's name as a string, or <code>null</code> if <code>select</code> declined. <code>.select(...)</code> requires the router to declare a <code>select</code> hook; calling it on a router that declares only <code>decider</code> MUST be rejected as a static error, since such a router has nothing deterministic to report ahead of a real decision call.</p>
 <h3>13.1 Declaration and decision order</h3>
 <pre class="code-block"><code class="language-mhl">agent Billing { command: "claude" args: ["-p", "${prompt}"] }
 agent Support { command: "claude" args: ["-p", "${prompt}"] }
