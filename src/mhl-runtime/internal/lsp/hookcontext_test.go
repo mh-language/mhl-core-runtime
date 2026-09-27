@@ -96,6 +96,47 @@ pipeline P {
 	}
 }
 
+// TestHookParamCompletionWorksInsideNestedBlocks proves completion still
+// resolves the hook's own parameter when the cursor sits several braces
+// deeper than the hook's own lambda body — a try/catch, an if, an object
+// literal, all real-world shapes — not just directly inside it. Before this,
+// hookParamCompletionAt checked only the single innermost open brace, which
+// is almost never the hook's own once real code (not a one-liner) is
+// involved; found via a real hook body shaped exactly like the second case
+// here (`try { var data = { x: ctx.<cursor> } }`), where completion silently
+// returned nothing.
+func TestHookParamCompletionWorksInsideNestedBlocks(t *testing.T) {
+	src, pos := posAtMarker(t, `
+pipeline P {
+    step_end: (ctx) -> {
+        if (true) {
+            log(ctx.§)
+        }
+    }
+    step S {}
+}
+`)
+	items := completionAt("main.mh", src, pos)
+	if !hasLabel(items, "pipeline") {
+		t.Error("expected StepContext fields for ctx. nested inside an if block")
+	}
+
+	src2, pos2 := posAtMarker(t, `
+pipeline P {
+    step_end: (ctx) -> {
+        try {
+            var data = { x: ctx.§ }
+        } catch (e) {}
+    }
+    step S {}
+}
+`)
+	items2 := completionAt("main.mh", src2, pos2)
+	if !hasLabel(items2, "pipeline") {
+		t.Error("expected StepContext fields for ctx. nested inside try + an object literal")
+	}
+}
+
 // TestHookParamCompletionDoesNotLeakOutsideTheHookLambda proves a step body
 // with an identifier that happens to be named like a hook parameter gets
 // ordinary (empty/nil) completion, not SessionContext's fields — the block
