@@ -50,6 +50,10 @@ release:
   # prereleases, never as "Latest" — install.sh resolves the newest v* tag,
   # and users of the stable channel must not be handed a beta.
   prerelease: auto
+  # A retry of a partially-published release (e.g. linux-arm64 uploaded, then
+  # a later asset failed) must overwrite, not 422 on the assets that already
+  # made it up from the previous attempt.
+  replace_existing_artifacts: true
   # Upload the pre-built .vsix as a release asset in the same GoReleaser pass
   # that writes checksums.txt (see checksum.extra_files above) — one atomic
   # step instead of the workflow's separate `gh release upload` afterward,
