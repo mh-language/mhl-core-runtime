@@ -152,15 +152,47 @@ func isGotoTargetWord(line string, start int) bool {
 	return gotoTargetPrefixRe.MatchString(line[:start])
 }
 
+// parsedProg is one file's memoized participle parse — see the parse
+// method's doc comment.
+type parsedProg struct {
+	prog *ast.Program
+	err  error
+}
+
+// parse is a full participle parser.Parse, memoized per file within one
+// references/codeLens scan (see findStepDeclaration's doc comment for why
+// that matters: a real parse is far more expensive than the rest of this
+// package's regex-based scanning, and re-running it per `goto` occurrence
+// across every file in a real project was the dominant cost of a codeLens
+// request). c may be nil for a plain, one-shot textDocument/definition
+// lookup, which gains nothing from memoizing a parse it only performs once.
+func (c *refCache) parse(path, text string) (*ast.Program, error) {
+	if c == nil {
+		return parser.Parse(text)
+	}
+	if p, ok := c.progs[path]; ok {
+		return p.prog, p.err
+	}
+	prog, err := parser.Parse(text)
+	if c.progs == nil {
+		c.progs = map[string]parsedProg{}
+	}
+	c.progs[path] = parsedProg{prog, err}
+	return prog, err
+}
+
 // findStepDeclaration resolves stepName to the location of its `step` (or a
 // `parallel` group branch step) declaration inside the pipeline/workflow
 // named enclosingPipeline — first in path's own buffer, then, only when
 // that declaration is `partial`, every sibling fragment file's own body too
 // (mirroring gotoTargetItems' own reach, and selfcompletion.go's
 // partialSiblingScopeItems before it). ok is false when enclosingPipeline
-// can't be found in path's buffer at all.
-func findStepDeclaration(path, text, enclosingPipeline, stepName string) (location, bool) {
-	prog, err := parser.Parse(text)
+// can't be found in path's buffer at all. cache, when non-nil, reuses a
+// references/codeLens scan's already-loaded file content and memoized
+// parses (see the parse method) instead of re-reading and re-parsing every
+// sibling fragment from scratch for every `goto` target resolved.
+func findStepDeclaration(path, text, enclosingPipeline, stepName string, cache *refCache) (location, bool) {
+	prog, err := cache.parse(path, text)
 	if err != nil {
 		return location{}, false
 	}
@@ -181,24 +213,15 @@ func findStepDeclaration(path, text, enclosingPipeline, stepName string) (locati
 		return location{}, false
 	}
 	dir := filepath.Dir(path)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return location{}, false
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".mh") {
-			continue
-		}
-		full := filepath.Join(dir, e.Name())
+	for _, full := range cache.siblings(dir) {
 		if full == path {
 			continue
 		}
-		src, err := os.ReadFile(full)
-		if err != nil {
+		srcText, ok := cache.readFile(full)
+		if !ok {
 			continue
 		}
-		srcText := string(src)
-		sp, err := parser.Parse(srcText)
+		sp, err := cache.parse(full, srcText)
 		if err != nil {
 			continue
 		}
