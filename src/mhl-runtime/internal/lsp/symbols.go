@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
@@ -530,6 +531,52 @@ func documentSymbols(path, text string) []symbol {
 	return dedupeSymbols(syms)
 }
 
+// parsedFileCache memoizes each file's parse result by mtime, so
+// importedSymbols/workspaceSymbols — invoked on effectively every
+// completion/hover/signatureHelp request via documentSymbols — don't
+// re-read and re-parse every imported/sibling .mh file when nothing on disk
+// changed since the last call. The LSP server handles one client message at
+// a time (server.go's Serve loop never runs two handlers concurrently), so
+// this package-level cache needs no locking.
+var parsedFileCache = map[string]parsedFile{}
+
+// parsedFile is one cached file read: prog is non-nil on a successful
+// parse; src is kept regardless so a caller that wants the regex-based
+// fallback (symbolsFromText) on a parse failure doesn't need to re-read the
+// file.
+type parsedFile struct {
+	modTime time.Time
+	src     string
+	prog    *ast.Program
+}
+
+// parseFileCached reads and parses path, reusing the previous result when
+// the file's mtime hasn't changed since it was last cached. ok is false
+// when the file can't be stat'd or read (deleted, permissions, ...) — the
+// same "just skip it" outcome importedSymbols/workspaceSymbols already had
+// before caching.
+func parseFileCached(path string) (parsedFile, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		delete(parsedFileCache, path)
+		return parsedFile{}, false
+	}
+	if cached, ok := parsedFileCache[path]; ok && cached.modTime.Equal(info.ModTime()) {
+		return cached, true
+	}
+	src, err := os.ReadFile(path)
+	if err != nil {
+		delete(parsedFileCache, path)
+		return parsedFile{}, false
+	}
+	pf := parsedFile{modTime: info.ModTime(), src: string(src)}
+	if prog, err := parser.Parse(pf.src); err == nil {
+		pf.prog = prog
+	}
+	parsedFileCache[path] = pf
+	return pf, true
+}
+
 // importedSymbols resolves every `import { A, B as C } from "path"` in text
 // (the same importRe/alias shape definition.go's locateDeclaration follows)
 // and returns the imported declarations' symbols under their local name —
@@ -546,15 +593,15 @@ func importedSymbols(path, text string) []symbol {
 		if !filepath.IsAbs(tgt) {
 			tgt = filepath.Join(filepath.Dir(path), rel)
 		}
-		src, err := os.ReadFile(tgt)
-		if err != nil {
+		pf, ok := parseFileCached(tgt)
+		if !ok {
 			continue
 		}
 		var tgtSyms []symbol
-		if prog, err := parser.Parse(string(src)); err == nil {
-			tgtSyms = symbolsFromProgram(tgt, prog)
+		if pf.prog != nil {
+			tgtSyms = symbolsFromProgram(tgt, pf.prog)
 		} else {
-			tgtSyms = symbolsFromText(tgt, string(src))
+			tgtSyms = symbolsFromText(tgt, pf.src)
 		}
 		byName := make(map[string]symbol, len(tgtSyms))
 		for _, s := range tgtSyms {
@@ -598,15 +645,11 @@ func workspaceSymbols(path string) []symbol {
 		if full == path {
 			continue
 		}
-		src, err := os.ReadFile(full)
-		if err != nil {
+		pf, ok := parseFileCached(full)
+		if !ok || pf.prog == nil {
 			continue
 		}
-		prog, err := parser.Parse(string(src))
-		if err != nil {
-			continue
-		}
-		syms = append(syms, symbolsFromProgram(full, prog)...)
+		syms = append(syms, symbolsFromProgram(full, pf.prog)...)
 	}
 	return syms
 }
