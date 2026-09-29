@@ -205,6 +205,8 @@ func symbolsFromText(path, src string) []symbol {
 			s.Methods = memoryMethodsFromText(src, m[2])
 		case symTool:
 			s.Methods = toolMethodsFromText(src, m[2])
+		case symEnum:
+			s.Methods = enumVariantsFromText(src, m[2])
 		}
 		syms = append(syms, s)
 	}
@@ -230,6 +232,26 @@ func toolMethodsFromText(src, name string) []string {
 		methods = append(methods, m[1])
 	}
 	return methods
+}
+
+// enumVariantRe matches one variant identifier inside an enum body — the
+// grammar (ast.Enum.Variants) is just a comma-separated identifier list, no
+// nested structure to worry about the way a tool method's body has.
+var enumVariantRe = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
+
+// enumVariantsFromText mirrors toolMethodsFromText/memoryMethodsFromText for
+// an `enum Name { A, B, ... }` declaration in source that doesn't parse yet —
+// without this, member completion right after `Name.` (the exact moment the
+// buffer is mid-edit and invalid, e.g. the cursor sitting right after the
+// dot with nothing typed yet) found the enum symbol but never populated its
+// variants, since symbolsFromText's per-kind switch had no case for
+// symEnum.
+func enumVariantsFromText(src, name string) []string {
+	body, ok := extractBlock(src, "enum", name)
+	if !ok {
+		return nil
+	}
+	return enumVariantRe.FindAllString(body, -1)
 }
 
 var memoryTypeRe = regexp.MustCompile(`\btype\s*:\s*"([^"]*)"`)

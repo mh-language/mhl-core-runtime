@@ -396,6 +396,15 @@ func completionAt(path, text string, pos position) []completionItem {
 func methodItems(path, text string, s symbol) []completionItem {
 	items := make([]completionItem, 0, len(s.Methods))
 	for _, m := range s.Methods {
+		// An enum variant (`Status.Success`) is a value, not a callable
+		// method — no trailing "(" to insert, and signatureForMethod has no
+		// case for symEnum (there's no signature to show), so it's handled
+		// entirely here rather than falling through to the method-shaped
+		// path below.
+		if s.Kind == symEnum {
+			items = append(items, completionItem{Label: m, Kind: kindEnumMember, Detail: "enum variant"})
+			continue
+		}
 		item := completionItem{
 			Label:      m,
 			Kind:       kindMethod,
