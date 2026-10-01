@@ -20,8 +20,10 @@ import "github.com/alecthomas/participle/v2/lexer"
 // `..` in source lexes as one token rather than two `.` (member-access)
 // tokens; likewise `?.` (optional member access, see ast.Trailer), `??`
 // (the null-coalescing operator, see ast.Expr) and `+=` (compound append/add
-// assignment, see ast.AssignStmt) precede it so a bare `?` never stands alone
-// and `x += y` lexes as one operator rather than `+` then `=`.
+// assignment, see ast.AssignStmt) precede it so `x += y` lexes as one
+// operator rather than `+` then `=`. A bare `?` is a token only for an
+// optional object-shape field (`base?: string`, see ast.ShapeField); it is
+// valid nowhere else in the grammar.
 //
 // The "String" rule below is never actually matched in practice — mhlLexer
 // intercepts every single-quoted string before delegating here (see
@@ -37,5 +39,5 @@ var mhlRegexLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "BadNumber", Pattern: `[0-9]+(?:\.[0-9]+)?[a-zA-Z_][a-zA-Z0-9_]*`},
 	{Name: "Number", Pattern: `[0-9]+(?:\.[0-9]+)?`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`},
-	{Name: "Punct", Pattern: `\.\.|->|==|!=|>=|<=|&&|\|\||\?\.|\?\?|\+=|[-+*/%<>=!^(){}\[\]:,.]`},
+	{Name: "Punct", Pattern: `\.\.|->|==|!=|>=|<=|&&|\|\||\?\.|\?\?|\+=|[-+*/%<>=!^(){}\[\]:,.?]`},
 })

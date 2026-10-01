@@ -112,6 +112,48 @@ func runRouterDelegate(ctx *evalCtx, routerName string, router *ast.Router, call
 	return runAgent(ctx, chosen.Name, chosen, call, depth)
 }
 
+// runRouterSelect executes a public `RouterName.select(prompt: ...)` call —
+// the same select hook runRouterDelegate consults internally, exposed
+// directly for a caller that needs to know the chosen agent's name *before*
+// running `.delegate(...)` (e.g. to shape a schema/argument differently per
+// backend — the case that originally motivated this: Claude wants a schema
+// inline, Codex wants a file path, and the caller has to decide which to
+// build before making the call). A router with no `select:` hook (a purely
+// LLM-decided one) has nothing deterministic to report ahead of a real
+// `.delegate()` call, so calling `.select()` on one is a clear, dedicated
+// error — never a silent `null` that would read as "select declined this
+// time" when the truth is "this router can't answer that question at all".
+// A resolved name is validated against the declared agents exactly like
+// `.delegate()` does, so a typo in `select`'s returned name is caught the
+// same way whether it's reached via `.select()` or `.delegate()`.
+func runRouterSelect(ctx *evalCtx, routerName string, router *ast.Router, call *ast.Call, depth int) (any, error) {
+	if _, ok := ast.RouterSelectExpr(router); !ok {
+		return nil, fmt.Errorf("%s.select: router has no select hook declared (only a decider) — its choice can't be known before calling .delegate(...)", routerName)
+	}
+	promptText, ok, err := resolvePromptArgument(ctx, call, depth)
+	if err != nil {
+		return nil, fmt.Errorf("%s.select: %w", routerName, err)
+	}
+	if !ok || promptText == "" {
+		return nil, fmt.Errorf("%s.select requires a non-empty prompt", routerName)
+	}
+	selected, err := routerSelect(ctx, routerName, router, promptText, depth)
+	if err != nil {
+		return nil, err
+	}
+	if selected == "" {
+		return nil, nil
+	}
+	agents, err := routerAgents(ctx.prog, router)
+	if err != nil {
+		return nil, err
+	}
+	if findAgentByName(agents, selected) == nil {
+		return nil, fmt.Errorf("%s.select returned %q, which is not one of the declared agents (%s) — check for a typo, or use nameof(...) instead of a string literal so this is caught by mhl lint", routerName, selected, strings.Join(agentNames(agents), ", "))
+	}
+	return selected, nil
+}
+
 // routerSelect evaluates router's optional `select: (prompt) -> {...}` hook
 // against promptText — reading the property via the shared ast.RouterSelectExpr
 // (the same shape agent's before/after hooks read, agent_hooks.go's

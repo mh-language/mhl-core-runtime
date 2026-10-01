@@ -1,0 +1,18 @@
+import {Frontdesk, Billing} from "fixtures/router.mh"
+
+// Router.select(prompt: ...) resolves the same decision `.delegate()` would
+// make, but only runs the `select` hook -- it never runs the chosen agent
+// and never falls back to Decider's LLM cascade. Useful when a caller needs
+// to know which agent will handle a prompt before building the rest of the
+// call (e.g. two backends that need the same argument shaped differently).
+test router_select_is_callable_without_delegating {
+    describe select_resolves_the_agent_name_deterministically {
+        var chosen = Frontdesk.select(prompt: "invoice question")
+        are_equal(chosen, nameof(Billing))
+    }
+
+    describe select_returns_null_when_the_hook_declines {
+        var chosen = Frontdesk.select(prompt: "my account is locked")
+        is_true(chosen == null)
+    }
+}

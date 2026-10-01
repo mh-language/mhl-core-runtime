@@ -109,10 +109,31 @@ type Unary struct {
 }
 
 // Postfix is a primary expression followed by any number of member-access
-// (`.name`) or call (`(...)`) trailers.
+// (`.name`) or call (`(...)`) trailers, then any number of `with { ... }`
+// continuations (WithTail).
 type Postfix struct {
-	Primary *Primary   `parser:"@@"`
-	Ops     []*Trailer `parser:"@@*"`
+	Primary  *Primary   `parser:"@@"`
+	Ops      []*Trailer `parser:"@@*"`
+	WithTail []*WithOp  `parser:"@@*" digest:"omitzero"`
+}
+
+// WithOp is one `obj with { field: value, ... }` continuation: a copy of the
+// Postfix chain's value so far (value.DeepCopy — a ref-typed field keeps its
+// shared identity, every other field is deep-copied) with Object's fields
+// overridden on the copy, leaving the original value untouched. Chained
+// `with`s (`a with {x:1} with {y:2}`) apply left to right, each on the
+// previous result. `with` is contextual, exactly like `ref` (RefExpr): only
+// `with {` starts one, so `with` stays usable as an identifier or argument
+// name elsewhere — there is no bare-object-after-identifier construct
+// anywhere else in the grammar (a call always requires `(...)`), so this can
+// never collide with existing code. A field/index access on a `with` result
+// needs parens (`(obj with {x:1}).field`) — WithTail is deliberately the
+// last thing a Postfix can carry, not itself followed by more Ops, keeping
+// the grammar (and DefinitionDigest's shape for every *other* Postfix,
+// unaffected by this addition via digest:"omitzero") simple.
+type WithOp struct {
+	Pos    lexer.Position
+	Object *Object `parser:"'with' @@"`
 }
 
 // Trailer is a member access, a call, an array slice, or an array index —
@@ -198,8 +219,23 @@ type Primary struct {
 	Lambda   *Lambda    `parser:"| @@"`
 	IfExpr   *IfExpr    `parser:"| @@"`
 	Match    *MatchExpr `parser:"| @@"`
+	Ref      *RefExpr   `parser:"| @@" digest:"omitzero"`
 	Ident    string     `parser:"| @Ident"`
 	Sub      *Expr      `parser:"| '(' @@ ')' )"`
+}
+
+// RefExpr creates a reference object: `ref { name: "a" }` from an object
+// literal, or `ref (expr)` from any expression that evaluates to an object
+// (copied). Unlike a plain `{ ... }` — a value, copied whenever a variable
+// holding it is read — a reference object is shared: every name holding it
+// sees every mutation, and its identity survives a checkpoint/resume (see
+// internal/engine/value). `ref` is contextual: only `ref {` / `ref (` start
+// one, so `ref` stays usable as an identifier or argument name
+// (`git.rev_parse(ref: "HEAD")`).
+type RefExpr struct {
+	Pos    lexer.Position
+	Object *Object `parser:"'ref' ( @@"`
+	Sub    *Expr   `parser:"| '(' @@ ')' )"`
 }
 
 // MatchExpr is an expression-position multi-way branch:

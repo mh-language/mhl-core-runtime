@@ -44,6 +44,10 @@ func TestCredentialRefs(t *testing.T) {
 		// must stay invisible to this scan regardless of where it appears.
 		{`env("WITH_DEFAULT", "fallback")`, nil},
 		{`if (true) env("WITH_DEFAULT", "fallback") else "x"`, nil},
+		// A `with { ... }` override field is just as reachable as an object
+		// literal's own field — the same "any branch counts" reasoning as
+		// if/match above.
+		{`{ url: "x" } with { token: env("WITH_TOKEN") }`, []string{`env("WITH_TOKEN")`}},
 	}
 	for _, c := range cases {
 		got := credRefsOf(t, c.src)

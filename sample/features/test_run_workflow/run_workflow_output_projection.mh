@@ -1,0 +1,36 @@
+// `result.output` is what a real caller (`mhl run`, an MCP tools/call)
+// receives: the `output: { ... }` projection when one is declared — keys
+// renamed, computed, or dropped — and every var otherwise. `result.vars`
+// stays the full final variable state either way.
+pipeline Publish {
+    input environment: string
+    var url = ""
+    var internal_token = ""
+
+    step Ship {
+        url = "https://releases.example.com/" + environment
+        internal_token = "secret"
+    }
+
+    output: {
+        link: url
+        env: environment
+    }
+}
+
+pipeline Plain {
+    var count = 0
+    step Bump { count = count + 1 }
+}
+
+test run_workflow_output_projection {
+    describe projection_replaces_vars_for_the_caller {
+        var result = Publish.run(inputs: {environment: "staging"})
+        are_equal(result.output, {link: "https://releases.example.com/staging", env: "staging"})
+        are_equal(result.vars["internal_token"], "secret")
+    }
+    describe no_output_block_returns_every_var {
+        var result = Plain.run()
+        are_equal(result.output, {count: 1})
+    }
+}

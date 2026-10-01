@@ -45,11 +45,19 @@ func RunPipelineHook(goctx context.Context, prog *ast.Program, pipelineName, hoo
 		jsonStore:    jsonStore,
 		out:          out,
 		env:          env,
-		mem:          mem,
-		cctx:         cctx,
-		file:         file,
-		goctx:        goctx,
-		aliasTypes:   aliasTypesFor(prog),
+		// self.<name> (evalSelfPipelineRef) reads pipelineEnv specifically,
+		// bypassing env's step-local-shadowing lookup by design — without
+		// this, self.<name> failed with "not a declared input, var, or mem
+		// of this pipeline" even for a name plainly present in vars/env,
+		// because pipelineEnv was left nil. There's no step-local var here
+		// to shadow (a hook has no step body of its own), so the same map
+		// serves both fields safely.
+		pipelineEnv: env,
+		mem:         mem,
+		cctx:        cctx,
+		file:        file,
+		goctx:       goctx,
+		aliasTypes:  aliasTypesFor(prog),
 	}
 	v, err := evalExpr(ctx, expr)
 	if err != nil {

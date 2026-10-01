@@ -135,10 +135,19 @@ func workflowManifest(w execsvc.Workflow) map[string]any {
 	inputs := make([]map[string]any, 0, len(p.Inputs))
 	for _, in := range p.Inputs {
 		inputs = append(inputs, map[string]any{
-			"name": in.Name, "type": in.Type.String(), "required": true,
+			"name": in.Name, "type": in.Type.String(), "required": in.Required(),
 		})
 	}
 	m["inputs"] = inputs
+	// A typed signature (`workflow X(req: In): Out`) also names its types as
+	// written, next to the schemas projected from them.
+	if p.InputParam != "" {
+		m["input"] = map[string]any{"param": p.InputParam, "type": p.InputTypeName}
+	}
+	if outSchema := p.OutputSchema(); outSchema != nil {
+		m["outputSchema"] = outSchema
+		m["output"] = map[string]any{"type": p.OutputTypeName}
+	}
 
 	var groups []map[string]any
 	for _, st := range p.Stages {

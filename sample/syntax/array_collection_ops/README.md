@@ -15,3 +15,5 @@ them, de-duplicating, and comparing by value. (Lambda-taking transforms — `.ma
   deep-equal duplicates, order preserved
 - [equals_is_a_deep_comparison.mh](equals_is_a_deep_comparison.mh) — `.equals()` /
   `.deep_equal()` for a type- and order-sensitive value comparison of any two values
+- [enumerate_pairs_index_with_value.mh](enumerate_pairs_index_with_value.mh) — `.enumerate()`
+  pairs each element with its zero-based index, composing with a plain `for`-in loop

@@ -272,3 +272,78 @@ pipeline P {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+// TestRunRouterSelectResolvesAgentNameEndToEnd exercises the public
+// `Router.select(prompt: ...)` call end-to-end through `mhl run`: it
+// resolves to the chosen agent's bare name as a string, and — since nothing
+// here calls `.delegate()` or `.run()` — proves select alone never runs
+// Billing (which would fail loudly, being an unknown executable, if it did).
+func TestRunRouterSelectResolvesAgentNameEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	src := `
+agent Billing { command: "this-command-does-not-exist-and-must-never-run" }
+agent Support { command: "echo" }
+
+router Frontdesk {
+    agents: [Billing, Support]
+    select: (prompt) -> {
+        if (prompt == "invoice question") { return "Billing" }
+        return null
+    }
+}
+
+pipeline P {
+    step S {
+        var chosen = Frontdesk.select(prompt: "invoice question")
+        log("chosen=${chosen}")
+    }
+}
+`
+	if err := os.WriteFile(main, []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", main}, &buf); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(buf.String(), "chosen=Billing") {
+		t.Errorf("unexpected output: %s", buf.String())
+	}
+}
+
+// TestRunRouterSelectOnDeciderOnlyRouterErrorsEndToEnd proves `mhl run`
+// rejects `.select(...)` on a router with no `select:` hook — a decider-only
+// router has nothing deterministic to report before a real LLM decision.
+func TestRunRouterSelectOnDeciderOnlyRouterErrorsEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	src := `
+agent Billing { command: "echo" }
+agent Decider { command: "echo" }
+
+router Frontdesk {
+    agents: [Billing]
+    decider: Decider
+}
+
+pipeline P {
+    step S {
+        var chosen = Frontdesk.select(prompt: "anything")
+    }
+}
+`
+	if err := os.WriteFile(main, []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	err := cli.Run([]string{"run", main}, &buf)
+	if err == nil {
+		t.Fatal("expected an error calling .select() on a decider-only router")
+	}
+	if !strings.Contains(err.Error(), "no select hook declared") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}

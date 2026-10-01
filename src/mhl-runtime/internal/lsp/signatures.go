@@ -292,6 +292,7 @@ var arrayMethodSigs = map[string]sig{
 	"append":    {Label: "append(value: any) -> any[]", Params: []string{"value"}, Doc: "New array with `value` added at the end; the receiver is not mutated."},
 	"join":      {Label: "join(separator: string) -> string", Params: []string{"separator"}, Doc: "Joins the elements with `separator`; non-string elements are formatted the way `log` renders them."},
 	"unique":    {Label: "unique() -> any[]", Params: nil, Doc: "New array with deep-equal duplicates removed, keeping first occurrence order."},
+	"enumerate": {Label: "enumerate() -> {index: number, value: any}[]", Params: nil, Doc: "New array pairing each element with its 0-based position, for `for (var pair in list.enumerate())` when the index is needed alongside the value."},
 }
 
 var objectMethodSigs = map[string]sig{

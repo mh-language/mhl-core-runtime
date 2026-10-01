@@ -938,6 +938,11 @@ func collectVarNames(prog *ast.Program, statements []*ast.Statement, seed map[st
 				walk(s.ForIn.Body)
 			case s.Try != nil:
 				walk(s.Try.Body)
+				if s.Try.ErrName != "" {
+					if _, declared := known[s.Try.ErrName]; !declared {
+						known[s.Try.ErrName] = types.Any
+					}
+				}
 				walk(s.Try.Catch)
 				walk(s.Try.Finally)
 			}
@@ -1134,6 +1139,9 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 	}
 	if call, routerName, ok := routerDelegateCall(expr); ok {
 		return checkRouterDelegateCallShape(file, prog, pos, call, routerName)
+	}
+	if call, routerName, ok := routerSelectCall(expr); ok {
+		return checkRouterSelectCallShape(file, prog, pos, call, routerName)
 	}
 	call, agentName, ok := agentRunCall(expr)
 	if !ok {
@@ -1425,6 +1433,19 @@ func routerDelegateCall(expr *ast.Expr) (*ast.Call, string, bool) {
 	return nil, "", false
 }
 
+// routerSelectCall recognizes the literal shape `<Ident>.select(...)`,
+// mirroring routerDelegateCall.
+func routerSelectCall(expr *ast.Expr) (*ast.Call, string, bool) {
+	postfix := ast.BarePostfix(expr)
+	if postfix == nil || postfix.Primary == nil || postfix.Primary.Ident == "" || len(postfix.Ops) != 2 {
+		return nil, "", false
+	}
+	if postfix.Ops[0].Member != "" && postfix.Ops[0].Member == "select" && postfix.Ops[1].Call != nil {
+		return postfix.Ops[1].Call, postfix.Primary.Ident, true
+	}
+	return nil, "", false
+}
+
 // checkRouterDelegateCallShape validates a `<router>.delegate(...)` call
 // site: the router must be declared, and the call must carry a non-empty
 // `prompt:` argument — the same shape agentRunCall's body validates for
@@ -1444,6 +1465,34 @@ func checkRouterDelegateCallShape(file string, prog *ast.Program, pos lexer.Posi
 	if !present || (resolved && promptText == "") {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.delegate requires a non-empty prompt", routerName)}}
+	}
+	return nil
+}
+
+// checkRouterSelectCallShape validates a `<router>.select(...)` call site —
+// the same prompt-argument shape as `.delegate(...)`, plus a check specific
+// to `select` itself: the router must actually declare a `select:` hook.
+// A decider-only router has nothing deterministic to report ahead of a real
+// `.delegate()` call, so this is caught statically here rather than left as
+// a runtime error at the first call site.
+func checkRouterSelectCallShape(file string, prog *ast.Program, pos lexer.Position, call *ast.Call, routerName string) []Finding {
+	router, ok := findRouter(prog, routerName)
+	if !ok {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("router %q not found", routerName)}}
+	}
+	if _, ok := ast.RouterSelectExpr(router); !ok {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("%s.select: router has no select hook declared (only a decider) — its choice can't be known before calling .delegate(...)", routerName)}}
+	}
+	promptText, resolved, present, err := resolvePromptArgument(prog, call)
+	if err != nil {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("%s.select: %s", routerName, err)}}
+	}
+	if !present || (resolved && promptText == "") {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+			Message: fmt.Sprintf("%s.select requires a non-empty prompt", routerName)}}
 	}
 	return nil
 }

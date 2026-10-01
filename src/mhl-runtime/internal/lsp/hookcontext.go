@@ -25,26 +25,32 @@ var hookParamTypes = map[blockKind]string{
 
 // hookParamCompletionAt returns field-completion items for target when it is
 // exactly the literal parameter name the user wrote for the lifecycle hook
-// lambda directly enclosing pos — e.g. typing `s.` inside `session_start: (s)
-// -> { s. }` — or nil, false when the cursor isn't inside one of the five
-// hooks' lambda bodies, or target names something else (a sibling variable,
-// a declared symbol). Mirrors selfCompletionAt's shape (a hardcoded
-// special-case checked before the generic memberAccessRe symbol lookup in
-// completionAt), but resolves its field list from a real types.Type instead
-// of a second hand-written table — see hookLambdaType and
-// PipelineBodyProperty.ParamType's doc comment for why the shape itself
-// isn't duplicated here.
+// lambda enclosing pos — e.g. typing `s.` inside `session_start: (s) -> { s.
+// }` — or nil, false when pos isn't inside one of the five hooks' lambda
+// bodies, or target names something else (a sibling variable, a declared
+// symbol). Walks the whole block stack from innermost outward, exactly like
+// selfCompletionAt does, rather than checking only stack's top: the cursor
+// is very often nested a level or two deeper than the hook's own brace — a
+// `try`/`if`/object-literal inside the hook body, all real-world shapes
+// (found via a real telemetry hook: `try { var data = { x: ctx.<cursor> }
+// }`) — and checking only the top wrongly saw that inner blockOther brace
+// instead of the hook, silently returning no completions. Resolves its
+// field list from a real types.Type instead of a second hand-written table
+// — see hookLambdaType and PipelineBodyProperty.ParamType's doc comment for
+// why the shape itself isn't duplicated here.
 func hookParamCompletionAt(text string, pos position, target string) ([]completionItem, bool) {
 	stack := blockStack(textUpToPosition(text, pos))
-	if len(stack) == 0 {
-		return nil, false
+	for i := len(stack) - 1; i >= 0; i-- {
+		typeName, known := hookParamTypes[stack[i].Kind]
+		if !known {
+			continue
+		}
+		if stack[i].Name != target {
+			return nil, false
+		}
+		return objectTypeFieldItems(typeName), true
 	}
-	top := stack[len(stack)-1]
-	typeName, known := hookParamTypes[top.Kind]
-	if !known || top.Name != target {
-		return nil, false
-	}
-	return objectTypeFieldItems(typeName), true
+	return nil, false
 }
 
 // objectTypeFieldItems resolves typeName through types.Parse — the same
@@ -78,7 +84,11 @@ func fieldCompletionItems(t types.Type) []completionItem {
 	sort.Strings(names)
 	items := make([]completionItem, 0, len(names))
 	for _, name := range names {
-		items = append(items, completionItem{Label: name, Kind: kindField, Detail: t.Fields[name].String()})
+		detail := t.Fields[name].String()
+		if t.IsOptional(name) {
+			detail += " (optional)"
+		}
+		items = append(items, completionItem{Label: name, Kind: kindField, Detail: detail})
 	}
 	return items
 }

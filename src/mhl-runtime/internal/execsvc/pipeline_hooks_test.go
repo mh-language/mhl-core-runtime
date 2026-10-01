@@ -417,6 +417,56 @@ pipeline P {
 	}
 }
 
+// TestPipelineHookSelfReadsPipelineInputAndVar proves self.<name> inside a
+// step_end/session_end hook body resolves a declared input/var the same way
+// a bare identifier already does — regression test for a bug where
+// self.<name> failed with "not a declared input, var, or mem of this
+// pipeline" even though the same name read fine without the self. prefix
+// (RunPipelineHook built ctx.env from vars but left ctx.pipelineEnv nil,
+// and evalSelfPipelineRef reads pipelineEnv specifically).
+func TestPipelineHookSelfReadsPipelineInputAndVar(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline P {
+    input project_id: string = "abc"
+    var greeting = "hi"
+    step_end: (step) -> { log("SELF_INPUT " + self.project_id + " SELF_VAR " + self.greeting) }
+    session_end: (session) -> { log("SESSION_SELF " + self.project_id) }
+    step Work { log("WORK") }
+}
+`)
+	var out bytes.Buffer
+	if _, err := execsvc.Run(execsvc.Request{Source: src, BaseDir: dir, Out: &out}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "SELF_INPUT abc SELF_VAR hi") {
+		t.Errorf("want self.project_id/self.greeting resolved inside step_end, got:\n%s", got)
+	}
+	if !strings.Contains(got, "SESSION_SELF abc") {
+		t.Errorf("want self.project_id resolved inside session_end, got:\n%s", got)
+	}
+}
+
+// TestPipelineHookSelfWithoutVarsStillFailsClosed proves session_start/
+// stop_failure — the two hooks that intentionally receive no vars payload —
+// keep rejecting self.<name> with the same error as before this fix (no
+// regression toward silently resolving to a stale/empty value).
+func TestPipelineHookSelfWithoutVarsStillFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+pipeline P {
+    input project_id: string = "abc"
+    session_start: (session) -> { log(self.project_id) }
+    step Work { log("WORK") }
+}
+`)
+	_, err := execsvc.Run(execsvc.Request{Source: src, BaseDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "not a declared input, var, or mem of this pipeline") {
+		t.Fatalf("expected self.project_id to still fail inside session_start (no vars payload), got: %v", err)
+	}
+}
+
 // TestPipelineWithoutHooksIsUnaffected proves a pipeline declaring none of
 // the 5 hooks behaves exactly as before this feature existed.
 func TestPipelineWithoutHooksIsUnaffected(t *testing.T) {

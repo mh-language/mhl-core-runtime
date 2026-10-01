@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
@@ -498,9 +499,10 @@ func flushInOrder(handles []*spawnHandle, out io.Writer) {
 }
 
 func deepCopyEnv(env Env) Env {
+	clones := map[*value.Ref]*value.Ref{} // one clone per ref across the env
 	out := make(Env, len(env))
 	for k, v := range env {
-		out[k] = deepCopyValue(v)
+		out[k] = value.CloneRefs(v, clones)
 	}
 	return out
 }
@@ -510,20 +512,7 @@ func deepCopyEnv(env Env) Env {
 // the same structure afterwards. Scalars are immutable; a *Closure or other
 // interpreter pointer is shared by reference (documented limitation).
 func deepCopyValue(v any) any {
-	switch t := v.(type) {
-	case []any:
-		c := make([]any, len(t))
-		for i := range t {
-			c[i] = deepCopyValue(t[i])
-		}
-		return c
-	case map[string]any:
-		c := make(map[string]any, len(t))
-		for k := range t {
-			c[k] = deepCopyValue(t[k])
-		}
-		return c
-	default:
-		return v
-	}
+	// Refs are cloned too (keeping their IDs): the snapshot is read from
+	// another goroutine while the step goes on mutating its own objects.
+	return value.CloneRefs(v, map[*value.Ref]*value.Ref{})
 }

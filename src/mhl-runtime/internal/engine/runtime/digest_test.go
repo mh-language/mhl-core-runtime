@@ -292,3 +292,23 @@ func TestResumeAllowsLegacyCheckpointWithoutDigest(t *testing.T) {
 		t.Fatal("expected a legacy checkpoint to resume")
 	}
 }
+
+// TestDefinitionDigestUnchangedByOmitzeroFields pins the digest of a program
+// that uses none of the `digest:"omitzero"` AST fields (a typed signature,
+// an optional shape field) to the value builds before those fields existed
+// stamped, so upgrading mhl doesn't strand in-flight checkpoints behind a
+// definition_mismatch. If this fails, a new AST field changed every
+// program's digest — tag it `digest:"omitzero"`.
+func TestDefinitionDigestUnchangedByOmitzeroFields(t *testing.T) {
+	src := "type T = { a: string }\npipeline P {\n input x: string\n step S { log(x) }\n}\n"
+	const want = "96013d89ba34542d56d8eec6f5c5c371bc58782fb8d5eff91e38c7593f3f1556"
+	if got := digestOfPipeline(t, src, "P"); got != want {
+		t.Fatalf("digest = %s, want %s (the pre-signature value)", got, want)
+	}
+
+	typed := "type T = { a: string }\npipeline P(req: T) {\n step S { log(req.a) }\n}\n"
+	optional := "type T = { a?: string }\npipeline P(req: T) {\n step S { log(req.a) }\n}\n"
+	if digestOfPipeline(t, typed, "P") == digestOfPipeline(t, optional, "P") {
+		t.Fatal("a set omitzero field must still count toward the digest")
+	}
+}

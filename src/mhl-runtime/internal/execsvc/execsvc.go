@@ -29,9 +29,11 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // Request describes one execution.
@@ -183,6 +185,11 @@ func Run(req Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Also a lint error; checked here so a run never starts with a result
+	// type it has no projection to check against.
+	if pipeline.OutputType != nil && pipeline.Output == nil {
+		return nil, fmt.Errorf("%s %q declares result type %s but no `output: { ... }` projection", pipeline.Kind, pipeline.Name, pipeline.OutputTypeName)
+	}
 
 	// Admission check: enforce the pipeline's input contract (InputSchema) —
 	// required inputs present, no undeclared keys — before creating a session,
@@ -241,12 +248,26 @@ func Run(req Request) (*Result, error) {
 	// behaviour returns every non-internal `var`. It is only ever called for a
 	// terminal run — a paused run reports publicVars(partial state) instead,
 	// since its `output:` expressions may read vars that are not set yet.
+	//
+	// A typed signature's result type (`workflow X(...): T`) is checked here
+	// against the projection — on a normal finish and on `break` alike: a
+	// caller gets exactly the shape the pipeline advertises, or an
+	// *runtime.OutputContractError, never a partial result.
 	projectVars := func(finalVars map[string]any, instanceID string) (map[string]any, error) {
 		if pipeline.Output == nil {
-			return publicVars(finalVars), nil
+			return publicVars(finalVars)
 		}
 		mem := memContextFor(memInit, pipeline.Name, instanceID)
-		return interpreter.EvalOutputs(runCtx, prog, pipeline.Output, file, out, store, jsonStore, mem, contextView, finalVars)
+		projected, err := interpreter.EvalOutputs(runCtx, prog, pipeline.Output, file, out, store, jsonStore, mem, contextView, finalVars)
+		if err != nil {
+			return nil, err
+		}
+		if pipeline.OutputType != nil {
+			if err := types.Check("output", *pipeline.OutputType, projected); err != nil {
+				return nil, &runtime.OutputContractError{Pipeline: pipeline.Name, Type: pipeline.OutputTypeName, Err: err}
+			}
+		}
+		return value.MaterializeVars(projected)
 	}
 
 	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
@@ -295,9 +316,7 @@ func Run(req Request) (*Result, error) {
 	}
 
 	exec := func(stepCtx context.Context, step string, ctx *runtime.RunContext) error {
-		for k, v := range coercedInputs {
-			ctx.Vars[k] = v
-		}
+		pipeline.BindInputs(ctx.Vars, coercedInputs)
 		ctx.Vars["__last_step"] = step
 		stepOut := out
 		if ctx.Out != nil {
@@ -408,7 +427,7 @@ func Run(req Request) (*Result, error) {
 		// resume that completes the run evaluates the real projection. Same
 		// reasoning excludes it from session_end/stop_failure: a paused run
 		// isn't finished, in either direction.
-		vars := publicVars(res.FinalVars)
+		vars := pausedVars(res.FinalVars)
 		if !res.Paused {
 			if err := persistContextResult(resultSink, pipeline, res.FinalVars); err != nil {
 				return nil, stopFailure(err, "default")
@@ -467,7 +486,7 @@ func Run(req Request) (*Result, error) {
 	}
 	// As in the non-loop path: a paused loop reports its partial state, not the
 	// `output:` projection, which is evaluated only once the run terminates.
-	vars := publicVars(res.FinalVars)
+	vars := pausedVars(res.FinalVars)
 	if !paused {
 		if err := persistContextResult(loopResultSink, pipeline, res.FinalVars); err != nil {
 			return nil, stopFailure(err, loopInstance)
@@ -518,10 +537,14 @@ func pipelineVarsInit(prog *ast.Program, pipelineName, file string, out io.Write
 
 // publicVars strips the runtime's own bookkeeping keys (e.g. __last_step) so
 // what a caller sees — Result.Vars and the persisted result.json alike — is
-// only the pipeline's declared inputs and vars. Returns nil for nil.
-func publicVars(vars map[string]any) map[string]any {
+// only the pipeline's declared inputs and vars. Returns nil for nil. Ref
+// objects are materialized (value.MaterializeVars): a result leaves the
+// interpreter, so it is plain data — and RedactVars, which walks plain
+// maps, can then mask a secret held inside one. A ref cycle has no plain
+// form and is an error.
+func publicVars(vars map[string]any) (map[string]any, error) {
 	if vars == nil {
-		return nil
+		return nil, nil
 	}
 	clean := make(map[string]any, len(vars))
 	for k, v := range vars {
@@ -529,6 +552,22 @@ func publicVars(vars map[string]any) map[string]any {
 			continue
 		}
 		clean[k] = v
+	}
+	return value.MaterializeVars(clean)
+}
+
+// pausedVars is the display-only view of a paused run's partial state:
+// publicVars, except a ref cycle is shown as "[circular ref]" rather than
+// failing — a pause isn't a result, and the checkpoint keeps the cycle.
+func pausedVars(vars map[string]any) map[string]any {
+	if vars == nil {
+		return nil
+	}
+	clean := make(map[string]any, len(vars))
+	for k, v := range vars {
+		if !strings.HasPrefix(k, "__") {
+			clean[k] = value.MaterializeLossy(v)
+		}
 	}
 	return clean
 }
@@ -542,12 +581,9 @@ func persistContextResult(store runtime.StateStore, pipeline runtime.Pipeline, f
 	if pipeline.Context == nil || finalVars == nil {
 		return nil
 	}
-	clean := make(map[string]any, len(finalVars))
-	for k, v := range finalVars {
-		if strings.HasPrefix(k, "__") {
-			continue
-		}
-		clean[k] = v
+	clean, err := publicVars(finalVars)
+	if err != nil {
+		return err
 	}
 	return store.WriteResult(pipeline.Name, clean)
 }

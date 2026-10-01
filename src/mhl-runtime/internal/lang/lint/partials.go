@@ -126,6 +126,14 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 			maxSet = true
 			out.Max = f.Max
 		}
+		if f.Param != nil || f.Returns != nil {
+			if out.Param != nil || out.Returns != nil {
+				findings = append(findings, Finding{File: file, Line: f.Pos.Line, Column: f.Pos.Column,
+					Message: fmt.Sprintf("partial %s %q: a typed signature is declared on more than one fragment", kind, name)})
+			} else {
+				out.Param, out.Returns = f.Param, f.Returns
+			}
+		}
 		out.Body = append(out.Body, f.Body...)
 		for _, m := range f.Body {
 			if m.Step != nil && m.Step.Entry {

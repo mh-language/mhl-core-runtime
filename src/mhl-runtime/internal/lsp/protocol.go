@@ -82,16 +82,17 @@ type location struct {
 // completionItemKind mirrors the subset of LSP's CompletionItemKind enum
 // this server uses.
 const (
-	kindText     = 1
-	kindMethod   = 2
-	kindFunction = 3
-	kindField    = 5
-	kindVariable = 6
-	kindClass    = 7
-	kindModule   = 9
-	kindProperty = 10
-	kindKeyword  = 14
-	kindSnippet  = 15
+	kindText       = 1
+	kindMethod     = 2
+	kindFunction   = 3
+	kindField      = 5
+	kindVariable   = 6
+	kindClass      = 7
+	kindModule     = 9
+	kindProperty   = 10
+	kindKeyword    = 14
+	kindSnippet    = 15
+	kindEnumMember = 20
 )
 
 // insertTextFormatSnippet marks a completionItem's InsertText as LSP snippet

@@ -1,0 +1,44 @@
+// `obj with { field: value, ... }` copies obj and overrides the listed
+// fields on the copy, leaving obj itself untouched — "the same object,
+// except for these fields", without rewriting every other field by hand.
+// Copies the same way an ordinary object literal does: a ref-typed field
+// keeps its shared identity, every other field is deep-copied.
+test with_copies_and_overrides_fields {
+    describe overriding_one_field_leaves_the_rest_and_the_original_untouched {
+        var d = { titulo: "x", avisos: [], outro: 1 }
+        var d2 = d with { avisos: ["a"] }
+        are_equal(d.avisos, [])
+        are_equal(d2.avisos, ["a"])
+        are_equal(d2.titulo, "x")
+        are_equal(d2.outro, 1)
+    }
+    describe chained_with_applies_left_to_right {
+        var chained = { a: 1 } with { b: 2 } with { c: 3 }
+        are_equal(chained, { a: 1, b: 2, c: 3 })
+    }
+    describe a_ref_typed_field_keeps_its_shared_identity {
+        var r = ref { count: 0 }
+        var obj = { r: r, x: 1 }
+        var obj2 = obj with { x: 2 }
+        r["count"] = r.count + 1
+        are_equal(obj2.r.count, 1)
+    }
+    describe with_on_a_reference_object_yields_a_plain_copy {
+        var original = ref { n: 1 }
+        var copy = original with { n: 2 }
+        are_equal(copy.n, 2)
+        are_equal(original.n, 1)
+    }
+    describe with_on_a_non_object_is_an_error {
+        try {
+            var bad = 5 with { x: 1 }
+            fail("expected with on a number to raise")
+        } catch (e) {
+            is_true(e.contains("with: left side must be an object"))
+        }
+    }
+    describe with_stays_usable_as_a_plain_identifier {
+        var with = 5
+        are_equal(with + 1, 6)
+    }
+}

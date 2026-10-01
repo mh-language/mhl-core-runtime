@@ -1431,22 +1431,37 @@ func TestEvalBracketIndexAssignChainedNestedObjects(t *testing.T) {
 	}
 }
 
-func TestEvalBracketIndexAssignAliasesSameBackingArray(t *testing.T) {
-	// A slice assigned to another variable shares its backing array — the
-	// same reference semantics `var b = a; b[...] via get_index already has
-	// — so a bracket-index write through one name is visible through the
-	// other, with no reassignment step needed.
+func TestEvalBracketIndexAssignDoesNotAliasACopiedValue(t *testing.T) {
+	// Arrays and objects are values: `var b = a` copies, so a bracket-index
+	// write through one name is never visible through the other. Sharing is
+	// opt-in with `ref { ... }` (see TestEvalRefObjectIsShared).
 	out, err := run(t, wrapStep(`
         var a = [1, 2, 3]
         var b = a
         b[0] = 42
         log(a)
+        log(b)
     `))
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if !strings.Contains(out, "[42,2,3]") {
+	if !strings.Contains(out, "[1,2,3]") || !strings.Contains(out, "[42,2,3]") {
 		t.Errorf("unexpected output: %s", out)
+	}
+}
+
+func TestEvalRefObjectIsShared(t *testing.T) {
+	out, err := run(t, wrapStep(`
+        var a = ref { n: 1 }
+        var b = a
+        b["n"] = 42
+        log(a.n)
+    `))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "42") {
+		t.Errorf("a ref object is shared between names: %s", out)
 	}
 }
 

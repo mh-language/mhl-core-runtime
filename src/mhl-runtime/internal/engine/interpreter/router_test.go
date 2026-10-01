@@ -417,3 +417,137 @@ export router Frontdesk {
 		t.Fatal("expected an error when the decision call matches no declared agent")
 	}
 }
+
+// TestRunRouterSelectResolvesAgentNameWithoutRunningIt proves a public
+// `Router.select(prompt: ...)` call returns the chosen agent's name as a
+// plain string — and, crucially, never actually runs that agent (unlike
+// `.delegate()`) — added so a caller can decide something about the call
+// (e.g. which shape an auxiliary argument needs) before running `.delegate()`
+// itself. Billing here would fail loudly (unknown executable) if it were
+// ever run, so a passing test proves select alone doesn't run it.
+func TestRunRouterSelectResolvesAgentNameWithoutRunningIt(t *testing.T) {
+	src := `
+export agent Billing { command: "this-command-does-not-exist-and-must-never-run" }
+export agent Support { command: "echo" }
+
+export router Frontdesk {
+    agents: [Billing, Support]
+    select: (prompt) -> {
+        if (prompt == "invoice question") { return "Billing" }
+        return null
+    }
+}
+`
+	prog, err := parser.Parse(src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	router, ok := findRouter(prog, "Frontdesk")
+	if !ok {
+		t.Fatal("router Frontdesk not found")
+	}
+	ctx := &evalCtx{prog: prog, env: Env{}, out: io.Discard}
+	call := parseDelegateCall(t, `Frontdesk.select(prompt: "invoice question")`)
+
+	got, err := runRouterSelect(ctx, "Frontdesk", router, call, 0)
+	if err != nil {
+		t.Fatalf("runRouterSelect: %v", err)
+	}
+	if got != "Billing" {
+		t.Fatalf("runRouterSelect = %v, want \"Billing\"", got)
+	}
+}
+
+// TestRunRouterSelectReturnsNilWhenInconclusive proves select declining to
+// name an agent surfaces as a plain nil, not an error — the caller decides
+// what to do next (e.g. fall back to `.delegate()` for the LLM cascade).
+func TestRunRouterSelectReturnsNilWhenInconclusive(t *testing.T) {
+	src := `
+export agent Billing { command: "echo" }
+
+export router Frontdesk {
+    agents: [Billing]
+    select: (prompt) -> null
+}
+`
+	prog, err := parser.Parse(src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	router, ok := findRouter(prog, "Frontdesk")
+	if !ok {
+		t.Fatal("router Frontdesk not found")
+	}
+	ctx := &evalCtx{prog: prog, env: Env{}, out: io.Discard}
+	call := parseDelegateCall(t, `Frontdesk.select(prompt: "anything")`)
+
+	got, err := runRouterSelect(ctx, "Frontdesk", router, call, 0)
+	if err != nil {
+		t.Fatalf("runRouterSelect: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("runRouterSelect = %v, want nil", got)
+	}
+}
+
+// TestRunRouterSelectOnDeciderOnlyRouterErrors proves calling `.select()` on
+// a router that only declares a `decider` (no `select:` hook) is a clear,
+// dedicated error — never a silent nil that would read as "declined this
+// time" when the truth is "this router can't answer that ahead of a real
+// .delegate() call".
+func TestRunRouterSelectOnDeciderOnlyRouterErrors(t *testing.T) {
+	src := `
+export agent Billing { command: "echo" }
+export agent Decider { command: "echo" }
+
+export router Frontdesk {
+    agents: [Billing]
+    decider: Decider
+}
+`
+	prog, err := parser.Parse(src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	router, ok := findRouter(prog, "Frontdesk")
+	if !ok {
+		t.Fatal("router Frontdesk not found")
+	}
+	ctx := &evalCtx{prog: prog, env: Env{}, out: io.Discard}
+	call := parseDelegateCall(t, `Frontdesk.select(prompt: "anything")`)
+
+	_, err = runRouterSelect(ctx, "Frontdesk", router, call, 0)
+	if err == nil || !strings.Contains(err.Error(), "no select hook declared") {
+		t.Fatalf("expected a no-select-hook error, got: %v", err)
+	}
+}
+
+// TestRunRouterSelectRejectsTypoInReturnedName proves select returning a
+// name that isn't one of the router's declared agents is a clear error, the
+// same way `.delegate()` already catches it — whether the typo is reached
+// via `.select()` or `.delegate()` shouldn't matter.
+func TestRunRouterSelectRejectsTypoInReturnedName(t *testing.T) {
+	src := `
+export agent Billing { command: "echo" }
+
+export router Frontdesk {
+    agents: [Billing]
+    select: (prompt) -> "Biling"
+}
+`
+	prog, err := parser.Parse(src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	router, ok := findRouter(prog, "Frontdesk")
+	if !ok {
+		t.Fatal("router Frontdesk not found")
+	}
+	ctx := &evalCtx{prog: prog, env: Env{}, out: io.Discard}
+	call := parseDelegateCall(t, `Frontdesk.select(prompt: "anything")`)
+
+	_, err = runRouterSelect(ctx, "Frontdesk", router, call, 0)
+	if err == nil || !strings.Contains(err.Error(), "not one of the declared agents") {
+		t.Fatalf("expected a typo error, got: %v", err)
+	}
+}

@@ -51,6 +51,10 @@ type Type struct {
 	Kind   Kind
 	Elem   *Type
 	Fields map[string]Type
+	// Optional names the Fields a value may omit (`base?: string`); nil or a
+	// missing key means required. Only meaningful alongside Fields. An
+	// optional field that *is* present is still checked against its type.
+	Optional map[string]bool
 	// Name is set only when Kind == EnumKind: the declared `enum` name a
 	// value must belong to. An enum type carries no variant list here —
 	// variant validity is enforced where an enum value is constructed
@@ -66,6 +70,12 @@ func EnumType(name string) Type { return Type{Kind: EnumKind, Name: name} }
 // (interpreter.enumValue) so Of/Check can recognise one without this
 // package importing internal/engine.
 type EnumCarrier interface{ EnumName() string }
+
+// ObjectCarrier is implemented by a runtime reference object
+// (internal/engine/value.Ref) so Of/Check treat it as an object — checked
+// field by field like a plain map — without this package importing
+// internal/engine.
+type ObjectCarrier interface{ ObjectFields() map[string]any }
 
 // Any/String/Number/Bool/Array/Object are the unshaped base values for each
 // Kind — Array/Object here mean "no declared element type / field shape",
@@ -91,6 +101,14 @@ func ArrayOf(elem Type) Type {
 func ObjectOf(fields map[string]Type) Type {
 	return Type{Kind: ObjectKind, Fields: fields}
 }
+
+// ObjectOfOptional is ObjectOf with the named fields marked optional.
+func ObjectOfOptional(fields map[string]Type, optional map[string]bool) Type {
+	return Type{Kind: ObjectKind, Fields: fields, Optional: optional}
+}
+
+// IsOptional reports whether field name of an Object type may be omitted.
+func (t Type) IsOptional(name string) bool { return t.Optional[name] }
 
 // Equal reports whether t and other describe the same declared shape,
 // structurally — the == replacement now that Type may hold a map. An
@@ -121,7 +139,7 @@ func (t Type) Equal(other Type) bool {
 		}
 		for k, v := range t.Fields {
 			ov, ok := other.Fields[k]
-			if !ok || !v.Equal(ov) {
+			if !ok || !v.Equal(ov) || t.IsOptional(k) != other.IsOptional(k) {
 				return false
 			}
 		}
@@ -164,7 +182,11 @@ func (t Type) String() string {
 		sort.Strings(names)
 		parts := make([]string, len(names))
 		for i, name := range names {
-			parts[i] = name + ": " + t.Fields[name].String()
+			opt := ""
+			if t.IsOptional(name) {
+				opt = "?"
+			}
+			parts[i] = name + opt + ": " + t.Fields[name].String()
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
 	default:
@@ -276,6 +298,8 @@ func Of(v any) (Type, bool) {
 		return Object, true
 	case EnumCarrier:
 		return EnumType(tv.EnumName()), true
+	case ObjectCarrier:
+		return Object, true
 	default:
 		return Any, false
 	}
@@ -298,7 +322,8 @@ func Of(v any) (Type, bool) {
 // matching how most structural type systems treat object shapes: an agent's
 // JSON response routinely carries more fields than a caller declared
 // interest in, and rejecting those would make the contract needlessly
-// brittle.
+// brittle. An Optional field may be absent; when present it is checked like
+// any other.
 func Check(label string, declared Type, v any) error {
 	if declared.Kind == AnyKind || v == nil {
 		return nil
@@ -329,7 +354,10 @@ func Check(label string, declared Type, v any) error {
 		if declared.Fields == nil {
 			return nil
 		}
-		obj := v.(map[string]any)
+		obj, isMap := v.(map[string]any)
+		if !isMap {
+			obj = v.(ObjectCarrier).ObjectFields()
+		}
 		names := make([]string, 0, len(declared.Fields))
 		for k := range declared.Fields {
 			names = append(names, k)
@@ -339,6 +367,9 @@ func Check(label string, declared Type, v any) error {
 			fieldType := declared.Fields[name]
 			fv, present := obj[name]
 			if !present {
+				if declared.IsOptional(name) {
+					continue
+				}
 				return fmt.Errorf("%s: missing field %q (must be %s)", label, name, fieldType)
 			}
 			if err := Check(fmt.Sprintf("%s.%s", label, name), fieldType, fv); err != nil {
@@ -393,7 +424,13 @@ func CheckType(label string, declared, actual Type) error {
 			dt := declared.Fields[name]
 			at, present := actual.Fields[name]
 			if !present {
+				if declared.IsOptional(name) {
+					continue
+				}
 				return fmt.Errorf("%s: missing field %q (must be %s)", label, name, dt)
+			}
+			if actual.IsOptional(name) && !declared.IsOptional(name) {
+				return fmt.Errorf("%s: field %q is optional, but must be present (%s)", label, name, dt)
 			}
 			if err := CheckType(fmt.Sprintf("%s.%s", label, name), dt, at); err != nil {
 				return err

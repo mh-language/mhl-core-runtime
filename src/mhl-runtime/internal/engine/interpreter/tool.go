@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
@@ -168,6 +169,9 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 	args, err := evalCallArgs(ctx, call, depth)
 	if err != nil {
 		return nil, err
+	}
+	if args, err = args.materialized(); err != nil {
+		return nil, fmt.Errorf("%s.%s: %w", namespace, op, err)
 	}
 	switch namespace + "." + op {
 	case "cmd.exec":
@@ -989,6 +993,28 @@ func (a callArgs) stringMap(name string) (map[string]string, error) {
 // time.Duration without going through the general evalExpr value system —
 // Duration never becomes a first-class MHL runtime value (evalPrimary
 // still rejects it elsewhere), it only exists as a native-op argument.
+// materialized returns a with every ref object turned into a plain object
+// (value.Materialize): native ops and extensions are the world outside the
+// interpreter, which never sees a ref's identity.
+func (a callArgs) materialized() (callArgs, error) {
+	out := callArgs{named: make(map[string]any, len(a.named))}
+	for _, v := range a.positional {
+		mv, err := value.Materialize(v)
+		if err != nil {
+			return callArgs{}, err
+		}
+		out.positional = append(out.positional, mv)
+	}
+	for k, v := range a.named {
+		mv, err := value.Materialize(v)
+		if err != nil {
+			return callArgs{}, err
+		}
+		out.named[k] = mv
+	}
+	return out, nil
+}
+
 func evalCallArgs(ctx *evalCtx, call *ast.Call, depth int) (callArgs, error) {
 	out := callArgs{named: map[string]any{}}
 	for _, arg := range call.Args {

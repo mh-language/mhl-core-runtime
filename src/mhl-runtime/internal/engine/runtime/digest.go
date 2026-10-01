@@ -21,8 +21,10 @@ var Version = "dev"
 // StateSchemaVersion is the checkpoint on-disk format version. Bumped only when
 // a change to the Checkpoint struct is not backward-readable; a resume of a
 // checkpoint from a newer StateSchemaVersion than this build understands is
-// refused.
-const StateSchemaVersion = 1
+// refused. 2: variables may carry ref-object markers ({"$mhl_ref": id, ...},
+// see internal/engine/value) that an older build would read as plain
+// objects, losing identity; version-1 checkpoints still load unchanged.
+const StateSchemaVersion = 2
 
 // DefinitionDigest is a stable hash of the part of a resolved program that
 // governs one pipeline's execution: the named pipeline/workflow's own
@@ -79,6 +81,13 @@ func hashValue(h interface{ Write([]byte) (int, error) }, v reflect.Value) {
 		for i := 0; i < v.NumField(); i++ {
 			if t.Field(i).PkgPath != "" {
 				continue // unexported
+			}
+			// A field added to the AST after checkpoints already exist is
+			// tagged `digest:"omitzero"`: left unset, it is hashed as if it
+			// didn't exist, so a program that doesn't use it keeps the
+			// digest an older build stamped and its checkpoints still resume.
+			if t.Field(i).Tag.Get("digest") == "omitzero" && v.Field(i).IsZero() {
+				continue
 			}
 			h.Write([]byte(t.Field(i).Name))
 			h.Write([]byte{':'})

@@ -141,6 +141,19 @@ func CredentialRefs(e *Expr) []string {
 				walkExpr(op.OptIndex)
 			}
 		}
+		// Recurse into every `with { ... }` continuation's field values —
+		// the same "reachable through any branch counts" reasoning as the
+		// if/match handling below applies here too: `base with { token:
+		// env("TOKEN") }` must not let that env() escape fail-closed/
+		// redaction just because it's inside a with-override instead of a
+		// top-level object literal.
+		for _, op := range pf.WithTail {
+			if op.Object != nil {
+				for _, f := range op.Object.Fields {
+					walkExpr(f.Value)
+				}
+			}
+		}
 		// Recurse into container / grouped primaries.
 		if p.Sub != nil {
 			walkExpr(p.Sub)

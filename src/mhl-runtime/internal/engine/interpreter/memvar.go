@@ -3,6 +3,7 @@ package interpreter
 import (
 	"fmt"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
@@ -69,8 +70,14 @@ func readMemVar(ctx *evalCtx, name string) (any, error) {
 
 // writeMemVar stores value under name in ctx.mem's backing store,
 // overwriting whatever get-or-init would otherwise have produced.
-func writeMemVar(ctx *evalCtx, name string, value any) error {
-	return ctx.jsonStore.Set(ctx.mem.Path, name, value)
+func writeMemVar(ctx *evalCtx, name string, v any) error {
+	// A `mem` is persisted JSON: a ref object is stored as the plain object
+	// it holds (its identity doesn't survive there).
+	plain, err := value.Materialize(v)
+	if err != nil {
+		return fmt.Errorf("mem %q: %w", name, err)
+	}
+	return ctx.jsonStore.Set(ctx.mem.Path, name, plain)
 }
 
 // resetMemVar deletes name's stored value, so the next read or write

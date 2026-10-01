@@ -20,7 +20,8 @@ func pipelineInputs(p *ast.Pipeline) []*ast.PipelineInput {
 	return inputs
 }
 
-// pipelineInputTypes maps each declared input to its parsed Type, falling
+// pipelineInputTypes maps each declared input (and a typed signature's
+// param) to its parsed Type, falling
 // back to types.Any for one whose Type text doesn't resolve — reporting
 // that typo is checkPipelineInputTypes' job, not this reader's; variable-
 // type inference (varinfer.go) simply treats an unresolvable input as
@@ -33,6 +34,15 @@ func pipelineInputTypes(p *ast.Pipeline, aliases map[string]types.Type) map[stri
 			t = types.Any
 		}
 		m[in.Name] = t
+	}
+	// A typed signature's param (`workflow X(req: T)`) is bound in every
+	// step exactly like an input — as one object of type T.
+	if p.Param != nil {
+		t, ok := types.FromExprAlias(p.Param.Type, aliases)
+		if !ok {
+			t = types.Any
+		}
+		m[p.Param.Name] = t
 	}
 	return m
 }

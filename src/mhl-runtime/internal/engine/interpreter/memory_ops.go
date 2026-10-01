@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
@@ -117,6 +118,13 @@ func executeMemoryOp(ctx *evalCtx, mem *ast.Memory, method string, call *ast.Cal
 	args, err := evalPositionalValues(ctx, call, depth)
 	if err != nil {
 		return nil, err
+	}
+	// Memory is persisted outside the run: a ref object is stored as the
+	// plain object it holds (its identity doesn't survive there).
+	for i, a := range args {
+		if args[i], err = value.Materialize(a); err != nil {
+			return nil, err
+		}
 	}
 
 	switch memType {

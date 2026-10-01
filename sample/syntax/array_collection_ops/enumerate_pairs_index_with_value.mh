@@ -1,0 +1,22 @@
+test enumerate_pairs_index_with_value {
+    describe enumerate_pairs_index_with_value {
+        var pairs = ["a", "b", "c"].enumerate()
+        are_equal(pairs.size(), 3)
+        are_equal(pairs[0].index, 0)
+        are_equal(pairs[0].value, "a")
+        are_equal(pairs[2].index, 2)
+        are_equal(pairs[2].value, "c")
+    }
+
+    describe enumerate_composes_with_a_plain_for_in_loop {
+        var seen = []
+        for (var pair in ["x", "y"].enumerate()) {
+            seen += ["${pair.index}:${pair.value}"]
+        }
+        are_equal(seen, ["0:x", "1:y"])
+    }
+
+    describe enumerate_of_an_empty_array_is_empty {
+        are_equal([].enumerate(), [])
+    }
+}

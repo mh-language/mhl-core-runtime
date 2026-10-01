@@ -1,0 +1,30 @@
+// `ref { ... }` creates a reference object: every name that holds it sees
+// every change, and `==` compares identity (the same object), not fields.
+// `ref (expr)` makes a new reference object from a copy of any object.
+test ref_objects_are_shared {
+    describe every_name_sees_the_change {
+        var counter = ref { n: 0 }
+        var alias = counter
+        alias["n"] = 1
+        var bump = (c) -> { c["n"] = c.n + 1 }
+        bump(counter)
+        are_equal(counter.n, 2)
+        is_true(counter == alias)
+    }
+    describe equality_is_identity {
+        var a = ref { n: 1 }
+        var b = ref { n: 1 }
+        is_false(a == b)
+    }
+    describe ref_of_an_expression_copies_its_source {
+        var plain = { n: 1 }
+        var shared = ref (plain)
+        shared["n"] = 2
+        are_equal(plain.n, 1)
+        are_equal(shared.n, 2)
+    }
+    describe it_leaves_as_plain_json {
+        var r = ref { n: 1 }
+        are_equal(json.stringify(r), "{\"n\":1}")
+    }
+}

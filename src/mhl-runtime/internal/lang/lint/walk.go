@@ -89,6 +89,13 @@ func mxUnary(u *ast.Unary, fn func(*ast.MatchExpr)) {
 	for _, t := range u.Operand.Ops {
 		mxTrailer(t, fn)
 	}
+	for _, op := range u.Operand.WithTail {
+		if op.Object != nil {
+			for _, f := range op.Object.Fields {
+				walkMatchExprs(f.Value, fn)
+			}
+		}
+	}
 }
 
 func mxTrailer(t *ast.Trailer, fn func(*ast.MatchExpr)) {
