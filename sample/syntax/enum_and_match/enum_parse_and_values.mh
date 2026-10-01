@@ -1,0 +1,31 @@
+// `Kind.parse(text)` turns a variant name into the enum value — for text that
+// doesn't arrive through a typed input (a JSON file, a tool argument) — and
+// `Kind.values()` lists every variant in declaration order. The call is what
+// tells them apart from a variant access, so a variant may itself be named
+// `parse` or `values`.
+enum Kind { brief, adr, parse }
+
+test enum_parse_and_values {
+    describe parse_returns_the_variant_named_by_the_text {
+        is_true(Kind.parse("adr") == Kind.adr)
+        is_true(Kind.parse(Kind.brief) == Kind.brief)
+    }
+
+    describe an_unknown_name_is_rejected_listing_the_variants {
+        var message = ""
+        try {
+            Kind.parse("bogus")
+        } catch (e) {
+            message = "${e}"
+        }
+        are_equal(message, "\"bogus\" is not a variant of enum Kind (use brief | adr | parse)")
+    }
+
+    describe values_lists_every_variant {
+        are_equal(Kind.values().map((k) -> "${k}").join(" | "), "brief | adr | parse")
+    }
+
+    describe a_variant_named_parse_is_still_a_variant {
+        are_equal("${Kind.parse}", "parse")
+    }
+}

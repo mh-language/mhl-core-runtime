@@ -1,0 +1,35 @@
+// `dir.clear(path)` leaves `path` as an existing, empty directory: created
+// when absent, everything inside removed (at any depth) when present, the
+// directory itself kept — for regenerating a whole collection whose previous
+// batch must not survive. `dir.delete` stays non-recursive. dir.clear refuses
+// an empty path, a filesystem root, the working directory or an ancestor of
+// it, and a symlinked path.
+test dir_clear_empties_a_directory {
+    describe a_missing_directory_is_created_empty {
+        var root = "mhl-dir-clear-sample-1"
+        dir.clear(root)
+        is_true(dir.exists(root))
+        are_equal(dir.list(root).size(), 0)
+        dir.delete(root)
+    }
+
+    describe an_existing_directory_is_emptied_and_kept {
+        var root = "mhl-dir-clear-sample-2"
+        fs.write(root + "/top.txt", "a")
+        fs.write(root + "/sub/deeper/bottom.txt", "b")
+        dir.clear(root)
+        is_true(dir.exists(root))
+        are_equal(dir.list(root).size(), 0)
+        dir.delete(root)
+    }
+
+    describe the_working_directory_is_refused {
+        var message = ""
+        try {
+            dir.clear(".")
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("refusing to clear the working directory"))
+    }
+}

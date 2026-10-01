@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "resumo_executivo": { "type": "string" }
+  },
+  "required": ["resumo_executivo"]
+}

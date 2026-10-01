@@ -95,9 +95,14 @@ func checkUndefinedNames(file string, prog *ast.Program, aliases map[string]type
 				}
 			}
 		case decl.Test != nil:
+			// enumStringCompare is skipped here, like checkConstReassign: a
+			// test is where an always-false comparison is asserted on
+			// purpose (`is_false(s == "Published")`).
+			u.inTest = true
 			for _, d := range decl.Test.Describes {
 				u.stmts(d.Body, collectVarNames(prog, d.Body, nil, nil))
 			}
+			u.inTest = false
 		}
 	}
 	return u.findings
@@ -118,6 +123,8 @@ type undefWalker struct {
 	// deferInterp > 0 while walking arguments whose interpolation the
 	// runtime resolves in a scope lint cannot reproduce (isAgentDispatch).
 	deferInterp int
+	// inTest is set while walking a test's describe bodies.
+	inTest bool
 }
 
 // isAgentDispatch reports whether p is `Agent.run(...)` or
@@ -261,6 +268,9 @@ func (u *undefWalker) eq(e *ast.EqExpr, scope map[string]types.Type, pos lexer.P
 // an enum value: an enum never equals a string, so the comparison is constant
 // — almost always code written when x was still a string.
 func (u *undefWalker) enumStringCompare(a, b *ast.CmpExpr, scope map[string]types.Type, pos lexer.Position) {
+	if u.inTest {
+		return
+	}
 	name, ok := cmpOperand(a)
 	if !ok || name.Primary.Ident == "" || len(name.Ops) != 0 {
 		return

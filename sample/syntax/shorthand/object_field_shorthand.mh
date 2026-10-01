@@ -1,0 +1,18 @@
+// A bare name in an object literal is a field of the same name:
+// `{artifact, path}` is `{artifact: artifact, path: path}`. It mixes freely
+// with ordinary `key: value` fields.
+test object_field_shorthand {
+    describe a_bare_name_is_a_field_of_the_same_name {
+        var artifact = "brief"
+        var path = "artifacts/brief.html"
+        var result = {artifact, path, ok: true}
+        are_equal(result, {artifact: "brief", path: "artifacts/brief.html", ok: true})
+    }
+
+    describe it_works_anywhere_an_object_literal_does {
+        var tokens_in = 10
+        var tokens_out = 5
+        var rows = [{tokens_in, tokens_out}]
+        are_equal(rows[0].tokens_out, 5)
+    }
+}

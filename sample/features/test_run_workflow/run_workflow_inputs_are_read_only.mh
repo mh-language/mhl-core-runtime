@@ -1,0 +1,27 @@
+// An input is what the caller passed; it is re-bound before every step, so a
+// write to it could only ever be silently undone. Assigning to one is
+// therefore an error (`mhl lint` and `mhl run`) — state that changes during a
+// run belongs in a `var`, as `feedback_consumed` does here: a pipeline var
+// keeps what a step assigned across steps, `goto` and pause/resume.
+workflow Review {
+    input feedback: string = ""
+    var feedback_consumed = false
+
+    step Consume {
+        if (!feedback.is_empty()) self.feedback_consumed = true
+        goto Report
+    }
+
+    step Report {
+        log("consumed=${feedback_consumed} feedback=${feedback}")
+    }
+}
+
+test run_workflow_inputs_are_read_only {
+    describe mutable_state_lives_in_a_var {
+        var run = Review.run(inputs: {feedback: "please change"})
+        is_true(run.ok)
+        is_true(run.vars.feedback_consumed)
+        are_equal(run.vars.feedback, "please change")
+    }
+}

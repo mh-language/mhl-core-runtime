@@ -1,0 +1,39 @@
+// A workflow alias publishes an existing workflow under another name with
+// some inputs fixed. It runs the target's steps unchanged, but is its own
+// entry point (MCP tool, `mhl run`, `.run()` here, sessions, checkpoints);
+// a bound input is no longer part of its input contract.
+enum Level { discovery, delivery }
+
+workflow ArtifactFlow {
+    description: "Shared artifact flow"
+    input level: Level
+    input artifact: string
+    var result = ""
+
+    step Generate {
+        self.result = "${level}:${artifact}"
+    }
+}
+
+workflow Delivery = ArtifactFlow with { level: Level.delivery } {
+    description: "Artifacts for a Feature or a standalone Story"
+}
+
+workflow Discovery = ArtifactFlow with { level: "discovery" }
+
+test run_workflow_alias {
+    describe each_alias_runs_the_target_with_its_bound_input {
+        are_equal(Delivery.run(inputs: {artifact: "adr"}).vars.result, "delivery:adr")
+        are_equal(Discovery.run(inputs: {artifact: "brief"}).vars.result, "discovery:brief")
+    }
+
+    describe a_bound_input_cannot_be_passed {
+        var message = ""
+        try {
+            Delivery.run(inputs: {artifact: "adr", level: "discovery"})
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("undeclared input \"level\""))
+    }
+}

@@ -14,6 +14,8 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
   numbers and strings
 - [concatenation/](concatenation/README.md) — string `+` and `${...}` interpolation
 - [const_declaration/](const_declaration/README.md) — `const` single-assignment bindings
+- [destructuring/](destructuring/README.md) — `var {a, b: n} = r`, `{a} = r`,
+  `self.{a} = r`: several fields of one object in one statement
 - [conditional_statements/](conditional_statements/README.md) — `if`/`else` as expression and
   as statement
 - [conditional_symbols/](conditional_symbols/README.md) — comparison operators
@@ -34,6 +36,8 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
   `prompt` parameters (`greeting: string = "Hello"`)
 - [pipeline_vs_workflow/](pipeline_vs_workflow/README.md) — `pipeline` (linear) vs `workflow`
   (`goto`-capable), including `goto match` for static step dispatch
+- [shorthand/](shorthand/README.md) — `{artifact, path}` object fields and `f(name:)`
+  named arguments
 - [string_methods/](string_methods/README.md) — built-in string methods
 - [type_alias/](type_alias/README.md) — `type X = <TypeExpr>` named aliases for the type
   vocabulary

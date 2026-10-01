@@ -185,3 +185,16 @@ workflow W {
 		}
 	}
 }
+
+// A test may assert an always-false comparison on purpose.
+func TestEnumStringCompareIsNotFlaggedInTests(t *testing.T) {
+	got := messages(lintSrc(t, `
+enum Status { Published }
+test T { describe d {
+    var s = Status.Published
+    is_false(s == "Published")
+} }`))
+	if len(got) != 0 {
+		t.Fatalf("unexpected findings: %q", got)
+	}
+}
