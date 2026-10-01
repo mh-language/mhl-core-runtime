@@ -1441,8 +1441,8 @@ pipeline P {
 }
 `)
 	findings := lint.File(main)
-	if len(findings) != 0 {
-		t.Errorf("expected 0 findings (an undeclared target that isn't a memory method name isn't checked), got %d: %+v", len(findings), findings)
+	if len(findings) != 1 || !strings.Contains(findings[0].Message, `undefined name "ghost"`) {
+		t.Errorf("expected 1 undefined-name finding for the unknown receiver, got %d: %+v", len(findings), findings)
 	}
 }
 

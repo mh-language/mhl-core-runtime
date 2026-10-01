@@ -93,6 +93,10 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 			}
 			decl.Skill.Frontmatter = fm
 			decl.Skill.Content = content
+		case decl.Schema != nil:
+			if err := decl.Schema.Load(dir); err != nil {
+				return fmt.Errorf("schema %q from %q: %w", decl.Schema.Name, decl.Schema.Source, err)
+			}
 		case decl.Import != nil:
 			label := importLabel(decl.Import)
 			modulePath := filepath.Join(dir, decl.Import.Path)
@@ -228,6 +232,8 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 		return "prompt", decl.Prompt.Name, true
 	case decl.Skill != nil:
 		return "skill", decl.Skill.Name, true
+	case decl.Schema != nil:
+		return "schema", decl.Schema.Name, true
 	case decl.Extension != nil:
 		return "extension:" + decl.Extension.Kind, decl.Extension.Name, true
 	case decl.Agent != nil:
@@ -358,6 +364,8 @@ func findExport(module *ast.Program, name string) (*ast.Declaration, bool) {
 		case decl.Prompt != nil && decl.Prompt.Name == name:
 			return decl, true
 		case decl.Skill != nil && decl.Skill.Name == name:
+			return decl, true
+		case decl.Schema != nil && decl.Schema.Name == name:
 			return decl, true
 		case decl.Type != nil && decl.Type.Name == name:
 			return decl, true

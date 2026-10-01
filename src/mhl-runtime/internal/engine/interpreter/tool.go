@@ -324,6 +324,12 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, fmt.Errorf("dir.exists requires a string path as its first argument")
 		}
 		return nativeops.DirExists(path)
+	case "dir.clear":
+		path, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("dir.clear requires a string path as its first argument")
+		}
+		return nativeops.ClearDir(path)
 	case "dir.delete":
 		path, ok := args.stringAt(0)
 		if !ok {

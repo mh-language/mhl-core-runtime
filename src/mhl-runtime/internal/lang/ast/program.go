@@ -45,6 +45,7 @@ type Declaration struct {
 	Pipeline   *Pipeline   `parser:"| @@"`
 	Type       *TypeAlias  `parser:"| @@"`
 	Enum       *Enum       `parser:"| @@"`
+	Schema     *Schema     `parser:"| @@" digest:"omitzero"`
 	Test       *Test       `parser:"| @@ )"`
 }
 

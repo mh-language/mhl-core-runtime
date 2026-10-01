@@ -150,7 +150,8 @@ html { scroll-behavior:smooth; }
 <p>The following is a compact grammar. The complete behavior of each production is specified in the subsequent clauses.</p>
 <pre class="grammar-block">program        ::= declaration*
 declaration    ::= ["export"] (import | agent | router | prompt | memory | tool | extension
-                    | pipeline | workflow | type | enum | test)
+                    | pipeline | workflow | type | enum | schema | test)
+schema         ::= "schema" Identifier "from" String
 import         ::= "import" "{" import-item ("," import-item)* "}" "from" String
                  | "import" String
 import-item    ::= Identifier ["as" Identifier]
@@ -172,7 +173,9 @@ trailer        ::= "." Identifier | "?." Identifier | "?." "[" expression "]"
                  | call | "[" expression "]" | slice
 ref-object     ::= "ref" (object | "(" expression ")")
 call           ::= "(" [argument ("," argument)*] ")"
-argument       ::= [Identifier ":"] expression
+argument       ::= Identifier ":" [expression] | expression
+object         ::= "{" [object-field (","? object-field)* ","?] "}"
+object-field   ::= (String | Identifier) ":" expression | Identifier
 slice          ::= "[" [slice-bound] ".." [slice-bound] "]"
 slice-bound    ::= ["^"] expression
 lambda         ::= "(" [parameter ("," parameter)*] ")" "->" (expression | block)
@@ -231,7 +234,7 @@ tool Reports {
 <p><code>??</code> → <code>||</code> → <code>&amp;&amp;</code> → <code>== !=</code> → <code>&lt; &gt; &lt;= &gt;=</code> → <code>+ -</code> → <code>* / %</code> → unary <code>! -</code> → member, optional member, call, index, and slice → <code>with</code> (§5.4).</p>
 <table><thead><tr><th>Form</th><th>Semantics</th></tr></thead><tbody>
 <tr><td>Literal / identifier</td><td>Produces the literal or resolves a value in the current scope. Unresolved identifiers raise.</td></tr>
-<tr><td><code>a + b</code></td><td>Numeric addition, string concatenation, or array concatenation. Other combinations raise.</td></tr>
+<tr><td><code>a + b</code></td><td>Numeric addition, string concatenation, or array concatenation. A string and a number, bool, or enum value, in either order, concatenate with the non-string operand formatted as interpolation formats it (<code>"n=" + 3</code> is <code>"n=3"</code>). Other combinations — including a string with null, an object, or an array — raise.</td></tr>
 <tr><td><code>a - b</code>, <code>a * b</code>, <code>a / b</code>, <code>a % b</code></td><td>Numeric arithmetic. Division by zero raises.</td></tr>
 <tr><td><code>a == b</code>, <code>a != b</code></td><td>Type-aware deep equality; arrays and objects are compared recursively and in order.</td></tr>
 <tr><td><code>a &lt; b</code> etc.</td><td>Numeric comparison. String ordering is provided by <code>time.compare</code>, not these operators.</td></tr>
@@ -248,8 +251,9 @@ var dynamic = record?.[field_name]
 var message = "${title}: ${items.size()} items"
 var next = Transform(value: 3)</code></pre>
 <p>Plain member access requires an object field and raises when absent. Plain array indexing is zero-based and raises outside the array. Object indexing requires a string key. Slices use an inclusive lower bound and exclusive upper bound; omitted bounds mean the beginning or end, and <code>^n</code> counts from the end. Slice results are new arrays.</p>
-<p>Optional member access (<code>?.name</code>) and optional dynamic indexing (<code>?.[expr]</code>) yield <code>null</code> for null, non-object receivers, missing object fields, or out-of-range array indexes; the remainder of the trailer chain is skipped. Calls accept positional or named arguments. A named argument has the form <code>name: expression</code>.</p>
+<p>Optional member access (<code>?.name</code>) and optional dynamic indexing (<code>?.[expr]</code>) yield <code>null</code> for null, non-object receivers, missing object fields, or out-of-range array indexes; the remainder of the trailer chain is skipped. Calls accept positional or named arguments. A named argument has the form <code>name: expression</code>; <code>name:</code> with no expression is shorthand for <code>name: name</code>. Likewise an object literal field written as a bare identifier <code>name</code> is shorthand for <code>name: name</code>; a string key or a reserved word has no shorthand form. A shorthand is equivalent to its long form in every respect, including the definition digest (§16.1).</p>
 <p>String interpolation evaluates the expression between <code>${...}</code> in the current environment. It is available in ordinary strings, multiline strings, prompt bodies, agent argument values, log paths, and memory paths. Values are formatted as strings, with structured values represented as JSON-like text. The expression MAY itself contain an ordinary, unescaped double-quoted string literal — <code>"${time.format(x, "yyyy-MM-dd")}"</code> — nested to any depth (a further interpolation, a nested object literal, a string containing <code>{</code>/<code>}</code>); escaping the inner quotes (<code>\"</code>) is accepted for backward compatibility but is no longer required.</p>
+<p>Static analysis (<code>mhl lint</code>) MUST report an interpolation span that does not parse, and an identifier in a span — or the receiver of a member access anywhere in a step, lifecycle hook, tool method, or test body — that resolves to no local, pipeline input/var/mem, builtin, or declared/imported name. The arguments of an agent <code>run</code> or router <code>delegate</code> call are exempt, since their interpolation also sees the agent <code>before</code> hook's bindings.</p>
 <h3>6.3 Conditionals, lambdas, and match</h3>
 <p>The expression form <code>if (condition) when_true else when_false</code> evaluates exactly one branch. A lambda has the form <code>(parameters) -&gt; expression</code> or <code>(parameters) -&gt; { statements }</code>. Tool methods and lambdas bind positional parameters left-to-right; defaulted parameters MUST be trailing for these callables. A lambda closes over the scope it is written in by value — a snapshot taken once, when the lambda expression itself is evaluated — not by live reference: the body reads a captured name's value as it stood at that moment, but assigning to a captured name inside the body is accepted without error and never propagates back to the defining scope, however many calls deep the lambda is eventually invoked from. A lambda's only channels back to its caller are its own return value and any external effect it performs itself (a <code>tool</code>/<code>extension</code> call, <code>mem</code>).</p>
 <pre class="code-block"><code class="language-mhl">var even = values.filter((n) -&gt; n % 2 == 0)
@@ -269,6 +273,7 @@ var decision = match status {
 <tr><td>Variable</td><td><code>var x = expression</code></td><td>Creates or rebinds a step-local value.</td></tr>
 <tr><td>Constant</td><td><code>const x = expression</code></td><td>Creates a binding that cannot be the target of <code>=</code> or <code>+=</code>.</td></tr>
 <tr><td>Assignment</td><td><code>target = expression</code></td><td>Updates a variable, object field, or array element.</td></tr>
+<tr><td>Destructuring</td><td><code>var {f, g: n} = expression</code>, <code>{f} = expression</code>, <code>self.{f} = expression</code></td><td>Evaluates expression exactly once, then, for each entry in order, binds <code>expression.f</code> to <code>f</code> (or to <code>n</code> for <code>f: n</code>) as a <code>var</code> declaration, a plain assignment, or a <code>self.</code> assignment respectively. Equivalent in every other respect to those individual statements; a missing field raises as member access does.</td></tr>
 <tr><td>Add-assignment</td><td><code>target += expression</code></td><td>Equivalent to <code>target = target + expression</code>.</td></tr>
 <tr><td>Conditional</td><td><code>if (condition) statement [else statement]</code></td><td>Executes the selected body.</td></tr>
 <tr><td>While</td><td><code>while (condition) statement</code></td><td>Repeats while true; the implementation caps interpreter iterations at 10,000.</td></tr>
@@ -343,6 +348,9 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <pre class="code-block"><code class="language-mhl">skill CodeReview from "code-review.md"</code></pre>
 <p>A skill is a named, reusable instruction package, always file-sourced — there is no inline <code>skill Name { ... }</code> form. Unlike every other declaration, its MHL name (<code>CodeReview</code>, used in <code>skills:</code> lists, <code>run(skills: ...)</code>, and <code>nameof(CodeReview)</code>) is distinct from any name given in the file's own frontmatter, which identifies the package in text sent to a model, not in the program. A skill is consumed only through an agent's <code>skills</code>/<code>system_prompt</code> properties (§12.3); a skill's Markdown content is never executed.</p>
 <p>The source file MUST open with a frontmatter block: a line containing only <code>---</code>, zero or more flat <code>key: value</code> lines (blank lines permitted; no nesting, lists, or multi-line values), and a closing <code>---</code> line. The keys <code>name</code> and <code>description</code> MUST both be present and non-empty; any other key is preserved unvalidated. Everything after the closing <code>---</code> is the skill's content, with leading/trailing whitespace trimmed. A missing file, a malformed or incomplete frontmatter block, or a file exceeding the implementation's configured size limit MUST fail at import resolution — before any pipeline that references the skill runs.</p>
+<h3>9.4.1 Schema declarations</h3>
+<pre class="code-block"><code class="language-mhl">schema Brief from "schemas/brief.schema.json"</code></pre>
+<p>A schema declaration names a JSON Schema file, resolved relative to the declaring file like a prompt or skill source. The file MUST contain a single JSON object and MUST NOT exceed 1 MiB; otherwise import resolution fails. Evaluated as an expression, the declared name yields the object <code>{content, path}</code>: <code>content</code> is the file's text and <code>path</code> its absolute filesystem path. A binding of the same name in scope shadows the declaration. The definition digest (§16.1) MUST include the content and MUST NOT include the path.</p>
 <h3>9.5 Extension declarations</h3>
 <pre class="code-block"><code class="language-mhl">extension mcp Issues {
     transport: "http"
@@ -405,6 +413,7 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
 <tr><td class="signature">dir.create(path: string) → bool</td><td>Creates the directory and every missing parent with host-default directory permissions, and returns true. The operation is idempotent when the directory already exists. A conflicting file or another creation failure raises.</td></tr>
 <tr><td class="signature">dir.exists(path: string) → bool</td><td>Returns true only when the path exists and is a directory. A missing path or an existing non-directory path returns false; other stat errors raise.</td></tr>
 <tr><td class="signature">dir.list(path: string) → string[]</td><td>Returns immediate entries as paths joined to <code>path</code>, sorted by filename. The operation is not recursive. A missing or non-directory path raises.</td></tr>
+<tr><td class="signature">dir.clear(path: string) → bool</td><td>Ensures <code>path</code> is an existing, empty directory and returns true: an absent path is created with its parents; every entry of an existing directory is removed, recursively, without following symbolic links. It MUST raise, removing nothing, for an empty path, a filesystem root, the working directory or any ancestor of it, a path that is itself a symbolic link, or an existing non-directory.</td></tr>
 <tr><td class="signature">dir.delete(path: string) → bool</td><td>Removes an empty directory and returns true. A file, missing path, non-empty directory, or removal failure raises. The operation MUST NOT recursively delete contents.</td></tr>
 </tbody></table>
 <h3>11.4 Git: <code>git</code></h3>
@@ -665,7 +674,7 @@ extensible crm {
     }
 }</code></pre>
 <p>A plain <code>pipeline</code> runs steps in declaration order and rejects <code>goto</code>. A <code>workflow</code> has the same model but permits forward or backward jumps to its own named steps. A step timeout creates a deadline for blocking calls and fails the step when it expires. A checkpoint is saved after each completed step when per-step checkpointing is enabled; <code>mhl run ... --resume</code> re-enters after the last completed unit with a fresh timeout budget.</p>
-<p>Reassigning an <code>input</code> inside a step does not persist through a later <code>--resume</code> of that run: on re-entry, an <code>input</code> is always re-bound to the value supplied with that invocation (the original call, or the arguments merged in by <code>--resume</code>/<code>run/resume</code>), never to whatever a previous execution of the step last assigned it. A pipeline-level <code>var</code> or <code>mem</code>, by contrast, keeps whatever a step last assigned it across a <code>pause()</code>/resume, exactly as it does across an ordinary step-to-step transition. Use <code>var</code>/<code>mem</code>, not a reassigned <code>input</code>, for any state that must survive a <code>goto</code> followed by <code>pause()</code> and a later resume — reassigning an <code>input</code> for this purpose is a silent no-op on resume, not an error, and has caused a real gate step to loop indefinitely (each resume re-triggering the same branch its previous execution meant to have already left).</p>
+<p>Inputs are read-only. An input is bound to the value supplied with the invocation — the original call, or that call's values with the arguments merged in by <code>--resume</code>/<code>run/resume</code> — before every step. An assignment to an input (directly, through <code>self.</code>, by <code>+=</code>, or as a destructuring target) and a <code>var</code> redeclaring one MUST raise, and static analysis MUST report both. A pipeline-level <code>var</code> or <code>mem</code> keeps whatever a step last assigned it across steps, <code>goto</code>, and a <code>pause()</code>/resume; state that changes during a run belongs there.</p>
 <p>For a recurring dispatch, write <code>goto match</code> rather than a chain of <code>if (artifact == ...)</code> checks. Each arm names a declared step, so a typo is caught by lint. A review gate may pause and, on resume, choose generation or commit:</p>
 <pre class="code-block"><code class="language-mhl">step Gate {
     if (!approved) pause("review " + artifact)
@@ -757,7 +766,7 @@ partial workflow Discovery {
         self.greeting = "hello " + self.name
     }
 }</code></pre>
-<p>Inside a step, <code>self.name</code> reads or writes the pipeline's own declared <code>input</code>, <code>var</code>, or <code>mem</code> named <code>name</code> — the property form of <code>self</code>, distinct from <code>self.method(...)</code> inside a <code>tool</code> method (§9.2), which it is a static and runtime error to use outside a <code>tool</code> method. It is exactly equivalent to reading/assigning the bare name, with one difference: a step-local <code>var</code> sharing that name shadows a bare reference to it (§7), but <code>self.name</code> MUST always resolve to the pipeline's own binding regardless of any step-local shadow — it exists specifically to name that binding unambiguously, which matters most for a <code>partial</code> declaration (§16.6), where the binding may be declared in a different file than the step reading it. <code>self.name</code> used outside any pipeline/workflow step (a <code>tool</code> method, a test's <code>describe</code> block outside a running <code>.run()</code>) MUST raise; naming something not declared as an <code>input</code>/<code>var</code>/<code>mem</code> of that pipeline MUST also raise, on both the read and the write side. Only a bare <code>self.name</code> target is an assignable form — a further trailer on top of it (<code>self.name.field = ...</code>, <code>self.name[0] = ...</code>) is rejected the same as any other nested-field assignment target (§7).</p>
+<p>Inside a step, <code>self.name</code> reads the pipeline's own declared <code>input</code>, <code>var</code>, or <code>mem</code> named <code>name</code>, and writes a <code>var</code> or <code>mem</code> of that name (an input is read-only, §16.1) — the property form of <code>self</code>, distinct from <code>self.method(...)</code> inside a <code>tool</code> method (§9.2), which it is a static and runtime error to use outside a <code>tool</code> method. It is exactly equivalent to reading/assigning the bare name, with one difference: a step-local <code>var</code> sharing that name shadows a bare reference to it (§7), but <code>self.name</code> MUST always resolve to the pipeline's own binding regardless of any step-local shadow — it exists specifically to name that binding unambiguously, which matters most for a <code>partial</code> declaration (§16.6), where the binding may be declared in a different file than the step reading it. <code>self.name</code> used outside any pipeline/workflow step (a <code>tool</code> method, a test's <code>describe</code> block outside a running <code>.run()</code>) MUST raise; naming something not declared as an <code>input</code>/<code>var</code>/<code>mem</code> of that pipeline MUST also raise, on both the read and the write side. Only a bare <code>self.name</code> target is an assignable form — a further trailer on top of it (<code>self.name.field = ...</code>, <code>self.name[0] = ...</code>) is rejected the same as any other nested-field assignment target (§7).</p>
 <h3>16.8 Lifecycle hooks</h3>
 <pre class="code-block"><code class="language-mhl">workflow Discovery {
     session_start: (session) -&gt; { log("start " + session.session_id) }
@@ -914,6 +923,8 @@ const-declaration ::= "const" Identifier "=" expression
 var-declaration ::= "var" Identifier "=" expression
 mem-declaration ::= "mem" Identifier "=" expression
 assignment     ::= lvalue ("=" | "+=") expression
+destructuring  ::= ["var" | "self" "."] "{" destructure-entry ("," destructure-entry)* [","] "}" "=" expression
+destructure-entry ::= Identifier [":" Identifier]
 lvalue         ::= Identifier trailer*
 spawn          ::= "spawn" Identifier "=" expression ["for" Identifier "in" expression]
 wait           ::= "wait" ["any" | Number "of"] Identifier ("," Identifier)* wait-option*

@@ -298,8 +298,42 @@ type Statement struct {
 	While     *WhileStmt     `parser:"| @@"`
 	ForIn     *ForInStmt     `parser:"| @@"`
 	Try       *TryStmt       `parser:"| @@"`
-	Assign    *AssignStmt    `parser:"| @@"`
-	Expr      *ExprStmt      `parser:"| @@ )"`
+	// Destructure is expanded away by the parser (parser.expandDestructure)
+	// before anything else sees the AST; it is always nil on a parsed tree.
+	Destructure *DestructureStmt `parser:"| @@" digest:"omitzero"`
+	Assign      *AssignStmt      `parser:"| @@"`
+	Expr        *ExprStmt        `parser:"| @@ )"`
+}
+
+// DestructureStmt binds several fields of one object in a single statement:
+//
+//	var {data, revisao: note} = review   // declares data, note
+//	{tokens_in, tokens_out} = review     // assigns existing names
+//	self.{tokens_in, tokens_out} = review // assigns pipeline vars (self.name)
+//
+// Each entry `field` binds the field of the same name; `field: name` binds
+// it to a different name. The right-hand side is evaluated once. A missing
+// field fails exactly as `review.field` would.
+type DestructureStmt struct {
+	Pos     lexer.Position
+	Var     bool                `parser:"( @'var'"`
+	Self    bool                `parser:"| @'self' '.' )?"`
+	Entries []*DestructureEntry `parser:"'{' @@ ( ',' @@ )* ','? '}' '='"`
+	Value   *Expr               `parser:"@@"`
+}
+
+// DestructureEntry is one `field` or `field: name` of a DestructureStmt.
+type DestructureEntry struct {
+	Field string `parser:"@Ident"`
+	Name  string `parser:"( ':' @Ident )?"`
+}
+
+// Target is the name the entry binds: Name when renamed, else Field.
+func (e *DestructureEntry) Target() string {
+	if e.Name != "" {
+		return e.Name
+	}
+	return e.Field
 }
 
 // VarDecl declares and initializes a local variable: `var x = expr`.

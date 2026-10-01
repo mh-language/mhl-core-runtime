@@ -92,6 +92,8 @@ func declHover(path, text string, s symbol) *hover {
 		if len(s.Methods) > 0 {
 			parts = append(parts, "Variants: "+backtickJoin(s.Methods))
 		}
+	case symSchema:
+		parts = append(parts, "Value: `{content: string, path: string}` — the JSON text, and the file's absolute path.")
 	case symAgent, symMemory:
 		if len(s.Methods) > 0 {
 			parts = append(parts, "Methods: "+backtickJoin(s.Methods))

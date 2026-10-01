@@ -1,6 +1,10 @@
 package ast
 
-import "github.com/alecthomas/participle/v2/lexer"
+import (
+	"fmt"
+
+	"github.com/alecthomas/participle/v2/lexer"
+)
 
 // Expr is the entry point of the expression grammar. Expressions appear both
 // as property values (config) and inside pipeline statements. Precedence is
@@ -188,10 +192,14 @@ type Call struct {
 	Args []*Argument `parser:"'(' ( @@ ( ',' @@ )* )? ')'"`
 }
 
-// Argument is a call argument, optionally named (`name: value`).
+// Argument is a call argument, optionally named (`name: value`). A named
+// argument with no value is shorthand for passing the variable of the same
+// name: `f(project_id:)` is `f(project_id: project_id)`. Like an object
+// field's shorthand, the parser expands it right after parsing
+// (parser.expandShorthand), so Value is never nil on a parsed AST.
 type Argument struct {
-	Name  string `parser:"( @Ident ':' )?"`
-	Value *Expr  `parser:"@@"`
+	Name  string `parser:"( @Ident ':'"`
+	Value *Expr  `parser:"  @@? | @@ )"`
 }
 
 // Primary is an atomic expression. Lambda is tried before Sub since both
@@ -304,11 +312,42 @@ type Object struct {
 }
 
 // ObjectField is a single `key: value` entry of an object literal. The key may
-// be a string or a bare identifier.
+// be a string or a bare identifier. A bare identifier alone is shorthand for
+// a field of the same name: `{artifact, path}` is `{artifact: artifact, path:
+// path}`. The parser expands it right after parsing (parser.expandShorthand),
+// so every consumer — and DefinitionDigest — only ever sees KeyIdent+Value;
+// Shorthand is nil on any parsed AST.
 type ObjectField struct {
-	KeyStr   *string `parser:"( @String"`
-	KeyIdent *string `parser:"| @Ident )"`
-	Value    *Expr   `parser:"':' @@"`
+	Pos       lexer.Position
+	KeyStr    *string        `parser:"( ( @String"`
+	KeyIdent  *string        `parser:"  | @Ident ) ':'"`
+	Value     *Expr          `parser:"  @@"`
+	Shorthand *ShorthandName `parser:"| @Ident )" digest:"omitzero"`
+}
+
+// ShorthandName is the identifier of a shorthand object field (`{name}`) or
+// named argument (`f(name:)`). Its Capture rejects the statement keywords:
+// keywords lex as plain identifiers, and without this a block body such as
+// `-> { return x }` — where an expression is tried before a block — would
+// parse as the object `{return: return, x: x}` instead of backtracking.
+type ShorthandName string
+
+// Capture implements participle.Capture.
+func (n *ShorthandName) Capture(values []string) error {
+	if shorthandReserved[values[0]] {
+		return fmt.Errorf("%q is a keyword, not a shorthand field name", values[0])
+	}
+	*n = ShorthandName(values[0])
+	return nil
+}
+
+var shorthandReserved = map[string]bool{
+	"var": true, "const": true, "return": true, "break": true, "goto": true,
+	"spawn": true, "wait": true, "if": true, "else": true, "while": true,
+	"for": true, "in": true, "try": true, "catch": true, "finally": true,
+	"match": true, "ref": true, "with": true, "true": true, "false": true,
+	"null": true, "step": true, "input": true, "mem": true, "parallel": true,
+	"route": true, "entry": true, "agent": true,
 }
 
 // Array is a bracket-delimited list literal.

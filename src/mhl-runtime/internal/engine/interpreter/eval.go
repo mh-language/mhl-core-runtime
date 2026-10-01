@@ -335,15 +335,22 @@ func evalAdd(ctx *evalCtx, e *ast.AddExpr, depth int) (any, error) {
 // addValues is the core of the binary `+` operator, shared with the `+=`
 // compound assignment (execAssign): two strings concatenate, two arrays
 // combine into a fresh slice (neither operand mutated, matching the rest of
-// the language's copy-on-combine value semantics), two numbers add. Any
-// other pairing is an error.
+// the language's copy-on-combine value semantics), two numbers add. A string
+// and a scalar (number, bool, enum value) concatenate, in either order, the
+// scalar formatted exactly as `${...}` would format it — `"n=" + 3` is
+// "n=3". A string with null, an object or an array stays an error: that
+// pairing is almost always a bug, and `${...}` spells the rare intended case.
+// Any other pairing is an error.
 func addValues(l, r any) (any, error) {
+	rs, rIsStr := r.(string)
 	if ls, ok := l.(string); ok {
-		rs, ok := r.(string)
-		if !ok {
-			return nil, fmt.Errorf("'+' requires both operands to be strings when the left operand is a string, got %s", typeName(r))
+		switch {
+		case rIsStr:
+			return ls + rs, nil
+		case isConcatScalar(r):
+			return ls + formatValue(r), nil
 		}
-		return ls + rs, nil
+		return nil, stringJoinError(r)
 	}
 	if la, ok := l.([]any); ok {
 		ra, ok := r.([]any)
@@ -355,12 +362,31 @@ func addValues(l, r any) (any, error) {
 		combined = append(combined, ra...)
 		return combined, nil
 	}
+	if rIsStr {
+		if isConcatScalar(l) {
+			return formatValue(l) + rs, nil
+		}
+		return nil, stringJoinError(l)
+	}
 	lf, ok1 := l.(float64)
 	rf, ok2 := r.(float64)
 	if !ok1 || !ok2 {
 		return nil, fmt.Errorf("'+' requires two numbers, two strings, or two arrays, got %s and %s", typeName(l), typeName(r))
 	}
 	return lf + rf, nil
+}
+
+func stringJoinError(other any) error {
+	return fmt.Errorf("'+' cannot join a string and %s — use string interpolation if that is intended", typeName(other))
+}
+
+// isConcatScalar reports whether v is a value `+` joins to a string.
+func isConcatScalar(v any) bool {
+	switch v.(type) {
+	case float64, bool, enumValue:
+		return true
+	}
+	return false
 }
 
 func evalMul(ctx *evalCtx, e *ast.MulExpr, depth int) (any, error) {
@@ -1983,6 +2009,11 @@ func evalPrimary(ctx *evalCtx, p *ast.Primary, depth int) (any, error) {
 		}
 		if isContextRef(ctx, p.Ident) {
 			return contextSnapshot(ctx.cctx), nil
+		}
+		// A declared `schema` reads as its {content, path} object; a local
+		// of the same name (checked above) shadows it.
+		if s, ok := findSchema(ctx.prog, p.Ident); ok {
+			return s.Value(), nil
 		}
 		return nil, fmt.Errorf("undefined variable %q", p.Ident)
 	case p.Agent != nil:

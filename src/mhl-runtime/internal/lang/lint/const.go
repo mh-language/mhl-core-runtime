@@ -21,10 +21,12 @@ import (
 func checkConstReassign(file string, prog *ast.Program) []Finding {
 	var findings []Finding
 	// param is the typed signature param (`workflow X(req: T)`) of the
-	// pipeline being checked, "" elsewhere. It is seeded as a const: it's
-	// read-only (the runtime rebinds it before every step), with its own
-	// wording.
+	// pipeline being checked, "" elsewhere; inputs are its declared inputs.
+	// Both are seeded as consts: they're read-only (the runtime rebinds them
+	// before every step, so a write would be silently undone), each with its
+	// own wording.
 	param := ""
+	inputs := map[string]bool{}
 
 	check := func(stmts []*ast.Statement, seed map[string]bool) {
 		consts := map[string]bool{}
@@ -42,6 +44,8 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 						msg := fmt.Sprintf("%q is already declared as a constant", s.Var.Name)
 						if s.Var.Name == param {
 							msg = fmt.Sprintf("%q is the typed parameter and can't be redeclared", s.Var.Name)
+						} else if inputs[s.Var.Name] {
+							msg = fmt.Sprintf("%q is an input and can't be redeclared", s.Var.Name)
 						}
 						findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
 					}
@@ -50,6 +54,8 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 						msg := fmt.Sprintf("cannot assign to constant %q", name)
 						if name == param {
 							msg = fmt.Sprintf("cannot assign to %q: the typed parameter is read-only (copy it into a var to change it)", name)
+						} else if inputs[name] {
+							msg = fmt.Sprintf("cannot assign to input %q: inputs are read-only (copy it into a var to change it)", name)
 						}
 						findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
 					}
@@ -74,9 +80,14 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 		switch {
 		case decl.Pipeline != nil:
 			pipelineConsts := map[string]bool{}
+			inputs = map[string]bool{}
 			for _, m := range decl.Pipeline.Body {
 				if m.Const != nil {
 					pipelineConsts[m.Const.Name] = true
+				}
+				if m.Input != nil {
+					pipelineConsts[m.Input.Name] = true
+					inputs[m.Input.Name] = true
 				}
 			}
 			param = ""
@@ -100,6 +111,7 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 			}
 		case decl.Tool != nil:
 			param = ""
+			inputs = map[string]bool{}
 			toolConsts := map[string]bool{}
 			for _, member := range decl.Tool.Members {
 				if member.Const != nil {

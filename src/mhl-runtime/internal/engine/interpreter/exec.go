@@ -185,6 +185,12 @@ func pipelineConstNames(prog *ast.Program, stepName string) map[string]bool {
 			if m.Const != nil {
 				out[m.Const.Name] = true
 			}
+			// Inputs are read-only: they are what the caller passed, rebound
+			// before every step, so a write could only ever be silently
+			// undone by the next step. Mutable state belongs in a `var`.
+			if m.Input != nil {
+				out[m.Input.Name] = true
+			}
 		}
 		if decl.Pipeline.Param != nil {
 			out[decl.Pipeline.Param.Name] = true
@@ -402,8 +408,11 @@ func execStatementBody(ctx *evalCtx, statement *ast.Statement) error {
 		return nil
 	case statement.Var != nil:
 		if ctx.constNames[statement.Var.Name] {
-			if isInputParam(ctx, statement.Var.Name) {
+			switch readOnlyInputKind(ctx, statement.Var.Name) {
+			case "param":
 				return fmt.Errorf("%q is the typed parameter of %s and can't be redeclared", statement.Var.Name, ctx.pipelineName)
+			case "input":
+				return fmt.Errorf("%q is an input of %s and can't be redeclared", statement.Var.Name, ctx.pipelineName)
 			}
 			return fmt.Errorf("%q is already declared as a constant", statement.Var.Name)
 		}
@@ -522,8 +531,11 @@ func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
 		return fmt.Errorf("assignment target must be a plain variable or an array index, not a nested field")
 	}
 	if ctx.constNames[name] {
-		if isInputParam(ctx, name) {
+		switch readOnlyInputKind(ctx, name) {
+		case "param":
 			return fmt.Errorf("cannot assign to %q: the typed parameter of %s is read-only (copy it into a var to change it)", name, ctx.pipelineName)
+		case "input":
+			return fmt.Errorf("cannot assign to input %q of %s: inputs are read-only (copy it into a var to change it)", name, ctx.pipelineName)
 		}
 		return fmt.Errorf("cannot assign to constant %q", name)
 	}
@@ -712,13 +724,24 @@ func execTry(ctx *evalCtx, stmt *ast.TryStmt) error {
 	return result
 }
 
-// isInputParam reports whether name is the typed signature param of the
-// pipeline ctx is running a step of.
-func isInputParam(ctx *evalCtx, name string) bool {
+// readOnlyInputKind reports why name is read-only in the pipeline ctx is
+// running a step of: "param" for its typed signature param, "input" for a
+// declared input, "" for neither (a plain `const`).
+func readOnlyInputKind(ctx *evalCtx, name string) string {
 	for _, decl := range ctx.prog.Decls {
-		if p := decl.Pipeline; p != nil && p.Name == ctx.pipelineName && p.Param != nil {
-			return p.Param.Name == name
+		p := decl.Pipeline
+		if p == nil || p.Name != ctx.pipelineName {
+			continue
 		}
+		if p.Param != nil && p.Param.Name == name {
+			return "param"
+		}
+		for _, m := range p.Body {
+			if m.Input != nil && m.Input.Name == name {
+				return "input"
+			}
+		}
+		return ""
 	}
-	return false
+	return ""
 }

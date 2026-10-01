@@ -104,6 +104,7 @@ var nativeSigs = map[string]sig{
 	"dir.list":     {Label: "dir.list(path: string) -> string[]", Params: []string{"path"}, Doc: "Immediate entries in the directory, sorted by name."},
 	"dir.create":   {Label: "dir.create(path: string) -> bool", Params: []string{"path"}, Doc: "Creates the directory and missing parents. Succeeds if it already exists."},
 	"dir.exists":   {Label: "dir.exists(path: string) -> bool", Params: []string{"path"}, Doc: "True only when the path exists and is a directory."},
+	"dir.clear":    {Label: "dir.clear(path: string) -> bool", Params: []string{"path"}, Doc: "Leaves `path` as an existing, empty directory: creates it when absent, removes everything inside it (any depth) when present, keeps the directory itself. Refuses an empty path, a filesystem root, the working directory or an ancestor of it, and a symbolic link."},
 	"dir.delete":   {Label: "dir.delete(path: string) -> bool", Params: []string{"path"}, Doc: "Removes an empty directory. Raises for files, missing paths, or non-empty directories."},
 	"http.get":     httpSig("get"),
 	"http.post":    httpSig("post"),

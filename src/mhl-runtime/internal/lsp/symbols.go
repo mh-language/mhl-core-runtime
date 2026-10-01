@@ -32,7 +32,11 @@ const (
 	symType
 	symEnum
 	symExtensible
+	symSchema
 )
+
+// schemaFields is what a declared `schema` evaluates to (ast.Schema.Value).
+var schemaFields = []string{"content", "path"}
 
 func (k symbolKind) label() string {
 	switch k {
@@ -64,6 +68,8 @@ func (k symbolKind) label() string {
 		return "enum"
 	case symExtensible:
 		return "extensible"
+	case symSchema:
+		return "schema"
 	default:
 		return ""
 	}
@@ -101,6 +107,8 @@ func symbolsFromProgram(path string, prog *ast.Program) []symbol {
 			syms = append(syms, symbol{Name: decl.Tool.Name, Kind: symTool, Methods: methods})
 		case decl.Prompt != nil:
 			syms = append(syms, symbol{Name: decl.Prompt.Name, Kind: symPrompt})
+		case decl.Schema != nil:
+			syms = append(syms, symbol{Name: decl.Schema.Name, Kind: symSchema, Methods: schemaFields})
 		case decl.Pipeline != nil:
 			// "run" completes `Name.run(inputs: {...})` — MHL-Melhorias.md
 			// #13, valid only inside a test's describe block
@@ -182,7 +190,7 @@ func memoryMethodsForType(memType string) []string {
 // pipeline X`) is skipped, not captured — it's a modifier on `pipeline`, not
 // a declaration kind of its own.
 var (
-	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|router|memory|tool|prompt|pipeline|workflow|type|enum)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|router|memory|tool|prompt|pipeline|workflow|type|enum|schema)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 	// extDeclRe recognises `extension <kind> <Name>`, which unlike every
 	// other declaration keyword is followed by two identifiers.
 	extDeclRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?extension\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)`)
@@ -207,6 +215,8 @@ func symbolsFromText(path, src string) []symbol {
 			s.Methods = toolMethodsFromText(src, m[2])
 		case symEnum:
 			s.Methods = enumVariantsFromText(src, m[2])
+		case symSchema:
+			s.Methods = schemaFields
 		}
 		syms = append(syms, s)
 	}
@@ -328,6 +338,8 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 		return symType, true
 	case "enum":
 		return symEnum, true
+	case "schema":
+		return symSchema, true
 	}
 	return 0, false
 }
@@ -371,6 +383,9 @@ func methodsForKind(k symbolKind) []string {
 func localVarSymbols(prog *ast.Program) []symbol {
 	var syms []symbol
 	add := func(name string, value *ast.Expr) {
+		if strings.HasPrefix(name, "$") {
+			return // a parser-generated temporary (parser.expandDestructure)
+		}
 		kind, ok := inferLocalKind(value)
 		if !ok {
 			return
@@ -518,7 +533,7 @@ var nativeSymbols = []symbol{
 	{Name: "cmd", Kind: symNative, Methods: []string{"exec", "exec_all"}},
 	{Name: "git", Kind: symNative, Methods: []string{"diff", "add", "commit", "status", "rev_parse", "log"}},
 	{Name: "fs", Kind: symNative, Methods: []string{"read", "exists", "write", "append", "delete", "list", "join"}},
-	{Name: "dir", Kind: symNative, Methods: []string{"list", "create", "exists", "delete"}},
+	{Name: "dir", Kind: symNative, Methods: []string{"list", "create", "exists", "clear", "delete"}},
 	{Name: "http", Kind: symNative, Methods: []string{"get", "post", "put", "patch", "delete", "head", "options", "download"}},
 	{Name: "json", Kind: symNative, Methods: []string{"parse", "parse_lines", "stringify"}},
 	{Name: "log", Kind: symNative, Methods: []string{"info", "warn", "error"}},

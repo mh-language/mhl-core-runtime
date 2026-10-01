@@ -58,6 +58,8 @@ func declaredNameExists(prog *ast.Program, name string) bool {
 			return true
 		case decl.Skill != nil && decl.Skill.Name == name:
 			return true
+		case decl.Schema != nil && decl.Schema.Name == name:
+			return true
 		case decl.Pipeline != nil && decl.Pipeline.Name == name:
 			return true
 		case decl.Type != nil && decl.Type.Name == name:

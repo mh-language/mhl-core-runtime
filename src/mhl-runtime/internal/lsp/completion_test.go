@@ -566,6 +566,13 @@ var snippetPreludes = map[string]string{
 	"router": "agent AgentA { command: \"true\" }\nagent AgentB { command: \"true\" }\n\n",
 }
 
+// snippetFiles are files a snippet's default placeholder points at — a
+// `schema ... from "..."` must name a real JSON file to lint clean — written
+// next to the resolved source before linting.
+var snippetFiles = map[string]map[string]string{
+	"schema": {"schemas/name.schema.json": `{"type": "object"}`},
+}
+
 // TestDeclarationSnippetsAreLintClean resolves every declarationSnippets
 // body to plain mhl source (as an editor would render it before any
 // placeholder is edited) and runs it through the same static checker `mhl
@@ -581,7 +588,17 @@ func TestDeclarationSnippetsAreLintClean(t *testing.T) {
 			}
 			t.Run(label, func(t *testing.T) {
 				src := snippetPreludes[label] + resolveSnippetText(sn.body)
-				findings := lint.Source("snippet.mh", src)
+				dir := t.TempDir()
+				for rel, content := range snippetFiles[label] {
+					full := filepath.Join(dir, rel)
+					if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+				findings := lint.Source(filepath.Join(dir, "snippet.mh"), src)
 				if len(findings) != 0 {
 					t.Errorf("lint findings for %q:\n%s\n--- resolved source ---\n%s", label, findings, src)
 				}
@@ -651,5 +668,27 @@ agent X {
 				}
 			}
 		})
+	}
+}
+
+// A declared schema completes its two value fields, not methods, both from
+// a parseable buffer and mid-edit (regex fallback).
+func TestCompletionSchemaFields(t *testing.T) {
+	for _, src := range []string{
+		"schema Brief from \"b.json\"\npipeline P { step S { var p = Brief.§ } }\n",
+		"schema Brief from \"b.json\"\npipeline P { step S { Brief.§\n",
+	} {
+		text, pos := posAtMarker(t, src)
+		items := completionAt("main.mh", text, pos)
+		for _, want := range []string{"content", "path"} {
+			if !hasLabel(items, want) {
+				t.Errorf("Brief.: missing field %q in %+v", want, items)
+			}
+		}
+		for _, it := range items {
+			if it.InsertText != "" && strings.HasSuffix(it.InsertText, "(") {
+				t.Errorf("schema field %q completes as a call", it.Label)
+			}
+		}
 	}
 }

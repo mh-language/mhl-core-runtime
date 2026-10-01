@@ -89,6 +89,11 @@ func hashValue(h interface{ Write([]byte) (int, error) }, v reflect.Value) {
 			if t.Field(i).Tag.Get("digest") == "omitzero" && v.Field(i).IsZero() {
 				continue
 			}
+			// `digest:"-"`: environment-dependent data loaded after parsing
+			// (ast.Schema.Path — where the checkout lives), never meaning.
+			if t.Field(i).Tag.Get("digest") == "-" {
+				continue
+			}
 			h.Write([]byte(t.Field(i).Name))
 			h.Write([]byte{':'})
 			hashValue(h, v.Field(i))
