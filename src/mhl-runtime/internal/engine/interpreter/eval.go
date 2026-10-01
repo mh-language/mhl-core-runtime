@@ -608,6 +608,17 @@ func evalPostfixOps(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 		v, err = applyTrailers(ctx, v, p.Ops[1:], depth)
 		return value.DeepCopy(v), err
 	}
+	// `Status.parse(text)` / `Status.values()` on a declared enum. The call
+	// trailer is what tells these apart from a variant access, so an enum
+	// may still declare a variant named `parse` or `values`.
+	if p.Primary.Ident != "" && !isBoundVar(ctx, p.Primary.Ident) && len(p.Ops) >= 2 && p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[1].Call != nil {
+		if v, handled, err := evalEnumMethod(ctx, p.Primary.Ident, p.Ops[0].Member, p.Ops[1].Call, depth); handled {
+			if err != nil {
+				return nil, err
+			}
+			return applyTrailers(ctx, v, p.Ops[2:], depth)
+		}
+	}
 	if p.Primary.Ident != "" && !isBoundVar(ctx, p.Primary.Ident) && len(p.Ops) >= 2 && p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[1].Call != nil {
 		name := p.Primary.Ident
 		member := p.Ops[0].Member
@@ -627,8 +638,8 @@ func evalPostfixOps(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 				}
 				return applyTrailers(ctx, v, p.Ops[2:], depth)
 			}
-			if pipeline, ok := findPipelineDecl(ctx.prog, name); ok {
-				v, err := runWorkflowCall(ctx, name, pipeline, call, depth)
+			if declared, ok := findRunnableName(ctx.prog, name); ok {
+				v, err := runWorkflowCall(ctx, name, declared, call, depth)
 				if err != nil {
 					return nil, err
 				}

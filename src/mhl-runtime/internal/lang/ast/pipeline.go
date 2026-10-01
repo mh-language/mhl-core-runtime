@@ -528,3 +528,38 @@ type AssignStmt struct {
 type ExprStmt struct {
 	Expr *Expr `parser:"@@"`
 }
+
+// PipelineAlias publishes an existing pipeline/workflow under another name,
+// with some of its inputs fixed:
+//
+//	workflow Delivery = ArtifactFlow with { level: Level.delivery } {
+//	    description: "Artifacts for a Feature or a standalone Story."
+//	}
+//
+// The alias runs Target's steps unchanged. It is a separate entry point
+// everywhere a pipeline is one — its own MCP tool / A2A skill (with its own
+// description), its own `mhl run` target, sessions, checkpoints and `mem`
+// state — and its input contract is Target's minus the Bound inputs, which
+// a caller can no longer pass. Bound values are literals or enum values
+// (`Level.delivery`), checked against the input's declared type. Props may
+// only set `description` (inherited from Target when absent).
+type PipelineAlias struct {
+	Pos    lexer.Position
+	Kind   string      `parser:"@( 'pipeline' | 'workflow' )"`
+	Name   string      `parser:"@Ident '='"`
+	Target string      `parser:"@Ident"`
+	Bound  *Object     `parser:"( 'with' @@ )?"`
+	Props  []*Property `parser:"( '{' @@* '}' )?"`
+}
+
+// Description is the alias's own `description:` property, "" when absent.
+func (a *PipelineAlias) Description() string {
+	for _, p := range a.Props {
+		if p.Name == "description" {
+			if s, ok := StringValue(p.Value); ok {
+				return s
+			}
+		}
+	}
+	return ""
+}

@@ -432,6 +432,14 @@ func methodItems(path, text string, s symbol) []completionItem {
 		}
 		items = append(items, item)
 	}
+	if s.Kind == symEnum {
+		items = append(items,
+			completionItem{Label: "parse", Kind: kindMethod, InsertText: "parse(", Detail: s.Name + ".parse(text: string) -> " + s.Name,
+				Documentation: &markupContent{Kind: "markdown", Value: "The variant named `text`; raises listing every variant when there is none. A value already of this enum is returned unchanged."}},
+			completionItem{Label: "values", Kind: kindMethod, InsertText: "values()", Detail: s.Name + ".values() -> " + s.Name + "[]",
+				Documentation: &markupContent{Kind: "markdown", Value: "Every variant, in declaration order."}},
+		)
+	}
 	return items
 }
 

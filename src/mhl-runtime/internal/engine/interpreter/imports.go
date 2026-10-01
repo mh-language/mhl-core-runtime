@@ -234,6 +234,8 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 		return "skill", decl.Skill.Name, true
 	case decl.Schema != nil:
 		return "schema", decl.Schema.Name, true
+	case decl.Alias != nil:
+		return "pipeline", decl.Alias.Name, true
 	case decl.Extension != nil:
 		return "extension:" + decl.Extension.Kind, decl.Extension.Name, true
 	case decl.Agent != nil:
@@ -366,6 +368,8 @@ func findExport(module *ast.Program, name string) (*ast.Declaration, bool) {
 		case decl.Skill != nil && decl.Skill.Name == name:
 			return decl, true
 		case decl.Schema != nil && decl.Schema.Name == name:
+			return decl, true
+		case decl.Alias != nil && decl.Alias.Name == name:
 			return decl, true
 		case decl.Type != nil && decl.Type.Name == name:
 			return decl, true

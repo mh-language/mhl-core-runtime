@@ -79,6 +79,16 @@ type Stage struct {
 // declaration allowed).
 type Pipeline struct {
 	Name string
+	// Decl is the name of the declaration whose steps, vars, mem and hooks
+	// this pipeline runs — what the interpreter looks a pipeline up by. It
+	// equals Name, except for a workflow alias (ast.PipelineAlias), whose
+	// Name is the public one (sessions, checkpoints, MCP tool, results) and
+	// whose Decl is its target's.
+	Decl string
+	// Bound holds a workflow alias's fixed inputs (already converted and
+	// type-checked), merged into every run's inputs; they are not in
+	// Inputs, so a caller can neither see nor pass them. nil otherwise.
+	Bound map[string]any
 	// Kind is "pipeline" or "workflow" (ast.Pipeline.Kind, projected
 	// verbatim) — purely informational here (the runtime executes both
 	// identically), surfaced to a session_start/session_end hook's payload
@@ -211,7 +221,7 @@ func (in PipelineInputSpec) Required() bool { return in.Default == nil && !in.Op
 // read); adding a body property means adding both its entry there and its
 // case here.
 func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.Program) Pipeline {
-	out := Pipeline{Name: p.Name, Kind: p.Kind, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
+	out := Pipeline{Name: p.Name, Decl: p.Name, Kind: p.Kind, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
 	entryStage := -1
 	// `max <N>` header clause — shorthand for `repeat { max_iterations: N }`.
 	// Read first so an explicit `repeat` block below still wins (both being
@@ -462,6 +472,9 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 	}
 	aliases, _ := types.Aliases(prog)
 	for _, d := range prog.Decls {
+		if d.Alias != nil && (name == "" || d.Alias.Name == name) {
+			return pipelineFromAlias(d.Alias, aliases, prog)
+		}
 		if d.Pipeline == nil {
 			continue
 		}

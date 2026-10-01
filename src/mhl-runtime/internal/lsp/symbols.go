@@ -116,6 +116,8 @@ func symbolsFromProgram(path string, prog *ast.Program) []symbol {
 			// completion here doesn't distinguish the two contexts, the same
 			// looseness every other symbol kind already has).
 			syms = append(syms, symbol{Name: decl.Pipeline.Name, Kind: symPipeline, Methods: []string{"run"}})
+		case decl.Alias != nil:
+			syms = append(syms, symbol{Name: decl.Alias.Name, Kind: symPipeline, Methods: []string{"run"}})
 		case decl.Type != nil:
 			syms = append(syms, symbol{Name: decl.Type.Name, Kind: symType})
 		case decl.Enum != nil:

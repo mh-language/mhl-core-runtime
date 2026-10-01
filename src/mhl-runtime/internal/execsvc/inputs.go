@@ -1,6 +1,7 @@
 package execsvc
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
@@ -30,7 +31,7 @@ func coerceInputs(pipeline runtime.Pipeline, inputs map[string]any) (coerced map
 		if !ok {
 			continue
 		}
-		cv, err := coerceOne(fmt.Sprintf("input %q", in.Name), in.Type, v)
+		cv, err := coerceOne(fmt.Sprintf("input %q", in.Name), in.Type, v, pipeline.Enums)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -45,9 +46,23 @@ func coerceInputs(pipeline runtime.Pipeline, inputs map[string]any) (coerced map
 	return coerced, errs
 }
 
-func coerceOne(label string, dt types.Type, v any) (any, error) {
+func coerceOne(label string, dt types.Type, v any, enums map[string][]string) (any, error) {
 	if raw, ok := v.(string); ok {
-		return types.Coerce(label, dt, raw)
+		switch dt.Kind {
+		case types.ArrayKind, types.ObjectKind:
+			// `--input req='{"kind": "brief"}'`: decode first, so an enum
+			// field inside is converted like a JSON caller's would be.
+			if err := json.Unmarshal([]byte(raw), &v); err != nil {
+				return types.Coerce(label, dt, raw)
+			}
+		case types.EnumKind:
+		default:
+			return types.Coerce(label, dt, raw)
+		}
+	}
+	v, err := runtime.ConvertEnums(label, dt, v, enums)
+	if err != nil {
+		return nil, err
 	}
 	if err := types.Check(label, dt, v); err != nil {
 		return nil, err

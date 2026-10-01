@@ -1795,3 +1795,25 @@ workflow W {
 		})
 	}
 }
+
+func TestEvalEnumParseAndValues(t *testing.T) {
+	out, err := run(t, `
+enum Kind { brief, adr, parse }
+pipeline P {
+    step S {
+        log("values=${Kind.values().map((v) -> "${v}").join(",")}")
+        log("parsed=${Kind.parse("adr") == Kind.adr} same=${Kind.parse(Kind.brief) == Kind.brief}")
+        log("variant=${Kind.parse}")
+        try { Kind.parse("x") } catch (e) { log("err=${e}") }
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	for _, want := range []string{"values=brief,adr,parse", "parsed=true same=true", "variant=parse", `err="x" is not a variant of enum Kind (use brief | adr | parse)`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}

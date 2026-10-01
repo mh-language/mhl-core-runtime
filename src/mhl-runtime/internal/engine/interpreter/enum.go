@@ -1,37 +1,18 @@
 package interpreter
 
 import (
-	"encoding/json"
 	"fmt"
+	"strings"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
-// enumValue is a runtime value of a declared `enum` — a variant name tagged
-// with its enum's name. It is deliberately distinct from a plain string:
-// `Status.Draft == "Draft"` is false, and type_of(Status.Draft) is "enum".
-// Produced only by qualified access (`Status.Draft`, see evalPostfix); a
-// `match` arm's pattern produces one the same way.
-type enumValue struct {
-	Enum    string
-	Variant string
-}
-
-// EnumName satisfies types.EnumCarrier so the types package can recognise an
-// enum value in Of/Check without importing this package.
-func (e enumValue) EnumName() string { return e.Enum }
-
-// String renders just the bare variant name — what interpolation and log
-// show (see formatValue). The enum name is available via EnumName()/type
-// checks, not this display form.
-func (e enumValue) String() string { return e.Variant }
-
-// MarshalJSON serialises an enum value as its bare variant string, so
-// json.stringify(Status.Draft) is "Draft" (not the internal struct) and any
-// other json.Marshal path — checkpoint persistence, structured output —
-// round-trips it the same readable way. nativeops stays MHL-agnostic; the
-// behaviour travels with the value.
-func (e enumValue) MarshalJSON() ([]byte, error) { return json.Marshal(e.Variant) }
+// enumValue is a runtime value of a declared `enum` (value.Enum — see its
+// doc comment). Produced by qualified access (`Status.Draft`, see
+// evalPostfix), a `match` arm's pattern, `Status.parse(text)`, and an
+// enum-typed input (execsvc.coerceInputs).
+type enumValue = value.Enum
 
 // findEnum resolves an enum declaration by name, honouring import aliases the
 // same way findTool/findAgent do.
@@ -67,5 +48,54 @@ func resolveEnumAccess(prog *ast.Program, name, variant string) (enumValue, bool
 	if !enumHasVariant(e, variant) {
 		return enumValue{}, true, fmt.Errorf("enum %q has no variant %q", name, variant)
 	}
-	return enumValue{Enum: name, Variant: variant}, true, nil
+	return enumValue{Enum: resolveName(prog, name), Variant: variant}, true, nil
+}
+
+// evalEnumMethod handles the two calls a declared enum answers:
+//
+//   - `Status.parse(text)` — the variant named text, or an error listing
+//     every variant. For text from outside the type system (a JSON file, a
+//     tool argument); an enum-typed pipeline input is already converted on
+//     the way in (runtime.ConvertEnums). A value already of this enum is
+//     returned unchanged.
+//   - `Status.values()` — every variant, in declaration order.
+//
+// handled is false when name is not an enum or member is neither method.
+func evalEnumMethod(ctx *evalCtx, name, member string, call *ast.Call, depth int) (any, bool, error) {
+	if member != "parse" && member != "values" {
+		return nil, false, nil
+	}
+	e, ok := findEnum(ctx.prog, name)
+	if !ok {
+		return nil, false, nil
+	}
+	canonical := resolveName(ctx.prog, name)
+	if member == "values" {
+		if len(call.Args) != 0 {
+			return nil, true, fmt.Errorf("%s.values() takes no arguments", name)
+		}
+		out := make([]any, len(e.Variants))
+		for i, v := range e.Variants {
+			out[i] = enumValue{Enum: canonical, Variant: v}
+		}
+		return out, true, nil
+	}
+	args, err := evalPositionalValues(ctx, call, depth)
+	if err != nil {
+		return nil, true, err
+	}
+	if len(args) != 1 {
+		return nil, true, fmt.Errorf("%s.parse(text) takes exactly one argument", name)
+	}
+	if ev, ok := args[0].(enumValue); ok && ev.Enum == canonical {
+		return ev, true, nil
+	}
+	text, ok := args[0].(string)
+	if !ok {
+		return nil, true, fmt.Errorf("%s.parse(text) requires a string, got %s", name, typeName(args[0]))
+	}
+	if !enumHasVariant(e, text) {
+		return nil, true, fmt.Errorf("%q is not a variant of enum %s (use %s)", text, name, strings.Join(e.Variants, " | "))
+	}
+	return enumValue{Enum: canonical, Variant: text}, true, nil
 }

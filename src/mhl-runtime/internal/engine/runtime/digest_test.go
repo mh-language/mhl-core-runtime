@@ -351,3 +351,19 @@ func TestDefinitionDigestSchemaContentNotPath(t *testing.T) {
 		t.Fatal("a change to the schema's content must change the digest")
 	}
 }
+
+// A workflow alias's digest covers its target (whose steps it runs) and its
+// own bound values, and not a sibling alias.
+func TestDefinitionDigestOfWorkflowAlias(t *testing.T) {
+	base := "workflow Flow {\n input level: string\n step A { log(level) }\n}\nworkflow D = Flow with { level: \"d\" }\nworkflow E = Flow with { level: \"e\" }\n"
+	d := digestOfPipeline(t, base, "D")
+	if d == digestOfPipeline(t, base, "E") {
+		t.Fatal("two aliases binding different values must not share a digest")
+	}
+	if d != digestOfPipeline(t, strings.Replace(base, `level: "e"`, `level: "x"`, 1), "D") {
+		t.Fatal("editing a sibling alias must not change this alias's digest")
+	}
+	if d == digestOfPipeline(t, strings.Replace(base, "log(level)", "log(level + \"!\")", 1), "D") {
+		t.Fatal("editing the target's steps must change the alias's digest")
+	}
+}

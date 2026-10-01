@@ -638,3 +638,76 @@ func slicesEqual(a, b []string) bool {
 	}
 	return true
 }
+
+// An enum-typed input arrives as text (CLI flag, MCP/A2A JSON string) and is
+// converted to the enum value — at the top level and inside a typed
+// signature's object — so `==` and an exhaustive `match` see a real enum. An
+// enum held in a `var` is still an enum after pause/resume.
+func TestRunEnumInputsAndCheckpoint(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+enum Kind { brief, adr }
+type Req = { kind: Kind, extra?: Kind[] }
+
+workflow W(req: Req) {
+    var picked = null
+    var label = ""
+    output: { label, same: picked == Kind.adr, kinds: req.extra }
+    step Pick { self.picked = req.kind }
+    step Gate {
+        if (!context.resumed) pause("review")
+    }
+    step Done {
+        self.label = match self.picked {
+            Kind.brief -> "B"
+            Kind.adr   -> "A"
+        }
+    }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{
+		Source: src, BaseDir: dir,
+		Inputs: map[string]any{"kind": "adr", "extra": []any{"brief", "adr"}},
+	})
+	if err != nil || !res.Paused {
+		t.Fatalf("first run: paused=%v err=%v", res != nil && res.Paused, err)
+	}
+	res, err = execsvc.Run(execsvc.Request{Source: src, BaseDir: dir, Resume: true})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	out := res.Vars
+	if out["label"] != "A" || out["same"] != true {
+		t.Fatalf("an enum var must survive the checkpoint as an enum, got output %v", out)
+	}
+
+	_, err = execsvc.Run(execsvc.Request{Source: src, BaseDir: t.TempDir(), Inputs: map[string]any{"kind": "bogus"}})
+	if err == nil || !strings.Contains(err.Error(), `"bogus" is not a variant of enum Kind (use brief | adr)`) {
+		t.Fatalf("an unknown variant must be rejected listing the valid ones, got %v", err)
+	}
+	_, err = execsvc.Run(execsvc.Request{Source: src, BaseDir: t.TempDir(), Inputs: map[string]any{"kind": "brief", "extra": []any{"nope"}}})
+	if err == nil || !strings.Contains(err.Error(), `[0]: "nope" is not a variant`) {
+		t.Fatalf("an enum nested in an array must be checked too, got %v", err)
+	}
+}
+
+// Two pipelines in one program may share step names; each run executes its
+// own pipeline's step bodies (steps used to be found by name across the whole
+// program, so the second pipeline ran the first one's `A`).
+func TestRunSameStepNamesInTwoPipelines(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+workflow First {
+    var who = ""
+    step A { self.who = "first" }
+}
+workflow Second {
+    var who = ""
+    step A { self.who = "second" }
+}
+`)
+	res, err := execsvc.Run(execsvc.Request{Source: src, Workflow: "Second", BaseDir: dir})
+	if err != nil || res.Vars["who"] != "second" {
+		t.Fatalf("Second ran %v (err %v), want its own step A", res, err)
+	}
+}

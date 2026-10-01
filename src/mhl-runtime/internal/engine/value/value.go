@@ -26,6 +26,28 @@ import (
 	"sort"
 )
 
+// Enum is a value of a declared `enum` — a variant name tagged with its
+// enum's (canonical, alias-resolved) name. It is deliberately distinct from a
+// plain string: `Status.Draft == "Draft"` is false. It lives here, not in
+// the interpreter, because it crosses the interpreter's boundary in both
+// directions: execsvc builds one from an input's text, and the checkpoint
+// encodes it (EncodeRefs) so it is still an enum after a resume.
+type Enum struct {
+	Enum    string
+	Variant string
+}
+
+// EnumName satisfies types.EnumCarrier.
+func (e Enum) EnumName() string { return e.Enum }
+
+// String renders the bare variant name — what interpolation shows.
+func (e Enum) String() string { return e.Variant }
+
+// MarshalJSON renders the bare variant string: json.stringify, a run's
+// result and an MCP reply all see "Draft". The checkpoint does not go
+// through this — EncodeRefs writes a typed marker instead.
+func (e Enum) MarshalJSON() ([]byte, error) { return json.Marshal(e.Variant) }
+
 // Ref is a reference object: a mutable field map with identity.
 type Ref struct {
 	ID     string
@@ -263,9 +285,12 @@ func HasRefs(v any) bool {
 // makes a cycle representable); DecodeRefs rebuilds one object per id. A
 // plain object that happens to use the reserved key is escaped as
 // {"$mhl_plain": {...}}.
+// An enum value is written as {"$mhl_enum": name, "variant": variant}, so it
+// decodes back to an Enum rather than the plain string its JSON form is.
 const (
 	refKey   = "$mhl_ref"
 	plainKey = "$mhl_plain"
+	enumKey  = "$mhl_enum"
 )
 
 // EncodeRefs returns vars with every Ref replaced by its checkpoint marker.
@@ -307,7 +332,12 @@ func encode(v any, seen map[*Ref]bool) any {
 		if _, reserved := t[plainKey]; reserved {
 			return map[string]any{plainKey: c}
 		}
+		if _, reserved := t[enumKey]; reserved {
+			return map[string]any{plainKey: c}
+		}
 		return c
+	case Enum:
+		return map[string]any{enumKey: t.Enum, "variant": t.Variant}
 	case *Ref:
 		if seen[t] {
 			return map[string]any{refKey: t.ID}
@@ -382,6 +412,11 @@ func decode(v any, refs map[string]*Ref) any {
 				c[k] = decode(e, refs)
 			}
 			return c
+		}
+		if name, ok := t[enumKey].(string); ok && len(t) == 2 {
+			if variant, ok := t["variant"].(string); ok {
+				return Enum{Enum: name, Variant: variant}
+			}
 		}
 		if id, ok := t[refKey].(string); ok {
 			r := refs[id]

@@ -30,7 +30,7 @@ type Workflow struct {
 }
 
 // Load parses every .mh file under dir and returns one Workflow per declared
-// pipeline/workflow, keyed by declaration name. A name declared in two files
+// pipeline/workflow and workflow alias, keyed by declaration name. A name declared in two files
 // is an error, and a directory that declares none is an error.
 func Load(dir string) (map[string]Workflow, error) {
 	var files []string
@@ -58,11 +58,37 @@ func Load(dir string) (map[string]Workflow, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", f, err)
 		}
+		// Only what this file itself declares is registered here: an
+		// imported pipeline/workflow is merged into prog too (it has to be,
+		// to run), but it belongs to — and is registered by — the file that
+		// declares it. Without this, a shared workflow imported by two files
+		// (the target of two workflow aliases, typically) was reported as
+		// "declared in more than one file".
+		own := map[string]bool{}
+		for _, d := range prog.Decls {
+			if d.Pipeline != nil {
+				own[d.Pipeline.Name] = true
+			}
+			if d.Alias != nil {
+				own[d.Alias.Name] = true
+			}
+		}
 		if err := interpreter.ResolveImports(f, prog); err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
 		for _, d := range prog.Decls {
-			if d.Pipeline == nil {
+			if a := d.Alias; a != nil && own[a.Name] {
+				if _, dup := out[a.Name]; dup {
+					return nil, fmt.Errorf("%q declared in more than one file under %s", a.Name, dir)
+				}
+				p, err := runtime.FindPipeline(prog, a.Name)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", f, err)
+				}
+				out[a.Name] = Workflow{Name: a.Name, File: f, Program: prog, Pipeline: p, IsWorkflow: a.Kind == "workflow", Loop: p.Loop}
+				continue
+			}
+			if d.Pipeline == nil || !own[d.Pipeline.Name] {
 				continue
 			}
 			// A directory of workflows is scanned file by file: a `partial`

@@ -248,9 +248,55 @@ func (u *undefWalker) eq(e *ast.EqExpr, scope map[string]types.Type, pos lexer.P
 		return
 	}
 	u.cmp(e.Head, scope, pos)
+	left := e.Head
 	for _, op := range e.Tail {
+		u.enumStringCompare(left, op.Rhs, scope, pos)
+		u.enumStringCompare(op.Rhs, left, scope, pos)
 		u.cmp(op.Rhs, scope, pos)
+		left = op.Rhs
 	}
+}
+
+// enumStringCompare flags `x == "text"` / `x != "text"` where x is statically
+// an enum value: an enum never equals a string, so the comparison is constant
+// — almost always code written when x was still a string.
+func (u *undefWalker) enumStringCompare(a, b *ast.CmpExpr, scope map[string]types.Type, pos lexer.Position) {
+	name, ok := cmpOperand(a)
+	if !ok || name.Primary.Ident == "" || len(name.Ops) != 0 {
+		return
+	}
+	t, ok := scope[name.Primary.Ident]
+	if !ok || t.Kind != types.EnumKind {
+		return
+	}
+	lit, ok := cmpOperand(b)
+	if !ok || lit.Primary.Str == nil || len(lit.Ops) != 0 {
+		return
+	}
+	e, ok := findEnumDecl(u.prog, resolveName(u.prog, t.Name))
+	if !ok {
+		return
+	}
+	for _, v := range e.Variants {
+		if v == *lit.Primary.Str {
+			u.report(pos, "%s is an enum %s and never equals the string %q — compare with %s.%s", name.Primary.Ident, t.Name, v, t.Name, v)
+			return
+		}
+	}
+	u.report(pos, "%s is an enum %s and never equals the string %q, which is not one of its variants (%s)", name.Primary.Ident, t.Name, *lit.Primary.Str, strings.Join(e.Variants, " | "))
+}
+
+// cmpOperand unwraps a comparison operand that is a single postfix
+// expression with no arithmetic or unary operator around it.
+func cmpOperand(c *ast.CmpExpr) (*ast.Postfix, bool) {
+	if c == nil || len(c.Tail) != 0 || c.Head == nil || len(c.Head.Tail) != 0 {
+		return nil, false
+	}
+	m := c.Head.Head
+	if m == nil || len(m.Tail) != 0 || m.Head == nil || m.Head.Op != "" || m.Head.Operand == nil || m.Head.Operand.Primary == nil {
+		return nil, false
+	}
+	return m.Head.Operand, true
 }
 
 func (u *undefWalker) cmp(c *ast.CmpExpr, scope map[string]types.Type, pos lexer.Position) {

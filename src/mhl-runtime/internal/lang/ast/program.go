@@ -32,21 +32,22 @@ func (p *Program) AliasMap() map[string]string {
 // Declaration is any top-level construct. An optional leading `export`
 // keyword may precede a declaration to mark it as exported from the module.
 type Declaration struct {
-	Export     bool        `parser:"@'export'?"`
-	Import     *Import     `parser:"( @@"`
-	Prompt     *Prompt     `parser:"| @@"`
-	Skill      *Skill      `parser:"| @@"`
-	Extension  *Extension  `parser:"| @@"`
-	Extensible *Extensible `parser:"| @@"`
-	Agent      *Agent      `parser:"| @@"`
-	Router     *Router     `parser:"| @@"`
-	Memory     *Memory     `parser:"| @@"`
-	Tool       *Tool       `parser:"| @@"`
-	Pipeline   *Pipeline   `parser:"| @@"`
-	Type       *TypeAlias  `parser:"| @@"`
-	Enum       *Enum       `parser:"| @@"`
-	Schema     *Schema     `parser:"| @@" digest:"omitzero"`
-	Test       *Test       `parser:"| @@ )"`
+	Export     bool           `parser:"@'export'?"`
+	Import     *Import        `parser:"( @@"`
+	Prompt     *Prompt        `parser:"| @@"`
+	Skill      *Skill         `parser:"| @@"`
+	Extension  *Extension     `parser:"| @@"`
+	Extensible *Extensible    `parser:"| @@"`
+	Agent      *Agent         `parser:"| @@"`
+	Router     *Router        `parser:"| @@"`
+	Memory     *Memory        `parser:"| @@"`
+	Tool       *Tool          `parser:"| @@"`
+	Alias      *PipelineAlias `parser:"| @@" digest:"omitzero"`
+	Pipeline   *Pipeline      `parser:"| @@"`
+	Type       *TypeAlias     `parser:"| @@"`
+	Enum       *Enum          `parser:"| @@"`
+	Schema     *Schema        `parser:"| @@" digest:"omitzero"`
+	Test       *Test          `parser:"| @@ )"`
 }
 
 // Enum declares a closed set of named constants:

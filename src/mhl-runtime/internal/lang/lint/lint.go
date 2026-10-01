@@ -81,6 +81,7 @@ func Source(path, src string) []Finding {
 	findings = append(findings, checkPipelineContext(path, merged)...)
 	findings = append(findings, checkPipelineInputTypes(path, merged, aliases)...)
 	findings = append(findings, checkPipelineSignature(path, merged, aliases)...)
+	findings = append(findings, checkPipelineAliases(path, merged, aliases)...)
 	findings = append(findings, checkToolMethodReturnTypes(path, merged, aliases)...)
 	findings = append(findings, checkParamDefaults(path, merged)...)
 	findings = append(findings, checkConstReassign(path, merged)...)

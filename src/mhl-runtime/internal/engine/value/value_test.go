@@ -129,3 +129,34 @@ func TestDecodeLeavesLegacyCheckpointsAlone(t *testing.T) {
 		t.Fatalf("no markers → unchanged, got %#v", got)
 	}
 }
+
+func TestEncodeRefsRoundTripsEnums(t *testing.T) {
+	vars := map[string]any{
+		"kind":  Enum{Enum: "Kind", Variant: "adr"},
+		"list":  []any{Enum{Enum: "Kind", Variant: "brief"}},
+		"plain": map[string]any{"$mhl_enum": "looks like a marker", "variant": "x"},
+	}
+	encoded := EncodeRefs(vars)
+	raw, err := json.Marshal(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back map[string]any
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	got := DecodeRefs(back)
+	if got["kind"] != (Enum{Enum: "Kind", Variant: "adr"}) {
+		t.Errorf("kind = %#v, want the enum value back", got["kind"])
+	}
+	if got["list"].([]any)[0] != (Enum{Enum: "Kind", Variant: "brief"}) {
+		t.Errorf("list[0] = %#v, want the enum value back", got["list"].([]any)[0])
+	}
+	if _, isEnum := got["plain"].(Enum); isEnum {
+		t.Errorf("a plain object using the reserved key must stay a plain object, got %#v", got["plain"])
+	}
+	// The public JSON form stays the bare variant.
+	if b, _ := json.Marshal(Enum{Enum: "Kind", Variant: "adr"}); string(b) != `"adr"` {
+		t.Errorf("MarshalJSON = %s, want \"adr\"", b)
+	}
+}

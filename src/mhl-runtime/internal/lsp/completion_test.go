@@ -692,3 +692,26 @@ func TestCompletionSchemaFields(t *testing.T) {
 		}
 	}
 }
+
+func TestCompletionEnumOffersParseAndValues(t *testing.T) {
+	text, pos := posAtMarker(t, "enum Kind { brief, adr }\npipeline P { step S { var k = Kind.§ } }\n")
+	items := completionAt("main.mh", text, pos)
+	for _, want := range []string{"brief", "adr", "parse", "values"} {
+		if !hasLabel(items, want) {
+			t.Errorf("Kind.: missing %q in %+v", want, items)
+		}
+	}
+}
+
+func TestWorkflowAliasIsAPipelineSymbol(t *testing.T) {
+	src := "workflow Flow { step A { log(\"x\") } }\nworkflow Delivery = Flow\n"
+	for _, s := range documentSymbols("main.mh", src) {
+		if s.Name == "Delivery" {
+			if s.Kind != symPipeline || len(s.Methods) != 1 || s.Methods[0] != "run" {
+				t.Fatalf("alias symbol = %+v, want a pipeline symbol with run", s)
+			}
+			return
+		}
+	}
+	t.Fatal("the alias is not a document symbol")
+}

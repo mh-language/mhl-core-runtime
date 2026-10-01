@@ -157,3 +157,31 @@ workflow W {
 		}
 	}
 }
+
+func TestEnumComparedWithStringLiteral(t *testing.T) {
+	got := messages(lintSrc(t, `
+enum Kind { brief, adr }
+tool T { is_brief(k: Kind): bool -> k == "brief" }
+workflow W {
+    input kind: Kind
+    input name: string = ""
+    step A {
+        if ("x" != kind) log("1")
+        if (name == "brief") log("2")
+        if (kind == Kind.adr) log("3")
+    }
+}`))
+	want := []string{
+		`k is an enum Kind and never equals the string "brief" — compare with Kind.brief`,
+		`kind is an enum Kind and never equals the string "x", which is not one of its variants (brief | adr)`,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("want %d findings, got %d: %q", len(want), len(got), got)
+	}
+	all := strings.Join(got, "\n")
+	for _, w := range want {
+		if !strings.Contains(all, w) {
+			t.Errorf("missing %q in %q", w, got)
+		}
+	}
+}
