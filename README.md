@@ -27,6 +27,24 @@ This installs `mhl` to `~/.mhl/bin` (`%LOCALAPPDATA%\mhl\bin` on Windows) and ad
 PATH. Supported platforms today: `linux-amd64`, `linux-arm64`, `darwin-arm64` (Apple Silicon),
 `windows-amd64`, `windows-arm64`. Intel Mac (`darwin-amd64`) has no published binary.
 
+### Install a specific version (alpha / beta)
+
+By default the scripts install the newest **stable** release and skip prereleases. To install a
+specific tag — an alpha or beta included — set `MHL_VERSION` (with or without the leading `v`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | MHL_VERSION=1.5.0-alpha.1 sh
+```
+
+```powershell
+$env:MHL_VERSION = "1.5.0-alpha.1"
+irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.ps1 | iex
+```
+
+On macOS/Linux the variable must be set on the `sh` side of the pipe, as above. Run the installer
+again without `MHL_VERSION` to go back to the latest stable release. `MHL_INSTALL_DIR` changes
+where the binary is placed.
+
 ### Uninstall
 
 The uninstall scripts remove the runtime, the installer-managed PATH entry, and the MHL VS Code

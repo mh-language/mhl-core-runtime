@@ -28,6 +28,15 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+    # Setting `files` replaces GoReleaser's default (LICENSE*, README*,
+    # CHANGELOG*), so those are listed again. THIRD_PARTY_NOTICES.md carries the
+    # licenses of the code statically linked into the binary (Go, participle,
+    # x/net); the BSD-3-Clause ones require it in binary distributions.
+    files:
+      - LICENSE.md
+      - README.md
+      - CHANGELOG.md
+      - THIRD_PARTY_NOTICES.md
 
 checksum:
   name_template: "checksums.txt"
