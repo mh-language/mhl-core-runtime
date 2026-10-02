@@ -79,6 +79,16 @@ type Stage struct {
 // declaration allowed).
 type Pipeline struct {
 	Name string
+	// Decl is the name of the declaration whose steps, vars, mem and hooks
+	// this pipeline runs — what the interpreter looks a pipeline up by. It
+	// equals Name, except for a workflow alias (ast.PipelineAlias), whose
+	// Name is the public one (sessions, checkpoints, MCP tool, results) and
+	// whose Decl is its target's.
+	Decl string
+	// Bound holds a workflow alias's fixed inputs (already converted and
+	// type-checked), merged into every run's inputs; they are not in
+	// Inputs, so a caller can neither see nor pass them. nil otherwise.
+	Bound map[string]any
 	// Kind is "pipeline" or "workflow" (ast.Pipeline.Kind, projected
 	// verbatim) — purely informational here (the runtime executes both
 	// identically), surfaced to a session_start/session_end hook's payload
@@ -211,7 +221,7 @@ func (in PipelineInputSpec) Required() bool { return in.Default == nil && !in.Op
 // read); adding a body property means adding both its entry there and its
 // case here.
 func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.Program) Pipeline {
-	out := Pipeline{Name: p.Name, Kind: p.Kind, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
+	out := Pipeline{Name: p.Name, Decl: p.Name, Kind: p.Kind, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
 	entryStage := -1
 	// `max <N>` header clause — shorthand for `repeat { max_iterations: N }`.
 	// Read first so an explicit `repeat` block below still wins (both being
@@ -462,10 +472,15 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 	}
 	aliases, _ := types.Aliases(prog)
 	for _, d := range prog.Decls {
+		// With no name (`mhl run file.mh`), the first declaration that is an
+		// entry point runs — an `internal` one is skipped.
+		if d.Alias != nil && ((name == "" && !d.Alias.Internal) || d.Alias.Name == name) {
+			return pipelineFromAlias(d.Alias, aliases, prog)
+		}
 		if d.Pipeline == nil {
 			continue
 		}
-		if name == "" || d.Pipeline.Name == name {
+		if (name == "" && !d.Pipeline.Internal) || d.Pipeline.Name == name {
 			if d.Pipeline.Partial {
 				if n := d.Pipeline.EntryStepCount(); n != 1 {
 					return Pipeline{}, fmt.Errorf("partial %s %q: expected exactly one `entry step` across its fragments, found %d", d.Pipeline.Kind, d.Pipeline.Name, n)
@@ -475,6 +490,11 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 		}
 	}
 	if name == "" {
+		for _, d := range prog.Decls {
+			if d.Pipeline != nil && d.Pipeline.Internal {
+				return Pipeline{}, fmt.Errorf("runtime: %s %q is internal — run a workflow alias of it, or call it from a test", d.Pipeline.Kind, d.Pipeline.Name)
+			}
+		}
 		return Pipeline{}, fmt.Errorf("runtime: no pipeline declared in program")
 	}
 	return Pipeline{}, fmt.Errorf("runtime: pipeline %q not found", name)

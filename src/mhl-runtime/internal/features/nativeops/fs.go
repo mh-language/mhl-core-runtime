@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Read returns path's full contents as a string.
@@ -235,6 +236,60 @@ func Join(parts ...string) string {
 func Delete(path string) (bool, error) {
 	if err := os.Remove(path); err != nil {
 		return false, err
+	}
+	return true, nil
+}
+
+// ClearDir leaves path as an existing, empty directory: it is created
+// (with parents) when absent, and everything inside it — files and
+// subdirectories, at any depth — is removed when present. The directory
+// itself is kept. This is the one recursive removal primitive, for the
+// "regenerate a whole collection" case (write a batch into a directory
+// whose previous batch must not survive); DeleteDir stays non-recursive.
+//
+// Because it erases a tree, it refuses a path that could take more than
+// the caller meant: an empty path, a filesystem root, the working
+// directory or any ancestor of it, and a symbolic link (whose target,
+// possibly outside the intended tree, would be emptied).
+func ClearDir(path string) (bool, error) {
+	if path == "" {
+		return false, fmt.Errorf("dir.clear: empty path")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false, fmt.Errorf("dir.clear %q: %w", path, err)
+	}
+	if filepath.Dir(abs) == abs {
+		return false, fmt.Errorf("dir.clear %q: refusing to clear a filesystem root", path)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(abs, cwd); err == nil && !(rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+			return false, fmt.Errorf("dir.clear %q: refusing to clear the working directory or one of its ancestors", path)
+		}
+	}
+	info, err := os.Lstat(path)
+	switch {
+	case os.IsNotExist(err):
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			return false, fmt.Errorf("dir.clear %q: %w", path, err)
+		}
+		return true, nil
+	case err != nil:
+		return false, fmt.Errorf("dir.clear %q: %w", path, err)
+	case info.Mode()&os.ModeSymlink != 0:
+		return false, fmt.Errorf("dir.clear %q: refusing to clear through a symbolic link", path)
+	case !info.IsDir():
+		return false, fmt.Errorf("dir.clear %q: not a directory", path)
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return false, fmt.Errorf("dir.clear %q: %w", path, err)
+	}
+	for _, e := range entries {
+		// RemoveAll removes a symlink entry itself, never what it points to.
+		if err := os.RemoveAll(filepath.Join(path, e.Name())); err != nil {
+			return false, fmt.Errorf("dir.clear %q: %w", path, err)
+		}
 	}
 	return true, nil
 }

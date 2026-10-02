@@ -53,3 +53,10 @@ pipeline's own steps do is reported in the returned object.
   otherwise; `vars` stays the full state
 - [run_workflow_output_contract_fails.mh](run_workflow_output_contract_fails.mh) — a projection
   that breaks the declared result type reports `ok: false`, `state: "failed"`, `output: null`
+- [run_workflow_enum_input.mh](run_workflow_enum_input.mh) — an enum-typed input's text
+  becomes the enum value (`==`, exhaustive `match`); an unknown variant raises up front
+- [run_workflow_inputs_are_read_only.mh](run_workflow_inputs_are_read_only.mh) — inputs are
+  read-only; state that changes during a run lives in a `var`
+- [run_workflow_alias.mh](run_workflow_alias.mh) — `workflow Delivery = ArtifactFlow with
+  { level: Level.delivery }`: an alias runs its target with bound inputs, which a caller can
+  no longer pass; the shared flow is `internal workflow` (not an entry point, still testable)

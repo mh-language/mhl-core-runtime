@@ -203,6 +203,23 @@ func (e *OutputContractError) Error() string {
 
 func (e *OutputContractError) Unwrap() error { return e.Err }
 
+// WithBound returns inputs plus a workflow alias's bound values (Bound),
+// which always win: they are not part of the alias's input contract, so a
+// caller never legitimately supplies one. inputs is not modified.
+func (pipeline Pipeline) WithBound(inputs map[string]any) map[string]any {
+	if len(pipeline.Bound) == 0 {
+		return inputs
+	}
+	out := make(map[string]any, len(inputs)+len(pipeline.Bound))
+	for k, v := range inputs {
+		out[k] = v
+	}
+	for k, v := range pipeline.Bound {
+		out[k] = v
+	}
+	return out
+}
+
 // BindInputs injects a run's coerced inputs into a step's variable env —
 // once per step, so a resumed run sees them too and a supplied value always
 // wins over an `input x: T = default` seed.
@@ -222,9 +239,12 @@ func (pipeline Pipeline) BindInputs(vars, inputs map[string]any) {
 		}
 		return
 	}
-	declared := make(map[string]bool, len(pipeline.Inputs))
+	declared := make(map[string]bool, len(pipeline.Inputs)+len(pipeline.Bound))
 	for _, in := range pipeline.Inputs {
 		declared[in.Name] = true
+	}
+	for name := range pipeline.Bound { // a workflow alias's fixed fields
+		declared[name] = true
 	}
 	param := map[string]any{}
 	if prev, ok := vars[pipeline.InputParam].(map[string]any); ok {

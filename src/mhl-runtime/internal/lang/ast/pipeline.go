@@ -53,15 +53,20 @@ import "github.com/alecthomas/participle/v2/lexer"
 // (lint requires an explicit `output:` alongside it). Both nil means the
 // untyped, per-line-input form, unchanged.
 type Pipeline struct {
-	Pos     lexer.Position
-	Partial bool              `parser:"@'partial'?"`
-	Loop    bool              `parser:"@'loop'?"`
-	Kind    string            `parser:"@( 'pipeline' | 'workflow' )"`
-	Name    string            `parser:"@Ident"`
-	Param   *PipelineParam    `parser:"( '(' @@ ')' )?" digest:"omitzero"`
-	Returns *TypeExpr         `parser:"( ':' @@ )?" digest:"omitzero"`
-	Max     string            `parser:"( 'max' @Number )?"`
-	Body    []*PipelineMember `parser:"'{' @@* '}'"`
+	Pos lexer.Position
+	// Internal (`internal workflow X`) keeps the declaration from being an
+	// entry point: `mhl serve` does not publish it and `mhl run` does not
+	// pick it. It still runs as a workflow alias's target and through
+	// `X.run(...)` in tests.
+	Internal bool              `parser:"@'internal'?" digest:"omitzero"`
+	Partial  bool              `parser:"@'partial'?"`
+	Loop     bool              `parser:"@'loop'?"`
+	Kind     string            `parser:"@( 'pipeline' | 'workflow' )"`
+	Name     string            `parser:"@Ident"`
+	Param    *PipelineParam    `parser:"( '(' @@ ')' )?" digest:"omitzero"`
+	Returns  *TypeExpr         `parser:"( ':' @@ )?" digest:"omitzero"`
+	Max      string            `parser:"( 'max' @Number )?"`
+	Body     []*PipelineMember `parser:"'{' @@* '}'"`
 }
 
 // PipelineParam is the single `name: Type` parameter of a typed
@@ -298,8 +303,42 @@ type Statement struct {
 	While     *WhileStmt     `parser:"| @@"`
 	ForIn     *ForInStmt     `parser:"| @@"`
 	Try       *TryStmt       `parser:"| @@"`
-	Assign    *AssignStmt    `parser:"| @@"`
-	Expr      *ExprStmt      `parser:"| @@ )"`
+	// Destructure is expanded away by the parser (parser.expandDestructure)
+	// before anything else sees the AST; it is always nil on a parsed tree.
+	Destructure *DestructureStmt `parser:"| @@" digest:"omitzero"`
+	Assign      *AssignStmt      `parser:"| @@"`
+	Expr        *ExprStmt        `parser:"| @@ )"`
+}
+
+// DestructureStmt binds several fields of one object in a single statement:
+//
+//	var {data, revisao: note} = review   // declares data, note
+//	{tokens_in, tokens_out} = review     // assigns existing names
+//	self.{tokens_in, tokens_out} = review // assigns pipeline vars (self.name)
+//
+// Each entry `field` binds the field of the same name; `field: name` binds
+// it to a different name. The right-hand side is evaluated once. A missing
+// field fails exactly as `review.field` would.
+type DestructureStmt struct {
+	Pos     lexer.Position
+	Var     bool                `parser:"( @'var'"`
+	Self    bool                `parser:"| @'self' '.' )?"`
+	Entries []*DestructureEntry `parser:"'{' @@ ( ',' @@ )* ','? '}' '='"`
+	Value   *Expr               `parser:"@@"`
+}
+
+// DestructureEntry is one `field` or `field: name` of a DestructureStmt.
+type DestructureEntry struct {
+	Field string `parser:"@Ident"`
+	Name  string `parser:"( ':' @Ident )?"`
+}
+
+// Target is the name the entry binds: Name when renamed, else Field.
+func (e *DestructureEntry) Target() string {
+	if e.Name != "" {
+		return e.Name
+	}
+	return e.Field
 }
 
 // VarDecl declares and initializes a local variable: `var x = expr`.
@@ -493,4 +532,41 @@ type AssignStmt struct {
 // ExprStmt is a bare expression used for its side effects, e.g. a call.
 type ExprStmt struct {
 	Expr *Expr `parser:"@@"`
+}
+
+// PipelineAlias publishes an existing pipeline/workflow under another name,
+// with some of its inputs fixed:
+//
+//	workflow Delivery = ArtifactFlow with { level: Level.delivery } {
+//	    description: "Artifacts for a Feature or a standalone Story."
+//	}
+//
+// The alias runs Target's steps unchanged. It is a separate entry point
+// everywhere a pipeline is one — its own MCP tool / A2A skill (with its own
+// description), its own `mhl run` target, sessions, checkpoints and `mem`
+// state — and its input contract is Target's minus the Bound inputs, which
+// a caller can no longer pass. Bound values are literals or enum values
+// (`Level.delivery`), checked against the input's declared type. Props may
+// only set `description` (inherited from Target when absent).
+type PipelineAlias struct {
+	Pos lexer.Position
+	// Internal hides the alias the way it hides a pipeline (Pipeline.Internal).
+	Internal bool        `parser:"@'internal'?" digest:"omitzero"`
+	Kind     string      `parser:"@( 'pipeline' | 'workflow' )"`
+	Name     string      `parser:"@Ident '='"`
+	Target   string      `parser:"@Ident"`
+	Bound    *Object     `parser:"( 'with' @@ )?"`
+	Props    []*Property `parser:"( '{' @@* '}' )?"`
+}
+
+// Description is the alias's own `description:` property, "" when absent.
+func (a *PipelineAlias) Description() string {
+	for _, p := range a.Props {
+		if p.Name == "description" {
+			if s, ok := StringValue(p.Value); ok {
+				return s
+			}
+		}
+	}
+	return ""
 }

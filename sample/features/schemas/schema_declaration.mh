@@ -1,0 +1,30 @@
+// `schema Name from "file.json"` declares a JSON Schema file an agent's
+// structured output must follow. Used as a value, the name is
+// `{content, path}`: the file's JSON text (what `claude --json-schema` takes
+// inline) and its absolute path (what `codex --output-schema` takes — a
+// subprocess resolves a relative path against its own working directory, not
+// the .mh file's). The path is resolved relative to the declaring file.
+schema Brief from "schemas/brief.schema.json"
+
+type SchemaFile = {content: string, path: string}
+
+tool Writer {
+    describe_schema(schema_file: SchemaFile): string -> json.parse(schema_file.content).type
+}
+
+test schema_declaration {
+    describe content_is_the_json_text {
+        are_equal(json.parse(Brief.content).required, ["resumo_executivo"])
+    }
+
+    describe path_is_absolute_and_points_at_the_file {
+        is_true(Brief.path.starts_with("/") || Brief.path.contains(":"))
+        is_true(Brief.path.ends_with("schemas/brief.schema.json"))
+        is_true(fs.exists(Brief.path))
+    }
+
+    describe it_passes_where_a_content_path_object_is_expected {
+        are_equal(Writer.describe_schema(schema_file: Brief), "object")
+        are_equal(nameof(Brief), "Brief")
+    }
+}

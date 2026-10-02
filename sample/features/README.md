@@ -12,6 +12,8 @@ how they're wired together at runtime.
 - [a2a/](a2a/README.md) — declaring an `extension a2a` and calling a remote A2A agent with `.send(...)`/`.agent_card()`/`.get_task(...)`/`.cancel(...)`
 - [time/](time/README.md) — datetime as plain RFC3339 strings: `time.now/parse/format/add/diff/compare`
 - [uuid/](uuid/README.md) — the `uuid` native namespace: `uuid.v4` (random) and `uuid.v7` (time-ordered)
+- [fs/](fs/README.md) — the `fs` / `dir` native namespaces: `dir.clear` (create-or-empty a directory)
+- [schemas/](schemas/README.md) — `schema Name from "file.json"`: a JSON Schema as `{content, path}`
 - [git/](git/README.md) — the `git` native namespace: `git.status/diff/log/rev_parse/add/commit`
 - [http/](http/README.md) — the `http` native namespace: one op per verb (`get/post/put/patch/delete/head/options`) plus `download`, with `query`, `body`/`text`/`form`, `auth`, `tls` (PEM client certificates), `proxy`, and secret redaction
 - [html/](html/README.md) — the `html` native namespace: `html.parse` into plain `{tag, attrs, text, children}` nodes, `get_element(s)`/`get_element_by_id`/`get_attribute`/`get_text`/`to_html`

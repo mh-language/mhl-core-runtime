@@ -109,7 +109,7 @@ func Inspect(req Request) (*Inspection, error) {
 	ins := &Inspection{
 		Pipeline:            pipeline.Name,
 		File:                file,
-		Kind:                pipelineKindLabel(prog, pipeline.Name),
+		Kind:                pipelineKindLabel(prog, pipeline.Decl),
 		Loop:                pipeline.Loop,
 		MaxIterations:       pipeline.MaxIterations,
 		Steps:               pipeline.Steps,
@@ -123,7 +123,7 @@ func Inspect(req Request) (*Inspection, error) {
 	if pipeline.Checkpoint.TTL > 0 {
 		ins.Checkpoint.TTL = humanDuration(pipeline.Checkpoint.TTL)
 	}
-	ins.Goto = collectPipelineGotos(prog, pipeline.Name)
+	ins.Goto = collectPipelineGotos(prog, pipeline.Decl)
 	for _, s := range pipeline.Stages {
 		ins.Stages = append(ins.Stages, InspectStage{Name: s.Name, Steps: s.Steps, Parallel: s.Parallel})
 	}

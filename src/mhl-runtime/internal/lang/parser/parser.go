@@ -112,6 +112,8 @@ func Parse(source string) (*ast.Program, error) {
 			}
 		}
 	}
+	expandShorthand(prog)
+	expandDestructure(prog)
 	if err := checkAmbiguousBareReturn(prog); err != nil {
 		return nil, err
 	}
@@ -128,6 +130,8 @@ func ParseExpr(source string) (*ast.Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	expandShorthand(expr)
+	expandDestructure(expr)
 	if err := checkExprForAmbiguousReturn(expr); err != nil {
 		return nil, err
 	}

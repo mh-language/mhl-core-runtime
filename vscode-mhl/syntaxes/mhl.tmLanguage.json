@@ -135,6 +135,20 @@
           "match": "\\b(from|import|as|export|extension|extensible|agent|router|memory|tool|loop|partial|pipeline|workflow|prompt|parallel|step|route|timeout|input|test|describe|type|enum)\\b"
         },
         {
+          "comment": "`internal` modifier — only before a pipeline/workflow declaration or a tool method name, so an identifier named `internal` is not highlighted",
+          "match": "^[ \\t]*(?:export[ \\t]+)?(internal)(?=[ \\t]+(?:(?:partial|loop)[ \\t]+)*(?:workflow|pipeline)\\b|[ \\t]+[a-zA-Z_][a-zA-Z0-9_]*[ \\t]*\\()",
+          "captures": {
+            "1": { "name": "storage.modifier.mhl" }
+          }
+        },
+        {
+          "comment": "`schema Name from \"...\"` — only at the start of a declaration, so the `schema:` agent argument/property is not highlighted as a keyword",
+          "match": "^[ \\t]*(?:export[ \\t]+)?(schema)(?=[ \\t]+[a-zA-Z_][a-zA-Z0-9_]*[ \\t]+from\\b)",
+          "captures": {
+            "1": { "name": "storage.type.declaration.mhl" }
+          }
+        },
+        {
           "comment": "`max <N>` header clause on a `loop pipeline` / `loop workflow` — matched only after the declaration name so it never lights up an ordinary identifier, `.max(` call, or `max:` key",
           "match": "(?<=\\b(?:pipeline|workflow)[ \\t]{1,64}[a-zA-Z_][a-zA-Z0-9_]{0,128}[ \\t]{1,64})(max)(?=[ \\t]+[0-9])",
           "captures": {

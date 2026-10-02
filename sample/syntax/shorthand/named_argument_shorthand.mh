@@ -1,0 +1,21 @@
+// A named argument with no value passes the variable of the same name:
+// `Writer.generate(prompt:, project_id:)` is
+// `Writer.generate(prompt: prompt, project_id: project_id)`.
+prompt Greeting(name: string, place: string) { "hi ${name} from ${place}" }
+
+tool Writer {
+    generate(prompt: string, project_id: string): string -> "${project_id}: ${prompt}"
+}
+
+test named_argument_shorthand {
+    describe a_bare_named_argument_passes_the_same_named_variable {
+        var prompt = "draft the brief"
+        var project_id = "wi_1"
+        are_equal(Writer.generate(prompt:, project_id:), "wi_1: draft the brief")
+    }
+
+    describe it_mixes_with_ordinary_named_arguments {
+        var name = "ana"
+        are_equal(Greeting(name:, place: "recife"), "hi ana from recife")
+    }
+}

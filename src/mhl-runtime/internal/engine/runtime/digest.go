@@ -24,7 +24,10 @@ var Version = "dev"
 // refused. 2: variables may carry ref-object markers ({"$mhl_ref": id, ...},
 // see internal/engine/value) that an older build would read as plain
 // objects, losing identity; version-1 checkpoints still load unchanged.
-const StateSchemaVersion = 2
+// 3: enum values are written as {"$mhl_enum": name, "variant": v} (an older
+// build would read them back as plain objects); version-1/2 checkpoints —
+// where an enum was its bare variant string — still load unchanged.
+const StateSchemaVersion = 3
 
 // DefinitionDigest is a stable hash of the part of a resolved program that
 // governs one pipeline's execution: the named pipeline/workflow's own
@@ -41,8 +44,20 @@ const StateSchemaVersion = 2
 // It is stamped into a checkpoint and checked on --resume: continuing a run
 // against a definition whose digest no longer matches would splice old
 // variable state into new control flow.
+//
+// A workflow alias's digest covers the alias itself and the declaration it
+// targets (whose steps it runs): editing either invalidates its checkpoints.
 func DefinitionDigest(prog *ast.Program, pipeline string) string {
 	h := sha256.New()
+	runs := pipeline // the declaration whose steps run
+	for _, d := range prog.Decls {
+		if d != nil && d.Alias != nil && d.Alias.Name == pipeline {
+			runs = d.Alias.Target
+			if real, ok := prog.AliasMap()[runs]; ok {
+				runs = real
+			}
+		}
+	}
 	for _, d := range prog.Decls {
 		if d == nil {
 			continue
@@ -50,7 +65,10 @@ func DefinitionDigest(prog *ast.Program, pipeline string) string {
 		if d.Test != nil {
 			continue
 		}
-		if d.Pipeline != nil && d.Pipeline.Name != pipeline {
+		if d.Pipeline != nil && d.Pipeline.Name != runs {
+			continue
+		}
+		if d.Alias != nil && d.Alias.Name != pipeline {
 			continue
 		}
 		hashValue(h, reflect.ValueOf(d))
@@ -87,6 +105,11 @@ func hashValue(h interface{ Write([]byte) (int, error) }, v reflect.Value) {
 			// didn't exist, so a program that doesn't use it keeps the
 			// digest an older build stamped and its checkpoints still resume.
 			if t.Field(i).Tag.Get("digest") == "omitzero" && v.Field(i).IsZero() {
+				continue
+			}
+			// `digest:"-"`: environment-dependent data loaded after parsing
+			// (ast.Schema.Path — where the checkout lives), never meaning.
+			if t.Field(i).Tag.Get("digest") == "-" {
 				continue
 			}
 			h.Write([]byte(t.Field(i).Name))

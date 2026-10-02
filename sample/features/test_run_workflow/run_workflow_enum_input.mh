@@ -1,0 +1,35 @@
+// An input typed with an enum receives text from its caller (`--input`, an
+// MCP/A2A JSON string, `inputs: {...}` here) and is converted to the enum
+// value before the first step, so `==` and an exhaustive `match` work on it
+// directly. A name that is not a variant is rejected before the run starts.
+enum Artifact { brief, adr }
+
+workflow Generate {
+    input artifact: Artifact
+    var label = ""
+
+    step Pick {
+        self.label = match artifact {
+            Artifact.brief -> "Brief"
+            Artifact.adr   -> "ADR"
+        }
+    }
+}
+
+test run_workflow_enum_input {
+    describe text_input_becomes_the_enum_value {
+        var run = Generate.run(inputs: {artifact: "adr"})
+        is_true(run.ok)
+        are_equal(run.vars.label, "ADR")
+    }
+
+    describe an_unknown_variant_is_rejected_up_front {
+        var message = ""
+        try {
+            Generate.run(inputs: {artifact: "bogus"})
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("is not a variant of enum Artifact (use brief | adr)"))
+    }
+}

@@ -3,6 +3,8 @@ package runtime_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -310,5 +312,58 @@ func TestDefinitionDigestUnchangedByOmitzeroFields(t *testing.T) {
 	optional := "type T = { a?: string }\npipeline P(req: T) {\n step S { log(req.a) }\n}\n"
 	if digestOfPipeline(t, typed, "P") == digestOfPipeline(t, optional, "P") {
 		t.Fatal("a set omitzero field must still count toward the digest")
+	}
+}
+
+// Shorthand object fields and named arguments are expanded by the parser,
+// so they hash exactly like the long form they abbreviate.
+func TestDefinitionDigestShorthandEqualsLongForm(t *testing.T) {
+	long := "pipeline P {\n input a: string\n step S { var o = {a: a, n: 1}\n log(o, a: a) }\n}\n"
+	short := "pipeline P {\n input a: string\n step S { var o = {a, n: 1}\n log(o, a:) }\n}\n"
+	if digestOfPipeline(t, long, "P") != digestOfPipeline(t, short, "P") {
+		t.Fatal("shorthand must not change DefinitionDigest")
+	}
+}
+
+// A schema's file content is part of the definition, but where the checkout
+// lives (ast.Schema.Path) is not: moving a project keeps its checkpoints.
+func TestDefinitionDigestSchemaContentNotPath(t *testing.T) {
+	src := "schema S from \"s.json\"\npipeline P {\n step A { log(S.content) }\n}\n"
+	digest := func(dir, content string) string {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "s.json"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		prog, err := parser.Parse(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := prog.Decls[0].Schema.Load(dir); err != nil {
+			t.Fatal(err)
+		}
+		return runtime.DefinitionDigest(prog, "P")
+	}
+	a := digest(t.TempDir(), `{"type": "object"}`)
+	if b := digest(t.TempDir(), `{"type": "object"}`); a != b {
+		t.Fatal("the schema file's location must not change the digest")
+	}
+	if c := digest(t.TempDir(), `{"type": "string"}`); a == c {
+		t.Fatal("a change to the schema's content must change the digest")
+	}
+}
+
+// A workflow alias's digest covers its target (whose steps it runs) and its
+// own bound values, and not a sibling alias.
+func TestDefinitionDigestOfWorkflowAlias(t *testing.T) {
+	base := "workflow Flow {\n input level: string\n step A { log(level) }\n}\nworkflow D = Flow with { level: \"d\" }\nworkflow E = Flow with { level: \"e\" }\n"
+	d := digestOfPipeline(t, base, "D")
+	if d == digestOfPipeline(t, base, "E") {
+		t.Fatal("two aliases binding different values must not share a digest")
+	}
+	if d != digestOfPipeline(t, strings.Replace(base, `level: "e"`, `level: "x"`, 1), "D") {
+		t.Fatal("editing a sibling alias must not change this alias's digest")
+	}
+	if d == digestOfPipeline(t, strings.Replace(base, "log(level)", "log(level + \"!\")", 1), "D") {
+		t.Fatal("editing the target's steps must change the alias's digest")
 	}
 }

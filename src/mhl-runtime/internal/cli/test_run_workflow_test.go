@@ -354,3 +354,87 @@ pipeline Inner {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+// `Name.run(inputs:)` converts an enum input's text the same way `mhl run`
+// and `serve` do, and rejects an unknown variant.
+func TestRunWorkflowConvertsEnumInputs(t *testing.T) {
+	out, err := runTestFile(t, `
+enum Kind { brief, adr }
+workflow W {
+    input kind: Kind
+    var label = ""
+    step S { self.label = match kind { Kind.brief -> "B"  Kind.adr -> "A" } }
+}
+test T {
+    describe text_input_becomes_an_enum {
+        var run = W.run(inputs: {kind: "adr"})
+        is_true(run.ok)
+        are_equal(run.vars.label, "A")
+    }
+    describe an_unknown_variant_is_rejected {
+        var failed = false
+        try {
+            W.run(inputs: {kind: "nope"})
+        } catch (e) {
+            failed = "${e}".contains("is not a variant of enum Kind")
+        }
+        is_true(failed)
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("mhl test: %v\n%s", err, out)
+	}
+}
+
+// `Alias.run(inputs:)` runs the target's steps with the alias's bound values.
+func TestRunWorkflowAlias(t *testing.T) {
+	out, err := runTestFile(t, `
+enum Level { discovery, delivery }
+workflow Flow {
+    input level: Level
+    input artifact: string
+    var result = ""
+    step A { self.result = "${level}:${artifact}" }
+}
+workflow Delivery = Flow with { level: Level.delivery }
+test T {
+    describe alias_runs_with_its_bound_input {
+        var run = Delivery.run(inputs: {artifact: "adr"})
+        is_true(run.ok)
+        are_equal(run.vars.result, "delivery:adr")
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("mhl test: %v\n%s", err, out)
+	}
+}
+
+// An internal tool method runs through `self.` and from its own file's
+// tests; a step calling it directly fails at run time.
+func TestInternalToolMethodAtRunTime(t *testing.T) {
+	out, err := runTestFile(t, `
+tool Paths {
+    root(id: string): string -> "projects/" + self.clean(id)
+    internal clean(id: string): string -> id.trim()
+}
+workflow Direct {
+    step A { var x = Paths.clean(" a ") }
+}
+test T {
+    describe self_and_same_file_tests_may_call_it {
+        are_equal(Paths.root(" a "), "projects/a")
+        are_equal(Paths.clean(" b "), "b")
+    }
+    describe a_step_may_not {
+        var run = Direct.run()
+        is_false(run.ok)
+        is_true(run.error.contains("Paths.clean is internal to tool Paths"))
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("mhl test: %v\n%s", err, out)
+	}
+}

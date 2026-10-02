@@ -135,7 +135,8 @@ func TestEvalTypeMismatchErrors(t *testing.T) {
 		expr string
 		want string
 	}{
-		{"add-string-number", `log("a" + 1)`, "requires both operands to be strings"},
+		{"add-string-null", `log("a" + null)`, "cannot join a string and null"},
+		{"add-object-string", `log({a: 1} + "a")`, "cannot join a string and object"},
 		{"cmp-strings", `log("a" < "b")`, `requires number operands`},
 		{"and-non-bool", `log(1 && true)`, `requires bool operands`},
 		{"unary-not-non-bool", `log(!1)`, `requires a bool operand`},
@@ -230,9 +231,9 @@ func TestEvalCompoundAddAssignToUndeclaredVarErrors(t *testing.T) {
 func TestEvalCompoundAddAssignTypeMismatchErrors(t *testing.T) {
 	_, err := run(t, wrapStep(`
         var msg = "x"
-        msg += 3
+        msg += [3]
     `))
-	if err == nil || !strings.Contains(err.Error(), "requires both operands to be strings") {
+	if err == nil || !strings.Contains(err.Error(), "cannot join a string and array") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -1598,5 +1599,221 @@ func TestEvalValueNestingStillCapped(t *testing.T) {
 	_, err := run(t, wrapStep(`var deep = `+nested))
 	if err == nil || !strings.Contains(err.Error(), "value nesting exceeds the maximum depth of 10") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEvalShorthandFieldsAndNamedArguments(t *testing.T) {
+	out, err := run(t, `
+prompt Greet(name: string, place: string) { "hi ${name} from ${place}" }
+tool T {
+    pair(left: string, right: string): any -> {left, right}
+}
+pipeline P {
+    input name: string = "ana"
+    step S {
+        var place = "recife"
+        log(json.stringify({name, place, n: 1}))
+        log(T.pair(left: name, right: place).right)
+        log(T.pair(left: "x", right: place).left)
+        var left = "l"
+        var right = "r"
+        log(json.stringify(T.pair(left:, right:)))
+        log(Greet(name:, place:))
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	for _, want := range []string{`{"n":1,"name":"ana","place":"recife"}`, "recife", "x", `{"left":"l","right":"r"}`, "hi ana from recife"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestEvalSchemaDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"lib/schemas/brief.schema.json": `{"type": "object"}`,
+		"lib/schemas.mh":                `export schema Brief from "schemas/brief.schema.json"`,
+		"main.mh": `
+import { Brief } from "lib/schemas.mh"
+
+type SchemaFile = {content: string, path: string}
+
+tool Writer {
+    describe(schema_file: SchemaFile): string -> "${json.parse(schema_file.content).type}@${schema_file.path}"
+}
+
+pipeline P {
+    step S {
+        log(Writer.describe(schema_file: Brief))
+        log(nameof(Brief))
+        var Brief = "shadowed"
+        log(Brief)
+    }
+}
+`,
+	}
+	for rel, content := range files {
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", filepath.Join(dir, "main.mh")}, &buf); err != nil {
+		t.Fatalf("run: %v\n%s", err, buf.String())
+	}
+	out := buf.String()
+	abs, _ := filepath.Abs(filepath.Join(dir, "lib/schemas/brief.schema.json"))
+	for _, want := range []string{"object@" + abs, "Brief", "shadowed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestEvalDestructuring(t *testing.T) {
+	out, err := run(t, `
+tool Writer {
+    generate(): any -> {
+        log("generated")
+        return {data: {x: 1}, tokens_in: 10, tokens_out: 5, revisao: "ok"}
+    }
+}
+workflow W {
+    var tokens_in = 0
+    var tokens_out = 0
+    step A {
+        var {data, revisao: note} = Writer.generate()
+        log("data=${data.x} note=${note}")
+        self.{tokens_in, tokens_out} = Writer.generate()
+        log("tokens=${tokens_in}/${tokens_out}")
+        var a = 0
+        var b = 0
+        {a, b} = {a: 7, b: 8}
+        log("ab=${a}${b}")
+        var pick = (r) -> {
+            var {data} = r
+            return data
+        }
+        log("lambda=${pick({data: "y"})}")
+        try {
+            var {missing} = {a: 1}
+        } catch (e) {
+            log("missing: ${e}")
+        }
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if n := strings.Count(out, "generated"); n != 2 {
+		t.Errorf("right-hand side must be evaluated once per statement, got %d calls:\n%s", n, out)
+	}
+	for _, want := range []string{"data=1 note=ok", "tokens=10/5", "ab=78", "lambda=y", `missing: field "missing" not found`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestEvalDirClear(t *testing.T) {
+	base := filepath.ToSlash(t.TempDir())
+	out, err := run(t, wrapStep(`
+        var d = "`+base+`/batch"
+        dir.clear(d)
+        fs.write(d + "/a/old.txt", "x")
+        dir.clear(d)
+        log("exists=${dir.exists(d)} entries=${dir.list(d).size()}")
+    `))
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "exists=true entries=0") {
+		t.Errorf("unexpected output:\n%s", out)
+	}
+}
+
+func TestEvalStringPlusScalarConcatenates(t *testing.T) {
+	out, err := run(t, `
+enum Status { Ok }
+pipeline P {
+    step S {
+        var n = 3
+        log("n=" + n)
+        log(2.5 + " items")
+        log("flag=" + true + ", status=" + Status.Ok)
+        log(1 + 2 + "x")
+        var msg = "count: "
+        msg += 4
+        log(msg)
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	for _, want := range []string{"n=3", "2.5 items", "flag=true, status=Ok", "3x", "count: 4"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// An input reassigned in one step used to be silently restored before the
+// next (execsvc rebinds inputs per step) — a `goto` loop guarded by
+// clearing an input never terminated. Inputs are now read-only: the write
+// fails loudly instead.
+func TestEvalInputsAreReadOnly(t *testing.T) {
+	cases := map[string]string{
+		"assign":      `feedback = ""`,
+		"add-assign":  `feedback += "x"`,
+		"self":        `self.feedback = ""`,
+		"destructure": `{feedback} = {feedback: ""}`,
+		"redeclare":   `var feedback = ""`,
+	}
+	for name, stmt := range cases {
+		t.Run(name, func(t *testing.T) {
+			out, err := run(t, `
+workflow W {
+    input feedback: string = "please change"
+    step A {
+        `+stmt+`
+    }
+}
+`)
+			if err == nil || !strings.Contains(err.Error(), `input`) || !strings.Contains(err.Error(), `"feedback"`) {
+				t.Fatalf("want a read-only input error, got %v\n%s", err, out)
+			}
+		})
+	}
+}
+
+func TestEvalEnumParseAndValues(t *testing.T) {
+	out, err := run(t, `
+enum Kind { brief, adr, parse }
+pipeline P {
+    step S {
+        log("values=${Kind.values().map((v) -> "${v}").join(",")}")
+        log("parsed=${Kind.parse("adr") == Kind.adr} same=${Kind.parse(Kind.brief) == Kind.brief}")
+        log("variant=${Kind.parse}")
+        try { Kind.parse("x") } catch (e) { log("err=${e}") }
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	for _, want := range []string{"values=brief,adr,parse", "parsed=true same=true", "variant=parse", `err="x" is not a variant of enum Kind (use brief | adr | parse)`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
 	}
 }

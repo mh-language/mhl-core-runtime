@@ -110,6 +110,9 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 	loopSet, maxSet := false, false
 	entries := 0
 	for _, f := range frags {
+		if f.Internal {
+			out.Internal = true // any fragment may carry it, like `export`
+		}
 		if f.Loop {
 			if loopSet {
 				findings = append(findings, Finding{File: file, Line: f.Pos.Line, Column: f.Pos.Column,

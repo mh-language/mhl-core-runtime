@@ -196,10 +196,9 @@ pipeline P {
 	}
 }
 
-// An identifier that's the target of a member access or call — an agent,
-// tool, memory, or router name — is never flagged even when undeclared:
-// that surface belongs to the narrower, existing shape checks
-// (checkAgentCalls, checkRouterDelegateCallShape, ...), not this one.
+// An identifier that's the target of a member access or call is not this
+// check's concern — checkUndefinedNames (undefined.go) reports an unknown
+// receiver once, so the zero-trailer check must not report it a second time.
 func TestHookBodyDoesNotFlagCallOrMemberTargets(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main.mh")
@@ -211,8 +210,9 @@ pipeline P {
     step Only { log.info("running") }
 }
 `)
-	if findings := lint.File(main); len(findings) != 0 {
-		t.Fatalf("expected no findings (call/member targets are out of this check's scope), got %+v", findings)
+	findings := lint.File(main)
+	if len(findings) != 1 || !strings.Contains(findings[0].Message, `undefined name "SomeUndeclaredThing"`) {
+		t.Fatalf("expected only checkUndefinedNames' receiver finding, got %+v", findings)
 	}
 }
 

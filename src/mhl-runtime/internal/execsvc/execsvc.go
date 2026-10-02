@@ -233,11 +233,12 @@ func Run(req Request) (*Result, error) {
 	// Same pure input type-check dry-run (execsvc.Inspect) runs — a mismatch
 	// here must fail identically there.
 	coercedInputs, inputErrs := coerceInputs(pipeline, req.Inputs)
+	coercedInputs = pipeline.WithBound(coercedInputs)
 	if len(inputErrs) > 0 {
 		return nil, inputErrs[0]
 	}
 
-	memInit, err := interpreter.PipelineMemInit(prog, pipeline.Name)
+	memInit, err := interpreter.PipelineMemInit(prog, pipeline.Decl)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +292,7 @@ func Run(req Request) (*Result, error) {
 			return nil
 		}
 		mem := memContextFor(memInit, pipeline.Name, instanceID)
-		return interpreter.RunPipelineHook(runCtx, prog, pipeline.Name, hookName, hookExpr, arg, file, hookOut, store, jsonStore, mem, contextView, vars)
+		return interpreter.RunPipelineHook(runCtx, prog, pipeline.Decl, hookName, hookExpr, arg, file, hookOut, store, jsonStore, mem, contextView, vars)
 	}
 
 	// stopFailure fires the pipeline's stop_failure hook (if any) for a
@@ -335,7 +336,7 @@ func Run(req Request) (*Result, error) {
 			return err
 		}
 		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
-		stepErr := interpreter.RunStep(stepCtx, prog, step, file, stepOut, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
+		stepErr := interpreter.RunStep(stepCtx, prog, pipeline.Decl, step, file, stepOut, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
 		breakReason, isBreak := interpreter.IsBreak(stepErr)
 		pauseReason, isPause := interpreter.IsPause(stepErr)
 		isComplete := interpreter.IsComplete(stepErr)
@@ -365,7 +366,7 @@ func Run(req Request) (*Result, error) {
 		}
 	}
 
-	init := pipelineVarsInit(prog, pipeline.Name, file, out, store, jsonStore, contextView)
+	init := pipelineVarsInit(prog, pipeline.Decl, file, out, store, jsonStore, contextView)
 
 	// Bind every checkpoint this run writes to the structure of the pipeline
 	// it came from (its own declaration plus the shared decls it can

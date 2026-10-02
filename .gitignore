@@ -38,8 +38,3 @@ tests_e2e/**/mhl.exe
 tests_e2e/**/bin/
 
 
-# scripts
-release.sh
-PLANO.md
-
-

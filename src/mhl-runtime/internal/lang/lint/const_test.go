@@ -61,3 +61,38 @@ pipeline P {
 		t.Fatalf("expected no findings, got %+v", f)
 	}
 }
+
+func TestInputsAreReadOnly(t *testing.T) {
+	got := lintSrc(t, `
+workflow W {
+    input feedback: string = ""
+    input n: number = 0
+    var consumed = false
+    step A {
+        feedback = ""
+        n += 1
+        self.feedback = "x"
+        {feedback} = {feedback: "y"}
+        var n = 2
+        consumed = true
+        var copy = feedback
+        copy = ""
+    }
+}
+`)
+	want := []string{
+		`cannot assign to input "feedback"`,
+		`cannot assign to input "n"`,
+		`cannot assign to input "feedback"`,
+		`cannot assign to input "feedback"`,
+		`"n" is an input and can't be redeclared`,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("want %d findings, got %d: %+v", len(want), len(got), got)
+	}
+	for i, w := range want {
+		if !strings.Contains(got[i].Message, w) {
+			t.Errorf("finding %d: want %q, got %q", i, w, got[i].Message)
+		}
+	}
+}

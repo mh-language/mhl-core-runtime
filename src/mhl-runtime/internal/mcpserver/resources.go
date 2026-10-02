@@ -272,13 +272,13 @@ func (h *httpServer) readRunResource(sess *session, msg rpcMsg) *rpcMsg {
 }
 
 // programDeclarations lists the top-level agent / tool / memory / prompt /
-// extension names declared in prog — the dependencies available to any
+// schema / extension names declared in prog — the dependencies available to any
 // workflow parsed from it. Name lists only.
 func programDeclarations(prog *ast.Program) map[string]any {
 	if prog == nil {
 		return nil
 	}
-	var agents, tools, mems, prompts, exts []string
+	var agents, tools, mems, prompts, schemas, exts []string
 	for _, d := range prog.Decls {
 		switch {
 		case d.Agent != nil && d.Agent.Name != "":
@@ -289,6 +289,8 @@ func programDeclarations(prog *ast.Program) map[string]any {
 			mems = append(mems, d.Memory.Name)
 		case d.Prompt != nil:
 			prompts = append(prompts, d.Prompt.Name)
+		case d.Schema != nil:
+			schemas = append(schemas, d.Schema.Name)
 		case d.Extension != nil:
 			exts = append(exts, d.Extension.Name)
 		}
@@ -304,6 +306,7 @@ func programDeclarations(prog *ast.Program) map[string]any {
 	add("tools", tools)
 	add("memory", mems)
 	add("prompts", prompts)
+	add("schemas", schemas)
 	add("extensions", exts)
 	if len(out) == 0 {
 		return nil
