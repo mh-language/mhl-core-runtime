@@ -81,7 +81,7 @@ func definitionAt(path, text string, pos position, cache *refCache) []location {
 	// (and, for a `partial` declaration, that pipeline's sibling fragments).
 	if isGotoTargetWord(line, start) {
 		if pipelineName, ok := enclosingPipelineName(text, pos); ok {
-			if loc, found := findStepDeclaration(path, text, pipelineName, word); found {
+			if loc, found := findStepDeclaration(path, text, pipelineName, word, cache); found {
 				return []location{loc}
 			}
 		}
@@ -97,7 +97,7 @@ func definitionAt(path, text string, pos position, cache *refCache) []location {
 // recoverable. extDeclLocRe is its `extension <kind> <Name>` counterpart
 // (two identifiers), capturing the name in group 1.
 var (
-	declLocRe    = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:loop[ \t]+)?(agent|router|memory|tool|prompt|pipeline|workflow|type|enum|extensible)[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
+	declLocRe    = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:internal[ \t]+)?(?:partial[ \t]+)?(?:loop[ \t]+)?(agent|router|memory|tool|prompt|pipeline|workflow|type|enum|extensible|schema)[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
 	extDeclLocRe = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?extension[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
@@ -182,6 +182,16 @@ type refCache struct {
 	files   map[string]string
 	decls   map[string]map[string]declEntry
 	members map[string]map[int]bool
+	// byDir groups files' keys by filepath.Dir, built lazily on first
+	// siblings() call and reused after — see siblings' doc comment.
+	byDir    map[string][]string
+	byDirSet bool
+	// imports memoizes buildImportIndex per file — see the importSource
+	// method's doc comment.
+	imports map[string]map[string]importEntry
+	// progs memoizes a full participle parse per file — see the parse
+	// method's doc comment (gototarget.go).
+	progs map[string]parsedProg
 }
 
 func newRefCache(files map[string]string) *refCache {
@@ -237,17 +247,25 @@ func (c *refCache) readFile(path string) (string, bool) {
 // siblings lists dir's .mh files. When c and c.files are set (a
 // references/codeLens scan already covering every file under some root) it
 // reads the file set's own keys instead of re-listing the directory from
-// disk, since a single such scan calls this once per identifier that isn't
-// declared locally or reached by import.
+// disk, grouped by directory once (byDir) and reused after — a single scan
+// calls this once per identifier that isn't declared locally or reached by
+// import (the common case: locals, parameters, method names, ...), so
+// rescanning the full c.files map on every call here made
+// references/codeLens effectively quadratic in the workspace's file count
+// (each of a real project's many thousands of identifiers paying an O(total
+// files) cost) — pathologically slow on a real-sized project, not just
+// suboptimal.
 func (c *refCache) siblings(dir string) []string {
 	if c != nil && c.files != nil {
-		var out []string
-		for p := range c.files {
-			if filepath.Dir(p) == dir {
-				out = append(out, p)
+		if !c.byDirSet {
+			c.byDir = make(map[string][]string, len(c.files))
+			for p := range c.files {
+				d := filepath.Dir(p)
+				c.byDir[d] = append(c.byDir[d], p)
 			}
+			c.byDirSet = true
 		}
-		return out
+		return c.byDir[dir]
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -288,7 +306,7 @@ func locateDeclarationHop(path, text, name string, hop int, seen map[string]bool
 
 	// Follow an import that names it (or aliases it).
 	if hop < maxImportHops {
-		if tgtPath, declName, found := importSource(text, path, name); found && !seen[tgtPath] {
+		if tgtPath, declName, found := cache.importSource(path, text, name); found && !seen[tgtPath] {
 			if tgt, ok := cache.readFile(tgtPath); ok {
 				if e, ok := cache.index(tgtPath, tgt)[declName]; ok {
 					return tgtPath, tgt, e.off, e.kind, true
@@ -320,11 +338,21 @@ func locateDeclarationHop(path, text, name string, hop int, seen map[string]bool
 // brace-delimited item list (group 1) and the module path (group 2).
 var importRe = regexp.MustCompile(`(?m)^[ \t]*import[ \t]*\{([^}]*)\}[ \t]*from[ \t]+"([^"]*)"`)
 
-// importSource scans src's import statements for one that binds `name`
-// locally and returns the referenced file (resolved relative to fromPath's
-// directory) together with the name as it is declared in that file — an
-// `X as name` item maps back to X.
-func importSource(src, fromPath, name string) (path, declName string, ok bool) {
+// importEntry is one name buildImportIndex resolves via `import {...} from
+// "path"`: the referenced file (resolved relative to the importing file's
+// directory) and the name as it is declared there (an `X as name` item maps
+// back to X).
+type importEntry struct {
+	path     string
+	declName string
+}
+
+// buildImportIndex scans src's import statements once and returns every
+// locally-bound name's importEntry — the batch form of what used to be
+// importSource's per-name regex re-scan (see the refCache.importSource
+// method's doc comment for why that mattered).
+func buildImportIndex(src, fromPath string) map[string]importEntry {
+	idx := map[string]importEntry{}
 	for _, m := range importRe.FindAllStringSubmatch(src, -1) {
 		for _, item := range strings.Split(m[1], ",") {
 			fields := strings.Fields(item)
@@ -337,18 +365,50 @@ func importSource(src, fromPath, name string) (path, declName string, ok bool) {
 			default:
 				continue
 			}
-			if local != name {
-				continue
-			}
 			rel := m[2]
 			p := rel
 			if !filepath.IsAbs(p) {
 				p = filepath.Join(filepath.Dir(fromPath), rel)
 			}
-			return p, orig, true
+			idx[local] = importEntry{path: p, declName: orig}
 		}
 	}
-	return "", "", false
+	return idx
+}
+
+// importSource scans src's import statements for one that binds `name`
+// locally and returns the referenced file (resolved relative to fromPath's
+// directory) together with the name as it is declared in that file. Used
+// directly only for a cache-less, one-shot textDocument/definition lookup;
+// a references/codeLens scan goes through refCache.importSource instead.
+func importSource(src, fromPath, name string) (path, declName string, ok bool) {
+	e, ok := buildImportIndex(src, fromPath)[name]
+	return e.path, e.declName, ok
+}
+
+// importSource is importSource's memoized counterpart: buildImportIndex
+// re-ran its regex scan of the *entire* file on every single call — and
+// locateDeclarationHop calls it once per identifier that isn't declared
+// locally, which is most identifiers in ordinary code (locals, parameters,
+// method names, ...). Across a real project's many files and thousands of
+// identifiers, that made references/codeLens re-parse the same files'
+// import statements over and over, dwarfing every other cost. Memoizing per
+// file here — the same pattern index/memberIndex already use — turns it
+// into one regex pass per file for the whole scan.
+func (c *refCache) importSource(path, text, name string) (string, string, bool) {
+	if c == nil {
+		return importSource(text, path, name)
+	}
+	idx, ok := c.imports[path]
+	if !ok {
+		idx = buildImportIndex(text, path)
+		if c.imports == nil {
+			c.imports = map[string]map[string]importEntry{}
+		}
+		c.imports[path] = idx
+	}
+	e, ok := idx[name]
+	return e.path, e.declName, ok
 }
 
 // buildDeclIndex scans src once for every top-level declaration and returns
@@ -392,6 +452,8 @@ func declKind(keyword string) symbolKind {
 		return symPipeline
 	case "enum":
 		return symEnum
+	case "schema":
+		return symSchema
 	case "extensible":
 		return symExtensible
 	default: // "type"
@@ -509,16 +571,28 @@ func isIdentByte(b byte) bool {
 		(b >= '0' && b <= '9')
 }
 
-// lineAt returns line n of text (0-based), or "" when out of range.
+// lineAt returns line n of text (0-based, split on "\n"), or "" when out of
+// range. Scans text directly instead of strings.Split(text, "\n") — that
+// would allocate a slice covering every line of the *entire* file just to
+// return one of them, and this is called once per identifier occurrence
+// during a references/codeLens scan, so it was a large, easily avoidable
+// allocation source on a real project.
 func lineAt(text string, n int) string {
 	if n < 0 {
 		return ""
 	}
-	lines := strings.Split(text, "\n")
-	if n >= len(lines) {
-		return ""
+	start := 0
+	for line := 0; line < n; line++ {
+		idx := strings.IndexByte(text[start:], '\n')
+		if idx < 0 {
+			return ""
+		}
+		start += idx + 1
 	}
-	return lines[n]
+	if end := strings.IndexByte(text[start:], '\n'); end >= 0 {
+		return text[start : start+end]
+	}
+	return text[start:]
 }
 
 // identRange builds the LSP range covering the len(name) bytes of src that

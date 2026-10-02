@@ -452,6 +452,9 @@ func (s *server) toolList() []map[string]any {
 			"description": desc,
 			"inputSchema": w.Pipeline.InputSchema(),
 		}
+		if outSchema := w.Pipeline.OutputSchema(); outSchema != nil {
+			entry["outputSchema"] = outSchema
+		}
 		if s.asyncRuns {
 			// A pipeline can run longer than a gateway's request timeout;
 			// tell the client it can also be driven async — via the raw
@@ -528,7 +531,7 @@ func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage
 		// the same policy as the variable payload below, and — for a typed
 		// runtime.StepError — attach which step failed and how as
 		// structuredContent so a client need not parse the message.
-		return s.replyResult(sess, id, toolErrorResult(runErr))
+		return s.replyResult(sess, id, typedToolResult(w.Pipeline, toolErrorResult(runErr)))
 	}
 	// Resolved credentials must not cross the protocol boundary in `content`
 	// or `structuredContent`; redact recursively (nested objects/arrays too).
@@ -537,7 +540,24 @@ func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage
 		vars = map[string]any{}
 	}
 	text, _ := json.MarshalIndent(vars, "", "  ")
+	if res.Paused {
+		// A paused run's vars are partial state, not a result — they carry
+		// no `output:` projection, so they can't satisfy an outputSchema.
+		return s.replyResult(sess, id, typedToolResult(w.Pipeline, toolResult(string(text), vars, false)))
+	}
 	return s.replyResult(sess, id, toolResult(string(text), vars, false))
+}
+
+// typedToolResult drops structuredContent from a non-result reply (an error,
+// a paused run) of a tool that advertises an outputSchema: the MCP spec
+// requires a tool's structured results to conform to that schema, and a
+// client SDK may validate structuredContent even when isError is set. The
+// same detail stays in the text content block. Untyped tools are unchanged.
+func typedToolResult(p runtime.Pipeline, r map[string]any) map[string]any {
+	if p.OutputType != nil {
+		delete(r, "structuredContent")
+	}
+	return r
 }
 
 // readResource serves a resources/read for a mhl://workflow/... URI. The HTTP
@@ -571,7 +591,10 @@ func (s *server) readResource(sess *session, msg rpcMsg) *rpcMsg {
 // toolErrorResult renders a failed run as a CallToolResult: the message
 // redacted, plus — when the cause is a typed runtime.StepError or
 // InvalidInputsError — a structuredContent object a client can branch on
-// ({error, kind, step} / {error, kind, missing, unknown}).
+// ({error, kind, step} / {error, kind, missing, unknown}). A
+// runtime.OutputContractError has no case here: only a tool with a declared
+// result type can raise one, and typedToolResult strips that tool's error
+// structuredContent anyway — the message stays in the text block.
 func toolErrorResult(err error) map[string]any {
 	msg := auth.Redact(err.Error())
 	var stepErr *runtime.StepError

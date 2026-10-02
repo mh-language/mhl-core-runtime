@@ -170,6 +170,12 @@ func (s *server) agentCard() map[string]any {
 			desc = fmt.Sprintf("Runs the mhl %s %q.", wf.KindLabel(), n)
 		}
 		desc += " Pass inputs as message.metadata.input."
+		// Non-standard hints: the JSON Schema of this skill's inputs and,
+		// for a typed signature, of its result.
+		meta := map[string]any{"inputSchema": wf.Pipeline.InputSchema()}
+		if outSchema := wf.Pipeline.OutputSchema(); outSchema != nil {
+			meta["outputSchema"] = outSchema
+		}
 		skills = append(skills, map[string]any{
 			"id":          n,
 			"name":        n,
@@ -177,8 +183,7 @@ func (s *server) agentCard() map[string]any {
 			"tags":        []string{"mhl"},
 			"inputModes":  []string{"application/json"},
 			"outputModes": []string{"application/json"},
-			// Non-standard hint: the JSON Schema of this skill's inputs.
-			"metadata": map[string]any{"inputSchema": wf.Pipeline.InputSchema()},
+			"metadata":    meta,
 		})
 	}
 	return map[string]any{

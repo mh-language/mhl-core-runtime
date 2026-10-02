@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 )
 
@@ -346,7 +347,9 @@ var ErrNonSerializableVar = fmt.Errorf("runtime: pipeline variable is not checkp
 // RedactVarsForCheckpoint). A value of any other kind — most often a closure
 // assigned to a pipeline-scoped `var` — is rejected up front.
 func CheckpointableVars(vars map[string]any) error {
-	for key, value := range vars {
+	// Checked in encoded form: a ref object becomes a plain marker there
+	// (value.EncodeRefs), and a ref cycle a finite one.
+	for key, value := range value.EncodeRefs(vars) {
 		if t, ok := firstUnserializable(value); ok {
 			return fmt.Errorf("%w: %q holds a %s — assign only strings, numbers, bools, arrays and objects to a pipeline-scoped var (a closure or handle cannot be resumed)", ErrNonSerializableVar, key, t)
 		}
@@ -398,7 +401,11 @@ func firstUnserializable(v any) (string, bool) {
 // reference (auth.RefFor) is replaced by a rehydratable marker rather than the
 // "[REDACTED]" mask. Every other string (including a secret only embedded as a
 // substring) is masked exactly as RedactVars does.
+//
+// Ref objects are encoded first (value.EncodeRefs): each is written with its
+// id, so RehydrateVars can give back one shared object per id.
 func RedactVarsForCheckpoint(vars map[string]any) map[string]any {
+	vars = value.EncodeRefs(vars)
 	out := make(map[string]any, len(vars))
 	for key, value := range vars {
 		out[key] = redactValueForCheckpoint(value)
@@ -467,7 +474,7 @@ func RehydrateVars(vars map[string]any) (map[string]any, error) {
 		}
 		out[key] = rv
 	}
-	return out, nil
+	return value.DecodeRefs(out), nil
 }
 
 func rehydrateValue(v any) (any, error) {

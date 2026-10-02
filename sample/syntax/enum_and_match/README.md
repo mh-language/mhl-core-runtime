@@ -19,3 +19,5 @@ error when nothing matches.
   number / string with literal arms and `_`
 - [match_no_arm_matches_is_rejected.mh](match_no_arm_matches_is_rejected.mh) — the
   runtime error when nothing matches and there is no `_`
+- [enum_parse_and_values.mh](enum_parse_and_values.mh) — `Kind.parse(text)` and
+  `Kind.values()`; an unknown name is rejected listing the variants

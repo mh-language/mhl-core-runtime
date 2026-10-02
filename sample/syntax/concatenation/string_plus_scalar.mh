@@ -1,0 +1,23 @@
+// `+` joins a string with a number, bool or enum value, in either order,
+// formatting the non-string exactly as `${...}` would. A string with null, an
+// object or an array is still an error — that pairing is almost always a bug.
+enum Status { Ok }
+
+test string_plus_scalar {
+    describe a_string_joins_a_number_bool_or_enum {
+        are_equal("n=" + 3, "n=3")
+        are_equal(2.5 + " items", "2.5 items")
+        are_equal("flag=" + true + ", status=" + Status.Ok, "flag=true, status=Ok")
+        are_equal(1 + 2 + "x", "3x")
+    }
+
+    describe a_string_with_null_is_still_an_error {
+        var message = ""
+        try {
+            var joined = "value: " + null
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("cannot join a string and null"))
+    }
+}

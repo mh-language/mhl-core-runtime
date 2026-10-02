@@ -16,9 +16,9 @@ declarations live in [fixtures/router.mh](fixtures/router.mh).
 - [router_delegates_without_any_llm_decision_engine.mh](router_delegates_without_any_llm_decision_engine.mh)
   — the LLM cascade is entirely optional: a router with only `select` (no `decider` at all) is a
   purely deterministic router, as long as `select` is exhaustive
-- [router_without_select_or_decision_engine_errors.mh](router_without_select_or_decision_engine_errors.mh)
-  — a router declaring neither `select` nor a `decider` is rejected by `mhl lint`, and
-  `.delegate()` also fails at runtime with a clear "no decider is configured" error
+- [router_select_is_callable_without_delegating.mh](router_select_is_callable_without_delegating.mh)
+  — `Router.select(prompt: ...)` resolves the same decision `.delegate()` would, without running
+  the chosen agent or falling back to the LLM cascade
 - [router_select_typo_errors_immediately.mh](router_select_typo_errors_immediately.mh)
   — a `select` return that is non-null but matches no declared agent is always a specific,
   immediate error (naming the bad value and the real agents) — never a silent cascade

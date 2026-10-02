@@ -283,3 +283,73 @@ func TestJoinReturnsForwardSlashJoinedPath(t *testing.T) {
 		t.Errorf("Join = %q, want %q", got, want)
 	}
 }
+
+func TestClearDirCreatesEmptiesAndKeepsTheRoot(t *testing.T) {
+	base := t.TempDir()
+
+	fresh := filepath.Join(base, "a", "fresh")
+	if ok, err := nativeops.ClearDir(fresh); !ok || err != nil {
+		t.Fatalf("ClearDir on a missing path: %v", err)
+	}
+	if info, err := os.Stat(fresh); err != nil || !info.IsDir() {
+		t.Fatalf("a missing path must be created as a directory: %v", err)
+	}
+
+	full := filepath.Join(base, "full")
+	for _, f := range []string{"top.txt", "sub/mid.txt", "sub/deeper/bottom.txt"} {
+		p := filepath.Join(full, f)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte("x"), 0o644)
+	}
+	// A symlink inside the tree is removed itself, never followed.
+	outside := filepath.Join(base, "outside")
+	os.MkdirAll(outside, 0o755)
+	os.WriteFile(filepath.Join(outside, "keep.txt"), []byte("k"), 0o644)
+	if err := os.Symlink(outside, filepath.Join(full, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	if ok, err := nativeops.ClearDir(full); !ok || err != nil {
+		t.Fatalf("ClearDir: %v", err)
+	}
+	entries, err := os.ReadDir(full)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("directory must exist and be empty, got %v (err %v)", entries, err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "keep.txt")); err != nil {
+		t.Fatalf("a symlinked directory's target must survive: %v", err)
+	}
+}
+
+func TestClearDirRefusesDangerousPaths(t *testing.T) {
+	base := t.TempDir()
+	file := filepath.Join(base, "f.txt")
+	os.WriteFile(file, []byte("x"), 0o644)
+	target := filepath.Join(base, "target")
+	os.MkdirAll(target, 0o755)
+	link := filepath.Join(base, "link")
+	os.Symlink(target, link)
+	work := filepath.Join(base, "work", "inner")
+	os.MkdirAll(work, 0o755)
+	t.Chdir(work)
+
+	cases := map[string]string{
+		"":                          "empty path",
+		"/":                         "filesystem root",
+		".":                         "working directory",
+		"..":                        "working directory",
+		filepath.Join(base, "work"): "working directory",
+		link:                        "symbolic link",
+		file:                        "not a directory",
+	}
+	for path, want := range cases {
+		if _, err := nativeops.ClearDir(path); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("ClearDir(%q): want error containing %q, got %v", path, want, err)
+		}
+	}
+	// A sibling of the working directory is fine.
+	sibling := filepath.Join(base, "work", "sibling")
+	if _, err := nativeops.ClearDir(sibling); err != nil {
+		t.Errorf("ClearDir on a sibling of the working directory: %v", err)
+	}
+}

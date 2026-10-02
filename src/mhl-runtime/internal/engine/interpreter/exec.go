@@ -34,13 +34,19 @@ import (
 // work already in flight, not just at the next step boundary. nil is
 // tolerated (goctxOf normalizes it to context.Background()), which is what
 // the direct-call interpreter tests and RunTests pass.
-func RunStep(goctx context.Context, prog *ast.Program, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView, spawnSem chan struct{}) (err error) {
-	step := findStep(prog, stepName)
+//
+// pipelineName is the declaration the step belongs to (runtime.Pipeline.Decl):
+// one program may hold several pipelines with same-named steps — two workflows
+// sharing a flow's step names, a workflow and the flow its alias targets — so
+// a step is looked up within that declaration, never just by name. "" falls
+// back to the first pipeline declaring stepName.
+func RunStep(goctx context.Context, prog *ast.Program, pipelineName, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView, spawnSem chan struct{}) (err error) {
+	step, owner := findStep(prog, pipelineName, stepName)
 	if step == nil {
 		return fmt.Errorf("pipeline step %q not found", stepName)
 	}
 
-	ctx := &evalCtx{prog: prog, pipelineName: pipelineNameForStep(prog, stepName), store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, stepName)}
+	ctx := &evalCtx{prog: prog, pipelineName: owner, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, owner)}
 	// A non-nil spawnSem enables `spawn`/`wait` for this step and confines
 	// them to it: drainAtStepEnd joins whatever the step body left running,
 	// so no spawned goroutine ever outlives the step (and no handle is live
@@ -65,50 +71,27 @@ func RunStep(goctx context.Context, prog *ast.Program, stepName, file string, ou
 	return err
 }
 
-func pipelineNameForStep(prog *ast.Program, stepName string) string {
+// findStep returns the step named stepName declared by pipelineName (any
+// pipeline when "") and the name of the pipeline that declares it.
+func findStep(prog *ast.Program, pipelineName, stepName string) (*ast.Step, string) {
 	for _, decl := range prog.Decls {
-		if decl.Pipeline == nil {
+		if decl.Pipeline == nil || (pipelineName != "" && decl.Pipeline.Name != pipelineName) {
 			continue
 		}
 		for _, member := range decl.Pipeline.Body {
 			if member.Step != nil && member.Step.Name == stepName {
-				return decl.Pipeline.Name
-			}
-			if member.Parallel != nil {
-				for _, step := range member.Parallel.Steps {
-					if step.Name == stepName {
-						return decl.Pipeline.Name
-					}
-				}
-			}
-		}
-	}
-	return ""
-}
-
-// findStep returns the pipeline step named stepName, whether it is a plain
-// top-level step or a branch step of a `parallel` group (runtime.Runner
-// drives a group's branches by name through RunStep exactly like any other
-// step). Returns nil when no pipeline declares such a step.
-func findStep(prog *ast.Program, stepName string) *ast.Step {
-	for _, decl := range prog.Decls {
-		if decl.Pipeline == nil {
-			continue
-		}
-		for _, member := range decl.Pipeline.Body {
-			if member.Step != nil && member.Step.Name == stepName {
-				return member.Step
+				return member.Step, decl.Pipeline.Name
 			}
 			if member.Parallel != nil {
 				for _, s := range member.Parallel.Steps {
 					if s.Name == stepName {
-						return s
+						return s, decl.Pipeline.Name
 					}
 				}
 			}
 		}
 	}
-	return nil
+	return nil, ""
 }
 
 // EvalPipelineVars evaluates pipelineName's top-level `var` declarations
@@ -168,13 +151,14 @@ func EvalPipelineVars(prog *ast.Program, pipelineName, file string, out io.Write
 
 // pipelineConstNames is the set of names a pipeline binds with a top-level
 // `const` — seeded into every step's evalCtx so execAssign refuses to
-// reassign one.
-func pipelineConstNames(prog *ast.Program, stepName string) map[string]bool {
+// reassign one. A typed signature's param (`workflow X(req: T)`) is in the
+// set too: it is read-only, since the runtime rebinds it from the run's
+// inputs before every step (runtime.Pipeline.BindInputs) and a write would
+// silently vanish at the next one — and so is every declared `input`.
+// readOnlyInputKind words the refusal.
+func pipelineConstNames(prog *ast.Program, pipelineName string) map[string]bool {
 	for _, decl := range prog.Decls {
-		if decl.Pipeline == nil {
-			continue
-		}
-		if !pipelineContainsStep(decl.Pipeline, stepName) {
+		if decl.Pipeline == nil || decl.Pipeline.Name != pipelineName {
 			continue
 		}
 		out := map[string]bool{}
@@ -182,26 +166,19 @@ func pipelineConstNames(prog *ast.Program, stepName string) map[string]bool {
 			if m.Const != nil {
 				out[m.Const.Name] = true
 			}
+			// Inputs are read-only: they are what the caller passed, rebound
+			// before every step, so a write could only ever be silently
+			// undone by the next step. Mutable state belongs in a `var`.
+			if m.Input != nil {
+				out[m.Input.Name] = true
+			}
+		}
+		if decl.Pipeline.Param != nil {
+			out[decl.Pipeline.Param.Name] = true
 		}
 		return out
 	}
 	return nil
-}
-
-func pipelineContainsStep(p *ast.Pipeline, stepName string) bool {
-	for _, m := range p.Body {
-		if m.Step != nil && m.Step.Name == stepName {
-			return true
-		}
-		if m.Parallel != nil {
-			for _, s := range m.Parallel.Steps {
-				if s.Name == stepName {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 // returnSignal is not a real error: it's how a `return` statement's
@@ -396,6 +373,12 @@ func execStatementBody(ctx *evalCtx, statement *ast.Statement) error {
 		return nil
 	case statement.Var != nil:
 		if ctx.constNames[statement.Var.Name] {
+			switch readOnlyInputKind(ctx, statement.Var.Name) {
+			case "param":
+				return fmt.Errorf("%q is the typed parameter of %s and can't be redeclared", statement.Var.Name, ctx.pipelineName)
+			case "input":
+				return fmt.Errorf("%q is an input of %s and can't be redeclared", statement.Var.Name, ctx.pipelineName)
+			}
 			return fmt.Errorf("%q is already declared as a constant", statement.Var.Name)
 		}
 		v, err := evalExpr(ctx, statement.Var.Value)
@@ -513,6 +496,12 @@ func execAssign(ctx *evalCtx, assign *ast.AssignStmt) error {
 		return fmt.Errorf("assignment target must be a plain variable or an array index, not a nested field")
 	}
 	if ctx.constNames[name] {
+		switch readOnlyInputKind(ctx, name) {
+		case "param":
+			return fmt.Errorf("cannot assign to %q: the typed parameter of %s is read-only (copy it into a var to change it)", name, ctx.pipelineName)
+		case "input":
+			return fmt.Errorf("cannot assign to input %q of %s: inputs are read-only (copy it into a var to change it)", name, ctx.pipelineName)
+		}
 		return fmt.Errorf("cannot assign to constant %q", name)
 	}
 	var target Env
@@ -698,4 +687,26 @@ func execTry(ctx *evalCtx, stmt *ast.TryStmt) error {
 		}
 	}
 	return result
+}
+
+// readOnlyInputKind reports why name is read-only in the pipeline ctx is
+// running a step of: "param" for its typed signature param, "input" for a
+// declared input, "" for neither (a plain `const`).
+func readOnlyInputKind(ctx *evalCtx, name string) string {
+	for _, decl := range ctx.prog.Decls {
+		p := decl.Pipeline
+		if p == nil || p.Name != ctx.pipelineName {
+			continue
+		}
+		if p.Param != nil && p.Param.Name == name {
+			return "param"
+		}
+		for _, m := range p.Body {
+			if m.Input != nil && m.Input.Name == name {
+				return "input"
+			}
+		}
+		return ""
+	}
+	return ""
 }

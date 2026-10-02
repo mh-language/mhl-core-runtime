@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/value"
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
@@ -169,6 +170,9 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 	if err != nil {
 		return nil, err
 	}
+	if args, err = args.materialized(); err != nil {
+		return nil, fmt.Errorf("%s.%s: %w", namespace, op, err)
+	}
 	switch namespace + "." + op {
 	case "cmd.exec":
 		timeout, _ := args.duration("timeout")
@@ -320,6 +324,12 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 			return nil, fmt.Errorf("dir.exists requires a string path as its first argument")
 		}
 		return nativeops.DirExists(path)
+	case "dir.clear":
+		path, ok := args.stringAt(0)
+		if !ok {
+			return nil, fmt.Errorf("dir.clear requires a string path as its first argument")
+		}
+		return nativeops.ClearDir(path)
 	case "dir.delete":
 		path, ok := args.stringAt(0)
 		if !ok {
@@ -989,6 +999,28 @@ func (a callArgs) stringMap(name string) (map[string]string, error) {
 // time.Duration without going through the general evalExpr value system —
 // Duration never becomes a first-class MHL runtime value (evalPrimary
 // still rejects it elsewhere), it only exists as a native-op argument.
+// materialized returns a with every ref object turned into a plain object
+// (value.Materialize): native ops and extensions are the world outside the
+// interpreter, which never sees a ref's identity.
+func (a callArgs) materialized() (callArgs, error) {
+	out := callArgs{named: make(map[string]any, len(a.named))}
+	for _, v := range a.positional {
+		mv, err := value.Materialize(v)
+		if err != nil {
+			return callArgs{}, err
+		}
+		out.positional = append(out.positional, mv)
+	}
+	for k, v := range a.named {
+		mv, err := value.Materialize(v)
+		if err != nil {
+			return callArgs{}, err
+		}
+		out.named[k] = mv
+	}
+	return out, nil
+}
+
 func evalCallArgs(ctx *evalCtx, call *ast.Call, depth int) (callArgs, error) {
 	out := callArgs{named: map[string]any{}}
 	for _, arg := range call.Args {
@@ -1009,4 +1041,25 @@ func evalCallArgs(ctx *evalCtx, call *ast.Call, depth int) (callArgs, error) {
 		}
 	}
 	return out, nil
+}
+
+// checkInternalAccess refuses a call to an `internal` tool method from
+// outside its tool. Allowed callers: the tool's own methods (and closures
+// created in them), and a test's describe block when the tool is declared in
+// that test's own file (tests are never imported, so Tool.Imported is what
+// tells "this file's tool" from one merged in from elsewhere).
+func checkInternalAccess(ctx *evalCtx, tool *ast.Tool, method string) error {
+	for _, m := range tool.Methods {
+		if m.Name != method || !m.Internal {
+			continue
+		}
+		if ctx.selfTool != nil && ctx.selfTool.Name == tool.Name {
+			return nil
+		}
+		if ctx.assertions != nil && !tool.Imported {
+			return nil
+		}
+		return fmt.Errorf("%s.%s is internal to tool %s — call it as self.%s from inside the tool", tool.Name, method, tool.Name, method)
+	}
+	return nil
 }

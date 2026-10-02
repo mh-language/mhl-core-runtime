@@ -1,6 +1,10 @@
 package ast
 
-import "github.com/alecthomas/participle/v2/lexer"
+import (
+	"fmt"
+
+	"github.com/alecthomas/participle/v2/lexer"
+)
 
 // Expr is the entry point of the expression grammar. Expressions appear both
 // as property values (config) and inside pipeline statements. Precedence is
@@ -109,10 +113,31 @@ type Unary struct {
 }
 
 // Postfix is a primary expression followed by any number of member-access
-// (`.name`) or call (`(...)`) trailers.
+// (`.name`) or call (`(...)`) trailers, then any number of `with { ... }`
+// continuations (WithTail).
 type Postfix struct {
-	Primary *Primary   `parser:"@@"`
-	Ops     []*Trailer `parser:"@@*"`
+	Primary  *Primary   `parser:"@@"`
+	Ops      []*Trailer `parser:"@@*"`
+	WithTail []*WithOp  `parser:"@@*" digest:"omitzero"`
+}
+
+// WithOp is one `obj with { field: value, ... }` continuation: a copy of the
+// Postfix chain's value so far (value.DeepCopy — a ref-typed field keeps its
+// shared identity, every other field is deep-copied) with Object's fields
+// overridden on the copy, leaving the original value untouched. Chained
+// `with`s (`a with {x:1} with {y:2}`) apply left to right, each on the
+// previous result. `with` is contextual, exactly like `ref` (RefExpr): only
+// `with {` starts one, so `with` stays usable as an identifier or argument
+// name elsewhere — there is no bare-object-after-identifier construct
+// anywhere else in the grammar (a call always requires `(...)`), so this can
+// never collide with existing code. A field/index access on a `with` result
+// needs parens (`(obj with {x:1}).field`) — WithTail is deliberately the
+// last thing a Postfix can carry, not itself followed by more Ops, keeping
+// the grammar (and DefinitionDigest's shape for every *other* Postfix,
+// unaffected by this addition via digest:"omitzero") simple.
+type WithOp struct {
+	Pos    lexer.Position
+	Object *Object `parser:"'with' @@"`
 }
 
 // Trailer is a member access, a call, an array slice, or an array index —
@@ -167,10 +192,14 @@ type Call struct {
 	Args []*Argument `parser:"'(' ( @@ ( ',' @@ )* )? ')'"`
 }
 
-// Argument is a call argument, optionally named (`name: value`).
+// Argument is a call argument, optionally named (`name: value`). A named
+// argument with no value is shorthand for passing the variable of the same
+// name: `f(project_id:)` is `f(project_id: project_id)`. Like an object
+// field's shorthand, the parser expands it right after parsing
+// (parser.expandShorthand), so Value is never nil on a parsed AST.
 type Argument struct {
-	Name  string `parser:"( @Ident ':' )?"`
-	Value *Expr  `parser:"@@"`
+	Name  string `parser:"( @Ident ':'"`
+	Value *Expr  `parser:"  @@? | @@ )"`
 }
 
 // Primary is an atomic expression. Lambda is tried before Sub since both
@@ -198,8 +227,23 @@ type Primary struct {
 	Lambda   *Lambda    `parser:"| @@"`
 	IfExpr   *IfExpr    `parser:"| @@"`
 	Match    *MatchExpr `parser:"| @@"`
+	Ref      *RefExpr   `parser:"| @@" digest:"omitzero"`
 	Ident    string     `parser:"| @Ident"`
 	Sub      *Expr      `parser:"| '(' @@ ')' )"`
+}
+
+// RefExpr creates a reference object: `ref { name: "a" }` from an object
+// literal, or `ref (expr)` from any expression that evaluates to an object
+// (copied). Unlike a plain `{ ... }` — a value, copied whenever a variable
+// holding it is read — a reference object is shared: every name holding it
+// sees every mutation, and its identity survives a checkpoint/resume (see
+// internal/engine/value). `ref` is contextual: only `ref {` / `ref (` start
+// one, so `ref` stays usable as an identifier or argument name
+// (`git.rev_parse(ref: "HEAD")`).
+type RefExpr struct {
+	Pos    lexer.Position
+	Object *Object `parser:"'ref' ( @@"`
+	Sub    *Expr   `parser:"| '(' @@ ')' )"`
 }
 
 // MatchExpr is an expression-position multi-way branch:
@@ -268,11 +312,42 @@ type Object struct {
 }
 
 // ObjectField is a single `key: value` entry of an object literal. The key may
-// be a string or a bare identifier.
+// be a string or a bare identifier. A bare identifier alone is shorthand for
+// a field of the same name: `{artifact, path}` is `{artifact: artifact, path:
+// path}`. The parser expands it right after parsing (parser.expandShorthand),
+// so every consumer — and DefinitionDigest — only ever sees KeyIdent+Value;
+// Shorthand is nil on any parsed AST.
 type ObjectField struct {
-	KeyStr   *string `parser:"( @String"`
-	KeyIdent *string `parser:"| @Ident )"`
-	Value    *Expr   `parser:"':' @@"`
+	Pos       lexer.Position
+	KeyStr    *string        `parser:"( ( @String"`
+	KeyIdent  *string        `parser:"  | @Ident ) ':'"`
+	Value     *Expr          `parser:"  @@"`
+	Shorthand *ShorthandName `parser:"| @Ident )" digest:"omitzero"`
+}
+
+// ShorthandName is the identifier of a shorthand object field (`{name}`) or
+// named argument (`f(name:)`). Its Capture rejects the statement keywords:
+// keywords lex as plain identifiers, and without this a block body such as
+// `-> { return x }` — where an expression is tried before a block — would
+// parse as the object `{return: return, x: x}` instead of backtracking.
+type ShorthandName string
+
+// Capture implements participle.Capture.
+func (n *ShorthandName) Capture(values []string) error {
+	if shorthandReserved[values[0]] {
+		return fmt.Errorf("%q is a keyword, not a shorthand field name", values[0])
+	}
+	*n = ShorthandName(values[0])
+	return nil
+}
+
+var shorthandReserved = map[string]bool{
+	"var": true, "const": true, "return": true, "break": true, "goto": true,
+	"spawn": true, "wait": true, "if": true, "else": true, "while": true,
+	"for": true, "in": true, "try": true, "catch": true, "finally": true,
+	"match": true, "ref": true, "with": true, "true": true, "false": true,
+	"null": true, "step": true, "input": true, "mem": true, "parallel": true,
+	"route": true, "entry": true, "agent": true,
 }
 
 // Array is a bracket-delimited list literal.

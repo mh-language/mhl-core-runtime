@@ -102,3 +102,21 @@ pipeline P { step S { log("x") } }
 		t.Fatalf("unexpected findings: %+v", f)
 	}
 }
+
+// A `match` reachable only through a `with { ... }` override field is just
+// as checked as one in an object literal's own field.
+func TestMatchInsideWithOverrideIsChecked(t *testing.T) {
+	f := lintSrc(t, `
+enum Status { Draft, Live }
+pipeline P {
+    step S {
+        var s = Status.Draft
+        var base = { a: 1 }
+        var x = base with { label: match s { Status.Draft -> "d" } }
+    }
+}
+`)
+	if len(f) != 1 || !strings.Contains(f[0].Message, "missing Live") {
+		t.Fatalf("unexpected findings: %+v", f)
+	}
+}

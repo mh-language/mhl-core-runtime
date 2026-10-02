@@ -712,3 +712,43 @@ func TestRunOptionalAccessAndCollectionOps(t *testing.T) {
 		}
 	}
 }
+
+const arrayEnumerateFile = `
+pipeline P {
+    step S {
+        var letters = ["a", "b", "c"]
+        for (var pair in letters.enumerate()) {
+            log("pair=${pair.index}:${pair.value}")
+        }
+        log("empty=${[].enumerate().size()}")
+    }
+}
+`
+
+// TestRunArrayEnumerate proves .enumerate() pairs each element with its
+// 0-based index, in order, composing with the existing for-in loop — added
+// so code that needs the loop index (e.g. matching two parallel lists by
+// position) doesn't have to hand-maintain a counter var.
+func TestRunArrayEnumerate(t *testing.T) {
+	dir := t.TempDir()
+	pip := filepath.Join(dir, "pipeline.mh")
+	if err := os.WriteFile(pip, []byte(arrayEnumerateFile), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cwd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cli.Run([]string{"run", "pipeline.mh"}, &buf); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"pair=0:a", "pair=1:b", "pair=2:c", "empty=0"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}

@@ -1,0 +1,35 @@
+// `{a, b} = expr` assigns existing names; `self.{a, b} = expr` assigns the
+// pipeline's own vars — the usual way a step records several fields of one
+// result. The right-hand side is evaluated once either way.
+tool Writer {
+    generate(): any -> {data: "draft", tokens_in: 10, tokens_out: 5}
+}
+
+workflow Generate {
+    var tokens_in = 0
+    var tokens_out = 0
+    var pending = null
+
+    step Run {
+        var response = Writer.generate()
+        self.{tokens_in, tokens_out} = response
+        self.pending = response.data
+    }
+}
+
+test assign_destructuring {
+    describe assigns_existing_locals {
+        var a = 0
+        var b = 0
+        {a, b} = {a: 7, b: 8}
+        are_equal(a + b, 15)
+    }
+
+    describe self_form_assigns_pipeline_vars {
+        var run = Generate.run()
+        is_true(run.ok)
+        are_equal(run.vars.tokens_in, 10)
+        are_equal(run.vars.tokens_out, 5)
+        are_equal(run.vars.pending, "draft")
+    }
+}

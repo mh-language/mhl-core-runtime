@@ -10,8 +10,142 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+## 1.5.0-alpha.1
+
+This release is about writing less `.mh` for the same program: the language
+gains the constructs real workflows kept spelling out by hand (enums that work
+as inputs, JSON Schema files, one flow published under several names, private
+helpers, shorthand fields and arguments, destructuring), and `mhl lint` now
+catches several mistakes that previously only failed — or silently did
+nothing — at run time.
+
+### Upgrade notes
+
+Read these before upgrading; each can change the behavior of a program that ran
+under 1.4.
+
+- **Inputs are read-only.** Assigning to a pipeline/workflow `input` (`x = …`,
+  `x += …`, `self.x = …`, a destructuring target) or redeclaring it with `var`
+  is now an error in `mhl lint` and at run time. Such a write never worked: the
+  runtime re-binds inputs before every step, so the new value was silently
+  undone at the next one (a gate that "cleared" an input to leave a `goto`
+  loop re-entered it forever). Move the changing value into a `var`.
+- **Enum-typed inputs are converted and checked.** An `input x: SomeEnum`
+  receiving text (`--input x=a`, an MCP/A2A JSON string, `Name.run(inputs:)`)
+  now gets the enum value; a name that is not a variant is rejected as an
+  invalid input before the run starts. Under `Name.run(...)` in tests that is a
+  raised error, not `{ok: false}` — wrap such assertions in `try`/`catch`.
+  Code comparing an enum input with a string (`x == "a"`) was always false
+  and is now a lint error; compare with `SomeEnum.a`.
+- **`mhl serve` publishes only what each file declares.** A pipeline/workflow
+  that a file merely imports is no longer published again from that file. This
+  removes a spurious "declared in more than one file" error for a shared
+  workflow imported by several files; a workflow imported from *outside* the
+  served directory is no longer published at all. Declarations marked
+  `internal` are never published.
+- **`mhl run file.mh` skips `internal` declarations** when choosing which
+  pipeline to run, and errors when a file declares only internal ones.
+- **Checkpoint format version 3.** Enum values are now checkpointed as enums.
+  Checkpoints written by 1.4 still resume under 1.5; a checkpoint written by
+  1.5 cannot be resumed by 1.4.
+- **New lint errors.** Code that linted clean under 1.4 may now report: an
+  undefined receiver (`Missing.pick()`), an unknown name or unparseable
+  expression inside `${...}` (e.g. `catch { log("${e}") }` without `(e)`), a
+  lifecycle hook parameter annotated with the wrong context type, an enum
+  compared with a string literal, and a call to another tool's `internal`
+  method. Each was already a runtime failure or a silent bug.
+- **`+` between a string and a scalar now concatenates.** `"n=" + 3` is
+  `"n=3"` (number, bool or enum value, either order) instead of raising. A
+  string with `null`, an object or an array still raises, with a new message.
+- **`schema` and `internal` are new keywords**, recognized only where they
+  start a declaration or prefix a method; existing identifiers with these
+  names keep working. A lambda whose block body is a single bare identifier,
+  `(x) -> { y }`, now parses as the object `{y: y}` (it used to be a block
+  that returned nothing).
+
+### Added
+
+- **Workflow aliases.** `workflow Delivery = ArtifactFlow with { level:
+  Level.delivery } { description: "…" }` publishes an existing workflow under
+  another name with some inputs fixed. It runs the target's steps unchanged
+  but is its own entry point everywhere — MCP tool / A2A skill, `mhl run`,
+  `Delivery.run(...)` in tests, sessions, checkpoints, `mem` state — and its
+  input contract is the target's minus the bound inputs, which a caller can no
+  longer pass. Bound values are literals or enum values, checked statically.
+- **`internal` modifier.** `internal workflow X` (also `pipeline` and aliases)
+  is not an entry point — not published by `mhl serve`, not picked by
+  `mhl run` — but still runs as an alias target and from tests; the typical
+  shape is a shared flow published only through its aliases. On a tool method,
+  `internal name(...)` makes it private: callable as `self.name(...)` and from
+  the tests of the file that declares the tool, a lint and runtime error
+  anywhere else, and hidden from `Tool.` completion.
+- **`schema` declarations.** `schema Brief from "schemas/brief.schema.json"`
+  evaluates to `{content, path}` — the JSON text (for an engine taking the
+  schema inline, e.g. `claude --json-schema`) and the file's absolute path
+  (for one taking a file, e.g. `codex --output-schema`, which resolves
+  relative paths against its own working directory). A missing file, invalid
+  JSON or a non-object document is a lint and load-time error. The checkpoint
+  digest covers the schema's content, not its path.
+- **Enums end to end.** Besides input conversion (above): `Kind.parse(text)`
+  returns the variant named by `text` (raising with the variant list) and
+  `Kind.values()` lists every variant; both work even when an enum declares a
+  variant named `parse` or `values`.
+- **Shorthand fields and arguments.** `{artifact, path}` is `{artifact:
+  artifact, path: path}`, and `f(project_id:)` is `f(project_id: project_id)`.
+  Expanded by the parser, so evaluation, lint and the checkpoint digest are
+  identical to the long form.
+- **Destructuring.** `var {data, revisao: note} = r` declares locals,
+  `{a, b} = r` assigns existing names, `self.{tokens_in, tokens_out} = r`
+  assigns the pipeline's vars. The right-hand side is evaluated once; a missing
+  field raises like `r.field`.
+- **`dir.clear(path)`** leaves `path` as an existing, empty directory (created
+  when absent, contents removed at any depth when present) — for regenerating
+  a whole collection. It refuses an empty path, a filesystem root, the working
+  directory or one of its ancestors, and a symlinked path. `dir.delete` stays
+  non-recursive.
+- **Typed workflow signatures.** `workflow Review(req: ReviewInput):
+  ReviewOutput` binds the inputs as one read-only object, supports optional
+  fields (`base?: string`), requires an explicit `output:` checked against the
+  result type, and advertises the result as the MCP `outputSchema`.
+- **Reference objects.** `ref { ... }` creates an object with identity that is
+  shared — not copied — between names, including across `parallel` branches
+  and checkpoint/resume; plain objects and arrays remain values.
+- **`with` expressions.** `obj with { field: value }` returns a copy of `obj`
+  with the listed fields replaced.
+- **`array.enumerate()`** returns `{index, value}` pairs for indexed iteration.
+- **`Router.select(prompt: ...)`** is a public method: it runs the router's
+  deterministic `select` hook and returns the chosen agent's name (or `null`)
+  without running it.
+- **LSP:** completion of `Kind.parse`/`Kind.values` and enum variants, schema
+  fields (`Brief.content` / `.path`), workflow aliases as symbols, the
+  `internal` and `schema` keywords; file and import caching for faster symbol
+  resolution.
+
+### Changed
+
+- Lint and the language server share the new checks above, so the editor
+  reports them as you type.
+- `mhl serve`'s workflow manifest resource (`mhl://workflow/<name>`) lists the
+  program's declared `schemas` alongside its agents, tools, prompts and
+  extensions.
+- Move package-specific extension fixtures and end-to-end tests to the
+  `mh-language/mhl-packages` repository. The core keeps its generic extension
+  creation, installation, protocol and interpretation coverage.
+- The release script can overwrite already-uploaded artifacts when a release
+  upload is retried.
+
 ### Fixed
 
+- Two pipelines in one program that declared steps with the same name (common
+  once a file imports a shared workflow) could run each other's step bodies;
+  steps are now resolved within the declaration being run.
+- An enum value held in a pipeline `var` lost its type across a checkpoint and
+  came back as a plain string.
+- `self.<name>` inside a pipeline lifecycle hook now resolves the pipeline's own
+  input/var/mem.
+- Language server: hook-parameter completion nested inside `try`/`if`/object
+  literals; tool-method completion while editing, which ignored every method
+  declaring a return type.
 - Redact registered secrets recursively—including dynamic object keys—from
   structured `pause` reasons and from `break` reasons in text, JSON and MCP
   status output; checkpointed secret keys remain rehydratable.
@@ -19,12 +153,8 @@ Per-tag release notes are also generated automatically on the
   result contract.
 - Recognize `remove(key)` as a valid JSON-memory operation in `mhl lint`, with
   the same argument validation enforced by the runtime.
-
-### Changed
-
-- Move package-specific extension fixtures and end-to-end tests to the
-  `mh-language/mhl-packages` repository. The core keeps its generic extension
-  creation, installation, protocol and interpretation coverage.
+- VS Code extension: update `brace-expansion` to 2.1.7 (security advisories
+  GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p).
 
 ## 1.4.0-beta — v1.4.0-beta.2 .. v1.4.0-beta.24 (2026-09-06 → 2026-09-22)
 

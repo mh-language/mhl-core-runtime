@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,19 +15,17 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
-// findPipelineDecl locates a top-level `pipeline`/`workflow` declaration by
-// name — this file's own small copy of the same lookup every other file
-// that needs one (exec.go's EvalPipelineVars, memvar.go's PipelineMemInit,
-// nameof.go, imports.go) already keeps independently; there is no single
-// shared source for it.
-func findPipelineDecl(prog *ast.Program, name string) (*ast.Pipeline, bool) {
+// findRunnableName resolves name (honouring import aliases) to a top-level
+// `pipeline`/`workflow` declaration or workflow alias, returning the
+// declared name — what runtime.FindPipeline looks up.
+func findRunnableName(prog *ast.Program, name string) (string, bool) {
 	name = resolveName(prog, name)
 	for _, decl := range prog.Decls {
-		if decl.Pipeline != nil && decl.Pipeline.Name == name {
-			return decl.Pipeline, true
+		if (decl.Pipeline != nil && decl.Pipeline.Name == name) || (decl.Alias != nil && decl.Alias.Name == name) {
+			return name, true
 		}
 	}
-	return nil, false
+	return "", false
 }
 
 // runWorkflowCall handles `Name.run(inputs: {...})` where Name resolves to a
@@ -40,7 +39,7 @@ func findPipelineDecl(prog *ast.Program, name string) (*ast.Pipeline, bool) {
 // do to checkpointing, `context`, or recursion depth. Nothing stops that
 // design question from being revisited later; today it's just out of scope
 // for "let a test exercise a workflow's control flow."
-func runWorkflowCall(ctx *evalCtx, name string, decl *ast.Pipeline, call *ast.Call, depth int) (any, error) {
+func runWorkflowCall(ctx *evalCtx, name, declared string, call *ast.Call, depth int) (any, error) {
 	if ctx.assertions == nil {
 		return nil, fmt.Errorf("%s.run(...) targets a pipeline/workflow, which can only be run from inside a test's describe block", name)
 	}
@@ -48,11 +47,11 @@ func runWorkflowCall(ctx *evalCtx, name string, decl *ast.Pipeline, call *ast.Ca
 	if err != nil {
 		return nil, fmt.Errorf("%s.run: %w", name, err)
 	}
-	// decl.Name, not name: name may be an import alias (findPipelineDecl
-	// resolved it via resolveName to find decl), but runtime.FindPipeline
-	// and every other lookup below works off the program's own decls and
-	// knows nothing of import aliases.
-	return runWorkflowForTest(ctx, decl.Name, inputs, depth)
+	// declared, not name: name may be an import alias (findRunnableName
+	// resolved it via resolveName), but runtime.FindPipeline and every other
+	// lookup below works off the program's own decls and knows nothing of
+	// import aliases.
+	return runWorkflowForTest(ctx, declared, inputs, depth)
 }
 
 // resolveInputsArg reads call's `inputs:` named argument as an object —
@@ -93,10 +92,17 @@ func resolveInputsArg(ctx *evalCtx, call *ast.Call, depth int) (map[string]any, 
 // pipeline's own steps do — fail(), break, pause(), goto, a normal finish —
 // is reported in the returned object instead, so a test can assert on a
 // workflow that is *expected* to fail or break exactly as easily as one
-// expected to complete: {ok, state, executed, vars, error, step,
+// expected to complete: {ok, state, executed, vars, output, error, step,
 // break_reason, pause_reason}. state is one of "completed", "paused",
 // "broke", "failed". vars is {} on failure (RunResult.FinalVars is nil
 // then — nothing was captured to report).
+//
+// output is what a real caller (`mhl run`, an MCP tools/call) would
+// receive: the `output: { ... }` projection when one is declared, else
+// every non-internal var — evaluated on a completion or a `break`, null
+// otherwise. With a declared result type (`workflow X(...): T`) the
+// projection is checked against T exactly as execsvc does; a mismatch
+// reports state "failed" with the contract error, output null.
 func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth int) (map[string]any, error) {
 	pipeline, err := runtime.FindPipeline(ctx.prog, name)
 	if err != nil {
@@ -116,10 +122,17 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 		if !ok {
 			continue
 		}
-		if err := types.Check(fmt.Sprintf("input %q", in.Name), in.Type, v); err != nil {
+		label := fmt.Sprintf("input %q", in.Name)
+		v, err := runtime.ConvertEnums(label, in.Type, v, pipeline.Enums)
+		if err != nil {
 			return nil, err
 		}
+		if err := types.Check(label, in.Type, v); err != nil {
+			return nil, err
+		}
+		inputs[in.Name] = v
 	}
+	inputs = pipeline.WithBound(inputs)
 
 	tmpDir, err := os.MkdirTemp("", "mhl-test-run-*")
 	if err != nil {
@@ -127,7 +140,7 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 	}
 	defer os.RemoveAll(tmpDir)
 
-	memInit, err := PipelineMemInit(ctx.prog, pipeline.Name)
+	memInit, err := PipelineMemInit(ctx.prog, pipeline.Decl)
 	if err != nil {
 		return nil, err
 	}
@@ -144,10 +157,8 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 	spawnSem := NewSpawnSem(pipeline.Spawn.MaxConcurrency)
 
 	exec := func(stepCtx context.Context, step string, rc *runtime.RunContext) error {
-		for k, v := range inputs {
-			rc.Vars[k] = v
-		}
-		stepErr := RunStep(stepCtx, ctx.prog, step, ctx.file, ctx.out, ctx.store, ctx.jsonStore, rc.Vars, mem, contextView, spawnSem)
+		pipeline.BindInputs(rc.Vars, inputs)
+		stepErr := RunStep(stepCtx, ctx.prog, pipeline.Decl, step, ctx.file, ctx.out, ctx.store, ctx.jsonStore, rc.Vars, mem, contextView, spawnSem)
 		if reason, ok := IsBreak(stepErr); ok {
 			return &runtime.BreakSignal{Reason: reason}
 		}
@@ -163,7 +174,7 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 		return stepErr
 	}
 	init := func(rc *runtime.RunContext) error {
-		env, err := EvalPipelineVars(ctx.prog, pipeline.Name, ctx.file, ctx.out, ctx.store, ctx.jsonStore, contextView)
+		env, err := EvalPipelineVars(ctx.prog, pipeline.Decl, ctx.file, ctx.out, ctx.store, ctx.jsonStore, contextView)
 		if err != nil {
 			return err
 		}
@@ -181,6 +192,7 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 		"state":        "completed",
 		"executed":     stringsToAny(res.Executed),
 		"vars":         map[string]any{},
+		"output":       nil,
 		"error":        "",
 		"step":         "",
 		"break_reason": nil,
@@ -205,7 +217,42 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 		out["state"] = "broke"
 		out["break_reason"] = res.BreakReason
 	}
+	if runErr == nil && !res.Paused {
+		projected, err := testRunOutput(goctxOf(ctx), ctx, pipeline, mem, contextView, res.FinalVars)
+		if err != nil {
+			out["ok"] = false
+			out["state"] = "failed"
+			out["error"] = err.Error()
+		} else {
+			out["output"] = projected
+		}
+	}
 	return out, nil
+}
+
+// testRunOutput is execsvc's projectVars for a test's Name.run(): the
+// `output:` projection (checked against a declared result type) or, with no
+// `output:`, every var minus the runtime's own `__`-prefixed bookkeeping.
+func testRunOutput(goctx context.Context, ctx *evalCtx, pipeline runtime.Pipeline, mem *MemContext, cctx *ContextView, finalVars map[string]any) (map[string]any, error) {
+	if pipeline.Output == nil {
+		clean := make(map[string]any, len(finalVars))
+		for k, v := range finalVars {
+			if !strings.HasPrefix(k, "__") {
+				clean[k] = v
+			}
+		}
+		return clean, nil
+	}
+	projected, err := EvalOutputs(goctx, ctx.prog, pipeline.Output, ctx.file, ctx.out, ctx.store, ctx.jsonStore, mem, cctx, finalVars)
+	if err != nil {
+		return nil, err
+	}
+	if pipeline.OutputType != nil {
+		if err := types.Check("output", *pipeline.OutputType, projected); err != nil {
+			return nil, &runtime.OutputContractError{Pipeline: pipeline.Name, Type: pipeline.OutputTypeName, Err: err}
+		}
+	}
+	return projected, nil
 }
 
 func stringsToAny(ss []string) []any {

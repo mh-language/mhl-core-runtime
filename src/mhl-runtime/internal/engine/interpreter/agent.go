@@ -34,6 +34,16 @@ func findSkill(prog *ast.Program, name string) (*ast.Skill, bool) {
 	return nil, false
 }
 
+func findSchema(prog *ast.Program, name string) (*ast.Schema, bool) {
+	name = resolveName(prog, name)
+	for _, decl := range prog.Decls {
+		if decl.Schema != nil && decl.Schema.Name == name {
+			return decl.Schema, true
+		}
+	}
+	return nil, false
+}
+
 // skillValue builds the object system_prompt's `skills` parameter binds
 // each selected skill to: `name` is the MHL declaration identifier (the
 // same string nameof(CodeReview) resolves to, letting a hook write `s.name

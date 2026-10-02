@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -78,6 +79,16 @@ type Stage struct {
 // declaration allowed).
 type Pipeline struct {
 	Name string
+	// Decl is the name of the declaration whose steps, vars, mem and hooks
+	// this pipeline runs — what the interpreter looks a pipeline up by. It
+	// equals Name, except for a workflow alias (ast.PipelineAlias), whose
+	// Name is the public one (sessions, checkpoints, MCP tool, results) and
+	// whose Decl is its target's.
+	Decl string
+	// Bound holds a workflow alias's fixed inputs (already converted and
+	// type-checked), merged into every run's inputs; they are not in
+	// Inputs, so a caller can neither see nor pass them. nil otherwise.
+	Bound map[string]any
 	// Kind is "pipeline" or "workflow" (ast.Pipeline.Kind, projected
 	// verbatim) — purely informational here (the runtime executes both
 	// identically), surfaced to a session_start/session_end hook's payload
@@ -126,6 +137,26 @@ type Pipeline struct {
 	// types.Any here (best-effort, same as every other reader in this
 	// function) — internal/lang/lint is what reports the typo as a Finding.
 	Inputs []PipelineInputSpec
+	// InputParam is the parameter name of a typed signature
+	// (`workflow X(req: ReviewInput)`), or "" for the per-line-input form.
+	// When set, Inputs is the param type's fields (sorted by name) and a
+	// step reads them as `req.<field>` — execsvc binds them as one object
+	// under this name instead of as individual vars. InputTypeName is the
+	// type as written (`ReviewInput`), for display.
+	InputParam    string
+	InputTypeName string
+	// OutputType is the declared result type of a typed signature
+	// (`workflow X(...): ReviewOutput`), or nil when none is declared.
+	// execsvc checks the `output:` projection against it (types.Check)
+	// before the result leaves the run. OutputTypeName is the type as
+	// written, for display.
+	OutputType     *types.Type
+	OutputTypeName string
+	// Enums maps every `enum` declared in the program to its variants, in
+	// declaration order — what InputSchema/OutputSchema use to turn an
+	// enum-typed field at any depth into a JSON Schema `"enum": [...]`
+	// (types.Type carries only an enum's name, see Type.JSONSchema).
+	Enums map[string][]string
 
 	// SessionStart, SessionEnd, StepStart, StepEnd, and StopFailure are the
 	// optional `name: (x) -> { ... }` lifecycle hook properties — each a
@@ -150,12 +181,20 @@ type Pipeline struct {
 // instead of the type-only `{"type": "string"}` Type.JSONSchema() falls
 // back to on its own (it has no access to the enum declaration, only its
 // name — see its own doc comment).
+//
+// Optional is set for a field declared `name?: T` in a typed signature's
+// param type: like a Default, it makes the input non-required, but there is
+// no value to seed — the field is simply absent from the param object.
 type PipelineInputSpec struct {
 	Name         string
 	Type         types.Type
 	Default      *ast.Expr
 	EnumVariants []string
+	Optional     bool
 }
+
+// Required reports whether a caller must supply this input.
+func (in PipelineInputSpec) Required() bool { return in.Default == nil && !in.Optional }
 
 // PipelineFromAST projects an ast.Pipeline onto a runtime Pipeline, extracting
 // ordered step names, the checkpoint configuration, and — for a `loop
@@ -182,7 +221,7 @@ type PipelineInputSpec struct {
 // read); adding a body property means adding both its entry there and its
 // case here.
 func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.Program) Pipeline {
-	out := Pipeline{Name: p.Name, Kind: p.Kind, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
+	out := Pipeline{Name: p.Name, Decl: p.Name, Kind: p.Kind, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
 	entryStage := -1
 	// `max <N>` header clause — shorthand for `repeat { max_iterations: N }`.
 	// Read first so an explicit `repeat` block below still wins (both being
@@ -191,6 +230,44 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 	// lint.checkLoopMax reporting it.
 	if n, err := strconv.Atoi(p.Max); err == nil && n > 0 {
 		out.MaxIterations = n
+	}
+	if prog != nil {
+		for _, decl := range prog.Decls {
+			if decl.Enum != nil {
+				if out.Enums == nil {
+					out.Enums = map[string][]string{}
+				}
+				out.Enums[decl.Enum.Name] = decl.Enum.Variants
+			}
+		}
+	}
+	// Typed signature. A param type that isn't a shaped object (a lint
+	// error) resolves to no inputs here, best-effort like every other
+	// reader in this function.
+	if p.Param != nil {
+		out.InputParam = p.Param.Name
+		out.InputTypeName = p.Param.Type.String()
+		if t, ok := types.FromExprAlias(p.Param.Type, aliases); ok && t.Kind == types.ObjectKind {
+			names := make([]string, 0, len(t.Fields))
+			for name := range t.Fields {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				ft := t.Fields[name]
+				spec := PipelineInputSpec{Name: name, Type: ft, Optional: t.IsOptional(name)}
+				if ft.Kind == types.EnumKind {
+					spec.EnumVariants = enumVariants(prog, ft.Name)
+				}
+				out.Inputs = append(out.Inputs, spec)
+			}
+		}
+	}
+	if p.Returns != nil {
+		out.OutputTypeName = p.Returns.String()
+		if t, ok := types.FromExprAlias(p.Returns, aliases); ok {
+			out.OutputType = &t
+		}
 	}
 	for _, m := range p.Body {
 		switch {
@@ -395,10 +472,15 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 	}
 	aliases, _ := types.Aliases(prog)
 	for _, d := range prog.Decls {
+		// With no name (`mhl run file.mh`), the first declaration that is an
+		// entry point runs — an `internal` one is skipped.
+		if d.Alias != nil && ((name == "" && !d.Alias.Internal) || d.Alias.Name == name) {
+			return pipelineFromAlias(d.Alias, aliases, prog)
+		}
 		if d.Pipeline == nil {
 			continue
 		}
-		if name == "" || d.Pipeline.Name == name {
+		if (name == "" && !d.Pipeline.Internal) || d.Pipeline.Name == name {
 			if d.Pipeline.Partial {
 				if n := d.Pipeline.EntryStepCount(); n != 1 {
 					return Pipeline{}, fmt.Errorf("partial %s %q: expected exactly one `entry step` across its fragments, found %d", d.Pipeline.Kind, d.Pipeline.Name, n)
@@ -408,6 +490,11 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 		}
 	}
 	if name == "" {
+		for _, d := range prog.Decls {
+			if d.Pipeline != nil && d.Pipeline.Internal {
+				return Pipeline{}, fmt.Errorf("runtime: %s %q is internal — run a workflow alias of it, or call it from a test", d.Pipeline.Kind, d.Pipeline.Name)
+			}
+		}
 		return Pipeline{}, fmt.Errorf("runtime: no pipeline declared in program")
 	}
 	return Pipeline{}, fmt.Errorf("runtime: pipeline %q not found", name)

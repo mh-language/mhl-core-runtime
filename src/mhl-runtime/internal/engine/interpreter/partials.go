@@ -94,6 +94,9 @@ func mergePartialGroup(name, kind string, frags []*ast.Pipeline) (*ast.Pipeline,
 
 	loopSetBy, maxSetBy := "", ""
 	for _, f := range frags {
+		if f.Internal {
+			out.Internal = true // any fragment may carry it, like `export`
+		}
 		if f.Loop {
 			if loopSetBy != "" {
 				return nil, fmt.Errorf("partial %s %q: `loop` is declared on more than one fragment", kind, name)
@@ -107,6 +110,12 @@ func mergePartialGroup(name, kind string, frags []*ast.Pipeline) (*ast.Pipeline,
 			}
 			maxSetBy = "x"
 			out.Max = f.Max
+		}
+		if f.Param != nil || f.Returns != nil {
+			if out.Param != nil || out.Returns != nil {
+				return nil, fmt.Errorf("partial %s %q: a typed signature is declared on more than one fragment", kind, name)
+			}
+			out.Param, out.Returns = f.Param, f.Returns
 		}
 		out.Body = append(out.Body, f.Body...)
 		for _, m := range f.Body {

@@ -14,5 +14,7 @@ persist into the next call.
   for the next call
 - [reassigning_a_tool_const_is_rejected.mh](reassigning_a_tool_const_is_rejected.mh) —
   assigning to a tool constant raises a catchable error
+- [internal_method.mh](internal_method.mh) — an `internal` method is private to its
+  tool: reached through `self.`, and testable from its own file's tests
 
-Run all three with `mhl test sample/syntax/tool_scope`.
+Run them all with `mhl test sample/syntax/tool_scope`.

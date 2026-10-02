@@ -9,10 +9,10 @@ import (
 // offered as a plain keyword completion whenever the cursor isn't in a
 // member-access position.
 var keywords = []string{
-	"agent", "router", "memory", "tool", "prompt", "pipeline", "workflow", "extension", "extensible", "loop", "partial",
+	"agent", "router", "memory", "tool", "prompt", "schema", "internal", "pipeline", "workflow", "extension", "extensible", "loop", "partial",
 	"import", "from", "as", "export", "input", "step", "entry", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
-	"return", "break", "goto", "route", "spawn", "wait", "parallel", "timeout", "max", "true", "false", "null",
+	"return", "break", "goto", "route", "spawn", "wait", "parallel", "timeout", "max", "ref", "with", "true", "false", "null",
 	"kind", "manifest", "properties",
 }
 
@@ -27,6 +27,11 @@ var memberAccessRe = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)\.[A-Za-z0-9_]*
 // isTypeAnnotationPosition additionally
 // restricts where this fires so it never fires on an ordinary `key: value`
 // property (e.g. `agent { command: }`).
+// signatureTypeRe matches a pipeline/workflow header's type positions —
+// the param's (`workflow W(req: ▮`) and the result's (`workflow W(req: In):
+// ▮`, `pipeline W: ▮`) — where the same type vocabulary is offered.
+var signatureTypeRe = regexp.MustCompile(`^\s*(?:partial\s+)?(?:loop\s+)?(?:pipeline|workflow)\s+\w+\s*(?:\(\s*\w+\s*:\s*\w*|(?:\([^()]*\))?\s*:\s*\w*)$`)
+
 var typeAnnotationRe = regexp.MustCompile(`\b[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Za-z_]*$`)
 
 // declarationSnippet is one keyword's tab-through example body, in LSP
@@ -108,6 +113,10 @@ var declarationSnippets = map[string][]declarationSnippet{
 			"\t\treturn ${3:param}\n" +
 			"\t}\n" +
 			"}\n$0",
+	}},
+	"schema": {{
+		detail: `schema Name from "file.schema.json" — a value {content, path}`,
+		body:   "schema ${1:Name} from \"${2:schemas/name.schema.json}\"\n$0",
 	}},
 	"prompt": {{
 		detail: `prompt Name(param: type) { """ ... """ }`,
@@ -327,15 +336,18 @@ func completionAt(path, text string, pos position) []completionItem {
 		if items, ok := paramTypeCompletionAt(text, pos, target); ok {
 			return items
 		}
+		if items, ok := pipelineParamCompletionAt(text, pos, target); ok {
+			return items
+		}
 		for _, s := range documentSymbols(path, text) {
 			if s.Name == target {
-				return methodItems(path, text, s)
+				return methodItems(path, text, s.public())
 			}
 		}
 		return nil
 	}
 
-	if typeAnnotationRe.MatchString(linePrefix) && isTypeAnnotationPosition(linePrefix, text, pos) {
+	if signatureTypeRe.MatchString(linePrefix) || (typeAnnotationRe.MatchString(linePrefix) && isTypeAnnotationPosition(linePrefix, text, pos)) {
 		items := make([]completionItem, 0, len(typeKeywords))
 		for _, kw := range typeKeywords {
 			items = append(items, completionItem{Label: kw, Kind: kindKeyword})
@@ -388,6 +400,20 @@ func completionAt(path, text string, pos position) []completionItem {
 func methodItems(path, text string, s symbol) []completionItem {
 	items := make([]completionItem, 0, len(s.Methods))
 	for _, m := range s.Methods {
+		// An enum variant (`Status.Success`) is a value, not a callable
+		// method — no trailing "(" to insert, and signatureForMethod has no
+		// case for symEnum (there's no signature to show), so it's handled
+		// entirely here rather than falling through to the method-shaped
+		// path below.
+		if s.Kind == symEnum {
+			items = append(items, completionItem{Label: m, Kind: kindEnumMember, Detail: "enum variant"})
+			continue
+		}
+		// A schema's members are the two fields of its value, not methods.
+		if s.Kind == symSchema {
+			items = append(items, completionItem{Label: m, Kind: kindProperty, Detail: "schema field: string"})
+			continue
+		}
 		item := completionItem{
 			Label:      m,
 			Kind:       kindMethod,
@@ -406,6 +432,14 @@ func methodItems(path, text string, s symbol) []completionItem {
 		}
 		items = append(items, item)
 	}
+	if s.Kind == symEnum {
+		items = append(items,
+			completionItem{Label: "parse", Kind: kindMethod, InsertText: "parse(", Detail: s.Name + ".parse(text: string) -> " + s.Name,
+				Documentation: &markupContent{Kind: "markdown", Value: "The variant named `text`; raises listing every variant when there is none. A value already of this enum is returned unchanged."}},
+			completionItem{Label: "values", Kind: kindMethod, InsertText: "values()", Detail: s.Name + ".values() -> " + s.Name + "[]",
+				Documentation: &markupContent{Kind: "markdown", Value: "Every variant, in declaration order."}},
+		)
+	}
 	return items
 }
 
@@ -413,7 +447,7 @@ func symbolItemKind(k symbolKind) int {
 	switch k {
 	case symAgent, symRouter, symTool, symMemory:
 		return kindClass
-	case symPrompt, symPipeline, symExtension:
+	case symPrompt, symPipeline, symExtension, symSchema:
 		return kindProperty
 	case symNative:
 		return kindModule

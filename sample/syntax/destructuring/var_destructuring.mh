@@ -1,0 +1,29 @@
+// `var {a, b} = expr` declares one local per field of an object, evaluating
+// expr once. `field: name` binds a field to a different name. A missing
+// field fails exactly as `expr.field` would.
+tool Writer {
+    generate(): any -> {data: {titulo: "Brief"}, tokens_in: 10, tokens_out: 5, revisao: "ok"}
+}
+
+test var_destructuring {
+    describe declares_one_local_per_field {
+        var {data, tokens_in} = Writer.generate()
+        are_equal(data.titulo, "Brief")
+        are_equal(tokens_in, 10)
+    }
+
+    describe a_field_can_be_renamed {
+        var {revisao: note} = Writer.generate()
+        are_equal(note, "ok")
+    }
+
+    describe a_missing_field_is_an_error {
+        var message = ""
+        try {
+            var {missing} = {present: 1}
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("missing"))
+    }
+}

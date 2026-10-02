@@ -250,6 +250,13 @@ func walkPostfix(p *ast.Postfix, fn func(string)) {
 			walkExprIdents(op.OptIndex, fn)
 		}
 	}
+	for _, op := range p.WithTail {
+		if op.Object != nil {
+			for _, f := range op.Object.Fields {
+				walkExprIdents(f.Value, fn)
+			}
+		}
+	}
 }
 
 func walkPrimary(p *ast.Primary, fn func(string)) {

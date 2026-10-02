@@ -32,20 +32,22 @@ func (p *Program) AliasMap() map[string]string {
 // Declaration is any top-level construct. An optional leading `export`
 // keyword may precede a declaration to mark it as exported from the module.
 type Declaration struct {
-	Export     bool        `parser:"@'export'?"`
-	Import     *Import     `parser:"( @@"`
-	Prompt     *Prompt     `parser:"| @@"`
-	Skill      *Skill      `parser:"| @@"`
-	Extension  *Extension  `parser:"| @@"`
-	Extensible *Extensible `parser:"| @@"`
-	Agent      *Agent      `parser:"| @@"`
-	Router     *Router     `parser:"| @@"`
-	Memory     *Memory     `parser:"| @@"`
-	Tool       *Tool       `parser:"| @@"`
-	Pipeline   *Pipeline   `parser:"| @@"`
-	Type       *TypeAlias  `parser:"| @@"`
-	Enum       *Enum       `parser:"| @@"`
-	Test       *Test       `parser:"| @@ )"`
+	Export     bool           `parser:"@'export'?"`
+	Import     *Import        `parser:"( @@"`
+	Prompt     *Prompt        `parser:"| @@"`
+	Skill      *Skill         `parser:"| @@"`
+	Extension  *Extension     `parser:"| @@"`
+	Extensible *Extensible    `parser:"| @@"`
+	Agent      *Agent         `parser:"| @@"`
+	Router     *Router        `parser:"| @@"`
+	Memory     *Memory        `parser:"| @@"`
+	Tool       *Tool          `parser:"| @@"`
+	Alias      *PipelineAlias `parser:"| @@" digest:"omitzero"`
+	Pipeline   *Pipeline      `parser:"| @@"`
+	Type       *TypeAlias     `parser:"| @@"`
+	Enum       *Enum          `parser:"| @@"`
+	Schema     *Schema        `parser:"| @@" digest:"omitzero"`
+	Test       *Test          `parser:"| @@ )"`
 }
 
 // Enum declares a closed set of named constants:
@@ -141,6 +143,11 @@ type Tool struct {
 	Name    string        `parser:"'tool' @Ident"`
 	Members []*ToolMember `parser:"'{' @@* '}'"`
 	Methods []*ToolMethod // Derived from Members by parser.Parse for method lookup.
+	// Imported is set by import resolution when this tool was merged in
+	// from another file — what decides whether a test may call one of its
+	// `internal` methods (only the declaring file's tests may). Not part of
+	// the definition.
+	Imported bool `parser:"" digest:"-"`
 }
 
 // ToolMember is a declaration in a tool namespace.
@@ -173,12 +180,16 @@ type ToolMember struct {
 // Ident` shape Param already uses, placed after the closing ')' since a
 // method's return type describes the whole call, not one parameter.
 type ToolMethod struct {
-	Pos     lexer.Position
-	Name    string       `parser:"@Ident '('"`
-	Params  []*Param     `parser:"( @@ ( ',' @@ )* )? ')'"`
-	Returns *TypeExpr    `parser:"( ':' @@ )?"`
-	Body    *Expr        `parser:"'->' ( @@"`
-	Block   []*Statement `parser:"| '{' @@* '}' )"`
+	Pos lexer.Position
+	// Internal (`internal name(...) -> ...`) restricts the method to its own
+	// tool (`self.name(...)`) and to the tests of the file declaring the
+	// tool; any other caller is an error (mhl lint and mhl run).
+	Internal bool         `parser:"(@'internal' (?= Ident))?" digest:"omitzero"`
+	Name     string       `parser:"@Ident '('"`
+	Params   []*Param     `parser:"( @@ ( ',' @@ )* )? ')'"`
+	Returns  *TypeExpr    `parser:"( ':' @@ )?"`
+	Body     *Expr        `parser:"'->' ( @@"`
+	Block    []*Statement `parser:"| '{' @@* '}' )"`
 }
 
 // Param is a typed parameter declaration, e.g. `path: string`. It may carry

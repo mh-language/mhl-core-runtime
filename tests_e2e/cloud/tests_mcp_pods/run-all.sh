@@ -77,6 +77,7 @@ ENTRIES=(
   "014|CENARIO-014|run.sh|protocol-conformance"
   "015|CENARIO-015|run.sh|inputschema-validation"
   "016|CENARIO-016|run.sh|cancel-inflight"
+  "017|CENARIO-017|run.sh|typed-signature"
   "K8S-001|CENARIO-K8S-001|run.sh|pod-lifecycle"
 )
 
