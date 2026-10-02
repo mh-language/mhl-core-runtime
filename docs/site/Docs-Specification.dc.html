@@ -337,7 +337,7 @@ enum State { Draft, Ready, Complete }</code></pre>
         return n
     }
 }</code></pre>
-<p>A tool is a named method namespace. Its body may declare <code>const name = expression</code> and <code>var name = expression</code> alongside methods. These declarations initialize in order for each method call; methods can read them, and a method can assign to a tool <code>var</code> during that call. A method has positional parameters, optional type annotations, optional defaults, and either an expression body or a statement block. A method invocation creates a fresh call environment containing tool declarations and its parameters and does not expose caller-local variables. A declared return type is checked after evaluation. A block without <code>return</code> yields <code>null</code>. Inside a method, <code>self.method(...)</code> calls another method of the same tool (§16.7 documents <code>self</code>'s second, unrelated meaning inside a pipeline/workflow step) — it always resolves to this tool, regardless of what else is declared elsewhere. <code>self</code> used any other way inside a tool method (a bare property access, a call naming a method the tool doesn't have) MUST be rejected by <code>mhl lint</code> and MUST raise at runtime if reached anyway.</p>
+<p>A tool is a named method namespace. Its body may declare <code>const name = expression</code> and <code>var name = expression</code> alongside methods. These declarations initialize in order for each method call; methods can read them, and a method can assign to a tool <code>var</code> during that call. A method has positional parameters, optional type annotations, optional defaults, and either an expression body or a statement block. An expression body follows <code>-&gt;</code> (<code>read(p: string): string -&gt; fs.read(p)</code>); a block body MAY omit it (<code>count(items): number { ... }</code>), since the <code>{</code> already opens the body. <code>-&gt; { key: value }</code> is an object-literal expression body, never a block. A method invocation creates a fresh call environment containing tool declarations and its parameters and does not expose caller-local variables. A declared return type is checked after evaluation. A block without <code>return</code> yields <code>null</code>. Inside a method, <code>self.method(...)</code> calls another method of the same tool (§16.7 documents <code>self</code>'s second, unrelated meaning inside a pipeline/workflow step) — it always resolves to this tool, regardless of what else is declared elsewhere. <code>self</code> used any other way inside a tool method (a bare property access, a call naming a method the tool doesn't have) MUST be rejected by <code>mhl lint</code> and MUST raise at runtime if reached anyway.</p>
 <p>A method declared <code>internal</code> is private to its tool. It MAY be called as <code>self.name(...)</code> from the tool's own methods (including closures created in them) and from a <code>test</code> declared in the same file as the tool; any other call MUST raise, and static analysis MUST report it. A method named <code>internal</code> remains valid: the word is a modifier only when a method name follows it.</p>
 <h3>9.3 Prompt declarations</h3>
 <pre class="code-block"><code class="language-mhl">prompt Review(file: string, language: string = "English") {
@@ -641,7 +641,7 @@ Events.append({event: "started", at: time.now()})</code></pre>
   "executable": "bin/crm",
   "declarations": [{"kind": "crm", "methods": [{"name": "lookup"}]}]
 }</code></pre>
-<p>An <code>extensible</code> declaration is a third, mhl-native manifest form: one <code>extension.mh</code> file folds the manifest and its declarations together, in place of <code>extension.json</code> and any sidecar. <code>manifest: { ... }</code> supplies the same fields as <code>extension.json</code>'s top level; a <code>properties: { name: type }</code> block and bare <code>name(params) -&gt; type</code> method signatures replace the JSON <code>declarations</code> array. A leading <code>/** ... **/</code> block documents the kind, and a trailing <code>/// ...</code> on a property or method line documents that entry — both read from the source text itself, not evaluated as expressions.</p>
+<p>An <code>extensible</code> declaration is a third, mhl-native manifest form: one <code>extension.mh</code> file folds the manifest and its declarations together, in place of <code>extension.json</code> and any sidecar. <code>manifest: { ... }</code> supplies the same fields as <code>extension.json</code>'s top level; a <code>properties: { name: type }</code> block and bare <code>name(params): type</code> method signatures replace the JSON <code>declarations</code> array — the return type follows <code>:</code>, exactly as on a tool method. The older <code>name(params) -&gt; type</code> form is still accepted when an extension is loaded, but <code>mhl lint</code> MUST reject it: <code>-&gt;</code> introduces a body, never a type. A leading <code>/** ... **/</code> block documents the kind, and a trailing <code>/// ...</code> on a property or method line documents that entry — both read from the source text itself, not evaluated as expressions.</p>
 <pre class="code-block"><code class="language-mhl">/**
 Fetch a customer by id from the Acme CRM.
 **/
@@ -650,7 +650,7 @@ extensible crm {
     properties: {
         endpoint: string /// The Acme API base URL.
     }
-    lookup(id: string) -> object /// Fetch a customer by id.
+    lookup(id: string): object /// Fetch a customer by id.
 }</code></pre>
 <p><code>mhl extension</code> looks for <code>extension.json</code> first, then <code>extension.mh</code>, in every directory it scans; the two forms are otherwise interchangeable — never both in the same directory. Use <code>mhl extension init</code>, <code>test</code>, <code>package</code>, <code>install</code>, <code>list</code>, and <code>doctor</code> to create, probe, lock, and inspect adapters. See Docs-Extensions.dc.html for the full manifest schema and wire protocol.</p>
 </section>
@@ -912,7 +912,7 @@ skill          ::= "skill" Identifier "from" String
 memory         ::= "memory" Identifier "{" property* "}"
 tool           ::= "tool" Identifier "{" tool-method* "}"
 tool-method    ::= ["internal"] Identifier "(" [parameter ("," parameter)*] ")"
-                   [":" type] "->" (expression | block)
+                   [":" type] ("->" expression | ["->"] block)
 parameter      ::= Identifier [":" type] ["=" expression]
 extension      ::= "extension" Identifier Identifier "{" property* "}"
 extensible     ::= "extensible" Identifier "{" extensible-member* "}"
@@ -920,7 +920,7 @@ extensible-member ::= "manifest" ":" object
                    | "properties" ":" "{" extensible-property* "}"
                    | extensible-method
 extensible-property ::= Identifier ":" type
-extensible-method ::= Identifier "(" [parameter ("," parameter)*] ")" "->" type
+extensible-method ::= Identifier "(" [parameter ("," parameter)*] ")" ":" type
 workflow-alias ::= ["internal"] ("pipeline" | "workflow") Identifier "=" Identifier ["with" object]
                     ["{" property* "}"]
 pipeline       ::= ["internal"] ["partial"] ["loop"] ("pipeline" | "workflow") Identifier

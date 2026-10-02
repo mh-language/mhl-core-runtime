@@ -164,17 +164,20 @@ type ToolMember struct {
 // or a full statement block with an optional `return` (void, implicitly
 // `nil`, if the block never returns):
 //
-//	count(items) -> {
+//	count(items) {
 //	    var n = 0
 //	    while (n < items.size()) { n = n + 1 }
 //	    return n
 //	}
 //
-// Body is tried first, so a block that's actually a single object-literal
-// expression (`-> {a: 1}`) still parses as Body, not Block — Block only
+// The `->` is required only before an expression body; before a block it is
+// optional (`count(items) -> { ... }` still parses), since the `{` already
+// marks where the body starts. With the arrow, Body is tried first, so
+// `-> {a: 1}` still parses as an object-literal Body, not Block — Block only
 // matches when the content inside `{ }` isn't shaped like `key: value`
 // pairs (see internal/parser's TestToolMethodBlockBody* for the
-// disambiguation this relies on).
+// disambiguation this relies on). Without the arrow, `{` always opens a
+// Block.
 // Returns is a typed method declaration's optional return-type annotation,
 // e.g. `read_file(path: string): string -> fs.read(path)` — the same `:
 // Ident` shape Param already uses, placed after the closing ')' since a
@@ -188,8 +191,8 @@ type ToolMethod struct {
 	Name     string       `parser:"@Ident '('"`
 	Params   []*Param     `parser:"( @@ ( ',' @@ )* )? ')'"`
 	Returns  *TypeExpr    `parser:"( ':' @@ )?"`
-	Body     *Expr        `parser:"'->' ( @@"`
-	Block    []*Statement `parser:"| '{' @@* '}' )"`
+	Body     *Expr        `parser:"( '->' @@"`
+	Block    []*Statement `parser:"| '->'? '{' @@* '}' )"`
 }
 
 // Param is a typed parameter declaration, e.g. `path: string`. It may carry

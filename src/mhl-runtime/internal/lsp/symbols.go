@@ -250,13 +250,19 @@ func symbolsFromText(path, src string) []symbol {
 	return syms
 }
 
-// toolMethodDeclRe matches a tool method declaration `name(params) ->` —
-// the one shape (ast.ToolMethod) that's unambiguous even scanned out of
-// context, since ordinary calls inside a method body are never followed by
-// `->`.
-// The optional `: Type` between `)` and `->` is the return annotation most
-// methods carry; `internal ` marks one hidden from `Tool.` completion.
-var toolMethodDeclRe = regexp.MustCompile(`(?m)^\s*(internal\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\([^()]*\)\s*(?::[^\n]*?)?->`)
+// toolMethodDeclRe matches a tool method declaration `name(params) ->` or
+// `name(params) {` (the arrow is optional before a block body) — the one
+// shape (ast.ToolMethod) that's unambiguous even scanned out of context,
+// since an ordinary call inside a method body is never followed by `->` or
+// by a `{` ending the line. The control statements that do look like that
+// (`if (x) {`, `while (x) {`) are filtered out by toolMethodDeclKeywords.
+// The optional `: Type` between `)` and the body is the return annotation
+// most methods carry; `internal ` marks one hidden from `Tool.` completion.
+var toolMethodDeclRe = regexp.MustCompile(`(?m)^\s*(internal\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\([^()]*\)\s*(?::[^\n]*?)?(?:->|\{[ \t]*$)`)
+
+// toolMethodDeclKeywords are the statement keywords toolMethodDeclRe's
+// `name(...) {` shape would otherwise mistake for a method name.
+var toolMethodDeclKeywords = map[string]bool{"if": true, "while": true, "for": true, "match": true}
 
 func toolMethodsFromText(src, name string) ([]string, map[string]bool) {
 	body, ok := extractBlock(src, "tool", name)
@@ -266,6 +272,9 @@ func toolMethodsFromText(src, name string) ([]string, map[string]bool) {
 	var methods []string
 	internal := map[string]bool{}
 	for _, m := range toolMethodDeclRe.FindAllStringSubmatch(body, -1) {
+		if toolMethodDeclKeywords[m[2]] {
+			continue
+		}
 		methods = append(methods, m[2])
 		if m[1] != "" {
 			internal[m[2]] = true

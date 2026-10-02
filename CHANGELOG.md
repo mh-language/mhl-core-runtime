@@ -10,6 +10,21 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+### Upgrade notes
+
+- **`extensible` method signatures declare their return type with `:`.**
+  Write `get(key: string): any`, exactly like a tool method, instead of
+  `get(key: string) -> any`. `->` now always introduces a body, never a type.
+  The old form still loads, so installed extensions keep working, but
+  `mhl lint` rejects it.
+
+### Changed
+
+- **`->` is optional before a tool method's block body.**
+  `count(items): number { ... }` is the same as `count(items): number -> { ... }`;
+  the `{` already marks where the body starts. `->` is still required before an
+  expression body, and `-> { key: value }` is still an object literal.
+
 ## 1.5.0-alpha.1
 
 This release is about writing less `.mh` for the same program: the language

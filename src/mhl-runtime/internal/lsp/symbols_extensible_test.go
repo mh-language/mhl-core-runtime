@@ -13,8 +13,8 @@ func TestSymbolsFromProgramIncludesExtensible(t *testing.T) {
 extensible cache {
     manifest: { id: "x", api_version: "1", executable: "bin/x" }
     properties: { url: string }
-    get(key: string) -> any
-    set(key: string, value: any) -> void
+    get(key: string): any
+    set(key: string, value: any): void
 }
 `)
 	if err != nil {

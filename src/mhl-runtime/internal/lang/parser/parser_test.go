@@ -958,8 +958,8 @@ extensible cache {
         tags: string[]
     }
 
-    get(key: string) -> any
-    set(key: string, value: any, ttl: number) -> void
+    get(key: string): any
+    set(key: string, value: any, ttl: number): void
 }
 `)
 	if err != nil {
@@ -1006,7 +1006,7 @@ second line
 **/
 extensible cache {
     manifest: { id: "x", api_version: "1", executable: "bin/x" }
-    get(key: string) -> any
+    get(key: string): any
 }
 `)
 	if err != nil {

@@ -45,7 +45,7 @@ func TestProjectExtensionSpecReadsMHManifest(t *testing.T) {
 	manifest := `extensible cache {
     manifest: { id: "dev.mhl.cache-repro", api_version: "1", executable: "bin/cache-repro" }
     properties: { url: string }
-    get(key: string) -> any
+    get(key: string): any
 }
 `
 	if err := os.WriteFile(filepath.Join(extDir, "extension.mh"), []byte(manifest), 0o644); err != nil {
