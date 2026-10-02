@@ -59,4 +59,4 @@ pipeline's own steps do is reported in the returned object.
   read-only; state that changes during a run lives in a `var`
 - [run_workflow_alias.mh](run_workflow_alias.mh) — `workflow Delivery = ArtifactFlow with
   { level: Level.delivery }`: an alias runs its target with bound inputs, which a caller can
-  no longer pass
+  no longer pass; the shared flow is `internal workflow` (not an entry point, still testable)

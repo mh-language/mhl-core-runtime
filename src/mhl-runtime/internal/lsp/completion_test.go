@@ -715,3 +715,23 @@ func TestWorkflowAliasIsAPipelineSymbol(t *testing.T) {
 	}
 	t.Fatal("the alias is not a document symbol")
 }
+
+// `Tool.` from outside the tool never offers an internal method; `self.`
+// inside it still does. Both from a parseable buffer and mid-edit.
+func TestCompletionHidesInternalToolMethods(t *testing.T) {
+	tool := "tool Paths {\n    root(id: string): string -> self.clean(id)\n    internal clean(id: string): string -> id\n}\n"
+	for _, src := range []string{
+		tool + "pipeline P { step S { var r = Paths.§ } }\n",
+		tool + "pipeline P { step S { Paths.§\n",
+	} {
+		text, pos := posAtMarker(t, src)
+		items := completionAt("main.mh", text, pos)
+		if !hasLabel(items, "root") || hasLabel(items, "clean") {
+			t.Errorf("Paths.: want root and not clean, got %+v", items)
+		}
+	}
+	text, pos := posAtMarker(t, "tool Paths {\n    root(id: string): string -> self.§\n    internal clean(id: string): string -> id\n}\n")
+	if items := completionAt("main.mh", text, pos); !hasLabel(items, "clean") {
+		t.Errorf("self.: want clean, got %+v", items)
+	}
+}

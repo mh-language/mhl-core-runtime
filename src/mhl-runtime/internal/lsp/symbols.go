@@ -85,6 +85,24 @@ type symbol struct {
 	// is symExtension — what signatureForMethod/completion use to look the
 	// method set and signatures up from the registered adapter's metadata.
 	ExtKind string
+	// Internal names the tool methods declared `internal`: still offered
+	// after `self.` inside the tool, never after `Tool.` from outside it.
+	Internal map[string]bool
+}
+
+// public is s without its internal methods — what `Tool.` completes to.
+func (s symbol) public() symbol {
+	if len(s.Internal) == 0 {
+		return s
+	}
+	out := s
+	out.Methods = nil
+	for _, m := range s.Methods {
+		if !s.Internal[m] {
+			out.Methods = append(out.Methods, m)
+		}
+	}
+	return out
 }
 
 // symbolsFromProgram walks a successfully parsed AST and returns every
@@ -101,10 +119,14 @@ func symbolsFromProgram(path string, prog *ast.Program) []symbol {
 			syms = append(syms, symbol{Name: decl.Memory.Name, Kind: symMemory, Methods: memoryMethods(decl.Memory)})
 		case decl.Tool != nil:
 			methods := make([]string, 0, len(decl.Tool.Methods))
+			internal := map[string]bool{}
 			for _, m := range decl.Tool.Methods {
 				methods = append(methods, m.Name)
+				if m.Internal {
+					internal[m.Name] = true
+				}
 			}
-			syms = append(syms, symbol{Name: decl.Tool.Name, Kind: symTool, Methods: methods})
+			syms = append(syms, symbol{Name: decl.Tool.Name, Kind: symTool, Methods: methods, Internal: internal})
 		case decl.Prompt != nil:
 			syms = append(syms, symbol{Name: decl.Prompt.Name, Kind: symPrompt})
 		case decl.Schema != nil:
@@ -192,7 +214,7 @@ func memoryMethodsForType(memType string) []string {
 // pipeline X`) is skipped, not captured — it's a modifier on `pipeline`, not
 // a declaration kind of its own.
 var (
-	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:loop\s+)?(agent|router|memory|tool|prompt|pipeline|workflow|type|enum|schema)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:internal\s+)?(?:partial\s+)?(?:loop\s+)?(agent|router|memory|tool|prompt|pipeline|workflow|type|enum|schema)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 	// extDeclRe recognises `extension <kind> <Name>`, which unlike every
 	// other declaration keyword is followed by two identifiers.
 	extDeclRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?extension\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)`)
@@ -214,7 +236,7 @@ func symbolsFromText(path, src string) []symbol {
 		case symMemory:
 			s.Methods = memoryMethodsFromText(src, m[2])
 		case symTool:
-			s.Methods = toolMethodsFromText(src, m[2])
+			s.Methods, s.Internal = toolMethodsFromText(src, m[2])
 		case symEnum:
 			s.Methods = enumVariantsFromText(src, m[2])
 		case symSchema:
@@ -232,18 +254,24 @@ func symbolsFromText(path, src string) []symbol {
 // the one shape (ast.ToolMethod) that's unambiguous even scanned out of
 // context, since ordinary calls inside a method body are never followed by
 // `->`.
-var toolMethodDeclRe = regexp.MustCompile(`(?m)^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\([^()]*\)\s*->`)
+// The optional `: Type` between `)` and `->` is the return annotation most
+// methods carry; `internal ` marks one hidden from `Tool.` completion.
+var toolMethodDeclRe = regexp.MustCompile(`(?m)^\s*(internal\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\([^()]*\)\s*(?::[^\n]*?)?->`)
 
-func toolMethodsFromText(src, name string) []string {
+func toolMethodsFromText(src, name string) ([]string, map[string]bool) {
 	body, ok := extractBlock(src, "tool", name)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	var methods []string
+	internal := map[string]bool{}
 	for _, m := range toolMethodDeclRe.FindAllStringSubmatch(body, -1) {
-		methods = append(methods, m[1])
+		methods = append(methods, m[2])
+		if m[1] != "" {
+			internal[m[2]] = true
+		}
 	}
-	return methods
+	return methods, internal
 }
 
 // enumVariantRe matches one variant identifier inside an enum body — the

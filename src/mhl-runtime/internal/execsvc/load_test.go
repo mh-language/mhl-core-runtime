@@ -164,3 +164,34 @@ func keys(m map[string]execsvc.Workflow) []string {
 	}
 	return out
 }
+
+// An `internal` workflow is not an entry point: Load does not publish it,
+// `mhl run` (no name) skips it — or explains itself when it is all there is —
+// while an alias of it still runs its steps.
+func TestInternalWorkflowIsNotAnEntryPoint(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFile(t, dir, "main.mh", `
+internal workflow Flow {
+    input level: string
+    var out = ""
+    step A { self.out = level }
+}
+workflow Public = Flow with { level: "pub" }
+`)
+	wfs, err := execsvc.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, published := wfs["Flow"]; published || len(wfs) != 1 {
+		t.Fatalf("Load published %v, want only Public", keys(wfs))
+	}
+	res, err := execsvc.Run(execsvc.Request{Source: src, BaseDir: dir})
+	if err != nil || res.PipelineName != "Public" || res.Vars["out"] != "pub" {
+		t.Fatalf("default run = %+v (err %v), want the Public alias", res, err)
+	}
+
+	only := writeFile(t, t.TempDir(), "only.mh", `internal workflow Flow { step A { log("x") } }`)
+	if _, err := execsvc.Run(execsvc.Request{Source: only, BaseDir: dir}); err == nil || !strings.Contains(err.Error(), `workflow "Flow" is internal`) {
+		t.Fatalf("running a file with only an internal workflow: %v", err)
+	}
+}

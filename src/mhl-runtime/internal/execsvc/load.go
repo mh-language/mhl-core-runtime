@@ -77,6 +77,10 @@ func Load(dir string) (map[string]Workflow, error) {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
 		for _, d := range prog.Decls {
+			// An `internal` declaration is not an entry point: not published.
+			if (d.Alias != nil && d.Alias.Internal) || (d.Pipeline != nil && d.Pipeline.Internal) {
+				continue
+			}
 			if a := d.Alias; a != nil && own[a.Name] {
 				if _, dup := out[a.Name]; dup {
 					return nil, fmt.Errorf("%q declared in more than one file under %s", a.Name, dir)

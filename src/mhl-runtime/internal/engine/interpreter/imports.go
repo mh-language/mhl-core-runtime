@@ -158,6 +158,9 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 				if declPresent(prog.Decls, kind, name) {
 					continue
 				}
+				if imported.Tool != nil {
+					imported.Tool.Imported = true
+				}
 				prog.Decls = append(prog.Decls, imported)
 			}
 		}

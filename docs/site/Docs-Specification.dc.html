@@ -337,6 +337,7 @@ enum State { Draft, Ready, Complete }</code></pre>
     }
 }</code></pre>
 <p>A tool is a named method namespace. Its body may declare <code>const name = expression</code> and <code>var name = expression</code> alongside methods. These declarations initialize in order for each method call; methods can read them, and a method can assign to a tool <code>var</code> during that call. A method has positional parameters, optional type annotations, optional defaults, and either an expression body or a statement block. A method invocation creates a fresh call environment containing tool declarations and its parameters and does not expose caller-local variables. A declared return type is checked after evaluation. A block without <code>return</code> yields <code>null</code>. Inside a method, <code>self.method(...)</code> calls another method of the same tool (§16.7 documents <code>self</code>'s second, unrelated meaning inside a pipeline/workflow step) — it always resolves to this tool, regardless of what else is declared elsewhere. <code>self</code> used any other way inside a tool method (a bare property access, a call naming a method the tool doesn't have) MUST be rejected by <code>mhl lint</code> and MUST raise at runtime if reached anyway.</p>
+<p>A method declared <code>internal</code> is private to its tool. It MAY be called as <code>self.name(...)</code> from the tool's own methods (including closures created in them) and from a <code>test</code> declared in the same file as the tool; any other call MUST raise, and static analysis MUST report it. A method named <code>internal</code> remains valid: the word is a modifier only when a method name follows it.</p>
 <h3>9.3 Prompt declarations</h3>
 <pre class="code-block"><code class="language-mhl">prompt Review(file: string, language: string = "English") {
     "Review ${file}. Write the findings in ${language}."
@@ -804,6 +805,8 @@ workflow ReviewPullRequest(req: ReviewInput): ReviewOutput {
 }</code></pre>
 <p>A workflow alias declares a new pipeline or workflow name whose execution is that of its target, a pipeline or workflow declaration of the same kind that is not itself an alias. The alias is a distinct entry point: it is selected, published by a server adapter, and keyed for sessions, checkpoints, and memory state under its own name. Its description is its own <code>description</code> property when present, else the target's; no other property is permitted. Each field of the <code>with</code> object binds one input of the target — a declared <code>input</code>, or a field of its typed parameter — to a value that MUST be a literal or an enum value (a variant name string converts as for inputs, §9.1) of the input's type; binding an undeclared input or the same input twice is a static error. The alias's inputs are the target's minus the bound ones; a bound value is supplied on every run exactly as if the caller had passed it, and a caller-supplied value for a bound input MUST be rejected as an undeclared input. An alias's definition digest (§16.1) covers the alias declaration and its target's.</p>
 <p>Steps are resolved within the declaration being run: two declarations in one program MAY declare steps of the same name. A server adapter publishes every pipeline, workflow and alias declared by a file in its directory, attributing each to the file that declares it — not to a file that merely imports it.</p>
+<h3>16.11 Internal declarations</h3>
+<p>A pipeline, workflow, or workflow alias declared <code>internal</code> is not an entry point. A server adapter MUST NOT publish it, and selecting a file's pipeline without naming one (<code>mhl run file.mh</code>) MUST skip it, raising when the file declares no other. It otherwise behaves as any declaration: it can be the target of a workflow alias (the usual case — a shared flow published only through its aliases), and a test can run it by name. In a <code>partial</code> declaration, a fragment carrying <code>internal</code> makes the whole declaration internal.</p>
 <h2>17. Tests</h2>
 <p>A test declaration contains named <code>describe</code> blocks. Each description gets a fresh environment and supports the same statement grammar as a pipeline step. Assertion calls are recognized only inside descriptions.</p>
 <pre class="code-block"><code class="language-mhl">test TextExamples {
@@ -905,7 +908,7 @@ prompt         ::= "prompt" Identifier "(" [parameter ("," parameter)*] ")"
 skill          ::= "skill" Identifier "from" String
 memory         ::= "memory" Identifier "{" property* "}"
 tool           ::= "tool" Identifier "{" tool-method* "}"
-tool-method    ::= Identifier "(" [parameter ("," parameter)*] ")"
+tool-method    ::= ["internal"] Identifier "(" [parameter ("," parameter)*] ")"
                    [":" type] "->" (expression | block)
 parameter      ::= Identifier [":" type] ["=" expression]
 extension      ::= "extension" Identifier Identifier "{" property* "}"
@@ -915,9 +918,9 @@ extensible-member ::= "manifest" ":" object
                    | extensible-method
 extensible-property ::= Identifier ":" type
 extensible-method ::= Identifier "(" [parameter ("," parameter)*] ")" "->" type
-workflow-alias ::= ("pipeline" | "workflow") Identifier "=" Identifier ["with" object]
+workflow-alias ::= ["internal"] ("pipeline" | "workflow") Identifier "=" Identifier ["with" object]
                     ["{" property* "}"]
-pipeline       ::= ["partial"] ["loop"] ("pipeline" | "workflow") Identifier
+pipeline       ::= ["internal"] ["partial"] ["loop"] ("pipeline" | "workflow") Identifier
                     ["(" Identifier ":" type ")"] [":" type] ["max" Number]
                     "{" pipeline-member* "}"
 pipeline-member ::= input | const-declaration | var-declaration | mem-declaration

@@ -1,0 +1,33 @@
+// `internal` makes a method private to its tool: the tool's own methods call
+// it as `self.name(...)`, and the tests of the file that declares the tool may
+// call it directly, so a helper stays testable. Anything else — a step, a
+// hook, another tool, a test in another file — is a `mhl lint` error and
+// fails at run time; `Paths.` completion does not offer it outside the tool.
+tool Paths {
+    root(project_id: string): string -> "projects/" + self.ensure_valid(project_id)
+
+    artifact(project_id: string, relative: string): string ->
+        self.root(project_id) + "/artifacts/" + relative
+
+    internal ensure_valid(project_id: string): string -> {
+        if (!project_id.matches("^[A-Za-z0-9_-]+$")) fail("invalid project_id: '${project_id}'")
+        return project_id
+    }
+}
+
+test internal_method {
+    describe public_methods_reach_it_through_self {
+        are_equal(Paths.artifact("wi_1", "brief.html"), "projects/wi_1/artifacts/brief.html")
+    }
+
+    describe this_files_tests_may_call_it_directly {
+        are_equal(Paths.ensure_valid("wi_1"), "wi_1")
+        var message = ""
+        try {
+            Paths.ensure_valid("../etc")
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("invalid project_id"))
+    }
+}

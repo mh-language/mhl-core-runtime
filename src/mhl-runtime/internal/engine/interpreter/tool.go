@@ -1042,3 +1042,24 @@ func evalCallArgs(ctx *evalCtx, call *ast.Call, depth int) (callArgs, error) {
 	}
 	return out, nil
 }
+
+// checkInternalAccess refuses a call to an `internal` tool method from
+// outside its tool. Allowed callers: the tool's own methods (and closures
+// created in them), and a test's describe block when the tool is declared in
+// that test's own file (tests are never imported, so Tool.Imported is what
+// tells "this file's tool" from one merged in from elsewhere).
+func checkInternalAccess(ctx *evalCtx, tool *ast.Tool, method string) error {
+	for _, m := range tool.Methods {
+		if m.Name != method || !m.Internal {
+			continue
+		}
+		if ctx.selfTool != nil && ctx.selfTool.Name == tool.Name {
+			return nil
+		}
+		if ctx.assertions != nil && !tool.Imported {
+			return nil
+		}
+		return fmt.Errorf("%s.%s is internal to tool %s — call it as self.%s from inside the tool", tool.Name, method, tool.Name, method)
+	}
+	return nil
+}

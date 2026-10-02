@@ -53,15 +53,20 @@ import "github.com/alecthomas/participle/v2/lexer"
 // (lint requires an explicit `output:` alongside it). Both nil means the
 // untyped, per-line-input form, unchanged.
 type Pipeline struct {
-	Pos     lexer.Position
-	Partial bool              `parser:"@'partial'?"`
-	Loop    bool              `parser:"@'loop'?"`
-	Kind    string            `parser:"@( 'pipeline' | 'workflow' )"`
-	Name    string            `parser:"@Ident"`
-	Param   *PipelineParam    `parser:"( '(' @@ ')' )?" digest:"omitzero"`
-	Returns *TypeExpr         `parser:"( ':' @@ )?" digest:"omitzero"`
-	Max     string            `parser:"( 'max' @Number )?"`
-	Body    []*PipelineMember `parser:"'{' @@* '}'"`
+	Pos lexer.Position
+	// Internal (`internal workflow X`) keeps the declaration from being an
+	// entry point: `mhl serve` does not publish it and `mhl run` does not
+	// pick it. It still runs as a workflow alias's target and through
+	// `X.run(...)` in tests.
+	Internal bool              `parser:"@'internal'?" digest:"omitzero"`
+	Partial  bool              `parser:"@'partial'?"`
+	Loop     bool              `parser:"@'loop'?"`
+	Kind     string            `parser:"@( 'pipeline' | 'workflow' )"`
+	Name     string            `parser:"@Ident"`
+	Param    *PipelineParam    `parser:"( '(' @@ ')' )?" digest:"omitzero"`
+	Returns  *TypeExpr         `parser:"( ':' @@ )?" digest:"omitzero"`
+	Max      string            `parser:"( 'max' @Number )?"`
+	Body     []*PipelineMember `parser:"'{' @@* '}'"`
 }
 
 // PipelineParam is the single `name: Type` parameter of a typed
@@ -544,12 +549,14 @@ type ExprStmt struct {
 // (`Level.delivery`), checked against the input's declared type. Props may
 // only set `description` (inherited from Target when absent).
 type PipelineAlias struct {
-	Pos    lexer.Position
-	Kind   string      `parser:"@( 'pipeline' | 'workflow' )"`
-	Name   string      `parser:"@Ident '='"`
-	Target string      `parser:"@Ident"`
-	Bound  *Object     `parser:"( 'with' @@ )?"`
-	Props  []*Property `parser:"( '{' @@* '}' )?"`
+	Pos lexer.Position
+	// Internal hides the alias the way it hides a pipeline (Pipeline.Internal).
+	Internal bool        `parser:"@'internal'?" digest:"omitzero"`
+	Kind     string      `parser:"@( 'pipeline' | 'workflow' )"`
+	Name     string      `parser:"@Ident '='"`
+	Target   string      `parser:"@Ident"`
+	Bound    *Object     `parser:"( 'with' @@ )?"`
+	Props    []*Property `parser:"( '{' @@* '}' )?"`
 }
 
 // Description is the alias's own `description:` property, "" when absent.

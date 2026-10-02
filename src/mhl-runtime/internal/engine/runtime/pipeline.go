@@ -472,13 +472,15 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 	}
 	aliases, _ := types.Aliases(prog)
 	for _, d := range prog.Decls {
-		if d.Alias != nil && (name == "" || d.Alias.Name == name) {
+		// With no name (`mhl run file.mh`), the first declaration that is an
+		// entry point runs — an `internal` one is skipped.
+		if d.Alias != nil && ((name == "" && !d.Alias.Internal) || d.Alias.Name == name) {
 			return pipelineFromAlias(d.Alias, aliases, prog)
 		}
 		if d.Pipeline == nil {
 			continue
 		}
-		if name == "" || d.Pipeline.Name == name {
+		if (name == "" && !d.Pipeline.Internal) || d.Pipeline.Name == name {
 			if d.Pipeline.Partial {
 				if n := d.Pipeline.EntryStepCount(); n != 1 {
 					return Pipeline{}, fmt.Errorf("partial %s %q: expected exactly one `entry step` across its fragments, found %d", d.Pipeline.Kind, d.Pipeline.Name, n)
@@ -488,6 +490,11 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 		}
 	}
 	if name == "" {
+		for _, d := range prog.Decls {
+			if d.Pipeline != nil && d.Pipeline.Internal {
+				return Pipeline{}, fmt.Errorf("runtime: %s %q is internal — run a workflow alias of it, or call it from a test", d.Pipeline.Kind, d.Pipeline.Name)
+			}
+		}
 		return Pipeline{}, fmt.Errorf("runtime: no pipeline declared in program")
 	}
 	return Pipeline{}, fmt.Errorf("runtime: pipeline %q not found", name)

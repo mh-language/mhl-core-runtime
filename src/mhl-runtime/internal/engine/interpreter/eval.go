@@ -693,6 +693,9 @@ func evalPostfixOps(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 				return applyTrailers(ctx, v, p.Ops[2:], depth)
 			}
 			if tool, ok := findTool(ctx.prog, name); ok {
+				if err := checkInternalAccess(ctx, tool, member); err != nil {
+					return nil, err
+				}
 				v, err := evalToolCall(ctx, tool, member, call, depth)
 				if err != nil {
 					return nil, fmt.Errorf("%s.%s: %w", name, member, err)

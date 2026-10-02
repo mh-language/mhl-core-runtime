@@ -94,6 +94,9 @@ func mergePartialGroup(name, kind string, frags []*ast.Pipeline) (*ast.Pipeline,
 
 	loopSetBy, maxSetBy := "", ""
 	for _, f := range frags {
+		if f.Internal {
+			out.Internal = true // any fragment may carry it, like `export`
+		}
 		if f.Loop {
 			if loopSetBy != "" {
 				return nil, fmt.Errorf("partial %s %q: `loop` is declared on more than one fragment", kind, name)

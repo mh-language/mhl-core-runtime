@@ -167,6 +167,9 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				if declPresent(merged.Decls, kind, name) {
 					continue
 				}
+				if imported.Tool != nil {
+					imported.Tool.Imported = true
+				}
 				merged.Decls = append(merged.Decls, imported)
 			}
 		}

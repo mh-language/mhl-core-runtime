@@ -1,10 +1,12 @@
 // A workflow alias publishes an existing workflow under another name with
 // some inputs fixed. It runs the target's steps unchanged, but is its own
 // entry point (MCP tool, `mhl run`, `.run()` here, sessions, checkpoints);
-// a bound input is no longer part of its input contract.
+// a bound input is no longer part of its input contract. The shared flow is
+// `internal`: not an entry point itself (`mhl serve` publishes only the two
+// aliases, `mhl run` picks Delivery), though a test can still run it.
 enum Level { discovery, delivery }
 
-workflow ArtifactFlow {
+internal workflow ArtifactFlow {
     description: "Shared artifact flow"
     input level: Level
     input artifact: string
@@ -25,6 +27,10 @@ test run_workflow_alias {
     describe each_alias_runs_the_target_with_its_bound_input {
         are_equal(Delivery.run(inputs: {artifact: "adr"}).vars.result, "delivery:adr")
         are_equal(Discovery.run(inputs: {artifact: "brief"}).vars.result, "discovery:brief")
+    }
+
+    describe the_internal_flow_still_runs_from_a_test {
+        are_equal(ArtifactFlow.run(inputs: {level: "delivery", artifact: "x"}).vars.result, "delivery:x")
     }
 
     describe a_bound_input_cannot_be_passed {

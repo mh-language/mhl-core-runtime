@@ -410,3 +410,31 @@ test T {
 		t.Fatalf("mhl test: %v\n%s", err, out)
 	}
 }
+
+// An internal tool method runs through `self.` and from its own file's
+// tests; a step calling it directly fails at run time.
+func TestInternalToolMethodAtRunTime(t *testing.T) {
+	out, err := runTestFile(t, `
+tool Paths {
+    root(id: string): string -> "projects/" + self.clean(id)
+    internal clean(id: string): string -> id.trim()
+}
+workflow Direct {
+    step A { var x = Paths.clean(" a ") }
+}
+test T {
+    describe self_and_same_file_tests_may_call_it {
+        are_equal(Paths.root(" a "), "projects/a")
+        are_equal(Paths.clean(" b "), "b")
+    }
+    describe a_step_may_not {
+        var run = Direct.run()
+        is_false(run.ok)
+        is_true(run.error.contains("Paths.clean is internal to tool Paths"))
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("mhl test: %v\n%s", err, out)
+	}
+}

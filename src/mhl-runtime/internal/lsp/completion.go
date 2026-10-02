@@ -9,7 +9,7 @@ import (
 // offered as a plain keyword completion whenever the cursor isn't in a
 // member-access position.
 var keywords = []string{
-	"agent", "router", "memory", "tool", "prompt", "schema", "pipeline", "workflow", "extension", "extensible", "loop", "partial",
+	"agent", "router", "memory", "tool", "prompt", "schema", "internal", "pipeline", "workflow", "extension", "extensible", "loop", "partial",
 	"import", "from", "as", "export", "input", "step", "entry", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
 	"return", "break", "goto", "route", "spawn", "wait", "parallel", "timeout", "max", "ref", "with", "true", "false", "null",
@@ -341,7 +341,7 @@ func completionAt(path, text string, pos position) []completionItem {
 		}
 		for _, s := range documentSymbols(path, text) {
 			if s.Name == target {
-				return methodItems(path, text, s)
+				return methodItems(path, text, s.public())
 			}
 		}
 		return nil

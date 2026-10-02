@@ -80,6 +80,7 @@ func checkUndefinedNames(file string, prog *ast.Program, aliases map[string]type
 					toolNames[member.Var.Name] = types.Any
 				}
 			}
+			u.tool = decl.Tool
 			for _, m := range decl.Tool.Methods {
 				scope := toolMethodParamTypes(m, aliases)
 				for n, t := range toolNames {
@@ -94,6 +95,7 @@ func checkUndefinedNames(file string, prog *ast.Program, aliases map[string]type
 					u.stmts(m.Block, collectVarNames(prog, m.Block, scope, decl.Tool))
 				}
 			}
+			u.tool = nil
 		case decl.Test != nil:
 			// enumStringCompare is skipped here, like checkConstReassign: a
 			// test is where an always-false comparison is asserted on
@@ -125,6 +127,8 @@ type undefWalker struct {
 	deferInterp int
 	// inTest is set while walking a test's describe bodies.
 	inTest bool
+	// tool is the tool whose methods are being walked, nil elsewhere.
+	tool *ast.Tool
 }
 
 // isAgentDispatch reports whether p is `Agent.run(...)` or
@@ -350,6 +354,7 @@ func (u *undefWalker) postfix(p *ast.Postfix, scope map[string]types.Type, pos l
 	if name := p.Primary.Ident; name != "" && len(p.Ops) > 0 && p.Ops[0].Member != "" && !hasSpecificNotFoundCheck(p) && !u.resolvable(name, scope) {
 		u.report(pos, "undefined name %q (not a local, input/var/mem, builtin, or declared/imported name)", name)
 	}
+	u.internalCall(p, scope, pos)
 	u.primary(p.Primary, scope, pos)
 	for i, op := range p.Ops {
 		if op.Call != nil {
@@ -522,4 +527,31 @@ func isHookContextType(name string) bool {
 		}
 	}
 	return false
+}
+
+// internalCall flags `Tool.method(...)` where method is `internal` and the
+// caller is neither one of Tool's own methods nor a test in the file that
+// declares Tool — mirroring interpreter.checkInternalAccess.
+func (u *undefWalker) internalCall(p *ast.Postfix, scope map[string]types.Type, pos lexer.Position) {
+	name := p.Primary.Ident
+	if name == "" || len(p.Ops) < 2 || p.Ops[0].Member == "" || p.Ops[0].Optional || p.Ops[1].Call == nil {
+		return
+	}
+	if _, shadowed := scope[name]; shadowed {
+		return
+	}
+	tool, ok := findTool(u.prog, name)
+	if !ok {
+		return
+	}
+	for _, m := range tool.Methods {
+		if m.Name != p.Ops[0].Member || !m.Internal {
+			continue
+		}
+		if (u.tool != nil && u.tool.Name == tool.Name) || (u.inTest && !tool.Imported) {
+			return
+		}
+		u.report(pos, "%s.%s is internal to tool %s — call it as self.%s from inside the tool", name, m.Name, tool.Name, m.Name)
+		return
+	}
 }
