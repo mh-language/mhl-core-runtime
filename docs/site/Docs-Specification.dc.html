@@ -168,7 +168,8 @@ comparison     ::= additive (("&lt;" | "&gt;" | "&lt;=" | "&gt;=") additive)*
 additive       ::= multiplicative (("+" | "-") multiplicative)*
 multiplicative ::= unary (("*" | "/" | "%") unary)*
 unary          ::= ["!" | "-"] postfix
-postfix        ::= primary trailer*
+postfix        ::= primary trailer* with-update*
+with-update    ::= "with" object
 trailer        ::= "." Identifier | "?." Identifier | "?." "[" expression "]"
                  | call | "[" expression "]" | slice
 ref-object     ::= "ref" (object | "(" expression ")")
@@ -214,7 +215,7 @@ type IssueList = Issue[]
 tool Reports {
     add(slug: Slug, issues: IssueList): string[] -&gt; issues.map((x) -&gt; x.code)
 }</code></pre>
-<p>An array suffix adds one nesting level: <code>string[][]</code>. An object shape requires the named fields and their types, but permits extra fields. A field written with a trailing <code>?</code> (<code>{diff: string, base?: string}</code>) is <em>optional</em>: a value MAY omit it; when present it MUST satisfy its type. An optional field is excluded from the <code>"required"</code> set of any JSON Schema projected from the shape. An optional field satisfies an optional field or a required one of the same type; a required field is not satisfied by an optional one. A type declares no default values. Aliases are purely syntactic names, MAY reference other aliases, and MUST NOT be cyclic, duplicated, unknown, or shadow a reserved built-in name. A value of <code>null</code> is assignable to any declared type. Other values are checked by exact runtime kind; there is no implicit number/string conversion.</p>
+<p>An array suffix adds one nesting level: <code>string[][]</code>. An object shape requires the named fields and their types, but permits extra fields. A field written with a trailing <code>?</code> (<code>{diff: string, base?: string}</code>) is <em>optional</em>: a value MAY omit it; when present it MUST satisfy its type. An optional field is excluded from the <code>"required"</code> set of any JSON Schema projected from the shape. A required field satisfies either a required or an optional field of the same type. An optional field satisfies only an optional field of the same type; it does not satisfy a required field. A type declares no default values. Aliases are purely syntactic names, MAY reference other aliases, and MUST NOT be cyclic, duplicated, unknown, or shadow a reserved built-in name. A value of <code>null</code> is assignable to any declared type. Other values are checked by exact runtime kind; there is no implicit number/string conversion.</p>
 <div class="tip-row"><strong>Duration boundary</strong>Duration tokens are consumed by operations and configuration fields that explicitly expect a duration, including time arithmetic, retry delays, cache TTLs, wait/step/group timeouts, and HTTP or command timeouts. A duration is not a general-purpose declared value type in the current profile.</div>
 <h3>5.3 Values and reference objects</h3>
 <p>Arrays and objects are <em>values</em>. Evaluating a variable, or a member or index of one, yields a structure independent of the stored one: a later change through one name MUST NOT be observable through another. This holds for assignment, argument passing, and nesting a variable in an array or object literal. An in-place change of a variable's own structure (<code>a["k"] = v</code>) changes only that variable.</p>
@@ -598,7 +599,7 @@ Events.append({event: "started", at: time.now()})</code></pre>
 <tr><td class="signature">append(text: string) → string</td><td>Append-log operation. Writes one line and returns the text.</td></tr>
 <tr><td class="signature">append(value: any) → any</td><td>JSONL operation. Writes <code>{value, ts}</code> and returns the original value.</td></tr>
 </tbody></table>
-<p>A declaration body separates its properties by line breaks, not commas — <code>type:</code> and <code>path:</code> are properties of the <code>memory</code> declaration, not fields of an object literal. Memory methods are positional. JSON memory keys MAY navigate nested objects or arrays with <code>::</code>, for example <code>Session.get("config::retries", 3)</code>. A missing key returns the default when supplied, otherwise null. Path-backed memory interpolates its path, so use <code>context.session_id</code> to isolate concurrent runs. Interpolation performs no sanitization by default: an interpolated segment such as an <code>input</code>-supplied tenant/project id MAY contain <code>..</code> or an absolute-path shape and write for real outside the directory the template author intended. An optional <code>path_guard: "no_traversal"</code> property closes this: each <code>${...}</code> span's own value (not the fully concatenated path — the surrounding template legitimately starts from an absolute base directory) MUST NOT contain <code>..</code> or itself be absolute, or the operation raises before touching disk. Not the default (existing path-backed declarations with a deliberately dynamic or already-sanitized path remain unaffected); <code>path_guard</code> naming any other value is a build-time error.</p>
+<p>A declaration body permits properties on the same line or on separate lines, without commas between them — <code>type:</code> and <code>path:</code> are properties of the <code>memory</code> declaration, not fields of an object literal. Memory methods are positional. JSON memory keys MAY navigate nested objects or arrays with <code>::</code>, for example <code>Session.get("config::retries", 3)</code>. A missing key returns the default when supplied, otherwise null. Path-backed memory interpolates its path, so use <code>context.session_id</code> to isolate concurrent runs. Interpolation performs no sanitization by default: an interpolated segment such as an <code>input</code>-supplied tenant/project id MAY contain <code>..</code> or an absolute-path shape and write for real outside the directory the template author intended. An optional <code>path_guard: "no_traversal"</code> property closes this: each <code>${...}</code> span's own value (not the fully concatenated path — the surrounding template legitimately starts from an absolute base directory) MUST NOT contain <code>..</code> or itself be absolute, or the operation raises before touching disk. Not the default (existing path-backed declarations with a deliberately dynamic or already-sanitized path remain unaffected); <code>path_guard</code> naming any other value is a build-time error.</p>
 <h3>14.2 Persistent pipeline variables</h3>
 <pre class="code-block"><code class="language-mhl">loop pipeline Poll {
     mem attempts = 0
@@ -776,7 +777,9 @@ partial workflow Discovery {
     step_end:      (step) -&gt; { log("&lt;- " + step.step + " " + json.stringify(step.error)) }
     stop_failure:  (failure) -&gt; { log("FAILED " + failure.reason) }
 
-    step Dispatch { ... }
+    step Dispatch {
+        // Add workflow operations here.
+    }
 }</code></pre>
 <p>A pipeline/workflow declaration MAY declare up to five optional body properties — <code>session_start</code>, <code>session_end</code>, <code>step_start</code>, <code>step_end</code>, <code>stop_failure</code> — each an ordinary lambda literal, the same <code>name: expression</code> body property every other pipeline-level property (<code>checkpoint</code>, <code>output</code>, ...) already is; no new grammar is introduced. Each lambda MUST declare exactly one parameter; a lambda with zero or more than one parameter is a runtime error at the point the hook would fire. A hook's declared parameter is bound, on each call, to a fresh object built by the runtime, structurally satisfying one of the three builtin types §9.1 declares — <code>SessionContext</code> for <code>session_start</code>/<code>session_end</code>, <code>StepContext</code> for <code>step_start</code>/<code>step_end</code>, <code>FailureContext</code> for <code>stop_failure</code> — with every field of that type present on every call (a field a particular firing has nothing to say about is <code>null</code>, never absent); the hook body MAY also read the pipeline's own <code>var</code>/<code>mem</code> state by bare identifier, exactly as a step body does. A hook's return value is not consumed for anything: returning any value other than nothing at all (an implicit or bare <code>return</code>) MUST raise a runtime error. Hooks exist purely to observe a run — logging, external notification, writing to <code>mem</code> — and MUST NOT be used as a means to alter, retry, or suppress what the run does; the runtime provides no channel for a hook to do so. A hook's parameter MAY be annotated; when it is annotated with one of the three builtin context types, it MUST be the type that hook is bound to, and static analysis MUST report any other (the runtime does not check the annotation, so a mismatch would otherwise only mislead a development tool's completion).</p>
 <p><code>session_start</code> fires exactly once per invocation of the run — before its first step executes, and again, with <code>session.resumed</code> set to <code>true</code>, on every <code>--resume</code> / <code>run/resume</code> of that same run, including a resumed <code>loop pipeline</code>/<code>loop workflow</code> (once per whole run, not once per iteration). It fires only after every admission check that precedes session creation (input validation, memory initialization) has already succeeded — a rejected input MUST NOT trigger <code>session_start</code>. Its <code>SessionContext</code> parameter has <code>pipeline</code> (the declaration name), <code>kind</code> (<code>"pipeline"</code> or <code>"workflow"</code>), <code>session_id</code>, <code>resumed</code>, and <code>inputs</code> (the coerced input map) meaningfully set; <code>vars</code>, <code>broke</code>, <code>break_reason</code>, and <code>iterations</code> are present but <code>null</code>, since none of them has a value yet.</p>
@@ -924,7 +927,7 @@ pipeline       ::= ["internal"] ["partial"] ["loop"] ("pipeline" | "workflow") I
                     ["(" Identifier ":" type ")"] [":" type] ["max" Number]
                     "{" pipeline-member* "}"
 pipeline-member ::= input | const-declaration | var-declaration | mem-declaration
-                   | parallel | step | property
+                   | parallel | step | workflow-route | property
 input          ::= "input" Identifier ":" type ["=" expression]
 step           ::= ["entry"] "step" Identifier ["timeout" duration] block
 parallel       ::= "parallel" Identifier ["timeout" duration] "{" step+ "}"
@@ -944,10 +947,11 @@ try-statement  ::= "try" block "catch" ["(" Identifier ")"] block ["finally" blo
 return         ::= "return" [expression]
 break          ::= "break" [expression]
 goto           ::= "goto" (Identifier | "nameof" "(" Identifier ")")
+                 | route-goto | goto-match
 test           ::= "test" Identifier "{" describe* "}"
 describe       ::= "describe" Identifier block
 property       ::= Identifier ":" expression</pre>
-<p>A declaration body (<code>agent</code>, <code>router</code>, <code>memory</code>, <code>extension</code>, and the property members of a pipeline) is a sequence of <code>property</code> productions separated by line breaks. Commas separate the fields of an <em>object literal</em> — the value on the right of a property — never the properties of a declaration body itself.</p>
+<p>A declaration body (<code>agent</code>, <code>router</code>, <code>memory</code>, <code>extension</code>, and the property members of a pipeline) is a sequence of <code>property</code> productions. Whitespace, including line breaks, is ignored between tokens; multiple properties MAY appear on the same line. Commas separate the fields of an <em>object literal</em> — the value on the right of a property — never the properties of a declaration body itself.</p>
 <p>Implementations MAY expose richer diagnostic positions, syntax highlighting, completion, or generated schemas. Those facilities do not alter the source grammar.</p>
 </section>
 

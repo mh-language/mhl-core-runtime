@@ -1099,7 +1099,9 @@ workflow ReviewPullRequest(req: ReviewInput): ReviewOutput {
         log("FAILED " + failure.step + ": " + failure.error + " (" + failure.reason + ")")
     }
 
-    step Dispatch { ... }
+    step Dispatch {
+        // Add workflow operations here.
+    }
 }</code></pre>
           <div class="reference-table">
             <div class="table-row table-head"><span>Hook</span><span>Fires</span><span>Parameter type</span></div>
