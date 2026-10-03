@@ -62,6 +62,12 @@ func checkOneExtensible(file string, ext *ast.Extensible) []Finding {
 				})
 			}
 			seenMethods[m.Name] = true
+			if m.LegacyArrow {
+				findings = append(findings, Finding{
+					File: file, Line: m.Pos.Line, Column: m.Pos.Column,
+					Message: `extensible ` + ext.Kind + `: method "` + m.Name + `" declares its return type with "->"; write it after ":" like a tool method, e.g. ` + m.Name + `(...): ` + m.Returns.String(),
+				})
+			}
 		}
 	}
 	if manifestCount == 0 {

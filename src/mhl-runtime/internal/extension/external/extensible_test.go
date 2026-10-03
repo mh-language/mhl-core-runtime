@@ -41,8 +41,8 @@ extensible cache {
         db: number /// Logical database index. Default 0.
     }
 
-    get(key: string) -> any /// The JSON-decoded value, or null when the key is absent.
-    delete(key: string) -> void
+    get(key: string): any /// The JSON-decoded value, or null when the key is absent.
+    delete(key: string): void
 }
 `)
 	m, err := LoadManifest(p)
@@ -78,7 +78,7 @@ extensible cache {
 		t.Fatalf("unexpected methods: %+v", d.Methods)
 	}
 	get := d.Methods[0]
-	if get.Name != "get" || get.Signature != "get(key: string) -> any" {
+	if get.Name != "get" || get.Signature != "get(key: string): any" {
 		t.Fatalf("unexpected get() method: %+v", get)
 	}
 	if get.Documentation != "The JSON-decoded value, or null when the key is absent." {
@@ -100,7 +100,7 @@ func TestExtensiblePlainCommentIsNotDocumentation(t *testing.T) {
     properties: {
         url: string // just a regular comment, not documentation
     }
-    get(key: string) -> any // same here
+    get(key: string): any // same here
 }
 `)
 	m, err := LoadManifest(p)
@@ -122,7 +122,7 @@ func TestExtensiblePlainCommentIsNotDocumentation(t *testing.T) {
 func TestExtensibleMissingManifestIsAnError(t *testing.T) {
 	dir := t.TempDir()
 	p := writeExtensible(t, dir, `extensible cache {
-    get(key: string) -> any
+    get(key: string): any
 }
 `)
 	if _, err := LoadManifest(p); err == nil || !strings.Contains(err.Error(), "manifest") {
@@ -169,7 +169,7 @@ func TestExtensiblePropertyAndMethodTypesRenderArraysAndShapes(t *testing.T) {
     properties: {
         tags: string[]
     }
-    lookup(ids: string[]) -> string[]
+    lookup(ids: string[]): string[]
 }
 `)
 	m, err := LoadManifest(p)
@@ -180,7 +180,7 @@ func TestExtensiblePropertyAndMethodTypesRenderArraysAndShapes(t *testing.T) {
 	if d.Properties[0].Type != "string[]" {
 		t.Fatalf("property type = %q, want %q", d.Properties[0].Type, "string[]")
 	}
-	if d.Methods[0].Signature != "lookup(ids: string[]) -> string[]" {
+	if d.Methods[0].Signature != "lookup(ids: string[]): string[]" {
 		t.Fatalf("method signature = %q", d.Methods[0].Signature)
 	}
 }

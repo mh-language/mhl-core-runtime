@@ -213,8 +213,8 @@ func TestCompletionExtensionMembersFromProjectLockedExtension(t *testing.T) {
     properties: {
         url: string /// Redis connection string.
     }
-    get(key: string) -> any /// The JSON-decoded value, or null.
-    set(key: string, value: any) -> void /// Store value.
+    get(key: string): any /// The JSON-decoded value, or null.
+    set(key: string, value: any): void /// Store value.
 }
 `
 	if err := os.WriteFile(filepath.Join(extDir, "extension.mh"), []byte(manifest), 0o644); err != nil {

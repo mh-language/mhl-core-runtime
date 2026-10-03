@@ -32,7 +32,7 @@ import "github.com/alecthomas/participle/v2/lexer"
 //	    properties: {
 //	        url: string /// redis://[user:pass@]host:port/db
 //	    }
-//	    get(key: string) -> any /// The JSON-decoded value, or null.
+//	    get(key: string): any /// The JSON-decoded value, or null.
 //	}
 type Extensible struct {
 	Pos   lexer.Position
@@ -59,12 +59,17 @@ type ExtensibleProperty struct {
 	Type *TypeExpr `parser:"@@"`
 }
 
-// ExtensibleMethod is one bare `name(params) -> ReturnType` signature — an
+// ExtensibleMethod is one bare `name(params): ReturnType` signature — an
 // operation the bound capability exposes. It has no body: Extensible only
-// declares the surface, an external process implements it.
+// declares the surface, an external process implements it. The return type
+// follows `:`, exactly like a tool method's. The older `-> ReturnType` form
+// still parses (LegacyArrow) so an already-installed extension keeps
+// loading, but mhl lint rejects it — `->` means "produces this body", never
+// "returns this type".
 type ExtensibleMethod struct {
-	Pos     lexer.Position
-	Name    string    `parser:"@Ident '('"`
-	Params  []*Param  `parser:"( @@ ( ',' @@ )* )? ')'"`
-	Returns *TypeExpr `parser:"'->' @@"`
+	Pos         lexer.Position
+	Name        string    `parser:"@Ident '('"`
+	Params      []*Param  `parser:"( @@ ( ',' @@ )* )? ')'"`
+	LegacyArrow bool      `parser:"( ':' | @'->' )" digest:"omitzero"`
+	Returns     *TypeExpr `parser:"@@"`
 }

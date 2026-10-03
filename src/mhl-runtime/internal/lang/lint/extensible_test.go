@@ -21,7 +21,7 @@ extensible cache {
     properties: {
         url: string
     }
-    get(key: string) -> any
+    get(key: string): any
 }
 `)
 	if findings := lint.File(main); len(findings) != 0 {
@@ -46,7 +46,7 @@ extensible cache {
         api_version: "1",
         executable: "bin/mhl-cache-redis"
     }
-    get(key: string) -> any /// The JSON-decoded value, or null.
+    get(key: string): any /// The JSON-decoded value, or null.
 }
 `)
 	if findings := lint.File(main); len(findings) != 0 {
@@ -59,7 +59,7 @@ func TestExtensibleMissingManifestIsALintError(t *testing.T) {
 	main := filepath.Join(dir, "extension.mh")
 	write(t, main, `
 extensible cache {
-    get(key: string) -> any
+    get(key: string): any
 }
 `)
 	findings := lint.File(main)
@@ -121,12 +121,31 @@ func TestExtensibleDuplicateMethodIsALintError(t *testing.T) {
 	write(t, main, `
 extensible cache {
     manifest: { id: "x", api_version: "1", executable: "bin/x" }
-    get(key: string) -> any
-    get(key: string) -> string
+    get(key: string): any
+    get(key: string): string
 }
 `)
 	findings := lint.File(main)
 	if !hasMessage(findings, `method "get" declared more than once`) {
 		t.Fatalf("expected a duplicate-method finding, got %+v", findings)
+	}
+}
+
+// The older `name(params) -> Type` signature still parses (so an installed
+// extension keeps loading) but lint rejects it: a return type follows `:`,
+// exactly as on a tool method.
+func TestExtensibleArrowReturnTypeIsALintError(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "extension.mh")
+	write(t, main, `
+extensible cache {
+    manifest: { id: "x", api_version: "1", executable: "bin/x" }
+    get(key: string) -> any
+    put(key: string, value: any): void
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 || !hasMessage(findings, `method "get" declares its return type with "->"; write it after ":" like a tool method, e.g. get(...): any`) {
+		t.Fatalf("expected exactly one arrow-return-type finding for get, got %+v", findings)
 	}
 }

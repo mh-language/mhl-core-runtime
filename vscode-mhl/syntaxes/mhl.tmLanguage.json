@@ -377,7 +377,8 @@
           ]
         },
         {
-          "begin": "^[ \\t]*([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\([ \\t]*(?=[^()\\n]*\\)[ \\t]*(?::[^()\\n]+)?[ \\t]*->)",
+          "comment": "A tool/extensible method declaration `name(params)` — followed by `->` (expression body), by `{` (block body, the arrow being optional there), or, on an `extensible` signature, by `: Type` to end of line. Control keywords are excluded so `if (x) {` / `while (x) {` aren't mistaken for one.",
+          "begin": "^[ \\t]*(?!(?:if|while|for|match|catch|switch)\\b)([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\([ \\t]*(?=[^()\\n]*\\)(?:[ \\t]*(?::[^()\\n]+?)?[ \\t]*(?:->|\\{)|[ \\t]*:[^()\\n]+$))",
           "beginCaptures": {
             "1": {
               "name": "entity.name.function.mhl"
@@ -543,7 +544,7 @@
           }
         },
         {
-          "comment": "A bare `-> Type` return type, as on an `extensible` method signature (`get(key: string) -> any`) — distinguished from an ordinary `-> expr(...)` tool-method body by requiring the type word to run straight to end-of-line or a comment, since a real call is always followed by `(`.",
+          "comment": "A bare `-> Type` return type — the legacy `extensible` method signature form (`get(key: string) -> any`, now written `get(key: string): any`, which the `:` rules above cover). Kept so not-yet-migrated files still highlight; distinguished from an ordinary `-> expr(...)` tool-method body by requiring the type word to run straight to end-of-line or a comment, since a real call is always followed by `(`.",
           "match": "->[ \\t]*((?:string|number|int|integer|float|bool|boolean|array|object|any|prompt|void)\\b(?:\\[\\])*)(?=[ \\t]*(?://|$))",
           "captures": {
             "1": {

@@ -126,7 +126,7 @@ pipeline P {
 func TestDefinitionExtensibleName(t *testing.T) {
 	src := `extensible cache {
     manifest: { id: "x", api_version: "1", executable: "bin/x" }
-    get(key: string) -> any
+    get(key: string): any
 }
 
 pipeline P {
@@ -150,8 +150,8 @@ pipeline P {
 func TestDefinitionExtensibleMethod(t *testing.T) {
 	src, pos := posAtMarker(t, `extensible cache {
     manifest: { id: "x", api_version: "1", executable: "bin/x" }
-    get(key: string) -> any
-    set(key: string, value: any) -> void
+    get(key: string): any
+    set(key: string, value: any): void
 }
 
 pipeline P {

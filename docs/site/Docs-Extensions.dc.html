@@ -226,7 +226,7 @@ html { scroll-behavior:smooth; }
           </div>
           <p>The <code>extensible &lt;kind&gt;</code> declaration identifies the capability. Its <code>manifest</code> block requires <code>id</code>, <code>api_version</code>, and <code>executable</code>. Add <code>version</code> for a versioned package and <code>permissions</code> to describe its access requirements.</p>
           <p class="block-label">WITH TOOLING METADATA AND PERMISSIONS</p>
-          <p>A <code>properties: { name: Type }</code> block describes configuration, and bare <code>name(params) -&gt; ReturnType</code> signatures describe methods. A leading <code>/** ... **/</code> block documents the kind; a trailing <code>/// ...</code> documents a property or method through the end of the line. These documentation forms are recognized within the <code>extensible</code> declaration.</p>
+          <p>A <code>properties: { name: Type }</code> block describes configuration, and bare <code>name(params): ReturnType</code> signatures describe methods — the return type follows <code>:</code>, exactly as on a <code>tool</code> method. The older <code>name(params) -&gt; ReturnType</code> form still loads, but <code>mhl lint</code> rejects it. A leading <code>/** ... **/</code> block documents the kind; a trailing <code>/// ...</code> documents a property or method through the end of the line. These documentation forms are recognized within the <code>extensible</code> declaration.</p>
           <div class="code-wrap">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
             <pre class="code-block"><code class="language-mhl">/**
@@ -248,7 +248,7 @@ extensible crm {
         endpoint: string /// The Acme API base URL.
     }
 
-    lookup(id: string) -> object /// Fetch a customer by id.
+    lookup(id: string): object /// Fetch a customer by id.
 }</code></pre>
           </div>
           <h3>Use the declared kind in a workflow</h3>

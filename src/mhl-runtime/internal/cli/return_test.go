@@ -213,3 +213,55 @@ func TestReturnWithValueInsideStepIsDiscarded(t *testing.T) {
 		t.Errorf("statement after return still ran: %s", out)
 	}
 }
+
+// --- `->` is optional before a block body -----------------------------------
+
+// TestToolBlockBodyWithoutArrow confirms a block body needs no `->`: the `{`
+// already marks where the body starts, with or without a return type.
+func TestToolBlockBodyWithoutArrow(t *testing.T) {
+	out, err := run(t, `
+tool T {
+    add(a, b) {
+        return a + b
+    }
+    twice(n: number): number {
+        if (n > 0) {
+            return n * 2
+        }
+        return 0
+    }
+    pair(): { ok: bool } {
+        return { ok: true }
+    }
+}
+
+`+wrapStep(`log(T.add(2, 3))
+        log(T.twice(4))
+        log(T.pair().ok)`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"5\n", "8\n", "true\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in output: %s", want, out)
+		}
+	}
+}
+
+// TestToolArrowObjectLiteralStaysAnExpressionBody guards the one case where
+// the arrow still matters before a `{`: `-> { key: value }` is an object
+// literal expression body, not a block.
+func TestToolArrowObjectLiteralStaysAnExpressionBody(t *testing.T) {
+	out, err := run(t, `
+tool T {
+    point() -> { x: 1, y: 2 }
+}
+
+`+wrapStep(`log(T.point().y)`))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out, "2\n") {
+		t.Errorf("unexpected output: %s", out)
+	}
+}

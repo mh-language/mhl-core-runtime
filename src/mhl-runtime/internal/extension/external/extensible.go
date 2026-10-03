@@ -113,7 +113,7 @@ func soleExtensible(prog *ast.Program) (*ast.Extensible, error) {
 }
 
 // methodSpecFromAST builds an extension.MethodSpec from a parsed
-// ExtensibleMethod, rendering Signature the same "name(params) -> returns"
+// ExtensibleMethod, rendering Signature the same "name(params): returns"
 // shape a hand-written JSON/mhl declarations sidecar uses.
 func methodSpecFromAST(meth *ast.ExtensibleMethod, doc string) extension.MethodSpec {
 	returns := meth.Returns.String()
@@ -129,7 +129,7 @@ func methodSpecFromAST(meth *ast.ExtensibleMethod, doc string) extension.MethodS
 		ms.Params = append(ms.Params, ps)
 		paramTexts = append(paramTexts, text)
 	}
-	ms.Signature = fmt.Sprintf("%s(%s) -> %s", meth.Name, strings.Join(paramTexts, ", "), returns)
+	ms.Signature = fmt.Sprintf("%s(%s): %s", meth.Name, strings.Join(paramTexts, ", "), returns)
 	return ms
 }
 

@@ -107,9 +107,9 @@ var declarationSnippets = map[string][]declarationSnippet{
 		},
 	},
 	"tool": {{
-		detail: `tool Name { method(param: type) -> ... }`,
+		detail: `tool Name { method(param: type): type { ... } }`,
 		body: "tool ${1:Name} {\n" +
-			"\t${2:method}(${3:param}: ${4:string}) -> {\n" +
+			"\t${2:method}(${3:param}: ${4:string}): ${4:string} {\n" +
 			"\t\treturn ${3:param}\n" +
 			"\t}\n" +
 			"}\n$0",
