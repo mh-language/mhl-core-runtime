@@ -49,6 +49,10 @@ func Load(dir string) (map[string]Workflow, error) {
 	sort.Strings(files)
 
 	out := map[string]Workflow{}
+	// One cache for the whole directory: a module imported (directly or
+	// transitively) by many files is parsed and resolved once, not once per
+	// importer.
+	imports := interpreter.NewImportCache()
 	for _, f := range files {
 		src, err := os.ReadFile(f)
 		if err != nil {
@@ -73,7 +77,15 @@ func Load(dir string) (map[string]Workflow, error) {
 				own[d.Alias.Name] = true
 			}
 		}
-		if err := interpreter.ResolveImports(f, prog); err != nil {
+		// A file that declares no pipeline/workflow or alias registers
+		// nothing (only what a file itself declares is registered, see
+		// above), so its imports needn't be resolved here at all — a
+		// library module is resolved only as part of the entry files that
+		// import it.
+		if len(own) == 0 {
+			continue
+		}
+		if err := interpreter.ResolveImportsCached(f, prog, imports); err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
 		for _, d := range prog.Decls {

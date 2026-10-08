@@ -32,11 +32,16 @@ func (f Finding) String() string {
 // parse failure is reported as a Finding rather than a Go error, so a single
 // broken file never aborts a larger Dir scan.
 func File(path string) []Finding {
+	return file(path, nil)
+}
+
+// file is File, sharing resolved import modules through cache (nil: none).
+func file(path string, cache *importCache) []Finding {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return []Finding{{File: path, Message: err.Error()}}
 	}
-	return Source(path, string(src))
+	return source(path, string(src), cache)
 }
 
 // Source parses and statically checks src as if it were the .mh file at
@@ -46,12 +51,16 @@ func File(path string) []Finding {
 // integration (see internal/lsp) needs: the buffer being edited may not
 // match, or may not even exist, on disk yet.
 func Source(path, src string) []Finding {
+	return source(path, src, nil)
+}
+
+func source(path, src string, cache *importCache) []Finding {
 	prog, err := parser.Parse(src)
 	if err != nil {
 		return []Finding{findingFromParseError(path, err)}
 	}
 
-	merged, findings := mergeImports(path, prog)
+	merged, findings := mergeImports(path, prog, cache)
 	merged, partialFindings := mergePartials(path, merged)
 	findings = append(findings, partialFindings...)
 	findings = append(findings, checkPipelineEntry(path, merged)...)
@@ -97,9 +106,13 @@ func Dir(dir string) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	// One cache for the whole scan: a module imported by many files is
+	// parsed and resolved once (its findings are still reported once per
+	// importing file, as before — see importCache).
+	cache := newImportCache()
 	var findings []Finding
 	for _, f := range files {
-		findings = append(findings, File(f)...)
+		findings = append(findings, file(f, cache)...)
 	}
 	return findings, nil
 }

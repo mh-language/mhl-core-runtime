@@ -195,3 +195,50 @@ workflow Public = Flow with { level: "pub" }
 		t.Fatalf("running a file with only an internal workflow: %v", err)
 	}
 }
+
+// Load resolves a module shared by several workflow files once: every
+// workflow's Program holds the same declaration node for it. A library file
+// that declares no pipeline/workflow is never resolved as an entry of its
+// own — so one whose imports are broken but that no workflow imports does
+// not fail the directory (`mhl lint` still reports it).
+func TestLoadSharesImportedModulesAcrossWorkflows(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"lib/agents.mh": `export agent Shared { command: "echo" }`,
+		"lib/unused.mh": `import "does-not-exist.mh"
+export agent Unused { command: "echo" }`,
+		"a.mh": `import {Shared} from "lib/agents.mh"
+workflow A { step S { log("a") } }`,
+		"b.mh": `import "lib/agents.mh"
+workflow B { step S { log("b") } }`,
+	}
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	workflows, err := execsvc.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(workflows) != 2 {
+		t.Fatalf("expected workflows A and B, got %+v", workflows)
+	}
+	shared := func(name string) any {
+		for _, d := range workflows[name].Program.Decls {
+			if d.Agent != nil && d.Agent.Name == "Shared" {
+				return d.Agent
+			}
+		}
+		t.Fatalf("workflow %s: agent Shared not merged in", name)
+		return nil
+	}
+	if shared("A") != shared("B") {
+		t.Error("expected A and B to share lib/agents.mh's declaration node")
+	}
+}
