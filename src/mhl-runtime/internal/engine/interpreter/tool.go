@@ -176,20 +176,25 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 	switch namespace + "." + op {
 	case "cmd.exec":
 		timeout, _ := args.duration("timeout")
+		enc := args.stringNamed("encoding")
+		if err := nativeops.ValidateEncoding(enc); err != nil {
+			return nil, fmt.Errorf("cmd.exec: %w", err)
+		}
+		var result map[string]any
 		if argv, ok := args.stringSliceAt(0); ok {
-			result, err := nativeops.ExecArgs(goctxOf(ctx), argv, timeout)
-			if err != nil {
-				return nil, err
+			result, err = nativeops.ExecArgs(goctxOf(ctx), argv, timeout)
+		} else {
+			command, ok := args.stringAt(0)
+			if !ok {
+				return nil, fmt.Errorf("cmd.exec requires a string command, or an array of argv strings, as its first argument")
 			}
-			return result, nil
+			result, err = nativeops.Exec(goctxOf(ctx), command, timeout)
 		}
-		command, ok := args.stringAt(0)
-		if !ok {
-			return nil, fmt.Errorf("cmd.exec requires a string command, or an array of argv strings, as its first argument")
-		}
-		result, err := nativeops.Exec(goctxOf(ctx), command, timeout)
 		if err != nil {
 			return nil, err
+		}
+		if err := nativeops.DecodeOutput(result, enc); err != nil {
+			return nil, fmt.Errorf("cmd.exec: %w", err)
 		}
 		return result, nil
 	case "cmd.exec_all":
@@ -198,12 +203,19 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("cmd.exec_all requires an array of commands (each a string or an array of argv strings) as its first argument")
 		}
+		enc := args.stringNamed("encoding")
+		if err := nativeops.ValidateEncoding(enc); err != nil {
+			return nil, fmt.Errorf("cmd.exec_all: %w", err)
+		}
 		results, err := nativeops.ExecAll(goctxOf(ctx), commands, timeout)
 		if err != nil {
 			return nil, err
 		}
 		out := make([]any, len(results))
 		for i, r := range results {
+			if err := nativeops.DecodeOutput(r, enc); err != nil {
+				return nil, fmt.Errorf("cmd.exec_all[%d]: %w", i, err)
+			}
 			out[i] = r
 		}
 		return out, nil
@@ -259,7 +271,8 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("fs.read requires a string path as its first argument")
 		}
-		return nativeops.Read(path)
+		enc, _ := args.stringNamedOrAt("encoding", 1)
+		return nativeops.ReadEncoded(path, enc)
 	case "fs.exists":
 		path, ok := args.stringAt(0)
 		if !ok {
@@ -275,7 +288,8 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("fs.write requires string content")
 		}
-		return nativeops.Write(path, content)
+		enc, _ := args.stringNamedOrAt("encoding", 2)
+		return nativeops.WriteEncoded(path, content, enc)
 	case "fs.append":
 		path, ok := args.stringNamedOrAt("path", 0)
 		if !ok {
@@ -285,7 +299,8 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if !ok {
 			return nil, fmt.Errorf("fs.append requires string content")
 		}
-		return nativeops.Append(path, content)
+		enc, _ := args.stringNamedOrAt("encoding", 2)
+		return nativeops.AppendEncoded(path, content, enc)
 	case "fs.delete":
 		path, ok := args.stringAt(0)
 		if !ok {

@@ -55,14 +55,14 @@ var htmlElementParamDocs = map[string]string{
 
 var nativeSigs = map[string]sig{
 	"cmd.exec": {
-		Label:  "cmd.exec(command: string | string[], timeout?: duration) -> {stdout: string, stderr: string, exit_code: number}",
-		Params: []string{"command", "timeout"},
-		Doc:    "Runs a subprocess. A non-zero `exit_code` is returned, not raised. Prefer the argv-array form.",
+		Label:  "cmd.exec(command: string | string[], timeout?: duration, encoding?: string) -> {stdout: string, stderr: string, exit_code: number}",
+		Params: []string{"command", "timeout", "encoding"},
+		Doc:    "Runs a subprocess. A non-zero `exit_code` is returned, not raised. Prefer the argv-array form. `encoding` (e.g. `\"ibm850\"`, `\"windows-1252\"`) decodes `stdout`/`stderr` to UTF-8.",
 	},
 	"cmd.exec_all": {
-		Label:  "cmd.exec_all(commands: (string | string[])[], timeout?: duration) -> {stdout, stderr, exit_code}[]",
-		Params: []string{"commands", "timeout"},
-		Doc:    "Runs each command concurrently; results come back in input order. `timeout` applies per command.",
+		Label:  "cmd.exec_all(commands: (string | string[])[], timeout?: duration, encoding?: string) -> {stdout, stderr, exit_code}[]",
+		Params: []string{"commands", "timeout", "encoding"},
+		Doc:    "Runs each command concurrently; results come back in input order. `timeout` applies per command; `encoding` decodes every `stdout`/`stderr` to UTF-8.",
 	},
 	"git.diff": {
 		Label:  "git.diff(target?: string, dir?: string) -> string",
@@ -94,10 +94,10 @@ var nativeSigs = map[string]sig{
 		Params: []string{"n", "dir"},
 		Doc:    "`git [-C dir] log -n <n> --oneline`. `n` must be positive.",
 	},
-	"fs.read":      {Label: "fs.read(path: string) -> string", Params: []string{"path"}, Doc: "Full file contents. Raises if unreadable."},
+	"fs.read":      {Label: "fs.read(path: string, encoding?: string) -> string", Params: []string{"path", "encoding"}, Doc: "Full file contents. Raises if unreadable. `encoding` (`\"utf-8\"`, `\"windows-1252\"`, `\"latin1\"`, `\"utf-16\"`, `\"utf-16le\"`, `\"auto\"`, any WHATWG/IANA name) decodes the bytes to UTF-8; omitted passes them through unchanged."},
 	"fs.exists":    {Label: "fs.exists(path: string) -> bool", Params: []string{"path"}, Doc: "A stat error other than \"not found\" raises."},
-	"fs.write":     {Label: "fs.write(path: string, content: string) -> bool", Params: []string{"path", "content"}, Doc: "Truncates and writes, creating parent directories. Returns `true`."},
-	"fs.append":    {Label: "fs.append(path: string, content: string) -> bool", Params: []string{"path", "content"}, Doc: "Appends, creating parent directories. Returns `true`."},
+	"fs.write":     {Label: "fs.write(path: string, content: string, encoding?: string) -> bool", Params: []string{"path", "content", "encoding"}, Doc: "Truncates and writes, creating parent directories. Returns `true`. `encoding` transcodes from UTF-8 (`\"utf-8-bom\"`/`\"utf-16\"` write a BOM); an unrepresentable character raises."},
+	"fs.append":    {Label: "fs.append(path: string, content: string, encoding?: string) -> bool", Params: []string{"path", "content", "encoding"}, Doc: "Appends, creating parent directories. Returns `true`. `encoding` as in `fs.write`; a BOM is written only into a new or empty file."},
 	"fs.delete":    {Label: "fs.delete(path: string) -> bool", Params: []string{"path"}, Doc: "Removes a file or empty directory. Raises if it can't."},
 	"fs.join":      {Label: "fs.join(...segments: string) -> string", Params: []string{"segments"}, Doc: "OS-appropriate path join of one or more segments."},
 	"fs.list":      {Label: "fs.list(dir: string) -> string[]", Params: []string{"dir"}, Doc: "Entries in `dir`."},

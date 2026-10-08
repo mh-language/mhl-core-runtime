@@ -11,11 +11,24 @@ import (
 
 // Read returns path's full contents as a string.
 func Read(path string) (string, error) {
+	return ReadEncoded(path, "")
+}
+
+// ReadEncoded is Read with the file's bytes decoded from encodingName to
+// UTF-8 (see Decode); "" passes the bytes through unchanged.
+func ReadEncoded(path, encodingName string) (string, error) {
+	if err := ValidateEncoding(encodingName); err != nil {
+		return "", fmt.Errorf("fs.read %q: %w", path, err)
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("fs.read %q: %w", path, err)
 	}
-	return string(raw), nil
+	text, err := Decode(raw, encodingName)
+	if err != nil {
+		return "", fmt.Errorf("fs.read %q: %w", path, err)
+	}
+	return text, nil
 }
 
 // Exists reports whether path names an existing file or directory. Any
@@ -58,12 +71,22 @@ func CreateDir(path string) (bool, error) {
 // (same convention as internal/memory/json.go's writeJSON). Returns true on
 // success — there's nothing more meaningful to hand back for a write.
 func Write(path, content string) (bool, error) {
+	return WriteEncoded(path, content, "")
+}
+
+// WriteEncoded is Write with content transcoded from UTF-8 to encodingName
+// (see Encode) before it hits the disk; "" writes the bytes unchanged.
+func WriteEncoded(path, content, encodingName string) (bool, error) {
+	data, err := Encode(content, encodingName, true)
+	if err != nil {
+		return false, fmt.Errorf("fs.write %q: %w", path, err)
+	}
 	if dir := filepath.Dir(path); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return false, fmt.Errorf("fs.write %q: creating %s: %w", path, dir, err)
 		}
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return false, fmt.Errorf("fs.write %q: %w", path, err)
 	}
 	return true, nil
@@ -77,6 +100,16 @@ func Write(path, content string) (bool, error) {
 // O_APPEND syscall, whose atomicity for a write this size the OS itself
 // guarantees.
 func Append(path, content string) (bool, error) {
+	return AppendEncoded(path, content, "")
+}
+
+// AppendEncoded is Append with content transcoded from UTF-8 to
+// encodingName (see Encode). A byte-order mark is written only when the
+// file is new or empty, never in the middle of existing content.
+func AppendEncoded(path, content, encodingName string) (bool, error) {
+	if err := ValidateEncoding(encodingName); err != nil {
+		return false, fmt.Errorf("fs.append %q: %w", path, err)
+	}
 	if dir := filepath.Dir(path); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return false, fmt.Errorf("fs.append %q: creating %s: %w", path, dir, err)
@@ -87,7 +120,15 @@ func Append(path, content string) (bool, error) {
 		return false, fmt.Errorf("fs.append %q: %w", path, err)
 	}
 	defer f.Close()
-	if _, err := f.WriteString(content); err != nil {
+	info, err := f.Stat()
+	if err != nil {
+		return false, fmt.Errorf("fs.append %q: %w", path, err)
+	}
+	data, err := Encode(content, encodingName, info.Size() == 0)
+	if err != nil {
+		return false, fmt.Errorf("fs.append %q: %w", path, err)
+	}
+	if _, err := f.Write(data); err != nil {
 		return false, fmt.Errorf("fs.append %q: %w", path, err)
 	}
 	return true, nil

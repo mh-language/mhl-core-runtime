@@ -1,0 +1,71 @@
+// Strings are always UTF-8 inside mhl. The optional `encoding` argument of
+// fs.read / fs.write / fs.append (and cmd.exec / cmd.exec_all, for a
+// subprocess's stdout/stderr) names the charset of the bytes *outside* the
+// runtime and transcodes at that boundary — so a legacy Windows-1252 or
+// UTF-16 file can be read and handed to an agent's `stdin:` as valid UTF-8,
+// which strict CLIs (e.g. Devin) require. Without `encoding`, bytes pass
+// through unchanged, exactly as before.
+test fs_encoding_transcodes_at_the_boundary {
+    describe a_windows_1252_file_round_trips {
+        var path = "mhl-encoding-sample/legacy.txt"
+        fs.write(path, "ação €", encoding: "windows-1252")
+        are_equal(fs.read(path, encoding: "windows-1252"), "ação €")
+        dir.clear("mhl-encoding-sample")
+        dir.delete("mhl-encoding-sample")
+    }
+
+    describe utf_16_append_keeps_a_single_bom {
+        var path = "mhl-encoding-sample/notes.txt"
+        fs.write(path, "linha 1\n", "utf-16")
+        fs.append(path, "linha 2\n", "utf-16")
+        are_equal(fs.read(path, "utf-16"), "linha 1\nlinha 2\n")
+        dir.clear("mhl-encoding-sample")
+        dir.delete("mhl-encoding-sample")
+    }
+
+    describe auto_detects_bom_utf8_or_falls_back_to_windows_1252 {
+        fs.write("mhl-encoding-sample/a.txt", "olá", "utf-16")
+        fs.write("mhl-encoding-sample/b.txt", "olá", "utf-8-bom")
+        fs.write("mhl-encoding-sample/c.txt", "olá", "windows-1252")
+        are_equal(fs.read("mhl-encoding-sample/a.txt", "auto"), "olá")
+        are_equal(fs.read("mhl-encoding-sample/b.txt", "auto"), "olá")
+        are_equal(fs.read("mhl-encoding-sample/c.txt", "auto"), "olá")
+        dir.clear("mhl-encoding-sample")
+        dir.delete("mhl-encoding-sample")
+    }
+
+    describe strict_utf8_rejects_legacy_bytes {
+        fs.write("mhl-encoding-sample/legacy.txt", "ação", "latin1")
+        var message = ""
+        try {
+            fs.read("mhl-encoding-sample/legacy.txt", "utf-8")
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("not valid UTF-8"))
+        dir.clear("mhl-encoding-sample")
+        dir.delete("mhl-encoding-sample")
+    }
+
+    describe an_unrepresentable_character_raises_on_write {
+        var message = ""
+        try {
+            fs.write("mhl-encoding-sample/x.txt", "日本", "windows-1252")
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("encoding as windows-1252"))
+        dir.clear("mhl-encoding-sample")
+        dir.delete("mhl-encoding-sample")
+    }
+
+    describe an_unknown_encoding_raises_before_any_io {
+        var message = ""
+        try {
+            fs.read("does-not-exist.txt", encoding: "klingon")
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("unsupported encoding"))
+    }
+}
