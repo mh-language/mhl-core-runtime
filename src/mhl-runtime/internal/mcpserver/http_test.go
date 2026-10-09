@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
 )
 
@@ -1691,5 +1692,44 @@ func TestHTTPConcurrentRequestsOnSharedSessionWithStateDir(t *testing.T) {
 	}
 	if n > 10 {
 		t.Errorf("... and %d more errors", n-10)
+	}
+}
+
+// A caller that already parsed the directory (cli's `extension store` scan)
+// hands the ASTs over in HTTPConfig.Files and the server loads from those —
+// it does not read cfg.Dir again: here the .mh file is gone from disk by the
+// time the handler is built, and the workflow is still served.
+func TestHTTPLoadsFromPreParsedFiles(t *testing.T) {
+	dir := t.TempDir()
+	wf := filepath.Join(dir, "wf.mh")
+	if err := os.WriteFile(wf, []byte(httpWF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := execsvc.ParseDir(dir)
+	if err != nil {
+		t.Fatalf("ParseDir: %v", err)
+	}
+	if err := os.Remove(wf); err != nil {
+		t.Fatal(err)
+	}
+
+	h, err := mcpserver.Handler(mcpserver.HTTPConfig{Dir: dir, Files: files}, io.Discard)
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+
+	resp, body := postMCP(t, ts.URL, "", rpcMap(1, "initialize", map[string]any{
+		"protocolVersion": "2025-06-18", "capabilities": map[string]any{},
+		"clientInfo": map[string]any{"name": "t", "version": "0"},
+	}), nil)
+	sid := resp.Header.Get("Mcp-Session-Id")
+	if sid == "" {
+		t.Fatalf("no session id: %v", body)
+	}
+	_, body = postMCP(t, ts.URL, sid, rpcMap(2, "tools/list", nil), nil)
+	if !strings.Contains(fmt.Sprint(body), "Greet") {
+		t.Fatalf("tools/list = %v, want the workflow from the pre-parsed files", body)
 	}
 }

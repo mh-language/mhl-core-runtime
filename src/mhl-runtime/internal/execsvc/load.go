@@ -29,31 +29,35 @@ type Workflow struct {
 	Loop bool
 }
 
-// Load parses every .mh file under dir and returns one Workflow per declared
-// pipeline/workflow and workflow alias, keyed by declaration name. A name declared in two files
-// is an error, and a directory that declares none is an error.
-func Load(dir string) (map[string]Workflow, error) {
-	var files []string
+// File is one .mh file under a workflow directory, parsed but not yet
+// import-resolved — what ParseDir returns and LoadFiles consumes.
+type File struct {
+	Path    string
+	Program *ast.Program
+}
+
+// ParseDir reads and parses every .mh file under dir (recursively, sorted by
+// path). A caller that has to inspect a directory's declarations before
+// loading it (`mhl serve mcp --http` looks for an `extension store`) parses
+// it once with this and hands the result to LoadFiles.
+func ParseDir(dir string) ([]File, error) {
+	var paths []string
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() && strings.HasSuffix(path, ".mh") {
-			files = append(files, path)
+			paths = append(paths, path)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(files)
+	sort.Strings(paths)
 
-	out := map[string]Workflow{}
-	// One cache for the whole directory: a module imported (directly or
-	// transitively) by many files is parsed and resolved once, not once per
-	// importer.
-	imports := interpreter.NewImportCache()
-	for _, f := range files {
+	files := make([]File, 0, len(paths))
+	for _, f := range paths {
 		src, err := os.ReadFile(f)
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", f, err)
@@ -62,6 +66,33 @@ func Load(dir string) (map[string]Workflow, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", f, err)
 		}
+		files = append(files, File{Path: f, Program: prog})
+	}
+	return files, nil
+}
+
+// Load parses every .mh file under dir and returns one Workflow per declared
+// pipeline/workflow and workflow alias, keyed by declaration name. A name declared in two files
+// is an error, and a directory that declares none is an error.
+func Load(dir string) (map[string]Workflow, error) {
+	files, err := ParseDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	return LoadFiles(dir, files)
+}
+
+// LoadFiles is Load over files already parsed by ParseDir(dir); dir only
+// labels errors. It resolves each Program's imports in place, so files must
+// not be reused afterwards.
+func LoadFiles(dir string, files []File) (map[string]Workflow, error) {
+	out := map[string]Workflow{}
+	// One cache for the whole directory: a module imported (directly or
+	// transitively) by many files is parsed and resolved once, not once per
+	// importer.
+	imports := interpreter.NewImportCache()
+	for _, file := range files {
+		f, prog := file.Path, file.Program
 		// Only what this file itself declares is registered here: an
 		// imported pipeline/workflow is merged into prog too (it has to be,
 		// to run), but it belongs to — and is registered by — the file that
