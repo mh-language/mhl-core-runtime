@@ -127,6 +127,36 @@ func pollRun(t *testing.T, url, sid, runID string) map[string]any {
 	}
 }
 
+// sharedStateDir is a t.TempDir for the --state-dir a test's servers share.
+// A run still in flight when the test returns is cancelled by t.Context(),
+// and its goroutine can still be writing its final status/checkpoint into the
+// directory while cleanup removes it — t.TempDir's single RemoveAll then
+// fails with "directory not empty" (seen on CI under -race). Removal is
+// retried here until those last writes have landed. Registered before the
+// servers' own Close cleanups, so it runs after them.
+func sharedStateDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "mhl-state-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			err := os.RemoveAll(dir)
+			if err == nil {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Errorf("removing state dir: %v", err)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+	return dir
+}
+
 func newHTTPServer(t *testing.T, token string, files map[string]string) *httptest.Server {
 	return newHTTPServerCfg(t, mcpserver.HTTPConfig{Token: token}, files)
 }
@@ -855,7 +885,7 @@ func TestHTTPRunLiveStatusAndCancelAcrossReplicas(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "slow3.mh"), []byte(httpSlow3WF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 	serverWith := func() *httptest.Server {
 		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
 		if err != nil {
@@ -929,7 +959,7 @@ func TestHTTPRunStatusAfterCompleteAcrossReplicas(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "greet.mh"), []byte(httpWF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 	serverWith := func() *httptest.Server {
 		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
 		if err != nil {
@@ -985,7 +1015,7 @@ func TestHTTPSharedSessionsAcrossReplicas(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "slow3.mh"), []byte(httpSlow3WF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 	serverWith := func() *httptest.Server {
 		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
 		if err != nil {
@@ -1024,7 +1054,7 @@ func TestHTTPRunResumeAcrossProcess(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "gate.mh"), []byte(httpGateWF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 
 	serverWith := func() *httptest.Server {
 		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
@@ -1076,7 +1106,7 @@ func TestHTTPReconstructBoundToPrincipal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "gate.mh"), []byte(httpGateWF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 	cfg := mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir, Token: "gw", PrincipalHeader: "X-Mhl-Principal"}
 	hdr := func(who string) map[string]string {
 		return map[string]string{"Authorization": "Bearer gw", "X-Mhl-Principal": who}
