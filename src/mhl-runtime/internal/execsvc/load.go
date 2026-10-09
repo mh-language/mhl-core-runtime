@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
@@ -56,19 +58,46 @@ func ParseDir(dir string) ([]File, error) {
 	}
 	sort.Strings(paths)
 
-	files := make([]File, 0, len(paths))
-	for _, f := range paths {
-		src, err := os.ReadFile(f)
+	// Files parse independently of each other (imports are only resolved
+	// later, by LoadFiles), so they are read and parsed concurrently; each
+	// result lands at its path's index, keeping the output — and which
+	// error is reported, the first in path order — deterministic.
+	files := make([]File, len(paths))
+	errs := make([]error, len(paths))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for range min(goruntime.GOMAXPROCS(0), len(paths)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				files[i], errs[i] = parseFile(paths[i])
+			}
+		}()
+	}
+	for i := range paths {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	for _, err := range errs {
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", f, err)
+			return nil, err
 		}
-		prog, err := parser.Parse(string(src))
-		if err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", f, err)
-		}
-		files = append(files, File{Path: f, Program: prog})
 	}
 	return files, nil
+}
+
+func parseFile(path string) (File, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return File{}, fmt.Errorf("reading %s: %w", path, err)
+	}
+	prog, err := parser.Parse(string(src))
+	if err != nil {
+		return File{}, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	return File{Path: path, Program: prog}, nil
 }
 
 // Load parses every .mh file under dir and returns one Workflow per declared
@@ -91,28 +120,26 @@ func LoadFiles(dir string, files []File) (map[string]Workflow, error) {
 	// transitively) by many files is parsed and resolved once, not once per
 	// importer.
 	imports := interpreter.NewImportCache()
-	for _, file := range files {
-		f, prog := file.Path, file.Program
-		// Only what this file itself declares is registered here: an
-		// imported pipeline/workflow is merged into prog too (it has to be,
-		// to run), but it belongs to — and is registered by — the file that
-		// declares it. Without this, a shared workflow imported by two files
-		// (the target of two workflow aliases, typically) was reported as
-		// "declared in more than one file".
-		own := map[string]bool{}
-		for _, d := range prog.Decls {
-			if d.Pipeline != nil {
-				own[d.Pipeline.Name] = true
-			}
-			if d.Alias != nil {
-				own[d.Alias.Name] = true
-			}
-		}
+	// Only what a file itself declares is registered here: an imported
+	// pipeline/workflow is merged into prog too (it has to be, to run), but
+	// it belongs to — and is registered by — the file that declares it.
+	// Without this, a shared workflow imported by two files (the target of
+	// two workflow aliases, typically) was reported as "declared in more
+	// than one file". So it is collected before any import is resolved.
+	owns := make([]map[string]bool, len(files))
+	for i, file := range files {
+		owns[i] = ownDecls(file.Program)
 		// A file that declares no pipeline/workflow or alias registers
-		// nothing (only what a file itself declares is registered, see
-		// above), so its imports needn't be resolved here at all — a
+		// nothing, so it is never resolved as an entry of its own — a
 		// library module is resolved only as part of the entry files that
-		// import it.
+		// import it, from the AST already parsed here rather than read
+		// again from disk.
+		if len(owns[i]) == 0 {
+			imports.Preload(file.Path, file.Program)
+		}
+	}
+	for i, file := range files {
+		f, prog, own := file.Path, file.Program, owns[i]
 		if len(own) == 0 {
 			continue
 		}
@@ -171,6 +198,21 @@ func LoadFiles(dir string, files []File) (map[string]Workflow, error) {
 		return nil, fmt.Errorf("no pipeline or workflow declared under %s", dir)
 	}
 	return out, nil
+}
+
+// ownDecls is the set of pipeline/workflow and alias names prog declares
+// itself (before any import is merged in).
+func ownDecls(prog *ast.Program) map[string]bool {
+	own := map[string]bool{}
+	for _, d := range prog.Decls {
+		if d.Pipeline != nil {
+			own[d.Pipeline.Name] = true
+		}
+		if d.Alias != nil {
+			own[d.Alias.Name] = true
+		}
+	}
+	return own
 }
 
 // KindLabel is a human phrase like "workflow", "loop pipeline".

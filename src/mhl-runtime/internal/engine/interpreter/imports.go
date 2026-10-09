@@ -59,11 +59,30 @@ func ResolveImports(file string, prog *ast.Program) error {
 // Not safe for concurrent use.
 type ImportCache struct {
 	modules map[string]*ast.Program
+	// parsed holds modules a caller already parsed (Preload), not yet
+	// resolved; the first resolution that imports one takes it from here
+	// instead of reading the file again.
+	parsed map[string]*ast.Program
 }
 
 // NewImportCache returns an empty ImportCache.
 func NewImportCache() *ImportCache {
-	return &ImportCache{modules: map[string]*ast.Program{}}
+	return &ImportCache{modules: map[string]*ast.Program{}, parsed: map[string]*ast.Program{}}
+}
+
+// Preload hands the cache prog, the freshly parsed, not yet import-resolved
+// content of file — for a caller that has parsed a whole directory already
+// (execsvc.LoadFiles). The first resolution that imports file takes
+// ownership of prog (resolving its imports in place) rather than reading and
+// parsing file again, so prog must not be used elsewhere. A resolution that
+// hits an import cycle keeps what it took to itself, as with any module, and
+// a later import of file then reads it from disk.
+func (c *ImportCache) Preload(file string, prog *ast.Program) {
+	key := file
+	if abs, err := filepath.Abs(file); err == nil {
+		key = abs
+	}
+	c.parsed[key] = prog
 }
 
 // ResolveImportsCached is ResolveImports, reusing (and adding to) the modules
@@ -84,6 +103,7 @@ func ResolveImportsCached(file string, prog *ast.Program, cache *ImportCache) er
 	}
 	if cache != nil {
 		set.shared = cache.modules
+		set.parsed = cache.parsed
 	}
 	if err := resolveImports(file, prog, set); err != nil {
 		return err
@@ -113,6 +133,20 @@ type moduleSet struct {
 	// resolved; a lookup that lands on one is an import cycle.
 	inProgress map[string]bool
 	cyclic     bool
+	// parsed is ImportCache.parsed (possibly nil): already-parsed modules a
+	// miss takes instead of calling loadModule.
+	parsed map[string]*ast.Program
+}
+
+// load returns the module at key, parsed but not yet resolved: a preloaded
+// one if there is one (taken, so no other resolution reuses its AST), else
+// read from disk.
+func (s *moduleSet) load(key, dir, path string) (*ast.Program, error) {
+	if m, ok := s.parsed[key]; ok {
+		delete(s.parsed, key)
+		return m, nil
+	}
+	return loadModule(dir, path)
 }
 
 func (s *moduleSet) get(key string) (*ast.Program, bool) {
@@ -178,7 +212,7 @@ func resolveImports(file string, prog *ast.Program, resolved *moduleSet) error {
 			module, ok := resolved.get(key)
 			if !ok {
 				var err error
-				module, err = loadModule(dir, decl.Import.Path)
+				module, err = resolved.load(key, dir, decl.Import.Path)
 				if err != nil {
 					return fmt.Errorf("%s: %w", label, err)
 				}

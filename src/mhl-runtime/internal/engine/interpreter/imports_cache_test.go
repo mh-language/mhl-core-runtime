@@ -109,3 +109,41 @@ pipeline P { step S { log("p") } }`,
 		t.Fatalf("expected a cycle through the entry file to share no modules, got %d", len(cache.modules))
 	}
 }
+
+// A preloaded module is resolved from the AST handed in, not read from disk —
+// the file is gone by the time anything imports it — and only once: the
+// first resolution takes it, a later one reuses the shared result.
+func TestResolveImportsCachedUsesPreloadedModule(t *testing.T) {
+	dir := t.TempDir()
+	writeModules(t, dir, map[string]string{
+		"lib.mh": `export agent Lib { command: "echo" }`,
+		"a.mh":   `import "lib.mh"` + "\n" + `pipeline A { step S { log("a") } }`,
+		"b.mh":   `import {Lib} from "lib.mh"` + "\n" + `pipeline B { step S { log("b") } }`,
+	})
+	lib := filepath.Join(dir, "lib.mh")
+	src, err := os.ReadFile(lib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	libProg, err := parser.Parse(string(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := NewImportCache()
+	cache.Preload(lib, libProg)
+	if err := os.Remove(lib); err != nil {
+		t.Fatal(err)
+	}
+
+	a := resolveCached(t, filepath.Join(dir, "a.mh"), cache)
+	b := resolveCached(t, filepath.Join(dir, "b.mh"), cache)
+	if got := findAgentDecl(a, "Lib"); got == nil || got != findAgentDecl(libProg, "Lib") {
+		t.Errorf("a.mh: expected the preloaded Lib declaration, got %v", got)
+	}
+	if findAgentDecl(b, "Lib") != findAgentDecl(a, "Lib") {
+		t.Error("b.mh: expected the module a.mh resolved, shared")
+	}
+	if len(cache.parsed) != 0 {
+		t.Errorf("expected the preloaded module to be taken, %d left", len(cache.parsed))
+	}
+}

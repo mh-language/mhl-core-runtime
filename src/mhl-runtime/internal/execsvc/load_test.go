@@ -242,3 +242,65 @@ workflow B { step S { log("b") } }`,
 		t.Error("expected A and B to share lib/agents.mh's declaration node")
 	}
 }
+
+// ParseDir parses concurrently but stays deterministic: files come back in
+// path order and, with several broken files, the error is the first one's.
+func TestParseDirDeterministic(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, n := range []string{"d", "a", "c", "b", "e"} {
+		write(n+".mh", `pipeline P`+n+` { step S { log("x") } }`)
+	}
+	files, err := execsvc.ParseDir(dir)
+	if err != nil {
+		t.Fatalf("ParseDir: %v", err)
+	}
+	var got []string
+	for _, f := range files {
+		got = append(got, filepath.Base(f.Path))
+	}
+	if want := "a.mh b.mh c.mh d.mh e.mh"; strings.Join(got, " ") != want {
+		t.Fatalf("order = %v, want %s", got, want)
+	}
+
+	write("x_broken.mh", `pipeline {`)
+	write("c_broken.mh", `pipeline {`)
+	for i := 0; i < 20; i++ {
+		_, err := execsvc.ParseDir(dir)
+		if err == nil || !strings.Contains(err.Error(), "c_broken.mh") {
+			t.Fatalf("err = %v, want the first broken file in path order (c_broken.mh)", err)
+		}
+	}
+}
+
+// LoadFiles resolves library modules from the ASTs ParseDir produced, not by
+// reading them again: here the library file is gone from disk once parsed.
+func TestLoadFilesUsesParsedLibraryModules(t *testing.T) {
+	dir := t.TempDir()
+	lib := filepath.Join(dir, "lib.mh")
+	if err := os.WriteFile(lib, []byte(`export agent Lib { command: "echo" }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(`import {Lib} from "lib.mh"
+workflow W { step S { log("w") } }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := execsvc.ParseDir(dir)
+	if err != nil {
+		t.Fatalf("ParseDir: %v", err)
+	}
+	if err := os.Remove(lib); err != nil {
+		t.Fatal(err)
+	}
+	workflows, err := execsvc.LoadFiles(dir, files)
+	if err != nil {
+		t.Fatalf("LoadFiles: %v", err)
+	}
+	if _, ok := workflows["W"]; !ok {
+		t.Fatalf("expected W, got %+v", workflows)
+	}
+}
