@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/a2aserver"
+	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
 )
 
@@ -174,7 +175,13 @@ func runServeMCP(args []string, out io.Writer) error {
 		// A `extension store <Name>` declaration in the workflow directory
 		// backs durable state (sessions + checkpoints) with that extension;
 		// otherwise the on-disk .mhl/state tree is used.
-		store, closeStore, err := discoverStoreExtension(dir, os.Stderr)
+		// The directory is parsed once here, for that scan, and the same
+		// ASTs are what ServeHTTP loads the workflows from.
+		files, err := execsvc.ParseDir(dir)
+		if err != nil {
+			return err
+		}
+		store, closeStore, err := discoverStoreExtension(dir, files, os.Stderr)
 		if err != nil {
 			return err
 		}
@@ -190,6 +197,7 @@ func runServeMCP(args []string, out io.Writer) error {
 			StateDir:          stateDir,
 			PrincipalHeader:   principalH,
 			Store:             store,
+			Files:             files,
 			DrainTimeout:      drainTimeout,
 			MaxConcurrentRuns: maxRuns,
 			SingleReplica:     singleRepl,

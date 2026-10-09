@@ -40,17 +40,80 @@ import (
 // (mergeableDecl below excludes it): merging one in would make `mhl test`
 // on the importer silently run a suite that belongs to a different file.
 func ResolveImports(file string, prog *ast.Program) error {
+	return ResolveImportsCached(file, prog, nil)
+}
+
+// ImportCache shares fully-resolved modules across several
+// ResolveImportsCached calls, so a directory of entry files that all import
+// the same modules (execsvc.Load) reads and parses each of those modules once
+// instead of once per entry file. A nil *ImportCache disables sharing.
+//
+// Only modules from an acyclic resolution are shared: an acyclic module's
+// resolved declaration set depends on nothing but its own file and its
+// imports, so every importer would rebuild an identical one. A call that hits
+// an import cycle keeps its modules to itself, since their content then
+// depends on which file the traversal entered the cycle from. Entry files are
+// never shared either — ResolveImportsCached's prog is the caller's, and gets
+// resolvePartials applied to it.
+//
+// Not safe for concurrent use.
+type ImportCache struct {
+	modules map[string]*ast.Program
+	// parsed holds modules a caller already parsed (Preload), not yet
+	// resolved; the first resolution that imports one takes it from here
+	// instead of reading the file again.
+	parsed map[string]*ast.Program
+}
+
+// NewImportCache returns an empty ImportCache.
+func NewImportCache() *ImportCache {
+	return &ImportCache{modules: map[string]*ast.Program{}, parsed: map[string]*ast.Program{}}
+}
+
+// Preload hands the cache prog, the freshly parsed, not yet import-resolved
+// content of file — for a caller that has parsed a whole directory already
+// (execsvc.LoadFiles). The first resolution that imports file takes
+// ownership of prog (resolving its imports in place) rather than reading and
+// parsing file again, so prog must not be used elsewhere. A resolution that
+// hits an import cycle keeps what it took to itself, as with any module, and
+// a later import of file then reads it from disk.
+func (c *ImportCache) Preload(file string, prog *ast.Program) {
+	key := file
+	if abs, err := filepath.Abs(file); err == nil {
+		key = abs
+	}
+	c.parsed[key] = prog
+}
+
+// ResolveImportsCached is ResolveImports, reusing (and adding to) the modules
+// in cache — see ImportCache.
+func ResolveImportsCached(file string, prog *ast.Program, cache *ImportCache) error {
 	prog.AliasMap()
 	key := file
 	if abs, err := filepath.Abs(file); err == nil {
 		key = abs
 	}
-	// Seeding the cache with the entry file itself closes the same cycle
+	// Seeding the set with the entry file itself closes the same cycle
 	// guard around it that every other module gets: if something it
 	// (transitively) uses `use`s it back, that lookup finds prog — instead
 	// of loadModule-ing and recursing into file all over again, forever.
-	if err := resolveImports(file, prog, map[string]*ast.Program{key: prog}); err != nil {
+	set := &moduleSet{
+		local:      map[string]*ast.Program{key: prog},
+		inProgress: map[string]bool{key: true},
+	}
+	if cache != nil {
+		set.shared = cache.modules
+		set.parsed = cache.parsed
+	}
+	if err := resolveImports(file, prog, set); err != nil {
 		return err
+	}
+	if cache != nil && !set.cyclic {
+		for k, m := range set.local {
+			if k != key {
+				cache.modules[k] = m
+			}
+		}
 	}
 	// Every import (named or whole-file) is resolved by now, so every
 	// `partial` fragment a whole-file `import "..."` pulled in is sitting in
@@ -58,6 +121,43 @@ func ResolveImports(file string, prog *ast.Program) error {
 	// into one Pipeline per Name+Kind before anything downstream (starting
 	// with runtime.FindPipeline/PipelineFromAST) looks at prog.Decls.
 	return resolvePartials(prog)
+}
+
+// moduleSet is the module cache one ResolveImportsCached call resolves
+// against: what this call loaded itself (local, seeded with the entry file),
+// falling back to modules shared by earlier calls (shared, possibly nil).
+type moduleSet struct {
+	local  map[string]*ast.Program
+	shared map[string]*ast.Program
+	// inProgress holds every module whose own imports are still being
+	// resolved; a lookup that lands on one is an import cycle.
+	inProgress map[string]bool
+	cyclic     bool
+	// parsed is ImportCache.parsed (possibly nil): already-parsed modules a
+	// miss takes instead of calling loadModule.
+	parsed map[string]*ast.Program
+}
+
+// load returns the module at key, parsed but not yet resolved: a preloaded
+// one if there is one (taken, so no other resolution reuses its AST), else
+// read from disk.
+func (s *moduleSet) load(key, dir, path string) (*ast.Program, error) {
+	if m, ok := s.parsed[key]; ok {
+		delete(s.parsed, key)
+		return m, nil
+	}
+	return loadModule(dir, path)
+}
+
+func (s *moduleSet) get(key string) (*ast.Program, bool) {
+	if m, ok := s.local[key]; ok {
+		if s.inProgress[key] {
+			s.cyclic = true
+		}
+		return m, true
+	}
+	m, ok := s.shared[key]
+	return m, ok
 }
 
 // resolveImports is ResolveImports' recursive core. resolved caches every
@@ -74,9 +174,13 @@ func ResolveImports(file string, prog *ast.Program) error {
 // for the import graph instead of control flow; a name that only becomes
 // resolvable via the cycle's own not-yet-finished side simply won't be
 // found, the same inherent limit any circular-dependency graph has.
-func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Program) error {
+func resolveImports(file string, prog *ast.Program, resolved *moduleSet) error {
 	prog.AliasMap()
 	dir := filepath.Dir(file)
+	// Built on the first import only: the dedup checks below would
+	// otherwise rescan prog.Decls once per merged declaration (quadratic in
+	// the size of the import closure).
+	var present *declIndex
 	for _, decl := range prog.Decls {
 		switch {
 		case decl.Prompt != nil && decl.Prompt.Source != "":
@@ -105,17 +209,19 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 				key = abs
 			}
 
-			module, ok := resolved[key]
+			module, ok := resolved.get(key)
 			if !ok {
 				var err error
-				module, err = loadModule(dir, decl.Import.Path)
+				module, err = resolved.load(key, dir, decl.Import.Path)
 				if err != nil {
 					return fmt.Errorf("%s: %w", label, err)
 				}
-				resolved[key] = module
+				resolved.local[key] = module
+				resolved.inProgress[key] = true
 				if err := resolveImports(modulePath, module, resolved); err != nil {
 					return fmt.Errorf("%s: %w", label, err)
 				}
+				delete(resolved.inProgress, key)
 			}
 
 			if err := mergeAliases(prog, module.AliasMap()); err != nil {
@@ -132,6 +238,9 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 				}
 			}
 
+			if present == nil {
+				present = newDeclIndex(prog.Decls)
+			}
 			for _, imported := range module.Decls {
 				kind, name, ok := mergeableDecl(imported)
 				if !ok {
@@ -149,19 +258,21 @@ func resolveImports(file string, prog *ast.Program, resolved map[string]*ast.Pro
 				// since loadModule caches per path), without discarding a
 				// distinct fragment that just happens to share a name.
 				if imported.Pipeline != nil && imported.Pipeline.Partial {
-					if partialFragmentPresent(prog.Decls, imported.Pipeline) {
+					if present.hasFragment(imported.Pipeline) {
 						continue
 					}
 					prog.Decls = append(prog.Decls, imported)
+					present.add(imported)
 					continue
 				}
-				if declPresent(prog.Decls, kind, name) {
+				if present.has(kind, name) {
 					continue
 				}
 				if imported.Tool != nil {
 					imported.Tool.Imported = true
 				}
 				prog.Decls = append(prog.Decls, imported)
+				present.add(imported)
 			}
 		}
 	}
@@ -260,32 +371,46 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 	}
 }
 
-// declPresent reports whether decls already has a mergeable declaration
-// with this exact (kind, name) — a diamond dependency (two different
-// `import`s eventually pulling in the same module) would otherwise append the
-// same declaration twice; harmless for the flat-scan lookups that read it,
-// but pointless bloat.
-func declPresent(decls []*ast.Declaration, kind, name string) bool {
-	for _, d := range decls {
-		if k, n, ok := mergeableDecl(d); ok && k == kind && n == name {
-			return true
-		}
-	}
-	return false
+// declIndex indexes a program's Decls for the import merge's dedup checks,
+// kept in step with every declaration appended after it is built.
+type declIndex struct {
+	names map[string]bool
+	frags map[*ast.Pipeline]bool
 }
 
-// partialFragmentPresent is declPresent's counterpart for a `partial`
-// pipeline/workflow fragment: identity, not (kind, name), since two
-// distinct fragments are expected to share a name (that's the whole point —
-// resolvePartials merges them), and only the exact same *ast.Pipeline
-// reached twice (a true diamond import) should be deduped.
-func partialFragmentPresent(decls []*ast.Declaration, frag *ast.Pipeline) bool {
+func newDeclIndex(decls []*ast.Declaration) *declIndex {
+	idx := &declIndex{names: map[string]bool{}, frags: map[*ast.Pipeline]bool{}}
 	for _, d := range decls {
-		if d.Pipeline == frag {
-			return true
-		}
+		idx.add(d)
 	}
-	return false
+	return idx
+}
+
+func (idx *declIndex) add(d *ast.Declaration) {
+	if kind, name, ok := mergeableDecl(d); ok {
+		idx.names[kind+"\x00"+name] = true
+	}
+	if d.Pipeline != nil {
+		idx.frags[d.Pipeline] = true
+	}
+}
+
+// has reports whether the program already has a mergeable declaration with
+// this exact (kind, name) — a diamond dependency (two different `import`s
+// eventually pulling in the same module) would otherwise append the same
+// declaration twice; harmless for the flat-scan lookups that read it, but
+// pointless bloat.
+func (idx *declIndex) has(kind, name string) bool {
+	return idx.names[kind+"\x00"+name]
+}
+
+// hasFragment is has' counterpart for a `partial` pipeline/workflow
+// fragment: identity, not (kind, name), since two distinct fragments are
+// expected to share a name (that's the whole point — resolvePartials merges
+// them), and only the exact same *ast.Pipeline reached twice (a true diamond
+// import) should be deduped.
+func (idx *declIndex) hasFragment(frag *ast.Pipeline) bool {
+	return idx.frags[frag]
 }
 
 // loadModule reads and parses the .mh file at path, resolved relative to

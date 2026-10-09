@@ -3,6 +3,8 @@ package lint_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -2641,4 +2643,77 @@ pipeline P {
 	if len(findings) != 0 {
 		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
 	}
+}
+
+// Dir shares resolved import modules across the files it scans, but its
+// output must stay exactly what linting each file on its own gives: a
+// finding inside a shared module is still reported once per file that
+// reaches it, in the same order — through diamonds, a module that fails to
+// load, an unexported name, and an import cycle (which is never shared).
+func TestDirMatchesFileByFile(t *testing.T) {
+	cases := map[string]map[string]string{
+		"acyclic": {
+			"shared/base.mh": `import "missing.mh"
+prompt Broken from "nope.md"
+export agent Base { command: "echo" }`,
+			"shared/left.mh": `import "base.mh"
+export agent Left { command: "echo" }`,
+			"shared/right.mh": `import {Base, Hidden} from "base.mh"
+export agent Right { command: "echo" }`,
+			"a.mh": `import "shared/left.mh"
+import "shared/right.mh"
+pipeline A { step S { var r = Ghost.run(prompt: "hi") } }`,
+			"b.mh": `import "shared/right.mh"
+pipeline B { step S { var r = Base.run(prompt: "hi") } }`,
+			"c.mh": `import {Left} from "shared/left.mh"
+pipeline C { step S { var r = Left.run(prompt: "hi") } }`,
+		},
+		"cyclic": {
+			"x.mh": `import "y.mh"
+import "gone.mh"
+export agent X { command: "echo" }`,
+			"y.mh": `import {X, Nope} from "x.mh"
+export agent Y { command: "echo" }`,
+			"main.mh": `import "y.mh"
+pipeline M { step S { var r = X.run(prompt: "hi") } }`,
+			"other.mh": `import "x.mh"
+pipeline O { step S { var r = Y.run(prompt: "hi") } }`,
+		},
+	}
+	for name, files := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			var paths []string
+			for rel, content := range files {
+				p := filepath.Join(dir, rel)
+				write(t, p, content)
+				paths = append(paths, p)
+			}
+			sort.Strings(paths)
+
+			var want []lint.Finding
+			for _, p := range paths {
+				want = append(want, lint.File(p)...)
+			}
+			got, err := lint.Dir(dir)
+			if err != nil {
+				t.Fatalf("Dir: %v", err)
+			}
+			if len(want) == 0 {
+				t.Fatal("fixture should produce findings")
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("Dir differs from File-by-File:\ngot:\n%s\nwant:\n%s", findingLines(got), findingLines(want))
+			}
+		})
+	}
+}
+
+func findingLines(fs []lint.Finding) string {
+	var b strings.Builder
+	for _, f := range fs {
+		b.WriteString(f.String())
+		b.WriteByte('\n')
+	}
+	return b.String()
 }

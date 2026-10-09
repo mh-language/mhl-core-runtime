@@ -22,7 +22,10 @@ import (
 // (checkAgentCalls) see everything the runtime would actually have
 // resolved by the time a step runs, not just the top-level requested
 // names.
-func mergeImports(file string, prog *ast.Program) (*ast.Program, []Finding) {
+//
+// cache, when non-nil, shares resolved modules with earlier mergeImports
+// calls (Dir) — see importCache.
+func mergeImports(file string, prog *ast.Program, cache *importCache) (*ast.Program, []Finding) {
 	merged := &ast.Program{Decls: append([]*ast.Declaration{}, prog.Decls...)}
 	merged.AliasMap()
 	var findings []Finding
@@ -30,11 +33,119 @@ func mergeImports(file string, prog *ast.Program) (*ast.Program, []Finding) {
 	if abs, err := filepath.Abs(file); err == nil {
 		key = abs
 	}
-	// Seeding the cache with the entry file itself is what stops something
+	// Seeding the set with the entry file itself is what stops something
 	// it (transitively) uses from `import`-ing it right back and recursing
 	// forever — see resolveImportsInto's doc comment.
-	resolveImportsInto(file, prog, merged, map[string]*ast.Program{key: prog}, &findings)
+	set := &moduleSet{
+		local:      map[string]*ast.Program{key: prog},
+		inProgress: map[string]bool{key: true},
+		recs:       map[string]*cachedModule{},
+	}
+	if cache != nil {
+		set.shared = cache.modules
+	}
+	resolveImportsInto(file, prog, merged, set, frameOut{findings: &findings})
+	if cache != nil && !set.cyclic {
+		for k, c := range set.recs {
+			cache.modules[k] = c
+		}
+	}
 	return merged, findings
+}
+
+// importCache shares resolved modules across the mergeImports calls of one
+// Dir scan, so a module imported by many files is read and parsed once.
+// Unlike interpreter.ImportCache it must also keep lint's output unchanged:
+// a module's findings are reported once per entry file that reaches it, in
+// depth-first order. So each cached module carries the record of what its
+// resolution emitted — its own findings and, in order, the modules it
+// imports — and a cache hit replays that record (see moduleSet.replay)
+// instead of re-resolving. Only acyclic resolutions are shared, as in
+// interpreter.ImportCache.
+type importCache struct {
+	modules map[string]*cachedModule
+}
+
+func newImportCache() *importCache {
+	return &importCache{modules: map[string]*cachedModule{}}
+}
+
+type cachedModule struct {
+	prog   *ast.Program
+	events []importEvent
+}
+
+// importEvent is one step of a module's recorded resolution: a finding it
+// emitted itself, or (dep non-empty) the point where it imported module dep,
+// whose own findings follow there unless already reported in this call.
+type importEvent struct {
+	finding Finding
+	dep     string
+}
+
+// moduleSet is one mergeImports call's view of the modules: local holds
+// every module already reached by this call (so its findings are not
+// reported twice), shared those resolved by earlier calls.
+type moduleSet struct {
+	local      map[string]*ast.Program
+	shared     map[string]*cachedModule
+	inProgress map[string]bool
+	cyclic     bool
+	// recs records the resolution of every module this call loaded itself.
+	recs map[string]*cachedModule
+}
+
+// lookup returns the module at key, reporting the findings of a shared
+// module (and of whatever it imports) the first time this call reaches it.
+func (s *moduleSet) lookup(key string, findings *[]Finding) (*ast.Program, bool) {
+	if m, ok := s.local[key]; ok {
+		if s.inProgress[key] {
+			s.cyclic = true
+		}
+		return m, true
+	}
+	c, ok := s.shared[key]
+	if !ok {
+		return nil, false
+	}
+	s.replay(key, c, findings)
+	return c.prog, true
+}
+
+func (s *moduleSet) replay(key string, c *cachedModule, findings *[]Finding) {
+	s.local[key] = c.prog
+	for _, ev := range c.events {
+		if ev.dep == "" {
+			*findings = append(*findings, ev.finding)
+			continue
+		}
+		if _, seen := s.local[ev.dep]; seen {
+			continue
+		}
+		if d, ok := s.shared[ev.dep]; ok {
+			s.replay(ev.dep, d, findings)
+		}
+	}
+}
+
+// frameOut is where one resolveImportsInto frame reports: the call's
+// findings, plus, for a module being recorded for the cache, its events.
+type frameOut struct {
+	findings *[]Finding
+	events   *[]importEvent
+}
+
+func (o frameOut) emit(f Finding) {
+	*o.findings = append(*o.findings, f)
+	if o.events != nil {
+		*o.events = append(*o.events, importEvent{finding: f})
+	}
+}
+
+func (o frameOut) dep(key string) {
+	if o.events != nil {
+		*o.events = append(*o.events, importEvent{dep: key})
+	}
 }
 
 // resolveImportsInto walks prog's `import` declarations (whose source
@@ -50,7 +161,7 @@ func mergeImports(file string, prog *ast.Program) (*ast.Program, []Finding) {
 // `export` of its own repeating the name — checking after resolving is
 // what makes that resolvable here too, not just at run time).
 //
-// resolved caches every module reached so far, keyed by absolute path — a
+// resolved holds every module reached so far, keyed by absolute path — a
 // module is loaded and recursively resolved *once* per mergeImports call,
 // no matter how many different files `import` something from it (a diamond
 // dependency), so every one of them sees the same, fully-merged
@@ -60,15 +171,17 @@ func mergeImports(file string, prog *ast.Program) (*ast.Program, []Finding) {
 // A) from recursing forever — the same shape maxStepVisits guards a
 // runaway `goto` elsewhere in this codebase, just for the import graph
 // instead of control flow.
-func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, resolved map[string]*ast.Program, findings *[]Finding) {
+func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, resolved *moduleSet, out frameOut) {
 	prog.AliasMap()
 	dir := filepath.Dir(file)
+	// See interpreter.resolveImports: indexed once, on the first import.
+	var present *declIndex
 	for _, decl := range prog.Decls {
 		switch {
 		case decl.Prompt != nil && decl.Prompt.Source != "":
 			fm, text, err := loadPromptSource(dir, decl.Prompt.Source)
 			if err != nil {
-				*findings = append(*findings, Finding{
+				out.emit(Finding{
 					File: file, Line: decl.Prompt.Pos.Line, Column: decl.Prompt.Pos.Column,
 					Message: fmt.Sprintf("prompt %q from %q: %s", decl.Prompt.Name, decl.Prompt.Source, err),
 				})
@@ -79,7 +192,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 		case decl.Skill != nil && decl.Skill.Source != "":
 			fm, content, err := loadSkillSource(dir, decl.Skill.Source)
 			if err != nil {
-				*findings = append(*findings, Finding{
+				out.emit(Finding{
 					File: file, Line: decl.Skill.Pos.Line, Column: decl.Skill.Pos.Column,
 					Message: fmt.Sprintf("skill %q from %q: %s", decl.Skill.Name, decl.Skill.Source, err),
 				})
@@ -89,7 +202,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			decl.Skill.Content = content
 		case decl.Schema != nil:
 			if err := decl.Schema.Load(dir); err != nil {
-				*findings = append(*findings, Finding{
+				out.emit(Finding{
 					File: file, Line: decl.Schema.Pos.Line, Column: decl.Schema.Pos.Column,
 					Message: fmt.Sprintf("schema %q from %q: %s", decl.Schema.Name, decl.Schema.Source, err),
 				})
@@ -102,24 +215,29 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				key = abs
 			}
 
-			module, ok := resolved[key]
+			module, ok := resolved.lookup(key, out.findings)
 			if !ok {
 				var err error
 				module, err = loadModule(dir, decl.Import.Path)
 				if err != nil {
-					*findings = append(*findings, Finding{
+					out.emit(Finding{
 						File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
 						Message: fmt.Sprintf("%s: %s", label, err),
 					})
 					continue
 				}
-				resolved[key] = module
-				resolveImportsInto(modulePath, module, module, resolved, findings)
+				resolved.local[key] = module
+				resolved.inProgress[key] = true
+				rec := &cachedModule{prog: module}
+				resolveImportsInto(modulePath, module, module, resolved, frameOut{findings: out.findings, events: &rec.events})
+				delete(resolved.inProgress, key)
+				resolved.recs[key] = rec
 			}
+			out.dep(key)
 
 			missing := false
 			if err := mergeAliases(merged, module.AliasMap()); err != nil {
-				*findings = append(*findings, Finding{
+				out.emit(Finding{
 					File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
 					Message: fmt.Sprintf("%s: %s", label, err),
 				})
@@ -127,7 +245,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			}
 			for _, item := range decl.Import.Items {
 				if _, found := findExport(module, item.Name); !found {
-					*findings = append(*findings, Finding{
+					out.emit(Finding{
 						File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
 						Message: fmt.Sprintf("%s: %q is not exported", label, item.Name),
 					})
@@ -136,7 +254,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				}
 				if item.Alias != "" {
 					if err := addAlias(merged, item.Alias, item.Name); err != nil {
-						*findings = append(*findings, Finding{
+						out.emit(Finding{
 							File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
 							Message: fmt.Sprintf("%s: %s", label, err),
 						})
@@ -148,6 +266,9 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				continue
 			}
 
+			if present == nil {
+				present = newDeclIndex(merged.Decls)
+			}
 			for _, imported := range module.Decls {
 				kind, name, mergeable := mergeableDecl(imported)
 				if !mergeable {
@@ -158,19 +279,21 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				// (kind, name), since sharing a name with another fragment
 				// is the whole point.
 				if imported.Pipeline != nil && imported.Pipeline.Partial {
-					if partialFragmentPresent(merged.Decls, imported.Pipeline) {
+					if present.hasFragment(imported.Pipeline) {
 						continue
 					}
 					merged.Decls = append(merged.Decls, imported)
+					present.add(imported)
 					continue
 				}
-				if declPresent(merged.Decls, kind, name) {
+				if present.has(kind, name) {
 					continue
 				}
 				if imported.Tool != nil {
 					imported.Tool.Imported = true
 				}
 				merged.Decls = append(merged.Decls, imported)
+				present.add(imported)
 			}
 		}
 	}
@@ -264,27 +387,40 @@ func mergeableDecl(decl *ast.Declaration) (kind, name string, ok bool) {
 	}
 }
 
-// declPresent reports whether decls already has a mergeable declaration
-// with this exact (kind, name) — see mergeableDecl.
-func declPresent(decls []*ast.Declaration, kind, name string) bool {
-	for _, d := range decls {
-		if k, n, ok := mergeableDecl(d); ok && k == kind && n == name {
-			return true
-		}
-	}
-	return false
+// declIndex indexes a program's Decls for the import merge's dedup checks —
+// mirrors interpreter.declIndex.
+type declIndex struct {
+	names map[string]bool
+	frags map[*ast.Pipeline]bool
 }
 
-// partialFragmentPresent is declPresent's counterpart for a `partial`
-// pipeline/workflow fragment — see interpreter.partialFragmentPresent,
-// which this mirrors.
-func partialFragmentPresent(decls []*ast.Declaration, frag *ast.Pipeline) bool {
+func newDeclIndex(decls []*ast.Declaration) *declIndex {
+	idx := &declIndex{names: map[string]bool{}, frags: map[*ast.Pipeline]bool{}}
 	for _, d := range decls {
-		if d.Pipeline == frag {
-			return true
-		}
+		idx.add(d)
 	}
-	return false
+	return idx
+}
+
+func (idx *declIndex) add(d *ast.Declaration) {
+	if kind, name, ok := mergeableDecl(d); ok {
+		idx.names[kind+"\x00"+name] = true
+	}
+	if d.Pipeline != nil {
+		idx.frags[d.Pipeline] = true
+	}
+}
+
+// has reports whether the program already has a mergeable declaration with
+// this exact (kind, name) — see mergeableDecl.
+func (idx *declIndex) has(kind, name string) bool {
+	return idx.names[kind+"\x00"+name]
+}
+
+// hasFragment is has' counterpart for a `partial` pipeline/workflow
+// fragment: identity, not (kind, name).
+func (idx *declIndex) hasFragment(frag *ast.Pipeline) bool {
+	return idx.frags[frag]
 }
 
 // loadModule reads and parses the .mh file at path, resolved relative to

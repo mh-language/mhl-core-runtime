@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
 )
 
@@ -124,6 +125,36 @@ func pollRun(t *testing.T, url, sid, runID string) map[string]any {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
+}
+
+// sharedStateDir is a t.TempDir for the --state-dir a test's servers share.
+// A run still in flight when the test returns is cancelled by t.Context(),
+// and its goroutine can still be writing its final status/checkpoint into the
+// directory while cleanup removes it — t.TempDir's single RemoveAll then
+// fails with "directory not empty" (seen on CI under -race). Removal is
+// retried here until those last writes have landed. Registered before the
+// servers' own Close cleanups, so it runs after them.
+func sharedStateDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "mhl-state-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			err := os.RemoveAll(dir)
+			if err == nil {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Errorf("removing state dir: %v", err)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+	return dir
 }
 
 func newHTTPServer(t *testing.T, token string, files map[string]string) *httptest.Server {
@@ -854,7 +885,7 @@ func TestHTTPRunLiveStatusAndCancelAcrossReplicas(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "slow3.mh"), []byte(httpSlow3WF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 	serverWith := func() *httptest.Server {
 		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
 		if err != nil {
@@ -928,7 +959,7 @@ func TestHTTPRunStatusAfterCompleteAcrossReplicas(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "greet.mh"), []byte(httpWF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 	serverWith := func() *httptest.Server {
 		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
 		if err != nil {
@@ -984,7 +1015,7 @@ func TestHTTPSharedSessionsAcrossReplicas(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "slow3.mh"), []byte(httpSlow3WF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 	serverWith := func() *httptest.Server {
 		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
 		if err != nil {
@@ -1023,7 +1054,7 @@ func TestHTTPRunResumeAcrossProcess(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "gate.mh"), []byte(httpGateWF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 
 	serverWith := func() *httptest.Server {
 		h, err := mcpserver.HandlerWithState(t.Context(), mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir}, io.Discard)
@@ -1075,7 +1106,7 @@ func TestHTTPReconstructBoundToPrincipal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "gate.mh"), []byte(httpGateWF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
+	stateDir := sharedStateDir(t)
 	cfg := mcpserver.HTTPConfig{Dir: dir, StateDir: stateDir, Token: "gw", PrincipalHeader: "X-Mhl-Principal"}
 	hdr := func(who string) map[string]string {
 		return map[string]string{"Authorization": "Bearer gw", "X-Mhl-Principal": who}
@@ -1691,5 +1722,44 @@ func TestHTTPConcurrentRequestsOnSharedSessionWithStateDir(t *testing.T) {
 	}
 	if n > 10 {
 		t.Errorf("... and %d more errors", n-10)
+	}
+}
+
+// A caller that already parsed the directory (cli's `extension store` scan)
+// hands the ASTs over in HTTPConfig.Files and the server loads from those —
+// it does not read cfg.Dir again: here the .mh file is gone from disk by the
+// time the handler is built, and the workflow is still served.
+func TestHTTPLoadsFromPreParsedFiles(t *testing.T) {
+	dir := t.TempDir()
+	wf := filepath.Join(dir, "wf.mh")
+	if err := os.WriteFile(wf, []byte(httpWF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := execsvc.ParseDir(dir)
+	if err != nil {
+		t.Fatalf("ParseDir: %v", err)
+	}
+	if err := os.Remove(wf); err != nil {
+		t.Fatal(err)
+	}
+
+	h, err := mcpserver.Handler(mcpserver.HTTPConfig{Dir: dir, Files: files}, io.Discard)
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+
+	resp, body := postMCP(t, ts.URL, "", rpcMap(1, "initialize", map[string]any{
+		"protocolVersion": "2025-06-18", "capabilities": map[string]any{},
+		"clientInfo": map[string]any{"name": "t", "version": "0"},
+	}), nil)
+	sid := resp.Header.Get("Mcp-Session-Id")
+	if sid == "" {
+		t.Fatalf("no session id: %v", body)
+	}
+	_, body = postMCP(t, ts.URL, sid, rpcMap(2, "tools/list", nil), nil)
+	if !strings.Contains(fmt.Sprint(body), "Greet") {
+		t.Fatalf("tools/list = %v, want the workflow from the pre-parsed files", body)
 	}
 }

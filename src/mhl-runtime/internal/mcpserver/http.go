@@ -53,6 +53,12 @@ type HTTPConfig struct {
 	Token    string // "" disables bearer auth
 	StateDir string // "" uses a per-process temp dir removed on shutdown
 
+	// Files, when non-nil, is Dir already parsed by execsvc.ParseDir — a
+	// caller that inspected the declarations first (cli: the `extension
+	// store` scan) passes them so Dir isn't parsed a second time. Consumed:
+	// their imports are resolved in place.
+	Files []execsvc.File
+
 	// PrincipalHeader, when set, is the header an authenticated upstream (an
 	// API Gateway authorizer, Envoy) puts the caller's identity in; the
 	// runtime keys run ownership on it. Requires Token — without the shared
@@ -258,7 +264,13 @@ type httpServer struct {
 }
 
 func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handler, *httpServer, error) {
-	tools, err := execsvc.Load(cfg.Dir)
+	var tools map[string]execsvc.Workflow
+	var err error
+	if cfg.Files != nil {
+		tools, err = execsvc.LoadFiles(cfg.Dir, cfg.Files)
+	} else {
+		tools, err = execsvc.Load(cfg.Dir)
+	}
 	if err != nil {
 		return nil, nil, err
 	}

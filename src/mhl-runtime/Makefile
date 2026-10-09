@@ -7,7 +7,7 @@ SAMPLE := ../../sample
 VERSION := $(shell git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X $(MODULE)/internal/cli.Version=$(VERSION)
 
-.PHONY: build test functional-test release clean verify-release linux-arm64
+.PHONY: build test functional-test release clean verify-release redhat mac-apple-silicon linux-arm64
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(DIST)/mhl $(CMD)
@@ -22,7 +22,13 @@ functional-test: build
 	$(SAMPLE)/mhl test $(SAMPLE)/syntax
 	$(SAMPLE)/mhl test $(SAMPLE)/features
 
-release: $(DIST)/linux-amd64/mhl $(DIST)/darwin-arm64/mhl $(DIST)/windows-amd64/mhl.exe
+# Red Hat runs the standard Linux binaries; build both supported CPU architectures.
+redhat: $(DIST)/linux-amd64/mhl $(DIST)/linux-arm64/mhl
+
+# M3, M4, and other Apple Silicon Macs use the same darwin/arm64 binary.
+mac-apple-silicon: $(DIST)/darwin-arm64/mhl
+
+release: redhat mac-apple-silicon $(DIST)/windows-amd64/mhl.exe
 
 $(DIST):
 	mkdir -p $(DIST)
@@ -39,9 +45,7 @@ $(DIST)/windows-amd64/mhl.exe: $(shell find . -name '*.go' -type f)
 	@mkdir -p $(DIST)
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o $@ $(CMD)
 
-# linux/arm64 host binary — for `kubectl cp` into a pod or a non-multi-stage
-# container build on Apple Silicon. Not part of `release` (CI expectations
-# unchanged); build on demand with `make linux-arm64`.
+# Keep the existing single-architecture target for callers that need it.
 linux-arm64: $(DIST)/linux-arm64/mhl
 $(DIST)/linux-arm64/mhl: $(shell find . -name '*.go' -type f)
 	@mkdir -p $(DIST)
@@ -49,6 +53,7 @@ $(DIST)/linux-arm64/mhl: $(shell find . -name '*.go' -type f)
 
 verify-release: release
 	test -s $(DIST)/linux-amd64/mhl
+	test -s $(DIST)/linux-arm64/mhl
 	test -s $(DIST)/darwin-arm64/mhl
 	test -s $(DIST)/windows-amd64/mhl.exe
 	@echo "release verified: CGO disabled for all targets"

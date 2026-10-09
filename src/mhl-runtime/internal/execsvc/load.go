@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
@@ -29,51 +31,119 @@ type Workflow struct {
 	Loop bool
 }
 
-// Load parses every .mh file under dir and returns one Workflow per declared
-// pipeline/workflow and workflow alias, keyed by declaration name. A name declared in two files
-// is an error, and a directory that declares none is an error.
-func Load(dir string) (map[string]Workflow, error) {
-	var files []string
+// File is one .mh file under a workflow directory, parsed but not yet
+// import-resolved — what ParseDir returns and LoadFiles consumes.
+type File struct {
+	Path    string
+	Program *ast.Program
+}
+
+// ParseDir reads and parses every .mh file under dir (recursively, sorted by
+// path). A caller that has to inspect a directory's declarations before
+// loading it (`mhl serve mcp --http` looks for an `extension store`) parses
+// it once with this and hands the result to LoadFiles.
+func ParseDir(dir string) ([]File, error) {
+	var paths []string
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() && strings.HasSuffix(path, ".mh") {
-			files = append(files, path)
+			paths = append(paths, path)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(files)
+	sort.Strings(paths)
 
+	// Files parse independently of each other (imports are only resolved
+	// later, by LoadFiles), so they are read and parsed concurrently; each
+	// result lands at its path's index, keeping the output — and which
+	// error is reported, the first in path order — deterministic.
+	files := make([]File, len(paths))
+	errs := make([]error, len(paths))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for range min(goruntime.GOMAXPROCS(0), len(paths)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				files[i], errs[i] = parseFile(paths[i])
+			}
+		}()
+	}
+	for i := range paths {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
+		}
+	}
+	return files, nil
+}
+
+func parseFile(path string) (File, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return File{}, fmt.Errorf("reading %s: %w", path, err)
+	}
+	prog, err := parser.Parse(string(src))
+	if err != nil {
+		return File{}, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	return File{Path: path, Program: prog}, nil
+}
+
+// Load parses every .mh file under dir and returns one Workflow per declared
+// pipeline/workflow and workflow alias, keyed by declaration name. A name declared in two files
+// is an error, and a directory that declares none is an error.
+func Load(dir string) (map[string]Workflow, error) {
+	files, err := ParseDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	return LoadFiles(dir, files)
+}
+
+// LoadFiles is Load over files already parsed by ParseDir(dir); dir only
+// labels errors. It resolves each Program's imports in place, so files must
+// not be reused afterwards.
+func LoadFiles(dir string, files []File) (map[string]Workflow, error) {
 	out := map[string]Workflow{}
-	for _, f := range files {
-		src, err := os.ReadFile(f)
-		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", f, err)
+	// One cache for the whole directory: a module imported (directly or
+	// transitively) by many files is parsed and resolved once, not once per
+	// importer.
+	imports := interpreter.NewImportCache()
+	// Only what a file itself declares is registered here: an imported
+	// pipeline/workflow is merged into prog too (it has to be, to run), but
+	// it belongs to — and is registered by — the file that declares it.
+	// Without this, a shared workflow imported by two files (the target of
+	// two workflow aliases, typically) was reported as "declared in more
+	// than one file". So it is collected before any import is resolved.
+	owns := make([]map[string]bool, len(files))
+	for i, file := range files {
+		owns[i] = ownDecls(file.Program)
+		// A file that declares no pipeline/workflow or alias registers
+		// nothing, so it is never resolved as an entry of its own — a
+		// library module is resolved only as part of the entry files that
+		// import it, from the AST already parsed here rather than read
+		// again from disk.
+		if len(owns[i]) == 0 {
+			imports.Preload(file.Path, file.Program)
 		}
-		prog, err := parser.Parse(string(src))
-		if err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", f, err)
+	}
+	for i, file := range files {
+		f, prog, own := file.Path, file.Program, owns[i]
+		if len(own) == 0 {
+			continue
 		}
-		// Only what this file itself declares is registered here: an
-		// imported pipeline/workflow is merged into prog too (it has to be,
-		// to run), but it belongs to — and is registered by — the file that
-		// declares it. Without this, a shared workflow imported by two files
-		// (the target of two workflow aliases, typically) was reported as
-		// "declared in more than one file".
-		own := map[string]bool{}
-		for _, d := range prog.Decls {
-			if d.Pipeline != nil {
-				own[d.Pipeline.Name] = true
-			}
-			if d.Alias != nil {
-				own[d.Alias.Name] = true
-			}
-		}
-		if err := interpreter.ResolveImports(f, prog); err != nil {
+		if err := interpreter.ResolveImportsCached(f, prog, imports); err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
 		for _, d := range prog.Decls {
@@ -128,6 +198,21 @@ func Load(dir string) (map[string]Workflow, error) {
 		return nil, fmt.Errorf("no pipeline or workflow declared under %s", dir)
 	}
 	return out, nil
+}
+
+// ownDecls is the set of pipeline/workflow and alias names prog declares
+// itself (before any import is merged in).
+func ownDecls(prog *ast.Program) map[string]bool {
+	own := map[string]bool{}
+	for _, d := range prog.Decls {
+		if d.Pipeline != nil {
+			own[d.Pipeline.Name] = true
+		}
+		if d.Alias != nil {
+			own[d.Alias.Name] = true
+		}
+	}
+	return own
 }
 
 // KindLabel is a human phrase like "workflow", "loop pipeline".

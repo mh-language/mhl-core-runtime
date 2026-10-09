@@ -5,13 +5,24 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 )
+
+func parseDir(t *testing.T, dir string) []execsvc.File {
+	t.Helper()
+	files, err := execsvc.ParseDir(dir)
+	if err != nil {
+		t.Fatalf("ParseDir: %v", err)
+	}
+	return files
+}
 
 func TestScanStoreDecl(t *testing.T) {
 	t.Run("none", func(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "wf.mh"), []byte("pipeline P { step S { var x = 1 } }"), 0o644)
-		_, ok, err := scanStoreDecl(dir)
+		_, ok, err := scanStoreDecl(dir, parseDir(t, dir))
 		if err != nil || ok {
 			t.Fatalf("no store decl: ok=%v err=%v", ok, err)
 		}
@@ -21,7 +32,7 @@ func TestScanStoreDecl(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "s.mh"),
 			[]byte(`extension store Backend {`+"\n"+`  dir: "/var/lib/mhl"`+"\n"+`  region: "us-east-1"`+"\n}"), 0o644)
-		decl, ok, err := scanStoreDecl(dir)
+		decl, ok, err := scanStoreDecl(dir, parseDir(t, dir))
 		if err != nil || !ok {
 			t.Fatalf("ok=%v err=%v", ok, err)
 		}
@@ -41,7 +52,7 @@ func TestScanStoreDecl(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "a.mh"), []byte(`extension store A { dir: "x" }`), 0o644)
 		os.WriteFile(filepath.Join(dir, "b.mh"), []byte(`extension store B { dir: "y" }`), 0o644)
-		if _, _, err := scanStoreDecl(dir); err == nil || !strings.Contains(err.Error(), "more than one") {
+		if _, _, err := scanStoreDecl(dir, parseDir(t, dir)); err == nil || !strings.Contains(err.Error(), "more than one") {
 			t.Fatalf("err = %v, want 'more than one'", err)
 		}
 	})
@@ -52,7 +63,7 @@ func TestScanStoreDecl(t *testing.T) {
 func TestDiscoverStoreExtensionNotInstalled(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "s.mh"), []byte(`extension store S { dir: "x" }`), 0o644)
-	_, _, err := discoverStoreExtension(dir, os.Stderr)
+	_, _, err := discoverStoreExtension(dir, parseDir(t, dir), os.Stderr)
 	if err == nil || !strings.Contains(err.Error(), "no installed extension serves kind") {
 		t.Fatalf("err = %v", err)
 	}

@@ -6,16 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	"github.com/mh-language/mhl-core-runtime/internal/extension"
 	"github.com/mh-language/mhl-core-runtime/internal/extension/external"
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
-	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
 )
 
@@ -28,8 +26,8 @@ const storeKind = "store"
 // returns it wrapped as a mcpserver.KVStore. It returns (nil, noop, nil) when
 // no such declaration exists — the on-disk `.mhl/state` default. logw receives
 // the extension's own diagnostic lines.
-func discoverStoreExtension(dir string, logw io.Writer) (mcpserver.KVStore, func(), error) {
-	decl, ok, err := scanStoreDecl(dir)
+func discoverStoreExtension(dir string, files []execsvc.File, logw io.Writer) (mcpserver.KVStore, func(), error) {
+	decl, ok, err := scanStoreDecl(dir, files)
 	if err != nil {
 		return nil, func() {}, err
 	}
@@ -84,38 +82,24 @@ func discoverStoreExtension(dir string, logw io.Writer) (mcpserver.KVStore, func
 	return &extKV{inst: inst, decl: decl, cas: cas, claim: claim, fence: fence, scan: scan}, set.CloseAll, nil
 }
 
-// scanStoreDecl walks dir's .mh files for exactly one `extension store` block
-// and resolves its properties (string / number / bool literals and env(...) /
-// vault(...) credential refs) to JSON values.
-func scanStoreDecl(dir string) (extension.Declaration, bool, error) {
+// scanStoreDecl looks through dir's parsed .mh files (execsvc.ParseDir) for
+// exactly one `extension store` block and resolves its properties (string /
+// number / bool literals and env(...) / vault(...) credential refs) to JSON
+// values.
+func scanStoreDecl(dir string, files []execsvc.File) (extension.Declaration, bool, error) {
 	var found []extension.Declaration
-	walkErr := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".mh") {
-			return err
-		}
-		src, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		prog, err := parser.Parse(string(src))
-		if err != nil {
-			return fmt.Errorf("parsing %s: %w", path, err)
-		}
-		for _, decl := range prog.Decls {
+	for _, f := range files {
+		for _, decl := range f.Program.Decls {
 			kind, name, props, ok := ast.AsExtension(decl)
 			if !ok || kind != storeKind {
 				continue
 			}
-			resolved, rerr := resolveStoreProps(props)
-			if rerr != nil {
-				return fmt.Errorf("%s: extension store %s: %w", path, name, rerr)
+			resolved, err := resolveStoreProps(props)
+			if err != nil {
+				return extension.Declaration{}, false, fmt.Errorf("%s: extension store %s: %w", f.Path, name, err)
 			}
 			found = append(found, extension.Declaration{Kind: kind, Name: name, Props: resolved})
 		}
-		return nil
-	})
-	if walkErr != nil {
-		return extension.Declaration{}, false, walkErr
 	}
 	switch len(found) {
 	case 0:
