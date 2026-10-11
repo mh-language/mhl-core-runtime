@@ -367,3 +367,18 @@ func TestDefinitionDigestOfWorkflowAlias(t *testing.T) {
 		t.Fatal("editing the target's steps must change the alias's digest")
 	}
 }
+
+// An `extension` declaration without `from "<id>"` hashes exactly as it did
+// before the clause existed (ast.Extension.Provider is omitzero), so existing
+// checkpoints stay resumable; naming a provider is a definition change.
+func TestDefinitionDigestExtensionProvider(t *testing.T) {
+	plain := "extension data D { url: \"x\" }\npipeline P {\n step S { log(D.get(\"k\")) }\n}\n"
+	const want = "2d71f256b67b92f0f24ebab99bd886362490ee9bca442f5c135306d5728f7dd2"
+	if got := digestOfPipeline(t, plain, "P"); got != want {
+		t.Fatalf("digest = %s, want %s (the pre-`from` value)", got, want)
+	}
+	withFrom := "extension data D from \"mhl.data.redis\" { url: \"x\" }\npipeline P {\n step S { log(D.get(\"k\")) }\n}\n"
+	if digestOfPipeline(t, withFrom, "P") == want {
+		t.Fatal("a `from` provider must count toward the digest")
+	}
+}

@@ -92,6 +92,8 @@ func runFakeExtension() {
 			switch cp.Operation {
 			case "echo":
 				send(message{ID: m.ID, Result: cp.Args[0]})
+			case "tag":
+				send(message{ID: m.ID, Result: mustRaw(os.Getenv("FAKE_TAG"))})
 			case "calls":
 				send(message{ID: m.ID, Result: mustRaw(calls)})
 			case "slow":

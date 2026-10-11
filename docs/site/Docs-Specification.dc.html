@@ -360,6 +360,9 @@ prompt External(file: string) from "review.prompt.md"</code></pre>
     headers: {"Authorization": "Bearer " + env("ISSUES_TOKEN")}
 }</code></pre>
 <p>The generic form is <code>extension kind Name { properties }</code>. The kind selects a built-in or installed adapter. Properties are evaluated and validated by the adapter, which also defines the callable methods.</p>
+<p>An optional <code>from "id"</code> clause, <code>extension kind Name from "id" { properties }</code>, names the installed adapter by its manifest <code>id</code>. The kind remains the contract and the id selects the implementation, so several installed adapters MAY serve the same kind side by side. Resolution MUST proceed as follows: with <code>from</code>, the adapter with that id is used, and it is an error if no such adapter is installed or if it does not serve the kind; without <code>from</code>, the kind MUST be served by exactly one adapter, and it is an error if it is served by none or by more than one. Built-in kinds (<code>mcp</code>, <code>a2a</code>) are reserved: an installed adapter MUST NOT serve them. An absent <code>from</code> clause MUST NOT change the definition digest (§16.1).</p>
+<pre class="code-block"><code class="language-mhl">extension data Cache from "mhl.data.redis"    { url: env("REDIS_URL") }
+extension data Db    from "mhl.data.postgres" { dsn: env("DATABASE_URL") }</code></pre>
 </section>
 
 <section class="feature doc-section" id="stdlib">
@@ -916,7 +919,7 @@ tool           ::= "tool" Identifier "{" tool-method* "}"
 tool-method    ::= ["internal"] Identifier "(" [parameter ("," parameter)*] ")"
                    [":" type] ("->" expression | ["->"] block)
 parameter      ::= Identifier [":" type] ["=" expression]
-extension      ::= "extension" Identifier Identifier "{" property* "}"
+extension      ::= "extension" Identifier Identifier ( "from" String )? "{" property* "}"
 extensible     ::= "extensible" Identifier "{" extensible-member* "}"
 extensible-member ::= "manifest" ":" object
                    | "properties" ":" "{" extensible-property* "}"

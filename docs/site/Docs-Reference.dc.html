@@ -845,6 +845,10 @@ if (os.platform() == "windows") { /* ... */ }</code></pre>
             <div class="table-row"><span><code>extension a2a</code></span><span>a remote Agent2Agent endpoint</span><span>built in — §11</span></div>
             <div class="table-row"><span><code>extension &lt;other&gt;</code></span><span>a custom capability</span><span><a href="Docs-Extensions.dc.html">external adapter</a></span></div>
           </div>
+          <h3>Several adapters of one kind — <code>from "&lt;id&gt;"</code></h3>
+          <p>When more than one installed adapter serves the same kind, pick one per declaration by its manifest <code>id</code>. The kind stays the contract (properties and methods); the id picks the implementation. Without <code>from</code>, a kind served by two installed adapters fails as ambiguous, and <code>mhl extension doctor</code> notes every such kind.</p>
+          <pre class="code-block"><code class="language-mhl">extension data Cache from "mhl.data.redis"    { url: env("REDIS_URL") }
+extension data Db    from "mhl.data.postgres" { dsn: env("DATABASE_URL") }</code></pre>
           <div class="tip-row"><span>BUILDING ONE</span><p>Writing an adapter for a new kind — its manifest, the JSON-RPC process protocol, permissions, secrets, and <code>mhl extension install</code> — is covered by the <a href="Docs-Extensions.dc.html">extension guide</a>, not this page.</p></div>
         </section>
 

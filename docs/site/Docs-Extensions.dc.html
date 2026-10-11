@@ -256,6 +256,10 @@ extensible crm {
           <pre class="code-block"><code class="language-mhl">extension crm Customer {
     endpoint: env("CRM_URL")
 }</code></pre>
+          <p>Several installed adapters may serve the same kind. A declaration then names one by its manifest <code>id</code> with <code>from</code>; without it, a shared kind fails as ambiguous. A kind built into MHL (<code>mcp</code>, <code>a2a</code>) cannot be served by an external adapter.</p>
+          <pre class="code-block"><code class="language-mhl">extension crm Customer from "acme.crm.salesforce" {
+    endpoint: env("CRM_URL")
+}</code></pre>
           <div class="tip-row"><span>MHL MANIFEST</span><p>Ship <code>extension.mh</code> at the extension package root, including in release archives. Keep all declarations in this file. <code>mhl lint</code> and the LSP validate the <code>extensible</code> declaration's shape: exactly one <code>manifest</code> block and no duplicate property or method names.</p></div>
           <div class="tip-row"><span>ONE PROPERTY PER LINE</span><p>A trailing <code>/// ...</code> doc-comment runs to end of line, same as any comment — so a <code>properties: { ... }</code> block's closing <code>}</code> must be on its own line (or after a property with no trailing doc-comment). Written on the same line as the last documented property, the <code>}</code> is swallowed into the comment and parsing fails later, at the next declaration, with an unrelated-looking error.</p></div>
         </section>

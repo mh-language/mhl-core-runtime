@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -18,10 +20,11 @@ import (
 type Registry struct {
 	host HostContext
 
-	mu      sync.Mutex
-	byKind  map[string]Extension
-	byID    map[string]Extension
-	ordered []Extension
+	mu       sync.Mutex
+	byKind   map[string][]Extension
+	byID     map[string]Extension
+	reserved map[string]bool // kinds claimed via Register (built-ins): never shared
+	ordered  []Extension
 
 	instMu    sync.Mutex
 	instances map[string]Instance
@@ -31,25 +34,35 @@ type Registry struct {
 func NewRegistry(host HostContext) *Registry {
 	return &Registry{
 		host:      host,
-		byKind:    map[string]Extension{},
+		byKind:    map[string][]Extension{},
 		byID:      map[string]Extension{},
+		reserved:  map[string]bool{},
 		instances: map[string]Instance{},
 	}
 }
 
-// Register adds ext, claiming every declaration kind it serves. Registering a
-// kind twice, or an ID twice, is a programming error and panics: the set of
-// built-in extensions is fixed at build time.
+// Register adds a built-in ext, claiming every declaration kind it serves
+// exclusively: no other extension, built-in or external, may serve the same
+// kind afterwards. Registering a kind twice, or an ID twice, is a programming
+// error and panics: the set of built-in extensions is fixed at build time.
 func (r *Registry) Register(ext Extension) {
-	if err := r.TryRegister(ext); err != nil {
+	if err := r.register(ext, true); err != nil {
 		panic("extension: " + err.Error())
 	}
 }
 
 // TryRegister is Register without the panic — for extensions that are not
 // fixed at build time (external ones discovered from a lock file), where an
-// id or kind collision must fail that one extension, not the whole process.
+// id collision must fail that one extension, not the whole process. Unlike
+// Register, the kinds it claims are shared: several external extensions may
+// serve the same kind (mhl.data.redis and mhl.data.postgres both serve
+// `data`), and a declaration picks one with `from "<id>"` (see Lookup). A
+// kind reserved by a built-in is still refused.
 func (r *Registry) TryRegister(ext Extension) error {
+	return r.register(ext, false)
+}
+
+func (r *Registry) register(ext Extension, exclusive bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -57,24 +70,75 @@ func (r *Registry) TryRegister(ext Extension) error {
 		return fmt.Errorf("ID %q registered twice", ext.ID())
 	}
 	for _, spec := range ext.Declarations() {
-		if prev, dup := r.byKind[spec.Kind]; dup {
-			return fmt.Errorf("kind %q claimed by both %q and %q", spec.Kind, prev.ID(), ext.ID())
+		prev := r.byKind[spec.Kind]
+		if len(prev) == 0 {
+			continue
+		}
+		if exclusive || r.reserved[spec.Kind] {
+			return fmt.Errorf("kind %q claimed by both %q and %q", spec.Kind, prev[0].ID(), ext.ID())
 		}
 	}
 	r.byID[ext.ID()] = ext
 	for _, spec := range ext.Declarations() {
-		r.byKind[spec.Kind] = ext
+		r.byKind[spec.Kind] = append(r.byKind[spec.Kind], ext)
+		if exclusive {
+			r.reserved[spec.Kind] = true
+		}
 	}
 	r.ordered = append(r.ordered, ext)
 	return nil
 }
 
-// Lookup returns the extension serving the given declaration kind.
-func (r *Registry) Lookup(kind string) (Extension, bool) {
+// LookupError explains why Lookup could not pick an extension. Code is one of
+// "unknown-extension-kind", "unknown-extension-provider",
+// "extension-provider-kind-mismatch" or "ambiguous-extension-kind" — the same
+// codes Validate reports as diagnostics.
+type LookupError struct {
+	Code    string
+	Message string
+}
+
+func (e *LookupError) Error() string { return e.Message }
+
+// Lookup returns the extension serving a declaration of the given kind. With
+// a provider (the id named by `extension <kind> <Name> from "<id>"`), it is
+// that extension, which must serve kind. Without one, kind must be served by
+// exactly one registered extension — several is an ambiguity the declaration
+// resolves by naming a provider.
+func (r *Registry) Lookup(kind, provider string) (Extension, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	ext, ok := r.byKind[kind]
-	return ext, ok
+
+	if provider != "" {
+		ext, ok := r.byID[provider]
+		if !ok {
+			return nil, &LookupError{Code: "unknown-extension-provider",
+				Message: fmt.Sprintf("no extension registered with id %q", provider)}
+		}
+		for _, spec := range ext.Declarations() {
+			if spec.Kind == kind {
+				return ext, nil
+			}
+		}
+		return nil, &LookupError{Code: "extension-provider-kind-mismatch",
+			Message: fmt.Sprintf("extension %q does not serve kind %q", provider, kind)}
+	}
+
+	switch exts := r.byKind[kind]; len(exts) {
+	case 0:
+		return nil, &LookupError{Code: "unknown-extension-kind",
+			Message: fmt.Sprintf("no extension registered for kind %q", kind)}
+	case 1:
+		return exts[0], nil
+	default:
+		ids := make([]string, len(exts))
+		for i, e := range exts {
+			ids[i] = e.ID()
+		}
+		sort.Strings(ids)
+		return nil, &LookupError{Code: "ambiguous-extension-kind",
+			Message: fmt.Sprintf("kind %q is served by %s; name one with `from \"<id>\"`", kind, strings.Join(ids, ", "))}
+	}
 }
 
 // Extensions returns the registered extensions in registration order.
@@ -98,26 +162,31 @@ func (r *Registry) Specs() []DeclarationSpec {
 	return out
 }
 
-// Validate runs the owning extension's static checks for one declaration. An
-// unknown kind is itself a single error diagnostic.
+// Validate runs the owning extension's static checks for one declaration. A
+// declaration Lookup cannot resolve (unknown kind or provider, ambiguous kind)
+// is itself a single error diagnostic.
 func (r *Registry) Validate(decl Declaration) []Diagnostic {
-	ext, ok := r.Lookup(decl.Kind)
-	if !ok {
-		return []Diagnostic{Errorf(decl.Pos, "unknown-extension-kind",
-			"no extension registered for kind %q", decl.Kind)}
+	ext, err := r.Lookup(decl.Kind, decl.Provider)
+	if err != nil {
+		code := "unknown-extension-kind"
+		var le *LookupError
+		if errors.As(err, &le) {
+			code = le.Code
+		}
+		return []Diagnostic{Errorf(decl.Pos, code, "%s", err.Error())}
 	}
 	return ext.Validate(decl)
 }
 
 // Resolve returns the Instance for decl, binding it on first use and reusing
 // it thereafter for the life of the Registry. Binding is keyed by the
-// declaration's kind, name, and the content of its resolved properties, so a
+// declaration's kind, provider, name, and the content of its resolved properties, so a
 // re-resolve with identical config hits the cache while a changed config does
 // not.
 func (r *Registry) Resolve(decl Declaration) (Instance, error) {
-	ext, ok := r.Lookup(decl.Kind)
-	if !ok {
-		return nil, fmt.Errorf("no extension registered for kind %q", decl.Kind)
+	ext, err := r.Lookup(decl.Kind, decl.Provider)
+	if err != nil {
+		return nil, err
 	}
 
 	key := declKey(decl)
@@ -147,7 +216,7 @@ func (r *Registry) Call(ctx context.Context, req CallRequest) (Value, error) {
 // declKey is a stable identity for a declaration + its resolved config.
 func declKey(decl Declaration) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00", decl.Kind, decl.Name)
+	fmt.Fprintf(h, "%s\x00%s\x00%s\x00", decl.Kind, decl.Provider, decl.Name)
 	// json.Marshal of the property slice is deterministic for the
 	// JSON-compatible values that cross this boundary (object keys are
 	// sorted), which is all Property.Value is allowed to hold.

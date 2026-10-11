@@ -43,8 +43,8 @@ func evalExtensionCall(ctx *evalCtx, decl *ast.Declaration, member string, call 
 	}
 
 	reg := extRegistryOf(ctx)
-	if _, ok := reg.Lookup(kind); !ok {
-		return nil, fmt.Errorf("%s.%s: no extension registered for kind %q", name, member, kind)
+	if _, err := reg.Lookup(kind, edecl.Provider); err != nil {
+		return nil, fmt.Errorf("%s.%s: %w", name, member, err)
 	}
 
 	args, err := evalCallArgs(ctx, call, depth)
@@ -103,11 +103,11 @@ func resolveExtensionDeclaration(ctx *evalCtx, decl *ast.Declaration, member str
 		})
 	}
 
-	pos := extension.Position{}
+	pos, provider := extension.Position{}, ""
 	if decl.Extension != nil {
-		pos = posToExt(decl.Extension.Pos)
+		pos, provider = posToExt(decl.Extension.Pos), decl.Extension.Provider
 	}
-	return extension.Declaration{Kind: kind, Name: name, Props: out, Pos: pos}, nil
+	return extension.Declaration{Kind: kind, Provider: provider, Name: name, Props: out, Pos: pos}, nil
 }
 
 func posToExt(p lexer.Position) extension.Position {

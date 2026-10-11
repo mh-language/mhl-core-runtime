@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
@@ -441,6 +442,7 @@ func extensionDoctor(out io.Writer) error {
 		broken++
 		fmt.Fprintf(out, "FAIL  %s: %s\n", s.ID, s.Problem)
 	}
+	reportSharedKinds(out, statuses)
 	if broken > 0 {
 		return fmt.Errorf("%d extension(s) failed doctor", broken)
 	}
@@ -448,6 +450,30 @@ func extensionDoctor(out io.Writer) error {
 		fmt.Fprintln(out, "no external extensions locked — nothing to check")
 	}
 	return nil
+}
+
+// reportSharedKinds notes every kind served by more than one locked
+// extension: legal, but each `extension <kind> <Name>` of that kind must then
+// pick one with `from "<id>"` or it fails as ambiguous at run time.
+func reportSharedKinds(out io.Writer, statuses []external.Status) {
+	byKind := map[string][]string{}
+	for _, s := range statuses {
+		for _, k := range s.Kinds {
+			byKind[k] = append(byKind[k], s.ID)
+		}
+	}
+	kinds := make([]string, 0, len(byKind))
+	for k, ids := range byKind {
+		if len(ids) > 1 {
+			kinds = append(kinds, k)
+		}
+	}
+	sort.Strings(kinds)
+	for _, k := range kinds {
+		ids := byKind[k]
+		sort.Strings(ids)
+		fmt.Fprintf(out, "note  kind %q is served by %s — declare it as `extension %s <Name> from \"<id>\"`\n", k, strings.Join(ids, ", "), k)
+	}
 }
 
 // loadSessionExtensions discovers the project's external extensions, installs

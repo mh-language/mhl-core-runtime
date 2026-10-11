@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,7 +23,8 @@ import (
 const storeKind = "store"
 
 // discoverStoreExtension scans dir for a single `extension store <Name> { ... }`
-// declaration, binds the installed extension that serves kind "store", and
+// declaration, binds the installed extension that serves kind "store" (the
+// one named by its `from "<id>"` clause when several are installed), and
 // returns it wrapped as a mcpserver.KVStore. It returns (nil, noop, nil) when
 // no such declaration exists — the on-disk `.mhl/state` default. logw receives
 // the extension's own diagnostic lines.
@@ -43,20 +45,23 @@ func discoverStoreExtension(dir string, files []execsvc.File, logw io.Writer) (m
 		fmt.Fprintf(logw, "warning: extension %q not loaded: %s\n", p.ID, p.Message)
 	}
 
-	var chosen extension.Extension
+	host := serveHost{client: http.DefaultClient, log: func(s string) { fmt.Fprintln(logw, s) }}
+	reg := extension.NewRegistry(host)
 	for _, ext := range set.Extensions() {
-		for _, spec := range ext.Declarations() {
-			if spec.Kind == storeKind {
-				chosen = ext
-			}
+		if err := reg.TryRegister(ext); err != nil {
+			fmt.Fprintf(logw, "warning: extension %q not loaded: %v\n", ext.ID(), err)
 		}
 	}
-	if chosen == nil {
+	chosen, err := reg.Lookup(storeKind, decl.Provider)
+	if err != nil {
 		set.CloseAll()
-		return nil, func() {}, fmt.Errorf("workflow directory declares `extension store %s` but no installed extension serves kind %q (mhl extension install ...)", decl.Name, storeKind)
+		var le *extension.LookupError
+		if errors.As(err, &le) && le.Code == "unknown-extension-kind" {
+			return nil, func() {}, fmt.Errorf("workflow directory declares `extension store %s` but no installed extension serves kind %q (mhl extension install ...)", decl.Name, storeKind)
+		}
+		return nil, func() {}, fmt.Errorf("workflow directory declares `extension store %s`: %w", decl.Name, err)
 	}
 
-	host := serveHost{client: http.DefaultClient, log: func(s string) { fmt.Fprintln(logw, s) }}
 	inst, err := chosen.Bind(decl, host)
 	if err != nil {
 		set.CloseAll()
@@ -98,7 +103,7 @@ func scanStoreDecl(dir string, files []execsvc.File) (extension.Declaration, boo
 			if err != nil {
 				return extension.Declaration{}, false, fmt.Errorf("%s: extension store %s: %w", f.Path, name, err)
 			}
-			found = append(found, extension.Declaration{Kind: kind, Name: name, Props: resolved})
+			found = append(found, extension.Declaration{Kind: kind, Provider: decl.Extension.Provider, Name: name, Props: resolved})
 		}
 	}
 	switch len(found) {

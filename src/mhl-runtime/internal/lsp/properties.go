@@ -129,7 +129,7 @@ func propertyItemsFor(path string, stack []blockRef) []completionItem {
 	}
 	top := stack[len(stack)-1]
 	if top.Kind == blockExtension {
-		return extensionPropertyItems(path, top.ExtKind)
+		return extensionPropertyItems(path, top.ExtKind, top.ExtProvider)
 	}
 	switch top.Kind {
 	case blockPipeline:
