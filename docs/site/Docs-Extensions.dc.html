@@ -169,9 +169,9 @@ html { scroll-behavior:smooth; }
                 <text class="d-title" x="578" y="114">external extensions</text>
                 <text class="d-sub" x="578" y="130">separate repos · .mhl/extensions.lock</text>
                 <rect class="d-new" x="578" y="144" width="264" height="38" rx="6" />
-                <text class="d-sub" x="710" y="167" text-anchor="middle">mhl-store-dynamodb (kind: store)</text>
+                <text class="d-sub" x="710" y="167" text-anchor="middle">mhl-store-dynamodb (kind: state)</text>
                 <rect class="d-new" x="578" y="190" width="264" height="38" rx="6" />
-                <text class="d-sub" x="710" y="213" text-anchor="middle">mhl-store-redis (kind: store)</text>
+                <text class="d-sub" x="710" y="213" text-anchor="middle">mhl-store-redis (kind: state)</text>
 
                 <rect class="d-box-2" x="560" y="290" width="300" height="120" rx="10" />
                 <text class="d-title" x="710" y="322" text-anchor="middle">AWS managed</text>
@@ -254,6 +254,10 @@ extensible crm {
           <h3>Use the declared kind in a workflow</h3>
           <p>The <code>kind</code> connects an MHL declaration to your adapter. Properties and method signatures provide editor and lint metadata.</p>
           <pre class="code-block"><code class="language-mhl">extension crm Customer {
+    endpoint: env("CRM_URL")
+}</code></pre>
+          <p>Several installed adapters may serve the same kind. A declaration then names one by its manifest <code>id</code> with <code>from</code>; without it, a shared kind fails as ambiguous. A kind built into MHL (<code>mcp</code>, <code>a2a</code>) cannot be served by an external adapter.</p>
+          <pre class="code-block"><code class="language-mhl">extension crm Customer from "acme.crm.salesforce" {
     endpoint: env("CRM_URL")
 }</code></pre>
           <div class="tip-row"><span>MHL MANIFEST</span><p>Ship <code>extension.mh</code> at the extension package root, including in release archives. Keep all declarations in this file. <code>mhl lint</code> and the LSP validate the <code>extensible</code> declaration's shape: exactly one <code>manifest</code> block and no duplicate property or method names.</p></div>

@@ -325,6 +325,15 @@ func isTypeAnnotationPosition(linePrefix, text string, pos position) bool {
 func completionAt(path, text string, pos position) []completionItem {
 	linePrefix := textBeforePosition(text, pos)
 
+	// Checked before member access: a partial dotted id (`from "mhl.`)
+	// would otherwise read as `mhl.` member access.
+	if items, ok := providerCompletionAt(path, linePrefix, pos); ok {
+		return items
+	}
+	if justOpenedString(linePrefix) {
+		return nil
+	}
+
 	if m := memberAccessRe.FindStringSubmatch(linePrefix); m != nil {
 		target := m[1]
 		if target == "self" {

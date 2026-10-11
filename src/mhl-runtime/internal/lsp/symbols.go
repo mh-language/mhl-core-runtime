@@ -85,6 +85,9 @@ type symbol struct {
 	// is symExtension — what signatureForMethod/completion use to look the
 	// method set and signatures up from the registered adapter's metadata.
 	ExtKind string
+	// ExtProvider is the `from "<id>"` provider of a symExtension
+	// declaration ("" when the kind alone picks the extension).
+	ExtProvider string
 	// Internal names the tool methods declared `internal`: still offered
 	// after `self.` inside the tool, never after `Tool.` from outside it.
 	Internal map[string]bool
@@ -150,7 +153,8 @@ func symbolsFromProgram(path string, prog *ast.Program) []symbol {
 			// An `extension <kind> <Name>` declaration; its method set comes
 			// from the registered adapter's DeclarationSpec.
 			if k, name, _, ok := ast.AsExtension(decl); ok && name != "" {
-				syms = append(syms, symbol{Name: name, Kind: symExtension, ExtKind: k, Methods: extensionMethodNames(path, k)})
+				provider := decl.Extension.Provider
+				syms = append(syms, symbol{Name: name, Kind: symExtension, ExtKind: k, ExtProvider: provider, Methods: extensionMethodNames(path, k, provider)})
 			}
 		}
 	}
@@ -188,8 +192,8 @@ func memoryMethods(mem *ast.Memory) []string {
 // copy of the interpreter's dispatch. signatures_test.go still cross-checks
 // them against the signature tables.
 var (
-	mcpServerMethods = extensionMethodNames("", "mcp")
-	a2aAgentMethods  = extensionMethodNames("", "a2a")
+	mcpServerMethods = extensionMethodNames("", "mcp", "")
+	a2aAgentMethods  = extensionMethodNames("", "a2a", "")
 )
 
 func memoryMethodsForType(memType string) []string {
@@ -215,9 +219,9 @@ func memoryMethodsForType(memType string) []string {
 // a declaration kind of its own.
 var (
 	declRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:internal\s+)?(?:partial\s+)?(?:loop\s+)?(agent|router|memory|tool|prompt|pipeline|workflow|type|enum|schema)\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	// extDeclRe recognises `extension <kind> <Name>`, which unlike every
+	// extDeclRe recognises `extension <kind> <Name> [from "<id>"]`, which unlike every
 	// other declaration keyword is followed by two identifiers.
-	extDeclRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?extension\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	extDeclRe = regexp.MustCompile(`(?m)^\s*(?:export\s+)?extension\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+from\s+"([^"]*)")?`)
 )
 
 func symbolsFromText(path, src string) []symbol {
@@ -245,7 +249,7 @@ func symbolsFromText(path, src string) []symbol {
 		syms = append(syms, s)
 	}
 	for _, m := range extDeclRe.FindAllStringSubmatch(src, -1) {
-		syms = append(syms, symbol{Name: m[2], Kind: symExtension, ExtKind: m[1], Methods: extensionMethodNames(path, m[1])})
+		syms = append(syms, symbol{Name: m[2], Kind: symExtension, ExtKind: m[1], ExtProvider: m[3], Methods: extensionMethodNames(path, m[1], m[3])})
 	}
 	return syms
 }

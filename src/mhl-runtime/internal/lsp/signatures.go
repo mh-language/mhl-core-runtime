@@ -314,8 +314,8 @@ var memoryMethodSigs = map[string]sig{
 // mcpServerMethodSigs / a2aAgentMethodSigs are built from the registered
 // extension adapters' MethodSpec entries (see extensions.go), not hand-copied.
 var (
-	mcpServerMethodSigs = extensionMethodSigs("", "mcp")
-	a2aAgentMethodSigs  = extensionMethodSigs("", "a2a")
+	mcpServerMethodSigs = extensionMethodSigs("", "mcp", "")
+	a2aAgentMethodSigs  = extensionMethodSigs("", "a2a", "")
 )
 
 var agentMethodSigs = map[string]sig{
@@ -397,7 +397,7 @@ func signatureForMethod(path, text string, s symbol, method string) (sig, bool) 
 	case symMemory:
 		return memorySig(path, text, s.Name, method)
 	case symExtension:
-		x, ok := extensionMethodSigs(path, s.ExtKind)[method]
+		x, ok := extensionMethodSigs(path, s.ExtKind, s.ExtProvider)[method]
 		return x, ok
 	case symAgent:
 		x, ok := agentMethodSigs[method]

@@ -54,9 +54,10 @@ const (
 // pipeline/tool the cursor's `self.` belongs to without re-scanning from the
 // document start.
 type blockRef struct {
-	Kind    blockKind
-	ExtKind string
-	Name    string
+	Kind        blockKind
+	ExtKind     string
+	ExtProvider string // the `from "<id>"` of an extension header, if any
+	Name        string
 }
 
 // sigRe matches a pipeline/workflow header's optional typed signature,
@@ -101,13 +102,13 @@ var headerRe = []struct {
 	{blockStopFailureHook, regexp.MustCompile(`\bstop_failure\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
 }
 
-// extHeaderRe recognises an `extension <kind> <Name>` header and captures the
-// kind from the source.
+// extHeaderRe recognises an `extension <kind> <Name> [from "<id>"]` header
+// and captures the kind (and provider id, when present) from the source.
 var extHeaderRe = []struct {
 	kind string
 	re   *regexp.Regexp
 }{
-	{"", regexp.MustCompile(`\bextension\s+(\w+)\s+\w+\s*$`)},
+	{"", regexp.MustCompile(`\bextension\s+(\w+)\s+\w+(?:\s+from\s+"([^"]*)")?\s*$`)},
 }
 
 // classifyHeader matches s — the raw text since the previous brace, up to
@@ -122,7 +123,11 @@ func classifyHeader(s string) blockRef {
 		if kind == "" && len(m) > 1 {
 			kind = m[1]
 		}
-		return blockRef{Kind: blockExtension, ExtKind: kind}
+		provider := ""
+		if len(m) > 2 {
+			provider = m[2]
+		}
+		return blockRef{Kind: blockExtension, ExtKind: kind, ExtProvider: provider}
 	}
 	for _, h := range headerRe {
 		m := h.re.FindStringSubmatch(s)

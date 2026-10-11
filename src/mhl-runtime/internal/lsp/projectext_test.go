@@ -56,7 +56,7 @@ func TestProjectExtensionSpecReadsMHManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	spec, ok := projectExtensionSpec(filepath.Join(dir, "main.mh"), "cache")
+	spec, ok := projectExtensionSpec(filepath.Join(dir, "main.mh"), "cache", "")
 	if !ok {
 		t.Fatal("expected to resolve the \"cache\" kind")
 	}
@@ -67,7 +67,55 @@ func TestProjectExtensionSpecReadsMHManifest(t *testing.T) {
 		t.Fatalf("unexpected methods: %+v", spec.Methods)
 	}
 
-	if _, ok := projectExtensionSpec(filepath.Join(dir, "main.mh"), "unknown"); ok {
+	if _, ok := projectExtensionSpec(filepath.Join(dir, "main.mh"), "unknown", ""); ok {
 		t.Fatal("expected no spec for a kind no locked extension declares")
+	}
+}
+
+// writeLockedExtension vendors a single-file extension.mh manifest for id
+// (serving kind, with one method) under dir/.mhl/extensions/<id>/.
+func writeLockedExtension(t *testing.T, dir, id, kind, method string) {
+	t.Helper()
+	extDir := filepath.Join(dir, ".mhl", "extensions", id)
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "extensible " + kind + " {\n" +
+		"    manifest: { id: \"" + id + "\", api_version: \"1\", executable: \"bin/x\" }\n" +
+		"    " + method + "(key: string): any\n" +
+		"}\n"
+	if err := os.WriteFile(filepath.Join(extDir, "extension.mh"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProjectExtensionSpecPicksProviderAmongSameKind(t *testing.T) {
+	dir := t.TempDir()
+	writeLockedExtension(t, dir, "mhl.data.redis", "data", "incr")
+	writeLockedExtension(t, dir, "mhl.data.postgres", "data", "query")
+	lock := `{"extensions":{"mhl.data.redis":{"version":"","sha256":""},"mhl.data.postgres":{"version":"","sha256":""}}}`
+	if err := os.WriteFile(filepath.Join(dir, ".mhl", "extensions.lock"), []byte(lock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "main.mh")
+
+	tests := []struct {
+		provider   string
+		wantOK     bool
+		wantMethod string
+	}{
+		{"mhl.data.redis", true, "incr"},
+		{"mhl.data.postgres", true, "query"},
+		{"", false, ""},                 // ambiguous: two locked extensions serve "data"
+		{"mhl.data.missing", false, ""}, // not locked
+	}
+	for _, tt := range tests {
+		spec, ok := projectExtensionSpec(file, "data", tt.provider)
+		if ok != tt.wantOK {
+			t.Fatalf("provider %q: ok = %v, want %v", tt.provider, ok, tt.wantOK)
+		}
+		if ok && (len(spec.Methods) != 1 || spec.Methods[0].Name != tt.wantMethod) {
+			t.Fatalf("provider %q: methods = %+v, want [%s]", tt.provider, spec.Methods, tt.wantMethod)
+		}
 	}
 }

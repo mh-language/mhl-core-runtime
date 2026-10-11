@@ -1,0 +1,62 @@
+// `extension <kind> <Name> from "<id>" { ...props }` picks which installed
+// extension serves the declaration. The kind stays the contract (properties
+// and methods); the id — the manifest `id`, the same key as in
+// .mhl/extensions.lock — picks the implementation. That lets two packages of
+// one kind run side by side, e.g. mhl.data.redis and mhl.data.postgres, which
+// both serve `data`. Without `from`, a kind served by more than one installed
+// extension fails as ambiguous.
+//
+// Two installed external packages can't be assumed in `mhl test`, so the
+// runnable cases below use the built-in `mcp` adapter (id "mhl.mcp") and the
+// resolution errors; the side-by-side case is covered by Go tests
+// (internal/extension/external/provider_test.go).
+
+extension data Cache from "mhl.data.redis" {
+    url: "redis://localhost:6379/0"
+}
+
+extension data Db from "mhl.data.postgres" {
+    dsn: "postgres://localhost/app"
+}
+
+extension data Missing from "mhl.data.missing" {
+    url: "x"
+}
+
+extension crm WrongKind from "mhl.mcp" {
+    endpoint: "x"
+}
+
+// `from` naming the built-in adapter resolves exactly like omitting it.
+extension mcp MockTools from "mhl.mcp" {
+    transport: "stdio"
+    command: "sh"
+    args: ["-c", "read _; printf '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"get_me\"}]}}'"]
+}
+
+test extension_from_names_the_provider {
+    describe from_selects_the_extension_by_id {
+        var result = MockTools.list_tools()
+        are_equal(result.tools.get_index(0).name, "get_me")
+    }
+
+    describe from_an_id_nobody_installed_is_an_error {
+        var result = ""
+        try {
+            Missing.get("k")
+        } catch (e) {
+            result = "${e}"
+        }
+        are_equal(result, "Missing.get: no extension registered with id \"mhl.data.missing\"")
+    }
+
+    describe from_an_id_serving_another_kind_is_an_error {
+        var result = ""
+        try {
+            WrongKind.lookup("42")
+        } catch (e) {
+            result = "${e}"
+        }
+        are_equal(result, "WrongKind.lookup: extension \"mhl.mcp\" does not serve kind \"crm\"")
+    }
+}

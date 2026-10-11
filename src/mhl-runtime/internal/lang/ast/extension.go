@@ -11,11 +11,18 @@ import "github.com/alecthomas/participle/v2/lexer"
 //	extension mcp GitHub { transport: "http", url: "..." }
 //	extension a2a Translator { url: "..." }
 //	extension crm Customer { endpoint: env("CRM_URL") }
+//	extension data Cache from "mhl.data.redis" { url: env("REDIS_URL") }
+//
+// Provider is the optional `from "<id>"` clause: the id of the installed
+// extension that serves Kind for this declaration. It is only required when
+// more than one installed extension serves Kind; Kind stays the contract
+// (properties and methods), Provider picks the implementation.
 type Extension struct {
-	Pos   lexer.Position
-	Kind  string      `parser:"'extension' @Ident"`
-	Name  string      `parser:"@Ident"`
-	Props []*Property `parser:"'{' @@* '}'"`
+	Pos      lexer.Position
+	Kind     string      `parser:"'extension' @Ident"`
+	Name     string      `parser:"@Ident"`
+	Provider string      `parser:"( 'from' @String )?" digest:"omitzero"`
+	Props    []*Property `parser:"'{' @@* '}'"`
 }
 
 // CredentialRefs returns every credential reference — an `env("KEY")` or

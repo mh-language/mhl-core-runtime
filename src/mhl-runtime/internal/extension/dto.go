@@ -24,14 +24,16 @@ type Property struct {
 	Pos   Position `json:"pos,omitempty"`
 }
 
-// Declaration is a parsed `extension <kind> <Name> { ... }` construct with
-// its properties resolved to values. It is the only view of the program an
-// extension receives.
+// Declaration is a parsed `extension <kind> <Name> [from "<id>"] { ... }`
+// construct with its properties resolved to values. It is the only view of
+// the program an extension receives. Provider is the optional `from` id that
+// picks one of several extensions serving Kind ("" = the only one).
 type Declaration struct {
-	Kind  string     `json:"kind"`
-	Name  string     `json:"name"`
-	Props []Property `json:"props,omitempty"`
-	Pos   Position   `json:"pos,omitempty"`
+	Kind     string     `json:"kind"`
+	Provider string     `json:"provider,omitempty"`
+	Name     string     `json:"name"`
+	Props    []Property `json:"props,omitempty"`
+	Pos      Position   `json:"pos,omitempty"`
 }
 
 // Prop returns the value of the named property and whether it was present.
