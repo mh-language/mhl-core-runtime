@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -190,5 +191,105 @@ func TestRegistryConcurrentResolve(t *testing.T) {
 
 	if fake.binds != 1 {
 		t.Fatalf("expected exactly 1 Bind under concurrency, got %d", fake.binds)
+	}
+}
+
+// kindExt is an external-style extension with a configurable id serving one
+// kind — for exercising several providers of the same kind.
+type kindExt struct{ id, kind string }
+
+func (k *kindExt) ID() string      { return k.id }
+func (k *kindExt) Version() string { return "0.0.1" }
+func (k *kindExt) Declarations() []DeclarationSpec {
+	return []DeclarationSpec{{Kind: k.kind}}
+}
+func (k *kindExt) Validate(Declaration) []Diagnostic { return nil }
+func (k *kindExt) Bind(Declaration, HostContext) (Instance, error) {
+	return &fakeInstance{greeting: k.id}, nil
+}
+
+func TestRegistryLookupByKindAndProvider(t *testing.T) {
+	redis := &kindExt{id: "mhl.data.redis", kind: "data"}
+	pg := &kindExt{id: "mhl.data.postgres", kind: "data"}
+	sqlite := &kindExt{id: "mhl.state.sqlite", kind: "state"}
+
+	tests := []struct {
+		name      string
+		exts      []Extension
+		kind      string
+		provider  string
+		wantID    string
+		wantCode  string
+		wantInMsg string
+	}{
+		{name: "no provider registered", kind: "data", wantCode: "unknown-extension-kind"},
+		{name: "single provider, no from", exts: []Extension{redis}, kind: "data", wantID: "mhl.data.redis"},
+		{name: "single provider, matching from", exts: []Extension{redis}, kind: "data", provider: "mhl.data.redis", wantID: "mhl.data.redis"},
+		{name: "two providers, no from", exts: []Extension{redis, pg}, kind: "data", wantCode: "ambiguous-extension-kind", wantInMsg: "mhl.data.postgres, mhl.data.redis"},
+		{name: "two providers, from picks redis", exts: []Extension{redis, pg}, kind: "data", provider: "mhl.data.redis", wantID: "mhl.data.redis"},
+		{name: "two providers, from picks postgres", exts: []Extension{redis, pg}, kind: "data", provider: "mhl.data.postgres", wantID: "mhl.data.postgres"},
+		{name: "unknown provider", exts: []Extension{redis}, kind: "data", provider: "mhl.data.missing", wantCode: "unknown-extension-provider"},
+		{name: "provider serves another kind", exts: []Extension{redis, sqlite}, kind: "data", provider: "mhl.state.sqlite", wantCode: "extension-provider-kind-mismatch"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := NewRegistry(NopHost{})
+			for _, e := range tt.exts {
+				if err := reg.TryRegister(e); err != nil {
+					t.Fatalf("TryRegister %s: %v", e.ID(), err)
+				}
+			}
+			ext, err := reg.Lookup(tt.kind, tt.provider)
+			if tt.wantCode != "" {
+				var le *LookupError
+				if !errors.As(err, &le) || le.Code != tt.wantCode {
+					t.Fatalf("err = %v, want code %q", err, tt.wantCode)
+				}
+				if tt.wantInMsg != "" && !strings.Contains(err.Error(), tt.wantInMsg) {
+					t.Fatalf("err = %q, want it to mention %q", err, tt.wantInMsg)
+				}
+				diags := reg.Validate(Declaration{Kind: tt.kind, Provider: tt.provider, Name: "X"})
+				if len(diags) != 1 || diags[0].Code != tt.wantCode {
+					t.Fatalf("Validate = %+v, want one %q diagnostic", diags, tt.wantCode)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Lookup: %v", err)
+			}
+			if ext.ID() != tt.wantID {
+				t.Fatalf("Lookup picked %q, want %q", ext.ID(), tt.wantID)
+			}
+		})
+	}
+}
+
+func TestRegistryBuiltinKindIsReserved(t *testing.T) {
+	reg := NewRegistry(NopHost{})
+	reg.Register(&fakeExtension{}) // built-in style: claims "fake" exclusively
+	if err := reg.TryRegister(&kindExt{id: "ext.fake", kind: "fake"}); err == nil {
+		t.Fatal("expected an external extension to be refused a built-in's kind")
+	}
+}
+
+func TestRegistrySameKindProvidersBindSeparately(t *testing.T) {
+	reg := NewRegistry(NopHost{})
+	for _, e := range []Extension{&kindExt{id: "a", kind: "data"}, &kindExt{id: "b", kind: "data"}} {
+		if err := reg.TryRegister(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"a", "b"} {
+		got, err := reg.Call(context.Background(), CallRequest{
+			Declaration: Declaration{Kind: "data", Provider: id, Name: "D"},
+			Method:      "echo",
+			Args:        []Value{"x"},
+		})
+		if err != nil {
+			t.Fatalf("Call via %s: %v", id, err)
+		}
+		if got != id+" x" {
+			t.Fatalf("Call via %s = %q, want %q", id, got, id+" x")
+		}
 	}
 }

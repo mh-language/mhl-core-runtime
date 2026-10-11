@@ -56,7 +56,7 @@ mhl test <file.mh|dir>
 mhl lint [dir]
 mhl lsp        # LSP server over stdio, used by vscode-mhl
 mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
-mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [--single-replica] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics); --single-replica (or MHL_SERVE_SINGLE_REPLICA) is required to start with a non-cas `extension store`
+mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [--single-replica] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics); --single-replica (or MHL_SERVE_SINGLE_REPLICA) is required to start with a non-cas `extension state`
 mhl serve a2a [--addr h:p] [--token t] [--principal-header h] [dir]  # workflows as A2A skills (HTTP JSON-RPC); same bearer/principal-header/Origin/body-cap guard as `serve mcp --http` (a2aserver.Config, security.go)
 mhl version    # or --version / -v
 ```
@@ -105,7 +105,9 @@ like `break`, not a catchable error like `fail()`). Signal path: `interpreter.pa
 "pause"` → `execsvc.Result.Paused` → `mcpserver` `state: "paused"`. Via
 `execsvc.Request.{Session,Resume}`; `--state-dir` / `MHL_SERVE_STATE_DIR` makes that run
 state outlive the process (else a per-process temp dir), or a single
-`extension store <Name> { dir: ... }` declaration in the serve dir routes all durable state
+`extension state <Name> [from "<id>"] { ... }` declaration (legacy kind name `store` still
+accepted, both in the declaration and from an older package — `cli/storext.go`'s
+`lookupStateExtension`) in the serve dir routes all durable state
 (sessions + `run/*` checkpoints/owner) through that extension instead — `cli/serve.go` binds
 it host-side (`storext.go`), `mcpserver`'s `ext*` adapters (`extstore.go`) wrap it as the
 `KVStore` the `SessionStore`/`CheckpointStore`/`runtime.StateStore` seams speak; the run
@@ -113,11 +115,11 @@ it host-side (`storext.go`), `mcpserver`'s `ext*` adapters (`extstore.go`) wrap 
 `SessionStore` for `diskSessionStore` (`store.go`: one JSON file per id under
 `<state-dir>/.mhl/state/sessions/`), so an `Mcp-Session-Id` minted on one replica resolves on
 any other without a forced re-`initialize`; no `--state-dir` keeps `memSessionStore`. When `h.cps.Shared()` (a caller `--state-dir` or an
-extension store), `execRun` publishes a `RunStatusRec` per `OnStep` and `reconstructRun`
+extension state), `execRun` publishes a `RunStatusRec` per `OnStep` and `reconstructRun`
 falls back to it (no checkpoint yet) so another replica's `run/status` sees a `working` run
 it never started (marked `remote`, re-read each poll); `run/cancel` for a `remote` run writes
 a `cancel` flag the owning replica polls (1s `watchRemoteCancel` + step boundary) →
-distributed cancel. When the shared store is an `extension store` that advertised the `cas`
+distributed cancel. When the shared store is an `extension state` that advertised the `cas`
 capability (`LockingKVStore`: `PutIfAbsent`/`CompareAndSwap`), `httpServer.lock` (`runlock.go`)
 is a coarse per-run lease — `execRun` `acquire`s `run/<id>/lock` and heartbeats it
 (`runLockTTL` 30s, renew at `/3`). Each acquisition carries a random `token` in the lease
@@ -236,7 +238,7 @@ Key packages:
   (`ast.RefExpr`) builds a `*value.Ref` (ID + Fields), shared by pointer; `applyTrailers`/index
   helpers/`callValueMethod` `unref` it. Identity is persisted: `RedactVarsForCheckpoint` runs
   `value.EncodeRefs` and `RehydrateVars` runs `value.DecodeRefs` (StateSchemaVersion 2), so both
-  the disk store and an `extension store` keep it. A Ref never leaves the interpreter: native-op/
+  the disk store and an `extension state` keep it. A Ref never leaves the interpreter: native-op/
   extension args (`callArgs.materialized`), `memory`/`mem` writes and execsvc results
   (`publicVars`) are `value.Materialize`d; `Ref.MarshalJSON` covers json.Marshal paths.
   `parallel` branches get `value.CloneRefs` copies and `runtime.mergeRefFields` merges them by

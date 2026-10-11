@@ -1177,11 +1177,11 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 					break
 				}
 				if _, found := findExtension(prog, target); found {
-					// `S.get(...)` on `extension store S { ... }`: extension
+					// `S.get(...)` on `extension state S { ... }`: extension
 					// method calls are dispatched dynamically against the bound
 					// instance at run time, and the manifest that declares the
 					// method set isn't loaded here. Shape is already matched —
-					// nothing more to check statically. (A `store` extension's
+					// nothing more to check statically. (A `state` extension's
 					// get/set/append also happen to be memory method names, so
 					// this must come before the isMemoryMethod fallback.)
 					break

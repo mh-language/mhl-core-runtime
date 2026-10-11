@@ -169,7 +169,7 @@ HTTP flags (env var in parentheses):
   --principal-header h          Trust this header for the caller principal;
                                 requires --token (MHL_SERVE_PRINCIPAL_HEADER)
   --state-dir path              Persist session/run state here (MHL_SERVE_STATE_DIR)
-  --single-replica              Allow a non-cas extension store (MHL_SERVE_SINGLE_REPLICA)
+  --single-replica              Allow a non-cas extension state store (MHL_SERVE_SINGLE_REPLICA)
   --drain-timeout d             Graceful-shutdown drain window (MHL_SERVE_DRAIN_TIMEOUT)
   --max-concurrent-runs n       Cap in-flight async runs (MHL_SERVE_MAX_CONCURRENT_RUNS)
 

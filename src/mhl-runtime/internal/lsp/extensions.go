@@ -20,21 +20,24 @@ import (
 
 // extensionSpec resolves kind to its DeclarationSpec: a built-in first
 // (internal/extbuiltin's registered adapters), else path's project's locked
-// external extensions. ok is false when neither knows kind.
-func extensionSpec(path, kind string) (extension.DeclarationSpec, bool) {
+// external extensions — the one with id provider when the declaration names
+// one (`from "<id>"`), else the only one serving kind. ok is false when
+// neither knows kind, or several locked extensions serve it and provider is
+// "" (the same ambiguity the runtime rejects).
+func extensionSpec(path, kind, provider string) (extension.DeclarationSpec, bool) {
 	if spec, ok := extension.BuiltinSpec(kind); ok {
 		return spec, true
 	}
 	if path == "" {
 		return extension.DeclarationSpec{}, false
 	}
-	return projectExtensionSpec(path, kind)
+	return projectExtensionSpec(path, kind, provider)
 }
 
 // extensionMethodNames returns the dot-callable method names extension kind
 // exposes, or nil for an unknown kind.
-func extensionMethodNames(path, kind string) []string {
-	spec, ok := extensionSpec(path, kind)
+func extensionMethodNames(path, kind, provider string) []string {
+	spec, ok := extensionSpec(path, kind, provider)
 	if !ok {
 		return nil
 	}
@@ -47,8 +50,8 @@ func extensionMethodNames(path, kind string) []string {
 
 // extensionPropertyItems returns the property-name completions valid directly
 // inside a declaration body of the given kind.
-func extensionPropertyItems(path, kind string) []completionItem {
-	spec, ok := extensionSpec(path, kind)
+func extensionPropertyItems(path, kind, provider string) []completionItem {
+	spec, ok := extensionSpec(path, kind, provider)
 	if !ok {
 		return nil
 	}
@@ -68,8 +71,8 @@ func extensionPropertyItems(path, kind string) []completionItem {
 
 // extensionMethodSigs builds the signature-help table for an extension kind
 // from its MethodSpec entries.
-func extensionMethodSigs(path, kind string) map[string]sig {
-	spec, ok := extensionSpec(path, kind)
+func extensionMethodSigs(path, kind, provider string) map[string]sig {
+	spec, ok := extensionSpec(path, kind, provider)
 	if !ok {
 		return map[string]sig{}
 	}
