@@ -3,6 +3,7 @@ package lsp
 import (
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/mh-language/mhl-core-runtime/internal/extension"
 	"github.com/mh-language/mhl-core-runtime/internal/extension/external"
@@ -93,4 +94,34 @@ func lockedSpec(root, home, id, kind string) (extension.DeclarationSpec, bool) {
 		return extension.DeclarationSpec{}, false
 	}
 	return extension.DeclarationSpec{}, false
+}
+
+// providerInfo is one locked external extension able to serve a kind — a
+// candidate for an `extension <kind> <Name> from "<id>"` clause.
+type providerInfo struct {
+	ID      string
+	Version string
+}
+
+// projectProviders lists, sorted by id, every extension locked in filePath's
+// project whose installed manifest declares kind. nil when filePath isn't
+// under a locked project or none does.
+func projectProviders(filePath, kind string) []providerInfo {
+	root, ok := findProjectRoot(filePath)
+	if !ok {
+		return nil
+	}
+	lock, err := external.LoadLock(filepath.Join(root, external.LockPath))
+	if err != nil {
+		return nil
+	}
+	home, _ := os.UserHomeDir()
+	var out []providerInfo
+	for id, entry := range lock.Extensions {
+		if _, ok := lockedSpec(root, home, id, kind); ok {
+			out = append(out, providerInfo{ID: id, Version: entry.Version})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
 }

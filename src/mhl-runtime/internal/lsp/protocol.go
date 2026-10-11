@@ -109,6 +109,17 @@ type completionItem struct {
 	InsertText       string         `json:"insertText,omitempty"`
 	InsertTextFormat int            `json:"insertTextFormat,omitempty"`
 	SortText         string         `json:"sortText,omitempty"`
+	// TextEdit, when set, replaces Range with NewText instead of the
+	// client's own word-based guess — needed where the text being completed
+	// contains characters the editor treats as word separators (a dotted
+	// extension id inside `from "..."`).
+	TextEdit *textEdit `json:"textEdit,omitempty"`
+}
+
+// textEdit is LSP's TextEdit: replace range with newText.
+type textEdit struct {
+	Range   rangeT `json:"range"`
+	NewText string `json:"newText"`
 }
 
 // markupContent is LSP's MarkupContent: a string plus how to render it

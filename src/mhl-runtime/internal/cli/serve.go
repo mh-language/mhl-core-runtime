@@ -172,7 +172,8 @@ func runServeMCP(args []string, out io.Writer) error {
 			fmt.Fprintf(os.Stderr, "mhl serve mcp --http: warning: binding %s with no --token/MHL_SERVE_TOKEN — the endpoint is unauthenticated\n", addr)
 		}
 
-		// A `extension store <Name>` declaration in the workflow directory
+		// An `extension state <Name>` (legacy: `extension store`) declaration
+		// in the workflow directory
 		// backs durable state (sessions + checkpoints) with that extension;
 		// otherwise the on-disk .mhl/state tree is used.
 		// The directory is parsed once here, for that scan, and the same
@@ -187,7 +188,7 @@ func runServeMCP(args []string, out io.Writer) error {
 		}
 		defer closeStore()
 		if store == nil && stateDir == "" {
-			fmt.Fprintf(os.Stderr, "mhl serve mcp --http: note: no --state-dir/MHL_SERVE_STATE_DIR and no `extension store` — async run state is per-process and lost on restart\n")
+			fmt.Fprintf(os.Stderr, "mhl serve mcp --http: note: no --state-dir/MHL_SERVE_STATE_DIR and no `extension state` — async run state is per-process and lost on restart\n")
 		}
 
 		return mcpserver.ServeHTTP(ctx, mcpserver.HTTPConfig{

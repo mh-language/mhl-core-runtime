@@ -60,7 +60,10 @@ func (s *server) handle(msg *rpcMessage) {
 			Capabilities: serverCapabilities{
 				TextDocumentSync: 1,
 				CompletionProvider: completionOptions{
-					TriggerCharacters: []string{"."},
+					// `"` opens `from "<id>"` provider completion
+					// (providerCompletionAt); elsewhere a just-opened string
+					// gets no items.
+					TriggerCharacters: []string{".", `"`},
 				},
 				SignatureHelpProvider: signatureHelpOptions{
 					TriggerCharacters:   []string{"(", ","},

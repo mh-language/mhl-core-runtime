@@ -18,13 +18,23 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
 )
 
-// storeKind is the extension kind that backs `mhl serve mcp --http` durable
-// state (sessions + run checkpoints) when a workflow directory declares one.
-const storeKind = "store"
+// stateKind is the extension kind that backs `mhl serve mcp --http` durable
+// state (sessions + run checkpoints) when a workflow directory declares one —
+// the kind the official mhl.state.* packages serve. legacyStoreKind is its
+// former name, still accepted on both sides: a declaration may say
+// `extension store`, and an older package may serve kind "store".
+const (
+	stateKind       = "state"
+	legacyStoreKind = "store"
+)
 
-// discoverStoreExtension scans dir for a single `extension store <Name> { ... }`
-// declaration, binds the installed extension that serves kind "store" (the
-// one named by its `from "<id>"` clause when several are installed), and
+// isStateKind reports whether kind names the durable-state extension kind.
+func isStateKind(kind string) bool { return kind == stateKind || kind == legacyStoreKind }
+
+// discoverStoreExtension scans dir for a single `extension state <Name> { ... }`
+// (or legacy `extension store`) declaration, binds the installed extension
+// that serves that kind (the one named by its `from "<id>"` clause when
+// several are installed — see lookupStateExtension), and
 // returns it wrapped as a mcpserver.KVStore. It returns (nil, noop, nil) when
 // no such declaration exists — the on-disk `.mhl/state` default. logw receives
 // the extension's own diagnostic lines.
@@ -52,14 +62,17 @@ func discoverStoreExtension(dir string, files []execsvc.File, logw io.Writer) (m
 			fmt.Fprintf(logw, "warning: extension %q not loaded: %v\n", ext.ID(), err)
 		}
 	}
-	chosen, err := reg.Lookup(storeKind, decl.Provider)
+	if decl.Kind == legacyStoreKind {
+		fmt.Fprintf(logw, "note: `extension store %s` uses the legacy kind name; write `extension state %s`\n", decl.Name, decl.Name)
+	}
+	chosen, decl, err := lookupStateExtension(reg, decl)
 	if err != nil {
 		set.CloseAll()
 		var le *extension.LookupError
 		if errors.As(err, &le) && le.Code == "unknown-extension-kind" {
-			return nil, func() {}, fmt.Errorf("workflow directory declares `extension store %s` but no installed extension serves kind %q (mhl extension install ...)", decl.Name, storeKind)
+			return nil, func() {}, fmt.Errorf("workflow directory declares `extension %s %s` but no installed extension serves kind %q (mhl extension install ...)", decl.Kind, decl.Name, stateKind)
 		}
-		return nil, func() {}, fmt.Errorf("workflow directory declares `extension store %s`: %w", decl.Name, err)
+		return nil, func() {}, fmt.Errorf("workflow directory declares `extension %s %s`: %w", decl.Kind, decl.Name, err)
 	}
 
 	inst, err := chosen.Bind(decl, host)
@@ -87,8 +100,38 @@ func discoverStoreExtension(dir string, files []execsvc.File, logw io.Writer) (m
 	return &extKV{inst: inst, decl: decl, cas: cas, claim: claim, fence: fence, scan: scan}, set.CloseAll, nil
 }
 
+// lookupStateExtension resolves decl against reg under its declared kind
+// first, then under the other durable-state kind name, so `extension state`
+// still finds a package serving the legacy "store" kind and vice versa. The
+// returned declaration carries the kind the chosen extension actually serves
+// (its Bind checks that). Errors other than "not served under this name"
+// (an ambiguous kind, an unknown provider id) are returned at once; when
+// neither name resolves, the error for the declared kind is returned.
+func lookupStateExtension(reg *extension.Registry, decl extension.Declaration) (extension.Extension, extension.Declaration, error) {
+	kinds := []string{stateKind, legacyStoreKind}
+	if decl.Kind == legacyStoreKind {
+		kinds = []string{legacyStoreKind, stateKind}
+	}
+	var firstErr error
+	for _, kind := range kinds {
+		ext, err := reg.Lookup(kind, decl.Provider)
+		if err == nil {
+			decl.Kind = kind
+			return ext, decl, nil
+		}
+		var le *extension.LookupError
+		if !errors.As(err, &le) || (le.Code != "unknown-extension-kind" && le.Code != "extension-provider-kind-mismatch") {
+			return nil, decl, err
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return nil, decl, firstErr
+}
+
 // scanStoreDecl looks through dir's parsed .mh files (execsvc.ParseDir) for
-// exactly one `extension store` block and resolves its properties (string /
+// exactly one `extension state` (or legacy `extension store`) block and resolves its properties (string /
 // number / bool literals and env(...) / vault(...) credential refs) to JSON
 // values.
 func scanStoreDecl(dir string, files []execsvc.File) (extension.Declaration, bool, error) {
@@ -96,12 +139,12 @@ func scanStoreDecl(dir string, files []execsvc.File) (extension.Declaration, boo
 	for _, f := range files {
 		for _, decl := range f.Program.Decls {
 			kind, name, props, ok := ast.AsExtension(decl)
-			if !ok || kind != storeKind {
+			if !ok || !isStateKind(kind) {
 				continue
 			}
 			resolved, err := resolveStoreProps(props)
 			if err != nil {
-				return extension.Declaration{}, false, fmt.Errorf("%s: extension store %s: %w", f.Path, name, err)
+				return extension.Declaration{}, false, fmt.Errorf("%s: extension %s %s: %w", f.Path, kind, name, err)
 			}
 			found = append(found, extension.Declaration{Kind: kind, Provider: decl.Extension.Provider, Name: name, Props: resolved})
 		}
@@ -112,7 +155,7 @@ func scanStoreDecl(dir string, files []execsvc.File) (extension.Declaration, boo
 	case 1:
 		return found[0], true, nil
 	default:
-		return extension.Declaration{}, false, fmt.Errorf("more than one `extension store` declaration in %s", dir)
+		return extension.Declaration{}, false, fmt.Errorf("more than one `extension state` declaration in %s", dir)
 	}
 }
 
