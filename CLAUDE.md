@@ -88,8 +88,8 @@ logic, then `asToolResult` re-frames the reply as a `CallToolResult` (status obj
 `runToolMethod` in `runtools.go`. Read-only detail is exposed as MCP **resources**
 (`resources.go`, `resources` capability, both transports): `resources/list` +
 `resources/read` for `mhl://workflow/<name>` (a manifest projected from
-`runtime.Pipeline` — steps, inputs, checkpoint, declared deps — so it can't drift),
-`mhl://workflow/<name>/source`, and HTTP-only `mhl://run/<id>/{logs,result}` (owner-gated
+`runtime.Pipeline` — steps, inputs, checkpoint, declared deps — so it can't drift; the `.mh`
+source is deliberately never served), and HTTP-only `mhl://run/<id>/{logs,result}` (owner-gated
 like `run/status`); `dispatch` serves the `workflow` URIs, `serveMCP` splices in the `run`
 ones and `asToolResult` adds `resource_link`s to a bridged reply. `run/resume` continues
 a stopped run from its checkpoint — per-step checkpointing is on by default

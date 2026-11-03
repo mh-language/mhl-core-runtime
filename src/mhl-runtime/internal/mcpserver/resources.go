@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,7 +18,6 @@ import (
 //	                              inputs, checkpoint config, parallel groups,
 //	                              and the agents/tools/memory declared in the
 //	                              same program
-//	mhl://workflow/<name>/source   the declaration's .mh source text
 //	mhl://run/<runId>/logs         an async run's retained step/log() output
 //	mhl://run/<runId>/result       an async run's status + final vars as JSON
 //
@@ -27,20 +25,22 @@ import (
 // the run resources need the run registry and are HTTP-only, spliced in by
 // serveMCP the same way run/* is. The manifest is derived entirely from the
 // loaded Workflow / runtime.Pipeline so it cannot drift from what runs.
+//
+// The .mh source itself is deliberately not served: a workflow's program and
+// prompts are what a deployment may need to keep confidential, and a client
+// only needs the interface (tools/list + the manifest) to call it.
 const (
 	resURIScheme    = "mhl://"
 	resWorkflowHost = "workflow/"
 	resRunHost      = "run/"
 
-	mimeJSON   = "application/json"
-	mimeSource = "text/x-mhl"
-	mimeText   = "text/plain"
+	mimeJSON = "application/json"
+	mimeText = "text/plain"
 )
 
-// workflowResourceURIs returns the (manifest, source) URIs for a workflow.
-func workflowResourceURIs(name string) (manifest, source string) {
-	base := resURIScheme + resWorkflowHost + name
-	return base, base + "/source"
+// workflowResourceURI returns the manifest URI for a workflow.
+func workflowResourceURI(name string) string {
+	return resURIScheme + resWorkflowHost + name
 }
 
 // runResourceURIs returns the (logs, result) URIs for an async run.
@@ -49,36 +49,27 @@ func runResourceURIs(id string) (logs, result string) {
 	return base + "/logs", base + "/result"
 }
 
-// workflowResourceList renders every loaded workflow as a manifest + source
-// resource entry, ordered by name.
+// workflowResourceList renders every loaded workflow as a manifest resource
+// entry, ordered by name.
 func workflowResourceList(tools map[string]execsvc.Workflow) []map[string]any {
 	names := make([]string, 0, len(tools))
 	for n := range tools {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	out := make([]map[string]any, 0, 2*len(names))
+	out := make([]map[string]any, 0, len(names))
 	for _, n := range names {
 		w := tools[n]
-		mURI, sURI := workflowResourceURIs(n)
 		desc := w.Pipeline.Description
 		if desc == "" {
 			desc = fmt.Sprintf("The mhl %s %q.", w.KindLabel(), n)
 		}
-		out = append(out,
-			map[string]any{
-				"uri":         mURI,
-				"name":        n + " (manifest)",
-				"description": desc + " Steps, inputs, checkpoint and declared dependencies as JSON.",
-				"mimeType":    mimeJSON,
-			},
-			map[string]any{
-				"uri":         sURI,
-				"name":        n + " (source)",
-				"description": "The .mh source of " + n + ".",
-				"mimeType":    mimeSource,
-			},
-		)
+		out = append(out, map[string]any{
+			"uri":         workflowResourceURI(n),
+			"name":        n + " (manifest)",
+			"description": desc + " Steps, inputs, checkpoint and declared dependencies as JSON.",
+			"mimeType":    mimeJSON,
+		})
 	}
 	return out
 }
@@ -101,12 +92,6 @@ func readWorkflowResource(tools map[string]execsvc.Workflow, uri string) (conten
 	case "":
 		b, _ := json.MarshalIndent(workflowManifest(w), "", "  ")
 		return []map[string]any{{"uri": uri, "mimeType": mimeJSON, "text": string(b)}}, nil, true
-	case "source":
-		src, e := os.ReadFile(w.File)
-		if e != nil {
-			return nil, fmt.Errorf("reading source of %q: %v", name, e), true
-		}
-		return []map[string]any{{"uri": uri, "mimeType": mimeSource, "text": string(src)}}, nil, true
 	default:
 		return nil, fmt.Errorf("unknown sub-resource %q of workflow %q", sub, name), true
 	}
@@ -119,7 +104,6 @@ func workflowManifest(w execsvc.Workflow) map[string]any {
 	m := map[string]any{
 		"name":        w.Name,
 		"kind":        w.KindLabel(),
-		"source":      resURIScheme + resWorkflowHost + w.Name + "/source",
 		"steps":       p.Steps,
 		"inputSchema": p.InputSchema(),
 		// Mirrors the tools/list _meta.mhl.run hint.

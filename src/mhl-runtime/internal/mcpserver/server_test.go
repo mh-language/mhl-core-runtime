@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -382,7 +383,8 @@ func TestServeNoWorkflows(t *testing.T) {
 }
 
 // Workflow resources are transport-shared: over stdio, resources/list enumerates
-// a manifest + source per workflow and resources/read returns each.
+// a manifest per workflow and resources/read returns it. The .mh source is
+// never served.
 func TestServeResources(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(`
@@ -419,14 +421,14 @@ pipeline Greet {
 		t.Errorf("initialize did not advertise resources capability: %v", caps)
 	}
 
-	// resources/list: manifest + source for Greet.
+	// resources/list: only the manifest for Greet — no source entry.
 	res := msgs[1]["result"].(map[string]any)["resources"].([]any)
 	uris := map[string]string{}
 	for _, r := range res {
 		m := r.(map[string]any)
 		uris[m["uri"].(string)] = m["mimeType"].(string)
 	}
-	if uris["mhl://workflow/Greet"] != "application/json" || uris["mhl://workflow/Greet/source"] != "text/x-mhl" {
+	if len(uris) != 1 || uris["mhl://workflow/Greet"] != "application/json" {
 		t.Errorf("resources/list = %v", res)
 	}
 
@@ -449,11 +451,18 @@ pipeline Greet {
 	if decl, _ := manifest["declared"].(map[string]any); decl == nil || len(decl["agents"].([]any)) != 1 {
 		t.Errorf("manifest declared block = %v", manifest["declared"])
 	}
+	if _, ok := manifest["source"]; ok {
+		t.Errorf("manifest still links a source resource: %v", manifest["source"])
+	}
 
-	// resources/read source — the .mh text.
-	src := msgs[3]["result"].(map[string]any)["contents"].([]any)[0].(map[string]any)
-	if !strings.Contains(src["text"].(string), "pipeline Greet") {
-		t.Errorf("source resource text = %q", src["text"])
+	// resources/read source — no longer served: an unknown sub-resource,
+	// and the error must not echo the program.
+	srcErr, _ := msgs[3]["error"].(map[string]any)
+	if srcErr == nil || srcErr["code"].(float64) != -32602 {
+		t.Errorf("source resource = %v, want -32602", msgs[3])
+	}
+	if strings.Contains(fmt.Sprint(msgs[3]), "pipeline Greet") {
+		t.Errorf("source resource error leaked the program: %v", msgs[3])
 	}
 
 	// Unknown workflow → -32602.
