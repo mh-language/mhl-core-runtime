@@ -58,6 +58,7 @@ mhl lsp        # LSP server over stdio, used by vscode-mhl
 mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
 mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [--single-replica] [--workflows-pack file] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics); --single-replica (or MHL_SERVE_SINGLE_REPLICA) is required to start with a non-cas `extension state`; --workflows-pack (MHL_SERVE_WORKFLOWS_PACK, key in MHL_SERVE_WORKFLOWS_KEY, unset from the env before anything runs) loads the program from an encrypted DMPK v2 pack (`internal/pack`) in memory only — `execsvc.ParseFS`/`LoadFilesFS` → `interpreter.NewImportCacheFS`, whose read func replaces os.ReadFile for imports/prompts/skills/schemas; [dir] is then only the root a schema's path is composed under
 mhl serve a2a [--addr h:p] [--token t] [--principal-header h] [dir]  # workflows as A2A skills (HTTP JSON-RPC); same bearer/principal-header/Origin/body-cap guard as `serve mcp --http` (a2aserver.Config, security.go)
+mhl pack <dir> -o <file> [--new-key]  # seal a workflow dir into a DMPK v2 pack (cli/pack.go → pack.Seal); key in MHL_SERVE_WORKFLOWS_KEY or --new-key (printed as the only stdout line); skips hidden entries, errors on symlinks, verifies via execsvc.ParseFS/LoadFilesFS before an atomic 0600 write
 mhl version    # or --version / -v
 ```
 

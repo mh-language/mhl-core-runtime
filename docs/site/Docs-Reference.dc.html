@@ -1294,6 +1294,7 @@ test guarded_retry_test {
             <div class="cli-command"><code>mhl test directory/</code><span>discover tests recursively</span></div>
             <div class="cli-command"><code>mhl lint .</code><span>validate syntax, types, and references</span></div>
             <div class="cli-command"><code>mhl lsp</code><span>start the language server over stdio (used by the VS&nbsp;Code extension)</span></div>
+            <div class="cli-command"><code>mhl pack dir/ -o workflows.dmpk</code><span>seal a workflow directory into an encrypted pack for <code>serve mcp --workflows-pack</code>; key in <code>MHL_SERVE_WORKFLOWS_KEY</code>, or <code>--new-key</code> generates one and prints it as the only stdout line</span></div>
             <div class="cli-command"><code>mhl serve mcp dir/</code><span>serve every workflow under <code>dir/</code> as an MCP tool (stdio) — <a href="Docs-Servers.dc.html">serving workflows</a></span></div>
             <div class="cli-command"><code>mhl serve mcp --http dir/</code><span>the same over Streamable HTTP, plus async <code>run/*</code> — <a href="Docs-Servers.dc.html#mcp-http">serving workflows</a></span></div>
             <div class="cli-command"><code>mhl serve a2a dir/</code><span>serve them as Agent2Agent skills over HTTP — <a href="Docs-Servers.dc.html#a2a">serving workflows</a></span></div>
