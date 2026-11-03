@@ -2,6 +2,7 @@ package interpreter
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,11 +64,42 @@ type ImportCache struct {
 	// resolved; the first resolution that imports one takes it from here
 	// instead of reading the file again.
 	parsed map[string]*ast.Program
+	// read is how every imported module, `prompt ... from`, `skill ... from`
+	// and `schema ... from` file is read: os.ReadFile, or an fs.FS
+	// (NewImportCacheFS).
+	read func(name string) ([]byte, error)
 }
 
-// NewImportCache returns an empty ImportCache.
+// NewImportCache returns an empty ImportCache that reads from the disk.
 func NewImportCache() *ImportCache {
-	return &ImportCache{modules: map[string]*ast.Program{}, parsed: map[string]*ast.Program{}}
+	return &ImportCache{modules: map[string]*ast.Program{}, parsed: map[string]*ast.Program{}, read: os.ReadFile}
+}
+
+// NewImportCacheFS returns an empty ImportCache that reads every file from
+// fsys instead of the disk — an encrypted workflows pack held only in memory
+// (`mhl serve mcp --workflows-pack`). fsys stands in for the directory root:
+// file paths keep their on-disk form (root joined with the relative path), so
+// error messages, cache keys and a schema's path all name where the file sits
+// under root, and only the read goes to fsys. A path outside root is not in
+// fsys and fails to resolve; nothing falls back to the disk.
+func NewImportCacheFS(root string, fsys fs.FS) (*ImportCache, error) {
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	c := NewImportCache()
+	c.read = func(name string) ([]byte, error) {
+		full, err := filepath.Abs(name)
+		if err != nil {
+			return nil, err
+		}
+		rel, err := filepath.Rel(abs, full)
+		if err != nil || !filepath.IsLocal(rel) {
+			return nil, fmt.Errorf("%s: outside the workflows pack", name)
+		}
+		return fs.ReadFile(fsys, filepath.ToSlash(rel))
+	}
+	return c, nil
 }
 
 // Preload hands the cache prog, the freshly parsed, not yet import-resolved
@@ -100,10 +132,12 @@ func ResolveImportsCached(file string, prog *ast.Program, cache *ImportCache) er
 	set := &moduleSet{
 		local:      map[string]*ast.Program{key: prog},
 		inProgress: map[string]bool{key: true},
+		read:       os.ReadFile,
 	}
 	if cache != nil {
 		set.shared = cache.modules
 		set.parsed = cache.parsed
+		set.read = cache.read
 	}
 	if err := resolveImports(file, prog, set); err != nil {
 		return err
@@ -136,6 +170,8 @@ type moduleSet struct {
 	// parsed is ImportCache.parsed (possibly nil): already-parsed modules a
 	// miss takes instead of calling loadModule.
 	parsed map[string]*ast.Program
+	// read is ImportCache.read, or os.ReadFile without a cache.
+	read func(name string) ([]byte, error)
 }
 
 // load returns the module at key, parsed but not yet resolved: a preloaded
@@ -146,7 +182,7 @@ func (s *moduleSet) load(key, dir, path string) (*ast.Program, error) {
 		delete(s.parsed, key)
 		return m, nil
 	}
-	return loadModule(dir, path)
+	return loadModule(s.read, dir, path)
 }
 
 func (s *moduleSet) get(key string) (*ast.Program, bool) {
@@ -184,21 +220,21 @@ func resolveImports(file string, prog *ast.Program, resolved *moduleSet) error {
 	for _, decl := range prog.Decls {
 		switch {
 		case decl.Prompt != nil && decl.Prompt.Source != "":
-			fm, text, err := loadPromptSource(dir, decl.Prompt.Source)
+			fm, text, err := loadPromptSource(resolved.read, dir, decl.Prompt.Source)
 			if err != nil {
 				return fmt.Errorf("prompt %q from %q: %w", decl.Prompt.Name, decl.Prompt.Source, err)
 			}
 			decl.Prompt.Frontmatter = fm
 			decl.Prompt.Body = ast.NewMultilineStringExpr(text)
 		case decl.Skill != nil && decl.Skill.Source != "":
-			fm, content, err := loadSkillSource(dir, decl.Skill.Source)
+			fm, content, err := loadSkillSource(resolved.read, dir, decl.Skill.Source)
 			if err != nil {
 				return fmt.Errorf("skill %q from %q: %w", decl.Skill.Name, decl.Skill.Source, err)
 			}
 			decl.Skill.Frontmatter = fm
 			decl.Skill.Content = content
 		case decl.Schema != nil:
-			if err := decl.Schema.Load(dir); err != nil {
+			if err := decl.Schema.LoadWith(resolved.read, dir); err != nil {
 				return fmt.Errorf("schema %q from %q: %w", decl.Schema.Name, decl.Schema.Source, err)
 			}
 		case decl.Import != nil:
@@ -413,11 +449,11 @@ func (idx *declIndex) hasFragment(frag *ast.Pipeline) bool {
 	return idx.frags[frag]
 }
 
-// loadModule reads and parses the .mh file at path, resolved relative to
-// dir.
-func loadModule(dir, path string) (*ast.Program, error) {
+// loadModule reads (via read) and parses the .mh file at path, resolved
+// relative to dir.
+func loadModule(read func(string) ([]byte, error), dir, path string) (*ast.Program, error) {
 	full := filepath.Join(dir, path)
-	src, err := os.ReadFile(full)
+	src, err := read(full)
 	if err != nil {
 		return nil, err
 	}
@@ -435,9 +471,9 @@ func loadModule(dir, path string) (*ast.Program, error) {
 // trimMultiline's treatment of an inline """...""" body (internal/lang/parser/parser.go)
 // so a file-sourced and an inline-sourced prompt body are indistinguishable
 // from here on.
-func loadPromptSource(dir, path string) (map[string]any, string, error) {
+func loadPromptSource(read func(string) ([]byte, error), dir, path string) (map[string]any, string, error) {
 	full := filepath.Join(dir, path)
-	src, err := os.ReadFile(full)
+	src, err := read(full)
 	if err != nil {
 		return nil, "", err
 	}
@@ -453,9 +489,9 @@ const maxSkillSourceSize = 64 * 1024
 // loadSkillSource reads and parses the SKILL.md file at path, resolved
 // relative to dir, for a `skill ... from "path"` declaration: frontmatter
 // (name/description required) plus the remaining Markdown content.
-func loadSkillSource(dir, path string) (map[string]any, string, error) {
+func loadSkillSource(read func(string) ([]byte, error), dir, path string) (map[string]any, string, error) {
 	full := filepath.Join(dir, path)
-	src, err := os.ReadFile(full)
+	src, err := read(full)
 	if err != nil {
 		return nil, "", err
 	}

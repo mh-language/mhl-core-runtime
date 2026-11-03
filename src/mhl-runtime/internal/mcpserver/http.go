@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -58,6 +59,17 @@ type HTTPConfig struct {
 	// store` scan) passes them so Dir isn't parsed a second time. Consumed:
 	// their imports are resolved in place.
 	Files []execsvc.File
+
+	// FS, when non-nil, is where the workflows are read from instead of Dir
+	// on disk — a decrypted workflows pack held only in memory
+	// (`--workflows-pack`). Dir is then just the root their paths are
+	// composed under (a schema's path, where the host materializes files
+	// subprocesses open by path); nothing is read from it. Files, if given,
+	// must come from execsvc.ParseFS(Dir, FS).
+	FS fs.FS
+	// Source labels where the workflows came from in the startup log; ""
+	// means Dir.
+	Source string
 
 	// PrincipalHeader, when set, is the header an authenticated upstream (an
 	// API Gateway authorizer, Envoy) puts the caller's identity in; the
@@ -114,8 +126,12 @@ func ServeHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) error {
 		_ = ln.Close()
 		return err
 	}
+	source := cfg.Source
+	if source == "" {
+		source = cfg.Dir
+	}
 	fmt.Fprintf(logw, "mhl serve mcp --http: %d tool(s) from %s on http://%s%s\n",
-		len(h.srv.tools), cfg.Dir, ln.Addr(), mcpPath)
+		len(h.srv.tools), source, ln.Addr(), mcpPath)
 
 	// BaseContext threads the server context into every request context, so a
 	// SIGINT/SIGTERM cancels an in-flight tools/call run (matching the stdio
@@ -266,9 +282,18 @@ type httpServer struct {
 func buildHTTP(ctx context.Context, cfg HTTPConfig, logw io.Writer) (http.Handler, *httpServer, error) {
 	var tools map[string]execsvc.Workflow
 	var err error
-	if cfg.Files != nil {
+	switch {
+	case cfg.FS != nil:
+		files := cfg.Files
+		if files == nil {
+			if files, err = execsvc.ParseFS(cfg.Dir, cfg.FS); err != nil {
+				return nil, nil, err
+			}
+		}
+		tools, err = execsvc.LoadFilesFS(cfg.Dir, cfg.FS, files)
+	case cfg.Files != nil:
 		tools, err = execsvc.LoadFiles(cfg.Dir, cfg.Files)
-	} else {
+	default:
 		tools, err = execsvc.Load(cfg.Dir)
 	}
 	if err != nil {

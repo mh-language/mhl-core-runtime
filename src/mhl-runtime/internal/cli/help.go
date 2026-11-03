@@ -172,6 +172,10 @@ HTTP flags (env var in parentheses):
   --single-replica              Allow a non-cas extension state store (MHL_SERVE_SINGLE_REPLICA)
   --drain-timeout d             Graceful-shutdown drain window (MHL_SERVE_DRAIN_TIMEOUT)
   --max-concurrent-runs n       Cap in-flight async runs (MHL_SERVE_MAX_CONCURRENT_RUNS)
+  --workflows-pack file         Load the program from this encrypted pack, in memory
+                                only; key as 64 hex chars in MHL_SERVE_WORKFLOWS_KEY.
+                                [dir] is then only the root for subprocess paths
+                                (MHL_SERVE_WORKFLOWS_PACK)
 
   mhl serve mcp ./workflows
   mhl serve mcp --http --addr :8080 --token $TOK ./workflows
