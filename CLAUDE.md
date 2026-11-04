@@ -56,7 +56,7 @@ mhl test <file.mh|dir>
 mhl lint [dir]
 mhl lsp        # LSP server over stdio, used by vscode-mhl
 mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
-mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [--single-replica] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics); --single-replica (or MHL_SERVE_SINGLE_REPLICA) is required to start with a non-cas `extension state`
+mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [--single-replica] [--workflows-pack file] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics); --single-replica (or MHL_SERVE_SINGLE_REPLICA) is required to start with a non-cas `extension state`; --workflows-pack (MHL_SERVE_WORKFLOWS_PACK, key in MHL_SERVE_WORKFLOWS_KEY, unset from the env before anything runs) loads the program from an encrypted DMPK v2 pack (`internal/pack`) in memory only — `execsvc.ParseFS`/`LoadFilesFS` → `interpreter.NewImportCacheFS`, whose read func replaces os.ReadFile for imports/prompts/skills/schemas; [dir] is then only the root a schema's path is composed under
 mhl serve a2a [--addr h:p] [--token t] [--principal-header h] [dir]  # workflows as A2A skills (HTTP JSON-RPC); same bearer/principal-header/Origin/body-cap guard as `serve mcp --http` (a2aserver.Config, security.go)
 mhl version    # or --version / -v
 ```
@@ -88,8 +88,8 @@ logic, then `asToolResult` re-frames the reply as a `CallToolResult` (status obj
 `runToolMethod` in `runtools.go`. Read-only detail is exposed as MCP **resources**
 (`resources.go`, `resources` capability, both transports): `resources/list` +
 `resources/read` for `mhl://workflow/<name>` (a manifest projected from
-`runtime.Pipeline` — steps, inputs, checkpoint, declared deps — so it can't drift),
-`mhl://workflow/<name>/source`, and HTTP-only `mhl://run/<id>/{logs,result}` (owner-gated
+`runtime.Pipeline` — steps, inputs, checkpoint, declared deps — so it can't drift; the `.mh`
+source is deliberately never served), and HTTP-only `mhl://run/<id>/{logs,result}` (owner-gated
 like `run/status`); `dispatch` serves the `workflow` URIs, `serveMCP` splices in the `run`
 ones and `asToolResult` adds `resource_link`s to a bridged reply. `run/resume` continues
 a stopped run from its checkpoint — per-step checkpointing is on by default

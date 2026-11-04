@@ -2,24 +2,31 @@ package cli
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/a2aserver"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
+	"github.com/mh-language/mhl-core-runtime/internal/pack"
 )
+
+// workflowsKeyEnv carries the workflows pack's AES-256 key, 64 hex
+// characters. Never a flag: argv is readable by every process on the host.
+const workflowsKeyEnv = "MHL_SERVE_WORKFLOWS_KEY"
 
 // runServe implements:
 //
 //	mhl serve mcp [dir]
-//	mhl serve mcp --http [--addr host:port] [--token t] [--state-dir path] [--single-replica] [dir]
+//	mhl serve mcp --http [--addr host:port] [--token t] [--state-dir path] [--single-replica] [--workflows-pack file] [dir]
 //	mhl serve a2a [--addr host:port] [--token t] [--principal-header h] [dir]
 //
 // All expose every pipeline/workflow declared under dir (default ".") to
@@ -28,6 +35,12 @@ import (
 // with --http, over the Streamable HTTP transport (one JSON-RPC message per
 // POST /mcp); `a2a` as Agent2Agent skills over HTTP JSON-RPC. Diagnostics go
 // to stderr; for stdio `mcp`, stdout is a raw protocol stream.
+//
+// With --workflows-pack (MHL_SERVE_WORKFLOWS_PACK) and the key in
+// MHL_SERVE_WORKFLOWS_KEY, `mcp --http` loads its program and prompts from
+// that encrypted pack, decrypted only in memory; dir is then only the root
+// paths handed to subprocesses are composed under (the host materializes
+// those files there).
 func runServe(args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: mhl serve <mcp|a2a> [args]")
@@ -43,6 +56,13 @@ func runServe(args []string, out io.Writer) error {
 }
 
 func runServeMCP(args []string, out io.Writer) error {
+	// Taken out of the environment before anything else runs: every
+	// subprocess this process spawns (agent CLIs, cmd.exec) inherits it,
+	// and a workflow could read it back with env().
+	packKey, packKeySet := os.LookupEnv(workflowsKeyEnv)
+	os.Unsetenv(workflowsKeyEnv)
+	packPath := os.Getenv("MHL_SERVE_WORKFLOWS_PACK")
+
 	var (
 		httpMode   bool
 		addr       = "127.0.0.1:8711"
@@ -146,6 +166,12 @@ func runServeMCP(args []string, out io.Writer) error {
 			principalH = args[i]
 		case "--single-replica":
 			singleRepl = true
+		case "--workflows-pack":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--workflows-pack requires a file argument")
+			}
+			i++
+			packPath = args[i]
 		default:
 			if dir != "" {
 				return fmt.Errorf("unexpected argument %q", args[i])
@@ -155,6 +181,22 @@ func runServeMCP(args []string, out io.Writer) error {
 	}
 	if dir == "" {
 		dir = "."
+	}
+
+	var packFS *pack.FS
+	switch {
+	case packPath != "":
+		if !httpMode {
+			return fmt.Errorf("--workflows-pack requires --http")
+		}
+		if !packKeySet || strings.TrimSpace(packKey) == "" {
+			return fmt.Errorf("--workflows-pack needs its key in %s", workflowsKeyEnv)
+		}
+		if packFS, err = openWorkflowsPack(packPath, packKey); err != nil {
+			return err
+		}
+	case strings.TrimSpace(packKey) != "":
+		return fmt.Errorf("%s is set but no --workflows-pack / MHL_SERVE_WORKFLOWS_PACK was given", workflowsKeyEnv)
 	}
 
 	// SIGINT/SIGTERM cancel the server context so an in-flight run stops and
@@ -178,7 +220,14 @@ func runServeMCP(args []string, out io.Writer) error {
 		// otherwise the on-disk .mhl/state tree is used.
 		// The directory is parsed once here, for that scan, and the same
 		// ASTs are what ServeHTTP loads the workflows from.
-		files, err := execsvc.ParseDir(dir)
+		var files []execsvc.File
+		var source string
+		if packFS != nil {
+			files, err = execsvc.ParseFS(dir, packFS)
+			source = packPath
+		} else {
+			files, err = execsvc.ParseDir(dir)
+		}
 		if err != nil {
 			return err
 		}
@@ -191,7 +240,7 @@ func runServeMCP(args []string, out io.Writer) error {
 			fmt.Fprintf(os.Stderr, "mhl serve mcp --http: note: no --state-dir/MHL_SERVE_STATE_DIR and no `extension state` — async run state is per-process and lost on restart\n")
 		}
 
-		return mcpserver.ServeHTTP(ctx, mcpserver.HTTPConfig{
+		cfg := mcpserver.HTTPConfig{
 			Addr:              addr,
 			Dir:               dir,
 			Token:             token,
@@ -199,15 +248,42 @@ func runServeMCP(args []string, out io.Writer) error {
 			PrincipalHeader:   principalH,
 			Store:             store,
 			Files:             files,
+			Source:            source,
 			DrainTimeout:      drainTimeout,
 			MaxConcurrentRuns: maxRuns,
 			SingleReplica:     singleRepl,
 			RunLockTTL:        runLockTTL,
 			SessionTTL:        sessionTTL,
 			TerminalRunTTL:    terminalRunTTL,
-		}, os.Stderr)
+		}
+		if packFS != nil {
+			// Only when set: a nil *pack.FS in the interface would read as a
+			// configured FS.
+			cfg.FS = packFS
+		}
+		return mcpserver.ServeHTTP(ctx, cfg, os.Stderr)
 	}
 	return mcpserver.Serve(ctx, dir, os.Stdin, os.Stdout, os.Stderr)
+}
+
+// openWorkflowsPack decrypts the pack at path with the hex key keyHex into an
+// in-memory FS. The decoded key is zeroed once the pack is open; any failure —
+// a malformed key, a wrong key, one tampered byte — is fatal, nothing served.
+func openWorkflowsPack(path, keyHex string) (*pack.FS, error) {
+	key, err := hex.DecodeString(strings.TrimSpace(keyHex))
+	defer clear(key)
+	if err != nil || len(key) != pack.KeySize {
+		return nil, fmt.Errorf("%s: want %d hex characters", workflowsKeyEnv, 2*pack.KeySize)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("--workflows-pack: %w", err)
+	}
+	files, err := pack.Open(raw, key)
+	if err != nil {
+		return nil, fmt.Errorf("--workflows-pack %s: %w", path, err)
+	}
+	return pack.NewFS(files)
 }
 
 // isLoopbackAddr reports whether a host:port binds only the loopback

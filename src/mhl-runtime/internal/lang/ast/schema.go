@@ -38,11 +38,19 @@ const MaxSchemaSourceSize = 1 << 20
 // Load reads Source relative to dir into Content and Path, rejecting a file
 // that is not a JSON object.
 func (s *Schema) Load(dir string) error {
+	return s.LoadWith(os.ReadFile, dir)
+}
+
+// LoadWith is Load reading the file through read — an in-memory workflows
+// pack, say — instead of the disk. Path is still the file's absolute
+// location under dir, which is where an engine taking a schema file expects
+// to find it (a pack's host materializes schemas there).
+func (s *Schema) LoadWith(read func(string) ([]byte, error), dir string) error {
 	full, err := filepath.Abs(filepath.Join(dir, s.Source))
 	if err != nil {
 		return err
 	}
-	src, err := os.ReadFile(full)
+	src, err := read(full)
 	if err != nil {
 		return err
 	}
