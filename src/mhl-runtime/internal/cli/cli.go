@@ -60,7 +60,7 @@ func init() {
 // returns a non-nil error on failure.
 func Run(args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl <command> [args]\n  commands: init, run, test, lint, lsp, serve, extension, version, help\n  run `mhl help` for details")
+		return fmt.Errorf("usage: mhl <command> [args]\n  commands: init, run, test, lint, lsp, serve, pack, extension, version, help\n  run `mhl help` for details")
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
@@ -84,6 +84,8 @@ func Run(args []string, out io.Writer) error {
 		return runLSP(out)
 	case "serve":
 		return runServe(args[1:], out)
+	case "pack":
+		return runPack(args[1:], out)
 	case "extension":
 		return runExtension(args[1:], out)
 	case "version", "--version", "-v":

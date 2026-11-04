@@ -20,7 +20,7 @@ func TestHelpCommandAndAliasesListEveryCommand(t *testing.T) {
 		got := buf.String()
 		for _, want := range []string{
 			"Meta-Harness Language",
-			"init", "run", "test", "lint", "lsp", "serve", "extension", "version",
+			"init", "run", "test", "lint", "lsp", "serve", "pack", "extension", "version",
 			"--dry-run", "--resume",
 		} {
 			if !strings.Contains(got, want) {
@@ -46,6 +46,8 @@ func TestPerCommandHelp(t *testing.T) {
 		{[]string{"serve", "-h"}, "mhl serve <mcp|a2a>"},
 		{[]string{"serve", "mcp", "-h"}, "mhl serve mcp --http"},
 		{[]string{"serve", "a2a", "--help"}, "mhl serve a2a [flags]"},
+		{[]string{"pack", "-h"}, "mhl pack <dir> -o <file>"},
+		{[]string{"pack", "./workflows", "--help"}, "mhl pack <dir> -o <file>"},
 		{[]string{"extension", "-h"}, "mhl extension <subcommand>"},
 		{[]string{"extension", "install", "--help"}, "mhl extension <subcommand>"},
 	}

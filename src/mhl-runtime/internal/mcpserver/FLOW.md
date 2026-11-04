@@ -391,7 +391,8 @@ Read-only detail, addressed by `mhl://` URI, behind the `resources` capability
   `execsvc.Workflow` / `runtime.Pipeline` (`workflowManifest`): ordered steps,
   typed inputs, `inputSchema`, checkpoint config, parallel groups, step
   timeouts, loop config, and the program's `declared` agents/tools/memory/…
-- `mhl://workflow/<name>/source` — the declaration's `.mh` text.
+- The `.mh` source is deliberately **not** a resource: a deployment's program
+  and prompts may be confidential, and a client needs only the interface.
 - `mhl://run/<id>/logs` and `.../result` — an async run's `ringLog` output and
   `runView` JSON. **HTTP-only** (need the registry) and owner-gated exactly
   like `run/status`.

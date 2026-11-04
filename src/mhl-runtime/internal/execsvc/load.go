@@ -2,6 +2,7 @@ package execsvc
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -56,6 +57,39 @@ func ParseDir(dir string) ([]File, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseAll(paths, os.ReadFile)
+}
+
+// ParseFS is ParseDir over fsys, which stands in for the directory root — an
+// encrypted workflows pack held only in memory. Every .mh file in fsys is
+// parsed; its File.Path is root joined with its path in fsys, i.e. where the
+// file would sit on disk, so LoadFilesFS(root, fsys, ...) resolves imports
+// against fsys with the same relative layout ParseDir(root) would see.
+func ParseFS(root string, fsys fs.FS) ([]File, error) {
+	var paths []string
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(p, ".mh") {
+			paths = append(paths, filepath.Join(root, filepath.FromSlash(p)))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseAll(paths, func(name string) ([]byte, error) {
+		rel, err := filepath.Rel(root, name)
+		if err != nil {
+			return nil, err
+		}
+		return fs.ReadFile(fsys, filepath.ToSlash(rel))
+	})
+}
+
+// parseAll reads (via read) and parses every path, sorted.
+func parseAll(paths []string, read func(string) ([]byte, error)) ([]File, error) {
 	sort.Strings(paths)
 
 	// Files parse independently of each other (imports are only resolved
@@ -71,7 +105,7 @@ func ParseDir(dir string) ([]File, error) {
 		go func() {
 			defer wg.Done()
 			for i := range next {
-				files[i], errs[i] = parseFile(paths[i])
+				files[i], errs[i] = parseFile(read, paths[i])
 			}
 		}()
 	}
@@ -88,8 +122,8 @@ func ParseDir(dir string) ([]File, error) {
 	return files, nil
 }
 
-func parseFile(path string) (File, error) {
-	src, err := os.ReadFile(path)
+func parseFile(read func(string) ([]byte, error), path string) (File, error) {
+	src, err := read(path)
 	if err != nil {
 		return File{}, fmt.Errorf("reading %s: %w", path, err)
 	}
@@ -115,11 +149,26 @@ func Load(dir string) (map[string]Workflow, error) {
 // labels errors. It resolves each Program's imports in place, so files must
 // not be reused afterwards.
 func LoadFiles(dir string, files []File) (map[string]Workflow, error) {
-	out := map[string]Workflow{}
 	// One cache for the whole directory: a module imported (directly or
 	// transitively) by many files is parsed and resolved once, not once per
 	// importer.
-	imports := interpreter.NewImportCache()
+	return loadFiles(dir, files, interpreter.NewImportCache())
+}
+
+// LoadFilesFS is LoadFiles over files parsed by ParseFS(root, fsys): every
+// import, prompt, skill and schema is read from fsys, never the disk. A
+// schema's path still names its location under root, where the host is
+// expected to have materialized it for engines that open it by path.
+func LoadFilesFS(root string, fsys fs.FS, files []File) (map[string]Workflow, error) {
+	imports, err := interpreter.NewImportCacheFS(root, fsys)
+	if err != nil {
+		return nil, err
+	}
+	return loadFiles(root, files, imports)
+}
+
+func loadFiles(dir string, files []File, imports *interpreter.ImportCache) (map[string]Workflow, error) {
+	out := map[string]Workflow{}
 	// Only what a file itself declares is registered here: an imported
 	// pipeline/workflow is merged into prog too (it has to be, to run), but
 	// it belongs to — and is registered by — the file that declares it.
