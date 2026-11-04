@@ -34,6 +34,7 @@ Commands:
   lint [dir]                 Statically check .mh files (default ".")
   lsp                        Start the language server over stdio (used by vscode-mhl)
   serve <mcp|a2a> [flags]    Expose workflows as MCP tools or A2A skills
+  pack <dir> -o <file>       Seal a workflow directory into an encrypted pack
   extension <subcommand>     Manage extensions: list, doctor, init, test, package, install
   version                    Print the mhl version
   help                       Show this help (aliases: -h, --help)
@@ -130,6 +131,20 @@ failed or no test blocks were found.
 
   mhl test main.mh
   mhl test ./sample/features
+`,
+	"pack": `mhl pack <dir> -o <file> [--new-key]
+
+Seal every file under dir into an encrypted workflows pack (DMPK v2) for
+"mhl serve mcp --http --workflows-pack <file>". The key is read from
+MHL_SERVE_WORKFLOWS_KEY (64 hex characters) — never a flag. With
+--new-key, a fresh key is generated and printed as the only stdout line;
+the summary then goes to stderr. Hidden entries (.mhl/, .git, ...) are
+skipped, symlinks are an error, and the pack is opened and its workflows
+loaded before it is written, so a pack that would not serve is never
+produced. The output is written atomically with mode 0600.
+
+  KEY=$(mhl pack ./workflows -o workflows.dmpk --new-key)
+  MHL_SERVE_WORKFLOWS_KEY=$KEY mhl pack ./workflows -o workflows.dmpk
 `,
 	"lint": `mhl lint [dir]
 

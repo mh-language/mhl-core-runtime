@@ -872,6 +872,8 @@ test RecascadeTest {
 <tr><td><code>mhl lsp</code></td><td>Starts the language server used by editor integrations.</td></tr>
 <tr><td><code>mhl serve mcp directory</code></td><td>Exposes workflows as MCP tools over stdio.</td></tr>
 <tr><td><code>mhl serve mcp --http directory</code></td><td>Exposes workflows over Streamable HTTP with synchronous tools and asynchronous <code>run/*</code>.</td></tr>
+<tr><td><code>mhl serve mcp --http --workflows-pack file directory</code></td><td>Loads the program and prompts from an encrypted <code>DMPK</code> v2 pack, decrypted only in memory (key in <code>MHL_SERVE_WORKFLOWS_KEY</code>); <code>directory</code> is then only the root that subprocess paths are composed under.</td></tr>
+<tr><td><code>mhl pack directory -o file [--new-key]</code></td><td>Seals every non-hidden file under a directory into such a pack, sorted by path, after verifying the workflows load from it.</td></tr>
 <tr><td><code>mhl serve a2a directory</code></td><td>Exposes workflows as A2A skills over HTTP.</td></tr>
 <tr><td><code>mhl extension ...</code></td><td>Initializes, tests, packages, installs, lists, and diagnoses external adapters.</td></tr>
 <tr><td><code>mhl version</code>, <code>mhl --version</code>, <code>mhl -v</code></td><td>Prints the runtime version.</td></tr>
