@@ -1,12 +1,17 @@
 {
   "name": "mhl-language",
   "displayName": "MHL Language Support",
-  "description": "Syntax highlighting and editor support for Meta-Harness Language files.",
+  "description": "Syntax highlighting, diagnostics, completion and navigation for Meta-Harness Language (.mh) AI agent pipelines.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mh-language/mhl-core-runtime.git"
+    "url": "https://github.com/mh-language/mhl-core-runtime.git",
+    "directory": "vscode-mhl"
   },
-  "version": "0.6.9",
+  "homepage": "https://mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html",
+  "bugs": {
+    "url": "https://github.com/mh-language/mhl-core-runtime/issues"
+  },
+  "version": "0.7.0",
   "publisher": "mhl-language",
   "icon": "assets/mhl-logo-rebrand.png",
   "license": "MIT",
@@ -16,6 +21,25 @@
   "categories": [
     "Programming Languages"
   ],
+  "keywords": [
+    "mhl",
+    "meta-harness",
+    "ai-agents",
+    "agent-pipelines",
+    "workflow",
+    "mcp",
+    "a2a",
+    "language-server"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In Restricted Mode the language server only runs an mhl binary from your user settings or PATH, never one chosen by the workspace.",
+      "restrictedConfigurations": [
+        "mhl.serverPath"
+      ]
+    }
+  },
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
@@ -71,7 +95,7 @@
         "mhl.serverPath": {
           "type": "string",
           "default": "mhl",
-          "description": "Path to the mhl binary used to run the language server (`mhl lsp`). Defaults to `mhl` on PATH; supports ${workspaceFolder}."
+          "description": "Path to the mhl binary used to run the language server (`mhl lsp`). Defaults to `mhl` on PATH; supports ${workspaceFolder}. In Restricted Mode, workspace values and ${workspaceFolder} are ignored."
         }
       }
     }
