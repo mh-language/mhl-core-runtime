@@ -4,7 +4,7 @@
 built-in **Seti** icon theme (`extensions/theme-seti` in
 https://github.com/microsoft/vscode), which is itself generated from
 https://github.com/jesseweed/seti-ui. The only local addition is the `_mhl` / `_mhl_light`
-icon definitions (using `mhl-icon.png`, already part of this extension) and their entries in
+icon definitions (using `mhl-file-icon-rebrand.png`, already part of this extension) and their entries in
 `languageIds`/`fileExtensions`.
 
 This lets selecting "MHL File Icons" as the active icon theme keep every icon Seti already
