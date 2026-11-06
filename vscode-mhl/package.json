@@ -1,6 +1,6 @@
 {
   "name": "mhl-language",
-  "displayName": "MHL Language Support",
+  "displayName": "Meta-Harness Language (MHL)",
   "description": "Syntax highlighting, diagnostics, completion and navigation for Meta-Harness Language (.mh) AI agent pipelines.",
   "repository": {
     "type": "git",

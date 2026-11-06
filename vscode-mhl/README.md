@@ -1,4 +1,4 @@
-# MHL Language Support for VS Code
+# Meta-Harness Language (MHL) for VS Code
 
 **MHL** (Meta-Harness Language, `.mh`) is a declarative language for describing
 AI agent pipelines. A program declares the pieces — `agent`s, `tool`s, `memory`,
@@ -83,7 +83,7 @@ language server targets `.mh` documents, not Markdown code blocks.
 
 The extension is also on the [Open VSX Registry](https://open-vsx.org/extension/mhl-language/mhl-language),
 so editors that use Open VSX (VSCodium, Cursor, Windsurf, Gitpod, Eclipse Theia)
-can install it by searching for **MHL Language Support** in the Extensions view.
+can install it by searching for **Meta-Harness Language (MHL)** in the Extensions view.
 
 ## Development
 
