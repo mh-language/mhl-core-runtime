@@ -180,6 +180,12 @@ npx @vscode/vsce package   # .vsix
 ```
 Open `vscode-mhl/` in VS Code and press F5 for an Extension Development Host.
 
+The extension ships on its own version and tag, not the runtime's: pushing
+`extensions-v<version>` (must equal `package.json`'s version) runs
+`.github/workflows/publish-extension.yml`, which publishes one VSIX to the VS Marketplace via
+Trusted Publishing (OIDC, no stored PAT) and to Open VSX (`OPEN_VSX` secret). The Marketplace
+policy names that workflow file, so renaming it means updating the policy.
+
 ## Architecture — `src/mhl-runtime`
 
 `internal/` is split into four groups with a strict, one-way dependency order (see

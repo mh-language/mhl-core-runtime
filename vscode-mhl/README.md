@@ -1,69 +1,61 @@
-# MHL Language Support for VS Code
+# Meta-Harness Language (MHL) for VS Code
 
 **MHL** (Meta-Harness Language, `.mh`) is a declarative language for describing
 AI agent pipelines. A program declares the pieces — `agent`s, `tool`s, `memory`,
 `prompt`s, MCP servers, and typed data (`type` / `enum`) — and the `pipeline`s or
-`workflow`s that wire them together into an ordered run. It is executed by the
-`mhl` CLI (parser, interpreter, runtime, and language server), which can also
-expose those workflows over MCP or A2A. See
+`workflow`s that wire them together into an ordered run. See
 [the language reference](https://mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html).
 
-Provides syntax highlighting, diagnostics, completion, signature help, and
-go-to-definition for `.mh` files. It also highlights MHL code blocks inside
-Markdown files when the fence is tagged as `mhl` or `mh`.
-Workflow-local `route Name(param: type) { pattern -> Step }` declarations,
-their static step targets, and `goto Name(value)` calls receive dedicated
-declaration, label, parameter, type, and call scopes.
-These language features are served by `mhl lsp` (a Language Server Protocol
-server built into the `mhl` binary, see `../src/mhl-runtime`) — this
-extension is just its client.
+## Features
 
-Go-to-definition (`F12` / `Cmd`+click) jumps to the declaration of an
-`agent` / `memory` / `tool` / `prompt` / `pipeline` / `workflow` /
-`extension` / `type` / `enum` name, resolving it through the file's
-`import { ... } from "..."` statements (following `as` aliases and
-re-exports) and, as a fallback, any `.mh` file one directory level deep. On
-a `Receiver.member` access it lands on the `tool` method or `enum` variant
-named `member`; for a runtime built-in like an agent's `.run` or a memory's
-`.get` it lands on `Receiver`'s declaration instead. The `"..."` path of a
-`from` clause jumps to that file.
+- Syntax highlighting for `.mh` files, and for MHL code blocks in Markdown
+- Diagnostics as you type
+- Completion and signature help
+- Go-to-definition (`F12` / `Cmd`+click) across `import`s and aliases
+- Find references
+- An optional **MHL File Icons** theme that keeps every Seti icon and adds `.mh`
+
+Syntax highlighting works on its own. Everything else is served by `mhl lsp`, the
+language server built into the `mhl` CLI, so it needs the CLI installed.
 
 ## Requirements
 
-Build the `mhl` binary first:
+Install the `mhl` CLI.
+
+**macOS / Linux:**
 
 ```bash
-cd ../src/mhl-runtime && make build
+curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | sh
 ```
 
-By default the extension looks for `mhl` on your `PATH`. If it's not there,
-either symlink `src/mhl-runtime/dist/mhl` onto your `PATH`, or point the
-`mhl.serverPath` setting at it directly (`${workspaceFolder}` is expanded,
-e.g. `${workspaceFolder}/src/mhl-runtime/dist/mhl`). After changing it, run
-**MHL: Restart Language Server** from the command palette.
+**Windows (PowerShell):**
 
-## Installation
-
-The extension is published on the [Open VSX Registry](https://open-vsx.org/extension/local-mhl/mhl-language),
-so it installs directly from the Extensions view in editors that use Open VSX —
-VSCodium, Cursor, Windsurf, Gitpod, Eclipse Theia — by searching for
-**MHL Language Support**. It is not on the Visual Studio Marketplace; on
-stock VS Code, build the VSIX as described below.
-
-## Local installation
-
-From this directory, install dependencies and create the VSIX package:
-
-```bash
-npm install
-npx @vscode/vsce package
+```powershell
+irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.ps1 | iex
 ```
 
-Then install it in VS Code with **Extensions → ⋯ → Install from VSIX...**
-(or run `./install.sh`, which does both steps and installs it for you).
+Published binaries cover `linux-amd64`, `linux-arm64`, `darwin-arm64` (Apple
+Silicon), `windows-amd64` and `windows-arm64`. There is no Intel Mac binary. Other
+install options are in the
+[project README](https://github.com/mh-language/mhl-core-runtime#install).
 
-For development, run `npm install` here, then open this directory in VS
-Code and press `F5` to launch an Extension Development Host.
+Then run **MHL: Restart Language Server** from the Command Palette.
+
+## Settings
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `mhl.serverPath` | `mhl` | Path to the `mhl` binary. `${workspaceFolder}` is expanded, e.g. `${workspaceFolder}/src/mhl-runtime/dist/mhl`. |
+
+After changing it, run **MHL: Restart Language Server**.
+
+## Workspace Trust
+
+The language server only reads your files: it never runs agents, tools, or
+extensions. In [Restricted Mode](https://code.visualstudio.com/docs/editing/workspaces/workspace-trust)
+it keeps working, but `mhl.serverPath` comes only from your user settings and
+`${workspaceFolder}` is ignored, so an untrusted folder cannot choose which binary
+runs. Trusting the folder restarts the server with your full settings.
 
 ## MHL in Markdown
 
@@ -83,7 +75,29 @@ pipeline Example {
 ```
 ````
 
-The Markdown document keeps its normal Markdown highlighting, while the
-contents of the MHL fence use the same grammar as `.mh` files. This is
-syntax highlighting only; the MHL language server currently targets `.mh`
-documents, not embedded Markdown regions.
+The Markdown document keeps its normal highlighting, while the contents of the
+fence use the same grammar as `.mh` files. This is syntax highlighting only: the
+language server targets `.mh` documents, not Markdown code blocks.
+
+## Other editors
+
+The extension is also on the [Open VSX Registry](https://open-vsx.org/extension/mhl-language/mhl-language),
+so editors that use Open VSX (VSCodium, Cursor, Windsurf, Gitpod, Eclipse Theia)
+can install it by searching for **Meta-Harness Language (MHL)** in the Extensions view.
+
+## Development
+
+From `vscode-mhl/` in the [repository](https://github.com/mh-language/mhl-core-runtime):
+
+```bash
+npm install
+npx @vscode/vsce package   # builds mhl-language-<version>.vsix
+```
+
+Install the VSIX with **Extensions → ⋯ → Install from VSIX...**, or run
+`./install.sh` to do both steps. To work on the extension, open this directory in
+VS Code and press `F5` to launch an Extension Development Host. Build the language
+server with `make build` in `src/mhl-runtime`.
+
+To release, set the new version in `package.json`, add it to `CHANGELOG.md`, and
+push a tag named `extensions-v<version>`.
