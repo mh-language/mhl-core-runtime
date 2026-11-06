@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo is the implementation of **mhl** (Meta-Harness Language, `.mh`): a declarative
 language for describing AI agent pipelines — agents, tools, memory, MCP servers,
-prompts, and the pipelines that wire them together. It has three tracked parts:
+prompts, and the pipelines that wire them together. It has four tracked parts:
 
 - **`src/mhl-runtime/`** — the Go implementation of the `mhl` CLI (parser, interpreter,
   runtime, LSP). This is where nearly all engineering work happens.
@@ -16,6 +16,9 @@ prompts, and the pipelines that wire them together. It has three tracked parts:
   reference, deployed as-is to GitHub Pages by `.github/workflows/page.yml`. There is no
   separate wiki; some example fields may still be aspirational, not yet implemented — see
   "Docs vs. implementation" below before trusting an example as ground truth.
+- **`skills/`** — agent skills teaching models to write `.mh`. Every ` ```mh ` block is a
+  complete program checked by `MHL=src/mhl-runtime/dist/mhl skills/check.sh`, not by CI; run
+  it and update the matching skill when a language change invalidates what they teach.
 
 A `dotnet/` directory may be present locally but is `.gitignore`d in its entirety — it is not
 part of this repository and unrelated to `mhl`.
