@@ -480,7 +480,7 @@ extension data Db    from "mhl.data.postgres" { dsn: env("DATABASE_URL") }</code
 
 <section class="feature doc-section" id="agents">
 <h2>12. Agents and traffic control</h2>
-<p>An agent declaration creates a callable single-shot backend. The call form is <code>Name.run(prompt: ...)</code>; the prompt MUST be non-empty. An optional <code>schema:</code> argument is a string and is passed to backends that support structured output.</p>
+<p>An agent declaration creates a callable single-shot backend. The call form is <code>Name.run(prompt: ...)</code>; the prompt MUST be non-empty. An optional <code>schema:</code> argument is a string and is passed to backends that support structured output. An optional <code>timeout:</code> argument (same value forms as the <code>timeout</code> property, §12.2) replaces the declared per-attempt deadline of every leg — primary and fallbacks — for that call only.</p>
 <h3>12.1 CLI and Ollama profiles</h3>
 <pre class="code-block"><code class="language-mhl">agent Reviewer {
     engine: "cli/claude-code"
@@ -506,6 +506,8 @@ agent LocalModel {
 <tr><td><code>retry</code></td><td><code>{max_attempts, delay, retry_on, backoff}</code>. The only backoff value currently supported is <code>"exponential"</code>. Absent retry runs once.</td></tr>
 <tr><td><code>cache</code></td><td><code>{ttl, storage, strategy}</code>. Cache keys include engine, prompt, and schema. The only strategy currently supported is exact matching; <code>storage: "disk"</code> persists it.</td></tr>
 <tr><td><code>rate_limit</code></td><td><code>{requests_per_minute, concurrency, on_exceeded}</code>. Exceeded work queues; the supported value is <code>"queue"</code>.</td></tr>
+<tr><td><code>timeout</code></td><td>Per-attempt deadline: a duration literal, or an expression evaluated at call time yielding a duration, a duration string, or a number of seconds; it MUST be positive. Absent, an attempt has no deadline. When it elapses, a cli/* attempt's whole process tree MUST be stopped — on Unix, SIGTERM to the process group, then SIGKILL to the group after <code>kill_grace</code> — and an ollama/* request cancelled. The attempt then fails with an error whose message is <code>agent "Name" timeout after &lt;duration&gt;</code>, followed by the tail of the captured stderr and of the stdout received so far (<code>partial stdout:</code>), regardless of the process's exit code. For <code>retry_on</code> this error matches only the condition <code>"timeout"</code>, never its captured output. A step/run deadline or cancellation remains a non-retryable cancellation, not this error.</td></tr>
+<tr><td><code>kill_grace</code></td><td>Non-negative duration (default <code>10s</code>) between the termination request and the forced kill after <code>timeout</code>; <code>0s</code> kills at once. Declaring it without <code>timeout</code> is a static error. On platforms with no termination request for a console-less child (Windows), the tree is terminated immediately.</td></tr>
 <tr><td><code>trace</code></td><td>When true, emits call/response trace lines. Sensitive values remain subject to redaction.</td></tr>
 <tr><td><code>description</code></td><td>Optional string. Carries no runtime behavior for the agent itself; a <code>router</code>'s decision cascade (§13) appends it after the agent's name in the decision prompt when declared.</td></tr>
 </tbody></table>

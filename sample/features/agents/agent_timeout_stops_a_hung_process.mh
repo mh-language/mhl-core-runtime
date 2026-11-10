@@ -1,0 +1,100 @@
+// `timeout:` bounds every attempt of a cli/* (or ollama/*) agent. Without it
+// an agent waits for its process forever: a CLI stuck on a dead network
+// connection hangs the whole step, and no catch/retry/finally ever sees an
+// error. With it, once the deadline elapses mhl sends SIGTERM to the agent's
+// whole process group (a wrapper script, the CLI it starts, and anything
+// that CLI spawned), waits `kill_grace:` (default 10s) for it to flush its
+// final state, then SIGKILLs whatever is left — and the call fails with
+// `agent "Name" timeout after <dur>: <stderr tail>`, plus the tail of the
+// stdout received before it was stopped.
+agent Hung {
+    command: "sh"
+    args: ["-c", "sleep 5"]
+    timeout: 200ms
+}
+
+// A process that handles SIGTERM still gets to write its last words — they
+// come back in the error as "partial stdout".
+agent Graceful {
+    command: "sh"
+    args: ["-c", "trap 'echo tokens=42; exit 143' TERM; sleep 5 & wait"]
+    timeout: 200ms
+    kill_grace: 2s
+}
+
+// The error's retry text is just "timeout": it's retried exactly when
+// retry_on lists "timeout" (or retry_on is empty), never because a status
+// code happened to show up in the dying process's stderr.
+agent NotRetried {
+    command: "sh"
+    args: ["-c", "echo 'upstream 503' >&2; sleep 5"]
+    timeout: 200ms
+    retry: {
+        max_attempts: 3
+        delay: 10ms
+        retry_on: [500, 503]
+    }
+}
+
+agent Quick {
+    command: "sh"
+    args: ["-c", "echo done"]
+}
+
+// A timed-out primary falls through to `fallback:` like any other failure.
+agent WithFallback {
+    command: "sh"
+    args: ["-c", "sleep 5"]
+    timeout: 200ms
+    fallback: [Quick]
+}
+
+test agent_timeout_stops_a_hung_process {
+    describe a_hung_agent_fails_and_finally_runs {
+        var message = ""
+        var cleaned = false
+        try {
+            Hung.run(prompt: "x")
+        } catch (e) {
+            message = e
+        } finally {
+            cleaned = true
+        }
+        is_true(message.contains("agent \"Hung\" timeout after 200ms"))
+        is_true(cleaned)
+    }
+
+    describe output_written_on_sigterm_is_kept {
+        var message = ""
+        try {
+            Graceful.run(prompt: "x")
+        } catch (e) {
+            message = e
+        }
+        is_true(message.contains("partial stdout: tokens=42"))
+    }
+
+    describe retry_on_without_timeout_does_not_repeat {
+        var message = ""
+        try {
+            NotRetried.run(prompt: "x")
+        } catch (e) {
+            message = e
+        }
+        is_true(message.contains("timeout after 200ms: upstream 503"))
+    }
+
+    describe a_call_can_override_the_deadline {
+        var message = ""
+        try {
+            Hung.run(prompt: "x", timeout: 100ms)
+        } catch (e) {
+            message = e
+        }
+        is_true(message.contains("timeout after 100ms"))
+    }
+
+    describe a_timeout_falls_back {
+        are_equal(WithFallback.run(prompt: "x"), "done")
+    }
+}

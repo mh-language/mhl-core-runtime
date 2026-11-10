@@ -13,9 +13,9 @@ work around the model: it fetches the data, builds the prompt, and validates the
 ## Declaring an agent
 
 The runtime reads exactly: `engine`, `command`, `args`, `stdin`, `endpoint`, `temperature`,
-`log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `skills`, `system_prompt`,
-`before`, `after`, `description`. Anything else is a lint error, including `timeout` (use
-a step's `timeout` clause) and `api_key` (let the CLI read its own environment).
+`log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `timeout`, `kill_grace`,
+`skills`, `system_prompt`, `before`, `after`, `description`. Anything else is a lint error,
+including `api_key` (let the CLI read its own environment).
 
 ```mh
 agent Claude {
@@ -28,6 +28,7 @@ agent Claude {
         delay: 2s
         retry_on: [500, 503, "timeout", "rate_limit"]
     }
+    timeout: 10m                            // per attempt
     cache: { ttl: 10m, storage: "disk" }
     rate_limit: { requests_per_minute: 20, concurrency: 2 }
 }
@@ -60,6 +61,39 @@ agent Summarizer {
 test summarizer {
     describe prompt_arrives_on_stdin {
         are_equal(Summarizer.run(prompt: "a long document"), "a long document")
+    }
+}
+```
+
+**Give every network-bound agent a `timeout:`.** Without one, a CLI that hangs on a dead
+connection hangs the step forever. The deadline applies per attempt. When it elapses, the
+agent's whole process group gets SIGTERM, then SIGKILL after `kill_grace:` (default
+`10s`). The call then fails with `agent "Name" timeout after 10m: <stderr tail>`. A
+timeout is retried only when `retry_on` lists `"timeout"` (or `retry_on` is absent), so
+leave `"timeout"` out for agents that edit files. `Name.run(..., timeout: 45m)` overrides
+the deadline for one call. The value may also be an expression that yields a duration
+string, such as `"30m"`.
+
+```mh
+agent Hung {
+    command: "sh"
+    args: ["-c", "sleep 5"]                 // stands in for a CLI stuck on the network
+    timeout: 200ms
+}
+
+test hung_agent {
+    describe times_out_and_finally_runs {
+        var message = ""
+        var cleaned = false
+        try {
+            Hung.run(prompt: "x")
+        } catch (e) {
+            message = e
+        } finally {
+            cleaned = true
+        }
+        is_true(message.contains("timeout after 200ms"))
+        is_true(cleaned)
     }
 }
 ```

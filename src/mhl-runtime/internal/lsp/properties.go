@@ -58,7 +58,7 @@ var contextFieldItems = []completionItem{
 // actually reads (agentEngine/agentCommand/agentOllamaConfig/agentLogPath/
 // agentTrace/agentRetry/agentCache/agentLimiter/agentFallback/agentHookExpr)
 // — not every field docs/site/reference.html may still show aspirationally
-// (api_key, timeout, system_instructions aren't implemented yet), so this
+// (api_key, system_instructions aren't implemented yet), so this
 // list doesn't suggest config an agent declaration can write but the runtime
 // will silently ignore.
 var agentPropertyItems = []completionItem{
@@ -74,6 +74,8 @@ var agentPropertyItems = []completionItem{
 	propertyItem("cache", "{ ttl, storage, strategy }"),
 	propertyItem("rate_limit", "{ requests_per_minute, concurrency, on_exceeded }"),
 	propertyItem("fallback", "array of inline agent {...} literals or declared agent names"),
+	propertyItem("timeout", "duration (e.g. 30m), duration string or seconds: per-attempt deadline — on expiry the process tree gets SIGTERM, then SIGKILL after kill_grace, and the call fails with a `timeout` error retry_on can match"),
+	propertyItem("kill_grace", "duration (default 10s): wait between SIGTERM and SIGKILL once timeout elapses; 0s kills at once (Windows always kills at once)"),
 	propertyItem("skills", "array of declared skill names this agent may receive via run(skills: [...]) — requires system_prompt"),
 	propertyItem("system_prompt", "(skills, prompt) -> string: composes the outgoing prompt when a call selects skills; skills is a list of {name, frontmatter, content}"),
 	propertyItem("before", "() -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),

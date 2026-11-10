@@ -287,7 +287,12 @@ is the single source of truth for the language surface — there is no
 separate wiki; keep it in sync with `agent.go`/`agent_hooks.go`/`pipeline_hooks.go` rather than
 letting a second copy of this explanation drift. For agents specifically,
 `internal/engine/interpreter/agent.go` reads `engine`, `command`, `args`, `endpoint`,
-`temperature`, `log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `before`, `after`.
+`temperature`, `log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `before`, `after`,
+and (`agent_timeout.go`) `timeout`/`kill_grace` — a per-attempt deadline enforced by
+`tools.Cmd.Timeout` itself (SIGTERM to the process group, the grace, SIGKILL; a Job Object on
+Windows), not by a context deadline: it surfaces as `tools.ErrTimeout`, which deliberately does
+not wrap `context.DeadlineExceeded` (the retrier never repeats that), and the agent error's
+`traffic.RetryTexter` makes `retry_on` see only `"timeout"`, never the captured stderr.
 There is no declarative tool/extension scope list on an agent: when an agent needs a `tool` or
 `extension`, it is called from a `before`/`after` hook (agent_hooks.go), which are real:
 `before: () -> {...}` runs before the prompt is built — an ordinary zero-param lambda whose body
@@ -295,8 +300,7 @@ resolves declared `tool`/`extension`/`agent` names, native ops and `mem` like an
 whose returned object's fields become `${...}` bindings the prompt can interpolate. `after: () ->
 {...}` runs once on the final response, with it bound in the body as `result`; a string return
 replaces `.run()`'s value, anything else is passthrough. Both reject a parameter list. Fields the docs may still show (`api_key`,
-`timeout`, `system_instructions`) are not read anywhere in `agent.go` and are silently ignored if
-written.
+`system_instructions`) are not read anywhere in `agent.go`; `mhl lint` rejects them.
 `retry.backoff`, `cache.strategy`, and `rate_limit.on_exceeded` each implement exactly one value
 today (`"exponential"`, `"exact"`, `"queue"` respectively — see `ast.AgentRetryConfig` et al.);
 declaring any other value is a build-time error (caught by both `mhl lint` and `mhl run`), not

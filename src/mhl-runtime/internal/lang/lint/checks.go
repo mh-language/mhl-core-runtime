@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/participle/v2/lexer"
 
@@ -161,6 +162,7 @@ var knownAgentProperties = map[string]bool{
 	"endpoint": true, "temperature": true,
 	"log": true, "trace": true,
 	"retry": true, "cache": true, "rate_limit": true, "fallback": true,
+	"timeout": true, "kill_grace": true,
 	"before": true, "after": true,
 	"skills": true, "system_prompt": true,
 	"description": true,
@@ -169,12 +171,12 @@ var knownAgentProperties = map[string]bool{
 // knownAgentPropertyList is knownAgentProperties as prose, for the
 // "unknown property" diagnostic — kept as one place so that message and the
 // map above can't drift apart.
-const knownAgentPropertyList = "engine, command, args, stdin, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, skills, system_prompt, before, after, description"
+const knownAgentPropertyList = "engine, command, args, stdin, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, timeout, kill_grace, skills, system_prompt, before, after, description"
 
 // checkAgentProperties flags any property in an `agent { ... }` body — a
 // top-level agent or an inline `fallback: [agent { ... }]` literal — whose
 // name the runtime does not read, so a typo or a docs-only field
-// (`api_key`, `timeout`, `system_instructions`) fails `mhl lint` instead of
+// (`api_key`, `system_instructions`) fails `mhl lint` instead of
 // being silently dropped.
 func checkAgentProperties(file string, prog *ast.Program) []Finding {
 	var findings []Finding
@@ -196,6 +198,7 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 			}
 			findings = append(findings, checkAgentPlaceholders(file, name, p)...)
 		}
+		findings = append(findings, checkAgentTimeout(file, name, a)...)
 		if refs, err := ast.AgentFallbackRefs(a); err == nil {
 			for _, r := range refs {
 				check(r.Inline)
@@ -2003,4 +2006,76 @@ func renderPromptCallArgs(prog *ast.Program, decl *ast.Prompt, call *ast.Call) (
 		}
 	}
 	return values, resolved, nil
+}
+
+// checkAgentTimeout validates an agent's `timeout:`/`kill_grace:` when they
+// are written as literals — mirroring interpreter.agentTimeout: timeout must
+// be a positive duration, kill_grace a non-negative one, and kill_grace is
+// meaningless without timeout. A string literal must parse as a duration and
+// a number literal counts as seconds; any other expression (a variable, a
+// tool call) is only known at run time and is left to the interpreter.
+func checkAgentTimeout(file, name string, a *ast.Agent) []Finding {
+	var findings []Finding
+	var timeoutProp, graceProp *ast.Property
+	for _, p := range a.Props {
+		switch p.Name {
+		case "timeout":
+			timeoutProp = p
+		case "kill_grace":
+			graceProp = p
+		}
+	}
+	check := func(p *ast.Property, allowZero bool) {
+		d, literal, ok := literalDuration(p.Value)
+		if !literal {
+			return
+		}
+		switch {
+		case !ok:
+			findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+				Message: fmt.Sprintf("agent %q: %s must be a duration (e.g. 30m), a duration string or a number of seconds", name, p.Name)})
+		case d < 0 || (d == 0 && !allowZero):
+			want := "a positive duration"
+			if allowZero {
+				want = "a non-negative duration"
+			}
+			findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+				Message: fmt.Sprintf("agent %q: %s must be %s", name, p.Name, want)})
+		}
+	}
+	if timeoutProp != nil {
+		check(timeoutProp, false)
+	}
+	if graceProp != nil {
+		check(graceProp, true)
+		if timeoutProp == nil {
+			findings = append(findings, Finding{File: file, Line: graceProp.Pos.Line, Column: graceProp.Pos.Column,
+				Message: fmt.Sprintf("agent %q: kill_grace has no effect without timeout", name)})
+		}
+	}
+	return findings
+}
+
+// literalDuration reads e as a literal duration value: a duration literal, a
+// string literal in duration notation, or a number literal of seconds.
+// literal is false when e is not a bare literal at all (evaluated at run
+// time); ok is false when it is a literal of an unusable kind or format.
+func literalDuration(e *ast.Expr) (d time.Duration, literal, ok bool) {
+	if d, ok := ast.DurationValue(e); ok {
+		return d, true, true
+	}
+	if s, isStr := ast.StringValue(e); isStr {
+		if strings.Contains(s, "${") {
+			return 0, false, false // interpolated at run time
+		}
+		d, ok := ast.ParseDuration(strings.TrimSpace(s))
+		return d, true, ok
+	}
+	if n, isNum := ast.NumberValue(e); isNum {
+		return time.Duration(n * float64(time.Second)), true, true
+	}
+	if _, isLit := ast.LiteralValue(e); isLit {
+		return 0, true, false
+	}
+	return 0, false, false
 }

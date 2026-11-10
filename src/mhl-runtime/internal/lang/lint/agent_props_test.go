@@ -100,12 +100,12 @@ agent Primary {
     fallback: [
         agent {
             command: "echo"
-            timeout: 30
+            api_key: 30
         }
     ]
 }
 `)
-	if !hasMessage(lint.File(main), `unknown property "timeout"`) {
-		t.Fatalf("expected the inline fallback agent's `timeout` to be flagged")
+	if !hasMessage(lint.File(main), `unknown property "api_key"`) {
+		t.Fatalf("expected the inline fallback agent's `api_key` to be flagged")
 	}
 }

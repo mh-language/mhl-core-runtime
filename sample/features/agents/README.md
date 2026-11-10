@@ -44,3 +44,8 @@ environment — they need real network access and credentials, not just `mhl tes
   credential): the 1-argument form always fails the run closed on an unset variable and
   redacts its resolved value, appropriate for a real secret; the 2-argument form opts out of
   both on purpose
+- [agent_timeout_stops_a_hung_process.mh](agent_timeout_stops_a_hung_process.mh)
+  — `timeout:` bounds each attempt: on expiry the agent's whole process group gets SIGTERM,
+  `kill_grace:` to exit, then SIGKILL, and the call fails with a `timeout` error that
+  `catch`/`finally`/`retry_on: ["timeout"]`/`fallback` all see; output written on SIGTERM comes
+  back as "partial stdout"; `.run(timeout:)` overrides the deadline for one call

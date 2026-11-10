@@ -55,12 +55,12 @@ router Frontdesk {
     agents: [Billing]
     decider: agent {
         command: "claude"
-        timeout: 30
+        api_key: 30
     }
 }
 `)
-	if !hasMessage(lint.File(main), `unknown property "timeout"`) {
-		t.Fatalf("expected the inline decider agent's timeout to be flagged")
+	if !hasMessage(lint.File(main), `unknown property "api_key"`) {
+		t.Fatalf("expected the inline decider agent's api_key to be flagged")
 	}
 }
 

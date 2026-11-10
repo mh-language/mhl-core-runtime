@@ -1,6 +1,8 @@
 package interpreter
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -197,7 +199,13 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 		}
 	}
 
-	response, err := runAgentAttempt(ctx, agentName, agent, promptText, schemaText, depth)
+	callTimeout, err := resolveCallTimeoutArg(ctx, agentName, call, depth)
+	if err != nil {
+		return "", err
+	}
+	opts := agentCallOptions{timeout: callTimeout}
+
+	response, err := runAgentAttemptWith(ctx, agentName, agent, promptText, schemaText, depth, opts)
 	if err == nil {
 		if agentTrace(agent) {
 			fmt.Fprintf(ctx.out, "agent %s response:\n%s\n", agentName, auth.Redact(response))
@@ -214,7 +222,7 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 		if fbName == "" {
 			fbName = fmt.Sprintf("%s.fallback[%d]", agentName, i)
 		}
-		response, fbAttemptErr := runAgentAttempt(ctx, fbName, fb, promptText, schemaText, depth)
+		response, fbAttemptErr := runAgentAttemptWith(ctx, fbName, fb, promptText, schemaText, depth, opts)
 		if fbAttemptErr == nil {
 			if agentTrace(fb) {
 				fmt.Fprintf(ctx.out, "agent %s response (via %s):\n%s\n", agentName, fbName, auth.Redact(response))
@@ -279,6 +287,12 @@ type agentCacheParams struct {
 // that's runAgent's job, since a fallback agent has its own independent
 // retry/cache config and must not recurse into fallbacks of its own.
 func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptText, schemaText string, depth int) (string, error) {
+	return runAgentAttemptWith(ctx, agentName, agent, promptText, schemaText, depth, agentCallOptions{})
+}
+
+// runAgentAttemptWith is runAgentAttempt with the per-call overrides one
+// `.run(...)` call supplied (see agentCallOptions).
+func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promptText, schemaText string, depth int, opts agentCallOptions) (string, error) {
 	engine, _ := agentEngine(agent)
 
 	var command string
@@ -343,6 +357,14 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 		return "", err
 	}
 
+	deadline, err := agentTimeout(ctx, agentName, agent, depth)
+	if err != nil {
+		return "", err
+	}
+	if opts.timeout > 0 {
+		deadline.timeout = opts.timeout
+	}
+
 	call := func() (traffic.Result, error) {
 		if err := limiter.Acquire(goctxOf(ctx)); err != nil {
 			return traffic.Result{}, fmt.Errorf("agent %q: rate limit: %w", agentName, err)
@@ -376,7 +398,12 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 			if stdinErr != nil {
 				return traffic.Result{}, fmt.Errorf("agent %q: %w", agentName, stdinErr)
 			}
-			cmd := tools.Cmd{Stdin: stdinText}
+			// timeout/kill_grace bound this one attempt: a fresh deadline
+			// per retry, enforced by tools.Cmd itself (SIGTERM to the
+			// process group, the grace, then SIGKILL) rather than by a
+			// context deadline, which traffic.Retrier would refuse to
+			// retry and which would skip the grace.
+			cmd := tools.Cmd{Stdin: stdinText, Timeout: deadline.timeout, KillGrace: deadline.killGrace}
 			// Under `spawn`, an agent's `log:` file is deliberately ignored:
 			// several goroutines can be running the same agent at once, and
 			// AppendWriter streams many small O_APPEND writes that would
@@ -394,7 +421,10 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 			}
 			result, runErr = (adapters.CLI{Command: cmd}).Run(goctxOf(ctx), command, finalArgs...)
 		} else {
-			result, runErr = (adapters.Ollama{}).Run(goctxOf(ctx), endpoint, model, promptText, temperature, schemaText)
+			result, runErr = runOllamaAttempt(goctxOf(ctx), deadline.timeout, endpoint, model, promptText, temperature, schemaText)
+		}
+		if errors.Is(runErr, tools.ErrTimeout) {
+			return traffic.Result{}, newAgentTimeoutError(agentName, deadline.timeout, result, runErr)
 		}
 		if runErr != nil {
 			detail := strings.TrimSpace(result.Stderr)
@@ -419,6 +449,23 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 		_ = cache.Set(cacheKey, response, ttl)
 	}
 	return response, nil
+}
+
+// runOllamaAttempt runs one ollama/* request, bounded by timeout when it is
+// positive. Only the attempt's own deadline becomes tools.ErrTimeout; a
+// cancel or deadline of the surrounding run/step (parent) is reported as-is,
+// so the retrier still refuses to repeat it.
+func runOllamaAttempt(parent context.Context, timeout time.Duration, endpoint, model, promptText string, temperature *float64, schemaText string) (tools.Result, error) {
+	if timeout <= 0 {
+		return (adapters.Ollama{}).Run(parent, endpoint, model, promptText, temperature, schemaText)
+	}
+	attemptCtx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	result, err := (adapters.Ollama{}).Run(attemptCtx, endpoint, model, promptText, temperature, schemaText)
+	if err != nil && parent.Err() == nil && errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
+		return result, fmt.Errorf("ollama %s: %w after %s", model, tools.ErrTimeout, tools.FormatDuration(timeout))
+	}
+	return result, err
 }
 
 // resolveAgentCommand evaluates an agent's `command`/`args`/`stdin`
