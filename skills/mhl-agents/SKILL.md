@@ -12,10 +12,12 @@ work around the model: it fetches the data, builds the prompt, and validates the
 
 ## Declaring an agent
 
-The runtime reads exactly: `engine`, `command`, `args`, `stdin`, `endpoint`, `temperature`,
-`log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `timeout`, `kill_grace`,
-`skills`, `system_prompt`, `before`, `after`, `description`. Anything else is a lint error,
-including `api_key` (let the CLI read its own environment).
+The runtime reads exactly: `engine`, `command`, `args`, `stdin`, `cwd`, `endpoint`,
+`temperature`, `log`, `log_mode`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`,
+`timeout`, `kill_grace`, `skills`, `system_prompt`, `before`, `after`, `description`.
+Anything else fails both `mhl lint` and the call itself, including `api_key` (let the CLI
+read its own environment). `Name.run(...)` takes only `prompt`, `schema`, `skills` and
+`timeout`; any other argument is an error, not an ignored extra.
 
 ```mh
 agent Claude {
@@ -94,6 +96,41 @@ test hung_agent {
         }
         is_true(message.contains("timeout after 200ms"))
         is_true(cleaned)
+    }
+}
+```
+
+**Run the CLI directly, not through a wrapper script.** `cwd:` sets the directory the
+process starts in. It takes any string expression, evaluated on every call. It must
+exist, or the call fails before anything starts. A relative `command:` such as
+`"./bin/x"` still resolves against mhl's directory. `args:` may be a whole expression
+that yields a string array, such as `Flags.for(model)`. `log:` streams stdout live into a
+file. A literal path is interpolated. An expression is evaluated per call, and `""` turns
+the log off. Add `log_mode: "truncate"` so each retry starts the file empty. When the
+process exits non-zero, the error ends with `partial stdout:` and the tail of its stdout.
+`retry_on` never matches that part.
+
+```mh
+tool Workspace {
+    repo(): string -> fs.read("/tmp/mhl-skill-repo.txt").trim()
+    live(): string -> "/tmp/mhl-skill-live/coder.log"
+}
+
+agent Coder {
+    command: "sh"
+    args: ["-c", "pwd -P; cat"]             // stands in for a coding CLI
+    stdin: "${prompt}"
+    cwd: Workspace.repo()                   // per call: no `cd` wrapper
+    log: Workspace.live()
+    log_mode: "truncate"
+}
+
+test coder_in_repo {
+    describe runs_in_the_selected_repo {
+        fs.write("/tmp/mhl-skill-repo.txt", "/")
+        var out = Coder.run(prompt: "fix the bug")
+        is_true(out.starts_with("/\n"))
+        is_true(fs.read("/tmp/mhl-skill-live/coder.log").contains("fix the bug"))
     }
 }
 ```

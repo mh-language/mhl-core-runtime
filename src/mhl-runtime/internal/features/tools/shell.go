@@ -48,6 +48,11 @@ type Cmd struct {
 	// file incrementally) instead of only seeing it once the process exits.
 	Stdout io.Writer
 
+	// Dir, when non-empty, is the working directory the subprocess starts
+	// in (exec.Cmd.Dir — a plain chdir in the child on every platform, no
+	// shell involved). Empty inherits the caller's.
+	Dir string
+
 	// Stdin, when non-empty, is written to the subprocess's standard input
 	// in full before Exec waits for it to exit. This is how a caller (e.g.
 	// an agent's `stdin:` property) hands the child process large content —
@@ -83,6 +88,7 @@ func (c Cmd) Exec(ctx context.Context, name string, args ...string) (Result, err
 	}
 	command := exec.Command(name, args...)
 	configureProcessGroup(command)
+	command.Dir = c.Dir
 	if c.Stdin != "" {
 		command.Stdin = strings.NewReader(c.Stdin)
 	}

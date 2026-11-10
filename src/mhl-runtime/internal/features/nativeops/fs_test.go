@@ -353,3 +353,40 @@ func TestClearDirRefusesDangerousPaths(t *testing.T) {
 		t.Errorf("ClearDir on a sibling of the working directory: %v", err)
 	}
 }
+
+func TestTruncateWriterStartsEmptyAndCreatesParents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "live", "run.log")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("previous attempt\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w, err := nativeops.TruncateWriter(path)
+	if err != nil {
+		t.Fatalf("TruncateWriter: %v", err)
+	}
+	// Truncated up front, before any write.
+	if data, _ := os.ReadFile(path); len(data) != 0 {
+		t.Fatalf("file not truncated on open: %q", data)
+	}
+	if _, err := w.Write([]byte("line one\npartial")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "line one\npartial" {
+		t.Fatalf("content = %q", data)
+	}
+
+	fresh := filepath.Join(t.TempDir(), "a", "b", "new.log")
+	w, err = nativeops.TruncateWriter(fresh)
+	if err != nil {
+		t.Fatalf("TruncateWriter (missing parents): %v", err)
+	}
+	_ = w.Close()
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatalf("file not created: %v", err)
+	}
+}

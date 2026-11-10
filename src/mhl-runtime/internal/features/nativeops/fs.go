@@ -218,6 +218,25 @@ func AppendWriter(path string) io.WriteCloser {
 	return &appendWriter{path: path}
 }
 
+// TruncateWriter is AppendWriter for a caller that wants each run of the
+// output to start from an empty file (an agent's `log_mode: "truncate"`,
+// once per attempt): path's parent directories are created and the file is
+// truncated immediately, not on the first write, so a run that prints
+// nothing still doesn't leave an earlier run's content behind. Writes are
+// then line-buffered exactly like AppendWriter's.
+func TruncateWriter(path string) (io.WriteCloser, error) {
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("fs.append %q: creating %s: %w", path, dir, err)
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("fs.append %q: %w", path, err)
+	}
+	return &appendWriter{path: path, f: f}, nil
+}
+
 // List returns the paths of dir's immediate entries — files and
 // subdirectories, one level, not recursive — as filepath.Join(dir, name)
 // each (then forward-slash-normalized — see the note on that below), so a

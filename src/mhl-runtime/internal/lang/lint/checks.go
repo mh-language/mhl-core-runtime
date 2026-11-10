@@ -150,29 +150,6 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 	return findings
 }
 
-// knownAgentProperties is the set of `agent { ... }` property names the
-// runtime actually reads (internal/engine/interpreter/agent.go,
-// internal/lang/ast/agentconfig.go, agent_hooks.go). Anything else in an
-// agent body parses but is silently ignored at run time — the same footgun
-// class as a misspelled `retry.backoff` value, which is already a hard
-// error, so an unknown property is one too. Keep in sync with
-// internal/lsp/properties.go's agentPropertyItems.
-var knownAgentProperties = map[string]bool{
-	"engine": true, "command": true, "args": true, "stdin": true,
-	"endpoint": true, "temperature": true,
-	"log": true, "trace": true,
-	"retry": true, "cache": true, "rate_limit": true, "fallback": true,
-	"timeout": true, "kill_grace": true,
-	"before": true, "after": true,
-	"skills": true, "system_prompt": true,
-	"description": true,
-}
-
-// knownAgentPropertyList is knownAgentProperties as prose, for the
-// "unknown property" diagnostic — kept as one place so that message and the
-// map above can't drift apart.
-const knownAgentPropertyList = "engine, command, args, stdin, endpoint, temperature, log, trace, retry, cache, rate_limit, fallback, timeout, kill_grace, skills, system_prompt, before, after, description"
-
 // checkAgentProperties flags any property in an `agent { ... }` body — a
 // top-level agent or an inline `fallback: [agent { ... }]` literal — whose
 // name the runtime does not read, so a typo or a docs-only field
@@ -192,13 +169,14 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 			name = "<inline>"
 		}
 		for _, p := range a.Props {
-			if !knownAgentProperties[p.Name] {
+			if !ast.IsAgentProperty(p.Name) {
 				findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
-					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only %s", name, p.Name, knownAgentPropertyList)})
+					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only %s", name, p.Name, ast.AgentPropertyList())})
 			}
 			findings = append(findings, checkAgentPlaceholders(file, name, p)...)
 		}
 		findings = append(findings, checkAgentTimeout(file, name, a)...)
+		findings = append(findings, checkAgentSubprocess(file, name, a)...)
 		if refs, err := ast.AgentFallbackRefs(a); err == nil {
 			for _, r := range refs {
 				check(r.Inline)
@@ -311,8 +289,8 @@ func checkAgentSystemPromptBody(file string, prog *ast.Program, aliases map[stri
 // knownRouterProperties is the allow-list of bare `name: ...` properties a
 // `router` body may carry, shared with the interpreter and the LSP via
 // ast.RouterBodyProperties (the single source of truth) — derived the same
-// way checkPipelineProperties's knownPipelineProperties is, not hand-copied
-// like checkAgentProperties's knownAgentProperties.
+// way checkPipelineProperties's knownPipelineProperties is (agent properties
+// likewise come from ast.IsAgentProperty).
 var knownRouterProperties = ast.RouterBodyPropertyNames()
 
 // knownRouterPropertyList is the same set as a stable, comma-joined string
@@ -1252,6 +1230,10 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 		}
 	}
 
+	if msg, ok := unknownRunArg(agentName+".run", call); ok {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column, Message: msg}}
+	}
+
 	promptText, resolved, present, err := resolvePromptArgument(prog, call)
 	if err != nil {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
@@ -1463,6 +1445,11 @@ func checkRouterDelegateCallShape(file string, prog *ast.Program, pos lexer.Posi
 	if _, ok := findRouter(prog, routerName); !ok {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("router %q not found", routerName)}}
+	}
+	// delegate forwards its call unchanged to the chosen agent's run, so the
+	// same argument set applies.
+	if msg, ok := unknownRunArg(routerName+".delegate", call); ok {
+		return []Finding{{File: file, Line: pos.Line, Column: pos.Column, Message: msg}}
 	}
 	promptText, resolved, present, err := resolvePromptArgument(prog, call)
 	if err != nil {

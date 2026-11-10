@@ -49,3 +49,8 @@ environment — they need real network access and credentials, not just `mhl tes
   `kill_grace:` to exit, then SIGKILL, and the call fails with a `timeout` error that
   `catch`/`finally`/`retry_on: ["timeout"]`/`fallback` all see; output written on SIGTERM comes
   back as "partial stdout"; `.run(timeout:)` overrides the deadline for one call
+- [agent_runs_a_cli_without_a_wrapper.mh](agent_runs_a_cli_without_a_wrapper.mh)
+  — what a `cd … && exec cli | tee` wrapper script used to do, in the agent block itself:
+  `cwd:` (any expression, evaluated per call; a missing directory fails before the process
+  starts), `log:` as a per-call expression with `log_mode: "truncate"` so a retry starts the
+  live log empty, and the stdout tail (`partial stdout:`) on a non-zero exit

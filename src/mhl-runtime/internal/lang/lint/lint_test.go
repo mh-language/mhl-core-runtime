@@ -143,7 +143,7 @@ agent Echo {
 
 pipeline P {
     step S {
-        var response = Echo.run(prompt: "hi", cwd: "/tmp/x")
+        var response = Echo.run(prompt: "hi")
     }
 }
 `)
@@ -265,7 +265,7 @@ agent Reviewer {
 
 pipeline P {
     step S {
-        var response = Reviewer.run(x: "hi")
+        var response = Reviewer.run(schema: "hi")
     }
 }
 `)

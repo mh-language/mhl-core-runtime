@@ -293,6 +293,16 @@ and (`agent_timeout.go`) `timeout`/`kill_grace` — a per-attempt deadline enfor
 Windows), not by a context deadline: it surfaces as `tools.ErrTimeout`, which deliberately does
 not wrap `context.DeadlineExceeded` (the retrier never repeats that), and the agent error's
 `traffic.RetryTexter` makes `retry_on` see only `"timeout"`, never the captured stderr.
+`agent_process.go` reads `cwd` (→ `tools.Cmd.Dir`; resolved/stat-ed once per leg, before
+the retrier, so a missing dir is never retried; it joins the cache key as an `omitempty`
+field so older keys are unchanged), `log`/`log_mode` (literal = interpolated, any other
+expression = per call; under `spawn` only a computed path is written), `args` given as one
+whole expression, and builds the non-zero-exit error (`agentExitError`: `partial stdout:`
+in `Error()`, the old message alone in `RetryText()`). The property set and the
+`Agent.run` argument set live in `ast/agentprops.go` (`IsAgentProperty`, `IsAgentRunArg`):
+lint *and* the interpreter reject anything else — an unknown property or `run` argument
+fails the call rather than being ignored — and `lsp/agent_properties_test.go` pins
+`agentPropertyItems` to that list.
 There is no declarative tool/extension scope list on an agent: when an agent needs a `tool` or
 `extension`, it is called from a `before`/`after` hook (agent_hooks.go), which are real:
 `before: () -> {...}` runs before the prompt is built — an ordinary zero-param lambda whose body
@@ -300,7 +310,7 @@ resolves declared `tool`/`extension`/`agent` names, native ops and `mem` like an
 whose returned object's fields become `${...}` bindings the prompt can interpolate. `after: () ->
 {...}` runs once on the final response, with it bound in the body as `result`; a string return
 replaces `.run()`'s value, anything else is passthrough. Both reject a parameter list. Fields the docs may still show (`api_key`,
-`system_instructions`) are not read anywhere in `agent.go`; `mhl lint` rejects them.
+`system_instructions`) are not read anywhere in `agent.go`; lint and the runtime reject them.
 `retry.backoff`, `cache.strategy`, and `rate_limit.on_exceeded` each implement exactly one value
 today (`"exponential"`, `"exact"`, `"queue"` respectively — see `ast.AgentRetryConfig` et al.);
 declaring any other value is a build-time error (caught by both `mhl lint` and `mhl run`), not

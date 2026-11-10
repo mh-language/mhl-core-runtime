@@ -125,7 +125,6 @@ func TestRunUnsupportedEngine(t *testing.T) {
 	if err := os.WriteFile(main, []byte(`
 agent Cloud {
     engine: "anthropic/claude-3-5-sonnet"
-    api_key: "sk-fake"
 }
 
 pipeline P {

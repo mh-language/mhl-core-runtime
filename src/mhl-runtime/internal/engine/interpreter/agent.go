@@ -10,7 +10,6 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/features/adapters"
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
-	"github.com/mh-language/mhl-core-runtime/internal/features/nativeops"
 	"github.com/mh-language/mhl-core-runtime/internal/features/tools"
 	"github.com/mh-language/mhl-core-runtime/internal/features/traffic"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
@@ -145,6 +144,9 @@ func resolveSkillObjects(prog *ast.Program, agent *ast.Agent, agentName string, 
 // runs once, against whichever leg (primary or fallback) produced the
 // final response, immediately before this returns — not once per attempt.
 func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, depth int) (string, error) {
+	if err := checkRunArgs(agentName, call); err != nil {
+		return "", err
+	}
 	beforeResult, err := runAgentBeforeHook(ctx, agentName, agent, depth)
 	if err != nil {
 		return "", err
@@ -280,6 +282,9 @@ type agentCacheParams struct {
 	Model       string   `json:"model,omitempty"`
 	Temperature *float64 `json:"temperature,omitempty"`
 	Schema      string   `json:"schema,omitempty"`
+	// Cwd is last and omitempty so every key computed before `cwd:` existed
+	// (no cwd) is byte-identical to what it was.
+	Cwd string `json:"cwd,omitempty"`
 }
 
 // runAgentAttempt executes a single agent (primary or one fallback leg)
@@ -293,6 +298,9 @@ func runAgentAttempt(ctx *evalCtx, agentName string, agent *ast.Agent, promptTex
 // runAgentAttemptWith is runAgentAttempt with the per-call overrides one
 // `.run(...)` call supplied (see agentCallOptions).
 func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promptText, schemaText string, depth int, opts agentCallOptions) (string, error) {
+	if err := checkAgentProps(agentName, agent); err != nil {
+		return "", err
+	}
 	engine, _ := agentEngine(agent)
 
 	var command string
@@ -300,6 +308,9 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 	var stdinTemplate string
 	var endpoint, model string
 	var temperature *float64
+	var cwd string
+	var logCfg agentLog
+	var hasLog bool
 
 	switch {
 	case engine == "" || strings.HasPrefix(engine, "cli/"):
@@ -308,11 +319,26 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 		if cfgErr != nil {
 			return "", cfgErr
 		}
+		// cwd and log are resolved once per leg, before any attempt: a bad
+		// expression or a missing directory is a configuration error, never
+		// something a retry could fix.
+		if cwd, cfgErr = resolveAgentCwd(ctx, agentName, agent, depth); cfgErr != nil {
+			return "", cfgErr
+		}
+		command = commandForCwd(command, cwd)
+		if logCfg, hasLog, cfgErr = resolveAgentLog(ctx, agentName, agent, depth); cfgErr != nil {
+			return "", fmt.Errorf("agent %q: %w", agentName, cfgErr)
+		}
 	case strings.HasPrefix(engine, "ollama/"):
 		var cfgErr error
 		endpoint, model, temperature, cfgErr = agentOllamaConfig(agent, engine)
 		if cfgErr != nil {
 			return "", cfgErr
+		}
+		for _, p := range agent.Props {
+			if p.Name == "cwd" {
+				return "", fmt.Errorf("agent %q: cwd applies only to a subprocess (cli/*) agent, not to %s", agentName, engine)
+			}
 		}
 	default:
 		return "", fmt.Errorf("agent %q: engine %q is not supported yet", agentName, engine)
@@ -338,6 +364,7 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 			Model:       model,
 			Temperature: temperature,
 			Schema:      schemaText,
+			Cwd:         cwd,
 		}
 		cacheKey = traffic.RequestKey(engine, promptText, params)
 		if cached, hit := cache.Get(cacheKey); hit {
@@ -403,19 +430,20 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 			// process group, the grace, then SIGKILL) rather than by a
 			// context deadline, which traffic.Retrier would refuse to
 			// retry and which would skip the grace.
-			cmd := tools.Cmd{Stdin: stdinText, Timeout: deadline.timeout, KillGrace: deadline.killGrace}
-			// Under `spawn`, an agent's `log:` file is deliberately ignored:
+			cmd := tools.Cmd{Dir: cwd, Stdin: stdinText, Timeout: deadline.timeout, KillGrace: deadline.killGrace}
+			// Under `spawn`, a literal `log:` path is deliberately ignored:
 			// several goroutines can be running the same agent at once, and
-			// AppendWriter streams many small O_APPEND writes that would
-			// interleave into one unreadable file. The subprocess output
-			// still reaches the step log through ctx.out (the per-handle
-			// buffer, flushed in spawn order by wait/drainAtStepEnd).
-			logPath, hasLog, logErr := agentLogPath(ctx, agent)
-			if logErr != nil {
-				return traffic.Result{}, fmt.Errorf("agent %q: %w", agentName, logErr)
-			}
-			if hasLog && (ctx == nil || !ctx.inSpawn) {
-				logWriter := nativeops.AppendWriter(logPath)
+			// they would all interleave into that one file. The subprocess
+			// output still reaches the step log through ctx.out (the
+			// per-handle buffer, flushed in spawn order by
+			// wait/drainAtStepEnd). A path computed per call (an
+			// expression) is the caller's way of giving each call its own
+			// file, so it is honored there too.
+			if hasLog && (ctx == nil || !ctx.inSpawn || logCfg.dynamic) {
+				logWriter, logErr := logCfg.writer()
+				if logErr != nil {
+					return traffic.Result{}, fmt.Errorf("agent %q: log: %w", agentName, logErr)
+				}
 				defer logWriter.Close()
 				cmd.Stdout = logWriter
 			}
@@ -427,11 +455,7 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 			return traffic.Result{}, newAgentTimeoutError(agentName, deadline.timeout, result, runErr)
 		}
 		if runErr != nil {
-			detail := strings.TrimSpace(result.Stderr)
-			if detail != "" {
-				return traffic.Result{}, fmt.Errorf("agent %q failed: %w: %s", agentName, runErr, detail)
-			}
-			return traffic.Result{}, fmt.Errorf("agent %q failed: %w", agentName, runErr)
+			return traffic.Result{}, newAgentExitError(agentName, result.Stderr, result.Stdout, runErr)
 		}
 		response := strings.TrimSpace(result.Stdout)
 		if response == "" {
@@ -523,7 +547,11 @@ func resolveAgentCommand(ctx *evalCtx, agent *ast.Agent, depth int) (string, []s
 	}
 	arr := ast.BareArray(argsExpr)
 	if arr == nil {
-		return "", nil, "", fmt.Errorf("agent %q args must be an array of strings", agent.Name)
+		args, err := resolveArgsExpr(ctx, agent.Name, argsExpr, depth)
+		if err != nil {
+			return "", nil, "", err
+		}
+		return command, args, stdinTemplate, nil
 	}
 	args := make([]string, 0, len(arr.Items))
 	for _, item := range arr.Items {
@@ -662,39 +690,11 @@ func agentEngine(agent *ast.Agent) (string, bool) {
 	return ast.AgentEngine(agent)
 }
 
-// agentLogPath reads an agent's `log` property — a file path that every
-// cli/* engine call streams its subprocess's raw stdout into as it arrives
-// (via tools.Cmd.Stdout / nativeops.AppendWriter), creating the file (and
-// any missing parent directories) on first write rather than waiting for the
-// subprocess to exit. ok is false when the agent declares no `log` property,
-// letting callers skip the write entirely rather than treating "no log" and
-// "empty path" the same way. Not consulted for the ollama/* engine, since
-// that path calls an HTTP endpoint rather than a subprocess.
-//
-// The path is interpolated for "${...}" spans against ctx exactly like a
-// `prompt:` string, so `log: "logs/codex.${context.session_id}.log"` gives
-// each run (or each --session) its own file and two concurrent runs of the
-// same pipeline never share one log. ctx is nil only in agent_test.go's
-// direct calls, which pass plain paths; interpolation is skipped there.
+// agentLogPath is resolveAgentLog's path alone (agent_process.go), for
+// callers that only need where the log goes.
 func agentLogPath(ctx *evalCtx, agent *ast.Agent) (string, bool, error) {
-	for _, prop := range agent.Props {
-		if prop.Name != "log" {
-			continue
-		}
-		raw, ok := ast.StringValue(prop.Value)
-		if !ok || raw == "" {
-			return "", false, nil
-		}
-		if ctx == nil {
-			return raw, true, nil
-		}
-		path, err := interpolate(ctx, raw)
-		if err != nil {
-			return "", false, fmt.Errorf("agent log path %q: %w", raw, err)
-		}
-		return path, path != "", nil
-	}
-	return "", false, nil
+	l, ok, err := resolveAgentLog(ctx, agent.Name, agent, 0)
+	return l.path, ok, err
 }
 
 // agentTrace reads an agent's `trace` property — when true, runAgent and

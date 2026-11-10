@@ -55,7 +55,7 @@ var contextFieldItems = []completionItem{
 }
 
 // agentPropertyItems lists only what internal/engine/interpreter/agent.go
-// actually reads (agentEngine/agentCommand/agentOllamaConfig/agentLogPath/
+// actually reads (agentEngine/agentCommand/agentOllamaConfig/resolveAgentLog/resolveAgentCwd/
 // agentTrace/agentRetry/agentCache/agentLimiter/agentFallback/agentHookExpr)
 // — not every field docs/site/reference.html may still show aspirationally
 // (api_key, system_instructions aren't implemented yet), so this
@@ -64,11 +64,13 @@ var contextFieldItems = []completionItem{
 var agentPropertyItems = []completionItem{
 	propertyItem("engine", `e.g. "cli/claude-code", "ollama/qwen2.5-coder"`),
 	propertyItem("command", "cli/* engine: the executable to run"),
-	propertyItem("args", "cli/* engine: argv (supports ${prompt}/${schema} placeholders)"),
+	propertyItem("args", "cli/* engine: argv — an array (supports ${prompt}/${schema} placeholders as whole elements), or any expression yielding a string array"),
 	propertyItem("stdin", "cli/* engine: text written to the subprocess's standard input (supports ${prompt}/${schema}, substituted wherever they appear). Keeps large content out of argv — needed on Windows, where CreateProcess caps the whole command line at ~32,767 characters"),
+	propertyItem("cwd", "cli/* engine: directory the process starts in — any string expression, evaluated per call; relative to mhl's working directory; must exist (the call fails before starting otherwise); \"\" = mhl's own"),
 	propertyItem("endpoint", "ollama/* engine: server URL"),
 	propertyItem("temperature", "ollama/* engine only"),
-	propertyItem("log", "cli/* engine: file path every call's raw stdout is appended to (interpolated for ${...} spans, e.g. ${context.session_id}, so each run gets its own file)"),
+	propertyItem("log", "cli/* engine: file path every call's raw stdout streams into, line by line — a string (interpolated for ${...} spans, e.g. ${context.session_id}) or any expression evaluated per call; \"\" turns it off for that call"),
+	propertyItem("log_mode", `"append" (default: every attempt adds to the file) or "truncate" (each attempt starts the file empty)`),
 	propertyItem("trace", "boolean: echo calling/response lines to the console (default off)"),
 	propertyItem("retry", "{ max_attempts, delay, retry_on, backoff }"),
 	propertyItem("cache", "{ ttl, storage, strategy }"),
