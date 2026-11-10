@@ -17,10 +17,20 @@ import (
 // bool. `Or` keeps its field name so the many call sites that reach straight
 // for `expr.Or` still compile; `Tail` is empty for every expression that
 // doesn't use `??`.
+//
+// Spread is a leading `...`: the expression is an element of an array
+// literal whose own elements are inserted in its place — `["a", ...xs, "b"]`.
+// The grammar accepts it on any Expr (so the token can't silently mean
+// something else anywhere), but parser.checkSpreadPlacement rejects it
+// everywhere except directly as an ast.Array item, and the interpreter's
+// evalExprAt refuses it outside one too. It binds looser than everything,
+// `??` included: `...a ?? []` spreads `a ?? []`. Tagged `digest:"omitzero"`
+// so a program without a spread keeps its DefinitionDigest.
 type Expr struct {
-	Pos  lexer.Position
-	Or   *OrExpr       `parser:"@@"`
-	Tail []*CoalesceOp `parser:"@@*"`
+	Pos    lexer.Position
+	Spread bool          `parser:"@'...':Punct?" digest:"omitzero"`
+	Or     *OrExpr       `parser:"@@"`
+	Tail   []*CoalesceOp `parser:"@@*"`
 }
 
 // CoalesceOp is one `?? rhs` continuation of an Expr.

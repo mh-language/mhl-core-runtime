@@ -15,8 +15,8 @@ import "github.com/alecthomas/participle/v2/lexer"
 // the parser then rejects it with a clear "malformed number" error (see
 // rejectBadNumber in parser.go) instead of splitting it into a number and a
 // bare identifier that fails much later as "undefined variable". Within
-// Punct, `..` (the
-// slice-range separator, see ast.Slice) precedes the single-char class so a
+// Punct, `...` (the array-literal spread prefix, see ast.Expr.Spread)
+// precedes `..` (the slice-range separator, see ast.Slice), and both precede the single-char class so a
 // `..` in source lexes as one token rather than two `.` (member-access)
 // tokens; likewise `?.` (optional member access, see ast.Trailer), `??`
 // (the null-coalescing operator, see ast.Expr) and `+=` (compound append/add
@@ -39,5 +39,5 @@ var mhlRegexLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "BadNumber", Pattern: `[0-9]+(?:\.[0-9]+)?[a-zA-Z_][a-zA-Z0-9_]*`},
 	{Name: "Number", Pattern: `[0-9]+(?:\.[0-9]+)?`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`},
-	{Name: "Punct", Pattern: `\.\.|->|==|!=|>=|<=|&&|\|\||\?\.|\?\?|\+=|[-+*/%<>=!^(){}\[\]:,.?]`},
+	{Name: "Punct", Pattern: `\.\.\.|\.\.|->|==|!=|>=|<=|&&|\|\||\?\.|\?\?|\+=|[-+*/%<>=!^(){}\[\]:,.?]`},
 })

@@ -53,21 +53,3 @@ func checkAgentSubprocess(file, name string, a *ast.Agent) []Finding {
 	}
 	return findings
 }
-
-// unknownRunArg reports the first argument of an `Agent.run(...)` call — or a
-// router's `.delegate(...)`, which forwards its call to the chosen agent's run
-// — that the runtime would reject; callee names the call ("Coder.run") for the
-// message — a positional one, or a name run doesn't read —
-// mirroring interpreter.checkRunArgs, so a `model: "x"` passed by mistake
-// fails mhl lint instead of running with the declared model.
-func unknownRunArg(callee string, call *ast.Call) (string, bool) {
-	for _, arg := range call.Args {
-		if arg.Name == "" {
-			return fmt.Sprintf("%s takes named arguments only (%s)", callee, ast.AgentRunArgList()), true
-		}
-		if !ast.IsAgentRunArg(arg.Name) {
-			return fmt.Sprintf("%s: unknown argument %q — run accepts %s", callee, arg.Name, ast.AgentRunArgList()), true
-		}
-	}
-	return "", false
-}

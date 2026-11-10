@@ -144,26 +144,26 @@ func resolveSkillObjects(prog *ast.Program, agent *ast.Agent, agentName string, 
 // runs once, against whichever leg (primary or fallback) produced the
 // final response, immediately before this returns — not once per attempt.
 func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, depth int) (string, error) {
-	if err := checkRunArgs(agentName, call); err != nil {
+	if err := checkRunArgs(agentName, agent, call); err != nil {
 		return "", err
 	}
-	beforeResult, err := runAgentBeforeHook(ctx, agentName, agent, depth)
+	// Input arguments are evaluated once, in the caller's scope; agentCtx is
+	// that scope plus the agent's own inputs, which every expression the
+	// agent declares (args, cwd, stdin, log, timeout, its hooks) reads.
+	// prompt:/schema: are the caller's expressions and never see them.
+	passed, err := callInputArgs(ctx, agentName, call, depth)
 	if err != nil {
 		return "", err
 	}
-	promptCtx := ctx
-	if len(beforeResult) > 0 {
-		childEnv := make(Env, len(ctx.env)+len(beforeResult))
-		for k, v := range ctx.env {
-			childEnv[k] = v
-		}
-		for k, v := range beforeResult {
-			childEnv[k] = v
-		}
-		child := *ctx
-		child.env = childEnv
-		promptCtx = &child
+	agentCtx, err := bindAgentInputs(ctx, agentName, agent, passed, depth)
+	if err != nil {
+		return "", err
 	}
+	beforeResult, err := runAgentBeforeHook(agentCtx, agentName, agent, depth)
+	if err != nil {
+		return "", err
+	}
+	promptCtx := withBindings(ctx, beforeResult)
 
 	promptText, ok, err := resolvePromptArgument(promptCtx, call, depth)
 	if err != nil {
@@ -195,7 +195,7 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 		if err != nil {
 			return "", err
 		}
-		promptText, err = runAgentSystemPromptHook(promptCtx, agentName, agent, skillObjs, promptText, depth)
+		promptText, err = runAgentSystemPromptHook(withBindings(agentCtx, beforeResult), agentName, agent, skillObjs, promptText, depth)
 		if err != nil {
 			return "", err
 		}
@@ -207,12 +207,12 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 	}
 	opts := agentCallOptions{timeout: callTimeout}
 
-	response, err := runAgentAttemptWith(ctx, agentName, agent, promptText, schemaText, depth, opts)
+	response, err := runAgentAttemptWith(agentCtx, agentName, agent, promptText, schemaText, depth, opts)
 	if err == nil {
 		if agentTrace(agent) {
 			fmt.Fprintf(ctx.out, "agent %s response:\n%s\n", agentName, auth.Redact(response))
 		}
-		return runAgentAfterHook(ctx, agentName, agent, response, depth)
+		return runAgentAfterHook(agentCtx, agentName, agent, response, depth)
 	}
 
 	fallbacks, fbErr := agentFallback(ctx.prog, agent)
@@ -224,12 +224,18 @@ func runAgent(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, 
 		if fbName == "" {
 			fbName = fmt.Sprintf("%s.fallback[%d]", agentName, i)
 		}
-		response, fbAttemptErr := runAgentAttemptWith(ctx, fbName, fb, promptText, schemaText, depth, opts)
+		// A fallback receives the same input values the call passed (not
+		// the primary's defaults — it applies its own).
+		fbCtx, bindErr := bindAgentInputs(ctx, fbName, fb, passed, depth)
+		if bindErr != nil {
+			return "", bindErr
+		}
+		response, fbAttemptErr := runAgentAttemptWith(fbCtx, fbName, fb, promptText, schemaText, depth, opts)
 		if fbAttemptErr == nil {
 			if agentTrace(fb) {
 				fmt.Fprintf(ctx.out, "agent %s response (via %s):\n%s\n", agentName, fbName, auth.Redact(response))
 			}
-			return runAgentAfterHook(ctx, agentName, agent, response, depth)
+			return runAgentAfterHook(agentCtx, agentName, agent, response, depth)
 		}
 		err = fbAttemptErr // report the last fallback's error if every leg fails
 	}
@@ -540,6 +546,9 @@ func resolveAgentCommand(ctx *evalCtx, agent *ast.Agent, depth int) (string, []s
 		if err != nil {
 			return "", nil, "", err
 		}
+		if _, literal := ast.StringValue(stdinExpr); literal {
+			stdinTemplate = substituteInputPlaceholders(ctx, agent, stdinTemplate)
+		}
 	}
 
 	if argsExpr == nil {
@@ -555,9 +564,20 @@ func resolveAgentCommand(ctx *evalCtx, agent *ast.Agent, depth int) (string, []s
 	}
 	args := make([]string, 0, len(arr.Items))
 	for _, item := range arr.Items {
+		if item.Spread {
+			spread, err := resolveArgsSpread(ctx, agent.Name, item, depth)
+			if err != nil {
+				return "", nil, "", err
+			}
+			args = append(args, spread...)
+			continue
+		}
 		s, err := resolveCommandLikeExpr(ctx, agent.Name, "args", item, depth)
 		if err != nil {
 			return "", nil, "", err
+		}
+		if _, literal := ast.StringValue(item); literal {
+			s = substituteInputPlaceholders(ctx, agent, s)
 		}
 		args = append(args, s)
 	}

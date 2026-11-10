@@ -1,0 +1,85 @@
+// One agent, many call shapes. A coding CLI is called with a different repo,
+// model, effort and set of extra directories on every call. Instead of a
+// wrapper script rewriting argv from files next to the prompt, the agent
+// declares per-call inputs and builds its argv from them:
+//
+//   input name: type [= default]
+//       the same syntax as a workflow input. `.run(prompt: ..., name: value)`
+//       fills it; one without a default is required. An undeclared name is an
+//       error in mhl lint and mhl run. args, cwd, stdin, log, timeout and the
+//       before/after hooks read inputs by name; the prompt: argument does not.
+//   ...expr
+//       inside an array literal, inserts the elements of a string array.
+//       [] inserts nothing; null is an error.
+//   "${name}"
+//       in a literal args element or stdin, the value of a declared input,
+//       like "${prompt}".
+//
+// The fallback receives the same inputs the call passed.
+tool Effort {
+    // The CLI rejects an effort with the "auto" model, so omit the pair.
+    flags(model: string, effort: string): string[] -> if (effort.is_empty() || model == "auto") [] else ["--reasoning-effort", effort]
+}
+
+agent Coder {
+    input repo: string
+    input model: string = "auto"
+    input effort: string = ""
+    input dirs: string[] = []
+
+    command: "sh"
+    cwd: repo
+    // `sh -c 'echo …' sh <args>` prints the argv it received, standing in
+    // for the real CLI.
+    args: [
+        "-c", "echo \"in $(pwd -P): $*\"", "sh",
+        "--model", model,
+        ...Effort.flags(model, effort),
+        ...dirs.flat_map((d) -> ["--add-dir", d]),
+        "--label=${model}"
+    ]
+    stdin: "${prompt}"
+}
+
+// Fails, then hands the same call to Coder: same repo, same model.
+agent Flaky {
+    input repo: string
+    input model: string = "auto"
+    input effort: string = ""
+    input dirs: string[] = []
+
+    command: "sh"
+    args: ["-c", "exit 1"]
+    fallback: [Coder]
+}
+
+test agent_takes_inputs_and_spreads_args {
+    describe defaults_fill_what_the_call_leaves_out {
+        are_equal(Coder.run(prompt: "fix it", repo: "/"), "in /: --model auto --label=auto")
+    }
+
+    describe inputs_shape_the_argv {
+        are_equal(
+            Coder.run(prompt: "fix it", repo: "/usr", model: "gpt-x", effort: "high", dirs: ["/a", "/b"]),
+            "in /usr: --model gpt-x --reasoning-effort high --add-dir /a --add-dir /b --label=gpt-x"
+        )
+    }
+
+    describe a_spread_can_drop_a_pair {
+        are_equal(Coder.run(prompt: "fix it", repo: "/", effort: "high"), "in /: --model auto --label=auto")
+    }
+
+    describe the_fallback_gets_the_same_inputs {
+        are_equal(Flaky.run(prompt: "fix it", repo: "/usr", model: "m"), "in /usr: --model m --label=m")
+    }
+
+    describe a_missing_required_input_fails_the_call {
+        var message = ""
+        try {
+            Coder.run(prompt: "fix it")
+        } catch (e) {
+            message = e
+        }
+        is_true(message.contains("Coder.run: missing required input \"repo\""))
+    }
+}

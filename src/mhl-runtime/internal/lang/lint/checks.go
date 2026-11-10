@@ -155,7 +155,7 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 // name the runtime does not read, so a typo or a docs-only field
 // (`api_key`, `system_instructions`) fails `mhl lint` instead of
 // being silently dropped.
-func checkAgentProperties(file string, prog *ast.Program) []Finding {
+func checkAgentProperties(file string, prog *ast.Program, aliases map[string]types.Type) []Finding {
 	var findings []Finding
 	seen := map[*ast.Agent]bool{}
 	var check func(a *ast.Agent)
@@ -173,10 +173,11 @@ func checkAgentProperties(file string, prog *ast.Program) []Finding {
 				findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
 					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only %s", name, p.Name, ast.AgentPropertyList())})
 			}
-			findings = append(findings, checkAgentPlaceholders(file, name, p)...)
+			findings = append(findings, checkAgentPlaceholders(file, name, a, p)...)
 		}
 		findings = append(findings, checkAgentTimeout(file, name, a)...)
 		findings = append(findings, checkAgentSubprocess(file, name, a)...)
+		findings = append(findings, checkAgentInputs(file, prog, aliases, name, a)...)
 		if refs, err := ast.AgentFallbackRefs(a); err == nil {
 			for _, r := range refs {
 				check(r.Inline)
@@ -1230,7 +1231,7 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 		}
 	}
 
-	if msg, ok := unknownRunArg(agentName+".run", call); ok {
+	if msg, ok := unknownRunArg(agentName+".run", call, agent); ok {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column, Message: msg}}
 	}
 
@@ -1442,13 +1443,15 @@ func routerSelectCall(expr *ast.Expr) (*ast.Call, string, bool) {
 // entries that don't resolve) is checkRouterProperties/checkRouterAgentRefs'
 // job, run once per program rather than once per call site.
 func checkRouterDelegateCallShape(file string, prog *ast.Program, pos lexer.Position, call *ast.Call, routerName string) []Finding {
-	if _, ok := findRouter(prog, routerName); !ok {
+	router, ok := findRouter(prog, routerName)
+	if !ok {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("router %q not found", routerName)}}
 	}
 	// delegate forwards its call unchanged to the chosen agent's run, so the
-	// same argument set applies.
-	if msg, ok := unknownRunArg(routerName+".delegate", call); ok {
+	// same argument set applies — inputs included, which therefore have to
+	// be ones every agent of the router declares.
+	if msg, ok := unknownRunArg(routerName+".delegate", call, routerAgentDecls(prog, router)...); ok {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column, Message: msg}}
 	}
 	promptText, resolved, present, err := resolvePromptArgument(prog, call)

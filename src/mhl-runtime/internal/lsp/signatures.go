@@ -287,6 +287,7 @@ var arrayMethodSigs = map[string]sig{
 	"find":      {Label: "find(predicate: (item: any) -> bool) -> any", Params: []string{"predicate"}, Doc: "First matching element, or `null`."},
 	"sort_by":   {Label: "sort_by(key: (item: any) -> any) -> any[]", Params: []string{"key"}, Doc: "New array, ascending by the key each element maps to."},
 	"map":       {Label: "map(transform: (item: any) -> any) -> any[]", Params: []string{"transform"}, Doc: "New array of `transform` applied to each element."},
+	"flat_map":  {Label: "flat_map(transform: (item: any) -> any[]) -> any[]", Params: []string{"transform"}, Doc: "New array concatenating the array each element's transform returns — `dirs.flat_map((d) -> [\"--add-dir\", d])`. A transform result that isn't an array is an error."},
 	"reduce":    {Label: "reduce(combine: (acc: any, item: any) -> any, initial: any) -> any", Params: []string{"combine", "initial"}, Doc: "Folds the array left-to-right starting from `initial`."},
 	"any":       {Label: "any(predicate: (item: any) -> bool) -> bool", Params: []string{"predicate"}, Doc: "Whether `predicate` is true for at least one element (`false` for an empty array)."},
 	"all":       {Label: "all(predicate: (item: any) -> bool) -> bool", Params: []string{"predicate"}, Doc: "Whether `predicate` is true for every element (`true` for an empty array)."},
@@ -400,8 +401,7 @@ func signatureForMethod(path, text string, s symbol, method string) (sig, bool) 
 		x, ok := extensionMethodSigs(path, s.ExtKind, s.ExtProvider)[method]
 		return x, ok
 	case symAgent:
-		x, ok := agentMethodSigs[method]
-		return x, ok
+		return agentRunSig(path, text, s.Name, method)
 	case symRouter:
 		x, ok := routerMethodSigs[method]
 		return x, ok

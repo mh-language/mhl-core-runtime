@@ -27,22 +27,6 @@ func checkAgentProps(agentName string, agent *ast.Agent) error {
 	return nil
 }
 
-// checkRunArgs rejects an `Agent.run(...)` argument the runtime doesn't read
-// (ast.IsAgentRunArg) — positional, or a name like `model:` that used to be
-// accepted and ignored, so the call ran with the declared model instead of
-// the one asked for. Mirrored statically by lint's unknownRunArg.
-func checkRunArgs(agentName string, call *ast.Call) error {
-	for _, arg := range call.Args {
-		if arg.Name == "" {
-			return fmt.Errorf("%s.run takes named arguments only (%s)", agentName, ast.AgentRunArgList())
-		}
-		if !ast.IsAgentRunArg(arg.Name) {
-			return fmt.Errorf("%s.run: unknown argument %q — run accepts %s", agentName, arg.Name, ast.AgentRunArgList())
-		}
-	}
-	return nil
-}
-
 // resolveAgentCwd reads a cli/* agent's `cwd:` — the directory its process
 // starts in. Like `args:` it may be any expression, evaluated on every call
 // (`cwd: Repo.root()`), and a string literal interpolates "${...}" spans. A
@@ -235,11 +219,39 @@ func resolveArgsExpr(ctx *evalCtx, agentName string, expr *ast.Expr, depth int) 
 	if !ok {
 		return nil, fmt.Errorf("agent %q args must be an array of strings, got %s", agentName, typeName(v))
 	}
+	return argStrings(agentName, "args[%d]", items)
+}
+
+// resolveArgsSpread evaluates one `...expr` element of an `args:` array
+// literal — `["--model", m, ...Effort.flags(m, e), "--json"]` — to the
+// strings it inserts: an array of strings, where `[]` inserts nothing and
+// null (or anything else) is an error. Like a whole-expression `args:`, the
+// strings went through the ordinary evaluator, so no "${prompt}"/"${schema}"
+// placeholder is recognized in them.
+func resolveArgsSpread(ctx *evalCtx, agentName string, item *ast.Expr, depth int) ([]string, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("agent %q: args: a spread (...) needs a run scope", agentName)
+	}
+	for _, ref := range ast.CredentialRefs(item) {
+		if _, err := auth.Resolve(ref); err != nil {
+			return nil, fmt.Errorf("agent %q: args: %w", agentName, err)
+		}
+	}
+	items, err := evalSpread(ctx, item, depth)
+	if err != nil {
+		return nil, fmt.Errorf("agent %q: args: %w", agentName, err)
+	}
+	return argStrings(agentName, "args: element %d of a spread (...)", items)
+}
+
+// argStrings requires every element of items to be a string; where is a
+// format naming element %d in the error.
+func argStrings(agentName, where string, items []any) ([]string, error) {
 	args := make([]string, 0, len(items))
 	for i, item := range items {
 		s, ok := item.(string)
 		if !ok {
-			return nil, fmt.Errorf("agent %q: args[%d] must be a string, got %s", agentName, i, typeName(item))
+			return nil, fmt.Errorf("agent %q: %s must be a string, got %s", agentName, fmt.Sprintf(where, i), typeName(item))
 		}
 		args = append(args, s)
 	}

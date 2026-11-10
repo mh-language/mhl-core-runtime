@@ -35,7 +35,16 @@ import (
 // (MHL-Melhorias.md #1) is itself the fix this finding steers a caller
 // toward: resolve the value as an expression element instead of a string
 // placeholder.
-func checkAgentPlaceholders(file, agentName string, p *ast.Property) []Finding {
+//
+// A "${name}" span naming one of the agent's declared inputs is substituted
+// wherever it appears in an `args:` element or `stdin:` string
+// (interpreter.substituteInputPlaceholders), so it is not flagged there;
+// `command:` still substitutes nothing.
+func checkAgentPlaceholders(file, agentName string, a *ast.Agent, p *ast.Property) []Finding {
+	isInput := func(span string) bool {
+		_, ok := a.FindInput(strings.TrimSuffix(strings.TrimPrefix(span, "${"), "}"))
+		return ok
+	}
 	var findings []Finding
 	switch p.Name {
 	case "command":
@@ -55,13 +64,16 @@ func checkAgentPlaceholders(file, agentName string, p *ast.Property) []Finding {
 				continue
 			}
 			for _, span := range findPlaceholderSpans(s) {
+				if isInput(span) {
+					continue
+				}
 				findings = append(findings, agentPlaceholderFinding(file, agentName, "args", span, p.Pos))
 			}
 		}
 	case "stdin":
 		if s, ok := ast.StringValue(p.Value); ok {
 			for _, span := range findPlaceholderSpans(s) {
-				if span == "${prompt}" || span == "${schema}" {
+				if span == "${prompt}" || span == "${schema}" || isInput(span) {
 					continue
 				}
 				findings = append(findings, agentPlaceholderFinding(file, agentName, "stdin", span, p.Pos))
@@ -72,9 +84,9 @@ func checkAgentPlaceholders(file, agentName string, p *ast.Property) []Finding {
 }
 
 func agentPlaceholderFinding(file, agentName, prop, span string, pos lexer.Position) Finding {
-	recognized := `args: only recognizes a whole element exactly equal to "${prompt}" or "${schema}"; command: recognizes neither`
+	recognized := `args: only recognizes a whole element exactly equal to "${prompt}" or "${schema}", or a "${name}" of a declared input; command: recognizes none`
 	if prop == "stdin" {
-		recognized = `stdin: only substitutes "${prompt}"/"${schema}" spans, wherever they appear in the string`
+		recognized = `stdin: only substitutes "${prompt}"/"${schema}" and "${name}" of a declared input, wherever they appear in the string`
 	}
 	return Finding{
 		File: file, Line: pos.Line, Column: pos.Column,

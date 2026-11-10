@@ -64,8 +64,8 @@ var contextFieldItems = []completionItem{
 var agentPropertyItems = []completionItem{
 	propertyItem("engine", `e.g. "cli/claude-code", "ollama/qwen2.5-coder"`),
 	propertyItem("command", "cli/* engine: the executable to run"),
-	propertyItem("args", "cli/* engine: argv — an array (supports ${prompt}/${schema} placeholders as whole elements), or any expression yielding a string array"),
-	propertyItem("stdin", "cli/* engine: text written to the subprocess's standard input (supports ${prompt}/${schema}, substituted wherever they appear). Keeps large content out of argv — needed on Windows, where CreateProcess caps the whole command line at ~32,767 characters"),
+	propertyItem("args", "cli/* engine: argv — an array (supports ${prompt}/${schema} placeholders as whole elements, ${name} of a declared input anywhere in an element, and ...expr to splice in a string array, [] inserting nothing), or any expression yielding a string array"),
+	propertyItem("stdin", "cli/* engine: text written to the subprocess's standard input (supports ${prompt}/${schema} and ${name} of a declared input, substituted wherever they appear). Keeps large content out of argv — needed on Windows, where CreateProcess caps the whole command line at ~32,767 characters"),
 	propertyItem("cwd", "cli/* engine: directory the process starts in — any string expression, evaluated per call; relative to mhl's working directory; must exist (the call fails before starting otherwise); \"\" = mhl's own"),
 	propertyItem("endpoint", "ollama/* engine: server URL"),
 	propertyItem("temperature", "ollama/* engine only"),
@@ -83,6 +83,17 @@ var agentPropertyItems = []completionItem{
 	propertyItem("before", "() -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),
 	propertyItem("after", "() -> {...}: runs once on the final response (bound as result); a returned string replaces it"),
 	propertyItem("description", "string: optional summary of what this agent is for; a router's decider folds it into the decision prompt alongside the agent's name"),
+}
+
+// agentInputItem is the `input name: type [= default]` declaration an agent
+// body may carry alongside its properties (ast.Agent.Inputs) — a per-call
+// parameter `.run(prompt: ..., name: value)` fills.
+var agentInputItem = completionItem{
+	Label:            "input",
+	Kind:             kindKeyword,
+	Detail:           "per-call parameter: `input name: type [= default]`, filled by `.run(prompt: ..., name: value)` and readable by args, cwd, stdin, log, timeout and the hooks",
+	InsertText:       "input ${1:name}: ${2:string}",
+	InsertTextFormat: insertTextFormatSnippet,
 }
 
 // routerPropertyItems is what's valid directly inside a `router { ... }`
@@ -144,7 +155,9 @@ func propertyItemsFor(path string, stack []blockRef) []completionItem {
 		items = append(items, loopPipelineExtraPropertyItems...)
 		return items
 	case blockAgent:
-		return agentPropertyItems
+		items := make([]completionItem, 0, len(agentPropertyItems)+1)
+		items = append(items, agentInputItem)
+		return append(items, agentPropertyItems...)
 	case blockRouter:
 		return routerPropertyItems
 	case blockCheckpoint:

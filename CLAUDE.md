@@ -302,7 +302,18 @@ in `Error()`, the old message alone in `RetryText()`). The property set and the
 `Agent.run` argument set live in `ast/agentprops.go` (`IsAgentProperty`, `IsAgentRunArg`):
 lint *and* the interpreter reject anything else — an unknown property or `run` argument
 fails the call rather than being ignored — and `lsp/agent_properties_test.go` pins
-`agentPropertyItems` to that list.
+`agentPropertyItems` to that list. An agent may also declare per-call inputs
+(`input repo: string [= default]`, `ast.Agent.Inputs`, reusing `PipelineInput`): `run`
+accepts them besides the run args; `interpreter/agent_inputs.go`'s `bindAgentInputs` builds
+the scope the agent's own expressions and hooks evaluate in (never the call's `prompt:`/
+`schema:`), type-checks via `types.Check`, and forwards the call's (not the defaults')
+input values to each fallback; `"${input}"` in a literal `args` element/`stdin` is
+substituted (`substituteInputPlaceholders`). Lint mirror: `lint/agent_inputs.go`
+(declarations, fallback compatibility, call sites incl. `Router.delegate` = inputs common to
+all router agents); LSP: `declsig.go`'s `agentRunSig`. Array spread `[a, ...xs]` is
+`ast.Expr.Spread` (a flag on Expr, not a wrapper type, for the digest), rejected outside an
+array item by `parser/spread.go`'s reflection walk; `evalSpread` refuses `null`; `args`
+spreads go through `resolveArgsSpread`.
 There is no declarative tool/extension scope list on an agent: when an agent needs a `tool` or
 `extension`, it is called from a `before`/`after` hook (agent_hooks.go), which are real:
 `before: () -> {...}` runs before the prompt is built — an ordinary zero-param lambda whose body

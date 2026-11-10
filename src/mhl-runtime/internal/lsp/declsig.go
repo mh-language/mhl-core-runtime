@@ -69,6 +69,46 @@ func promptCallSig(path, text, promptName string) (sig, bool) {
 	return sigFromParams(promptName, prog.Decls[0].Prompt.Params, nil), true
 }
 
+// agentRunSig is agentMethodSigs' entry for method, extended — for `run` —
+// with agentName's own declared inputs (`input repo: string`, `input model:
+// string = ""`), read from its declaration the same way toolMethodSig reads a
+// tool method's params: each input becomes a named parameter after the run
+// arguments, "name?: T" when it has a default.
+func agentRunSig(path, text, agentName, method string) (sig, bool) {
+	base, ok := agentMethodSigs[method]
+	if !ok || method != "run" {
+		return base, ok
+	}
+	_, src, nameOff, kind, found := locateDeclaration(path, text, agentName, nil)
+	if !found || kind != symAgent {
+		return base, true
+	}
+	bodyStart, bodyEnd, found := blockBounds(src, nameOff)
+	if !found {
+		return base, true
+	}
+	prog, err := parser.Parse("agent A {" + src[bodyStart:bodyEnd] + "}")
+	if err != nil || len(prog.Decls) == 0 || prog.Decls[0].Agent == nil || len(prog.Decls[0].Agent.Inputs) == 0 {
+		return base, true
+	}
+	var parts []string
+	params := append([]string{}, base.Params...)
+	for _, in := range prog.Decls[0].Agent.Inputs {
+		part := in.Name
+		if in.Default != nil {
+			part += "?"
+		}
+		parts = append(parts, part+": "+in.Type.String())
+		params = append(params, in.Name)
+	}
+	if i := strings.LastIndex(base.Label, ") ->"); i >= 0 {
+		base.Label = base.Label[:i] + ", " + strings.Join(parts, ", ") + base.Label[i:]
+	}
+	base.Params = params
+	base.Doc += " This agent also takes its declared inputs by name: " + strings.Join(parts, ", ") + "."
+	return base, true
+}
+
 // memorySig resolves a symMemory method's doc to the specific text for
 // memName's own declared backend (memoryMethodSigsByType), falling back to
 // memoryMethodSigs' generic, all-backends paragraph when the backend can't

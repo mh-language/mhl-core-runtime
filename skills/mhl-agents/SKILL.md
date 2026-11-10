@@ -16,8 +16,9 @@ The runtime reads exactly: `engine`, `command`, `args`, `stdin`, `cwd`, `endpoin
 `temperature`, `log`, `log_mode`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`,
 `timeout`, `kill_grace`, `skills`, `system_prompt`, `before`, `after`, `description`.
 Anything else fails both `mhl lint` and the call itself, including `api_key` (let the CLI
-read its own environment). `Name.run(...)` takes only `prompt`, `schema`, `skills` and
-`timeout`; any other argument is an error, not an ignored extra.
+read its own environment). `Name.run(...)` takes only `prompt`, `schema`, `skills`,
+`timeout` and the agent's own declared `input`s. Any other argument is an error, not an
+ignored extra.
 
 ```mh
 agent Claude {
@@ -46,7 +47,8 @@ agent Local {
 **Placeholders.** `"${prompt}"` and `"${schema}"` are recognized only as a **whole**
 `args:` element. `"pre ${prompt}"` is a lint error. Without either placeholder, the prompt
 is appended as the last argument. An `args:` element may also be an expression
-(`env("FLAG", "x")`).
+(`env("FLAG", "x")`). A `"${name}"` naming a declared `input` is substituted anywhere in a
+literal `args:` element or in `stdin:`.
 
 **Large prompts** go through `stdin:` instead of `args:`, where placeholders are
 substituted anywhere in the string. Whole documents in argv hit the ~32 KB command-line
@@ -100,37 +102,52 @@ test hung_agent {
 }
 ```
 
-**Run the CLI directly, not through a wrapper script.** `cwd:` sets the directory the
-process starts in. It takes any string expression, evaluated on every call. It must
-exist, or the call fails before anything starts. A relative `command:` such as
-`"./bin/x"` still resolves against mhl's directory. `args:` may be a whole expression
-that yields a string array, such as `Flags.for(model)`. `log:` streams stdout live into a
-file. A literal path is interpolated. An expression is evaluated per call, and `""` turns
-the log off. Add `log_mode: "truncate"` so each retry starts the file empty. When the
-process exits non-zero, the error ends with `partial stdout:` and the tail of its stdout.
-`retry_on` never matches that part.
+**Run the CLI directly, not through a wrapper script.** Declare what changes per call as
+inputs: `input repo: string`, `input model: string = "auto"`. A call fills them by name,
+`Coder.run(prompt: task, repo: "/abs")`. An input without a default is required, and a
+name the agent doesn't declare is an error. `args`, `cwd`, `stdin`, `log`, `timeout` and
+the hooks read inputs by name. The `prompt:` argument doesn't see them. A fallback gets the
+same inputs, so it must declare them all.
+
+- `cwd:` sets the directory the process starts in. It must exist, or the call fails before
+  anything starts. A relative `command:` such as `"./bin/x"` still resolves against mhl's
+  directory.
+- `...expr` inside `args:` splices in a string array. `[]` inserts nothing, so
+  `...(if (e.is_empty()) [] else ["--effort", e])` drops a flag pair, and
+  `...dirs.flat_map((d) -> ["--add-dir", d])` repeats one. A `null` spread is an error.
+- `log:` streams stdout live into a file. `""` turns it off for that call. Add
+  `log_mode: "truncate"` so each retry starts the file empty.
+- When the process exits non-zero, the error ends with `partial stdout:` and the tail of
+  its stdout. `retry_on` never matches that part.
 
 ```mh
-tool Workspace {
-    repo(): string -> fs.read("/tmp/mhl-skill-repo.txt").trim()
-    live(): string -> "/tmp/mhl-skill-live/coder.log"
-}
-
 agent Coder {
+    input repo: string
+    input effort: string = ""
+    input dirs: string[] = []
+    input live: string = ""
+
     command: "sh"
-    args: ["-c", "pwd -P; cat"]             // stands in for a coding CLI
+    // stands in for a coding CLI: prints its directory and argv
+    args: [
+        "-c", "echo \"$(pwd -P) $*\"", "sh",
+        ...(if (effort.is_empty()) [] else ["--effort", effort]),
+        ...dirs.flat_map((d) -> ["--add-dir", d])
+    ]
     stdin: "${prompt}"
-    cwd: Workspace.repo()                   // per call: no `cd` wrapper
-    log: Workspace.live()
+    cwd: repo                               // per call: no `cd` wrapper
+    log: live
     log_mode: "truncate"
 }
 
 test coder_in_repo {
-    describe runs_in_the_selected_repo {
-        fs.write("/tmp/mhl-skill-repo.txt", "/")
-        var out = Coder.run(prompt: "fix the bug")
-        is_true(out.starts_with("/\n"))
-        is_true(fs.read("/tmp/mhl-skill-live/coder.log").contains("fix the bug"))
+    describe inputs_shape_each_call {
+        are_equal(Coder.run(prompt: "fix", repo: "/"), "/")
+        are_equal(
+            Coder.run(prompt: "fix", repo: "/", effort: "high", dirs: ["/a"], live: "/tmp/mhl-skill-live/coder.log"),
+            "/ --effort high --add-dir /a"
+        )
+        is_true(fs.read("/tmp/mhl-skill-live/coder.log").contains("--add-dir /a"))
     }
 }
 ```

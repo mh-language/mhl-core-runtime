@@ -183,6 +183,37 @@ func evalExpr(ctx *evalCtx, expr *ast.Expr) (any, error) {
 }
 
 func evalExprAt(ctx *evalCtx, expr *ast.Expr, depth int) (any, error) {
+	if expr.Spread {
+		// parser.checkSpreadPlacement already rejects this; kept so a
+		// hand-built AST can't reach evalExprValue with the flag ignored.
+		return nil, fmt.Errorf("spread (...) is only allowed as an element of an array literal")
+	}
+	return evalExprValue(ctx, expr, depth)
+}
+
+// evalSpread evaluates a `...expr` array element to the elements it inserts.
+// The value must be an array: `[]` inserts nothing, and null is an error
+// rather than "nothing" — a spread of null is almost always an expression
+// that went wrong (a missing field, a call that returned nothing), and
+// quietly dropping it would hide that.
+func evalSpread(ctx *evalCtx, item *ast.Expr, depth int) ([]any, error) {
+	v, err := evalExprValue(ctx, item, depth)
+	if err != nil {
+		return nil, err
+	}
+	switch items := v.(type) {
+	case []any:
+		return items, nil
+	case nil:
+		return nil, fmt.Errorf("spread (...) needs an array, got null")
+	default:
+		return nil, fmt.Errorf("spread (...) needs an array, got %s", typeName(v))
+	}
+}
+
+// evalExprValue is evalExprAt without the spread check: the value of expr
+// itself, for evalSpread to expand.
+func evalExprValue(ctx *evalCtx, expr *ast.Expr, depth int) (any, error) {
 	v, err := evalOr(ctx, expr.Or, depth)
 	if err != nil {
 		return nil, err
@@ -1677,6 +1708,35 @@ func callValueMethod(receiver any, name string, args []any, depth int) (any, err
 			out[i] = r
 		}
 		return out, nil
+	case "flat_map":
+		// map whose transform returns an array per element, concatenated:
+		// `dirs.flat_map((d) -> ["--add-dir", d])`. A non-array result is an
+		// error, not a one-element insert, so a transform that forgot its
+		// brackets fails instead of producing a differently shaped list.
+		arr, ok := receiver.([]any)
+		if !ok {
+			return nil, fmt.Errorf("flat_map() is not defined for a %s value", typeName(receiver))
+		}
+		if len(args) != 1 {
+			return nil, fmt.Errorf("flat_map() requires exactly one argument (a transform lambda returning an array)")
+		}
+		fn, ok := args[0].(*Closure)
+		if !ok {
+			return nil, fmt.Errorf("flat_map() argument must be a lambda, got %s", typeName(args[0]))
+		}
+		out := make([]any, 0, len(arr))
+		for i, item := range arr {
+			r, err := invokeClosureWithValues(fn, []any{item}, depth)
+			if err != nil {
+				return nil, err
+			}
+			items, ok := r.([]any)
+			if !ok {
+				return nil, fmt.Errorf("flat_map() transform must return an array, got %s for element %d", typeName(r), i)
+			}
+			out = append(out, items...)
+		}
+		return out, nil
 	case "reduce":
 		arr, ok := receiver.([]any)
 		if !ok {
@@ -1974,6 +2034,14 @@ func evalPrimary(ctx *evalCtx, p *ast.Primary, depth int) (any, error) {
 		}
 		items := make([]any, 0, len(p.Array.Items))
 		for _, item := range p.Array.Items {
+			if item.Spread {
+				spread, err := evalSpread(ctx, item, depth+1)
+				if err != nil {
+					return nil, err
+				}
+				items = append(items, spread...)
+				continue
+			}
 			v, err := evalExprAt(ctx, item, depth+1)
 			if err != nil {
 				return nil, err

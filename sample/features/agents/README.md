@@ -54,3 +54,9 @@ environment — they need real network access and credentials, not just `mhl tes
   `cwd:` (any expression, evaluated per call; a missing directory fails before the process
   starts), `log:` as a per-call expression with `log_mode: "truncate"` so a retry starts the
   live log empty, and the stdout tail (`partial stdout:`) on a non-zero exit
+- [agent_takes_inputs_and_spreads_args.mh](agent_takes_inputs_and_spreads_args.mh)
+  — one agent, a different argv per call: `input name: type [= default]` declarations
+  filled by `.run(prompt: ..., name: value)` and read by `cwd:`/`args:`/`stdin:`; `...expr`
+  splicing a string array into `args` (`[]` inserts nothing, `if` drops a flag pair);
+  `flat_map` for a `--add-dir` per directory; `"${name}"` placeholders; the fallback receiving
+  the same inputs; a missing required input failing the call

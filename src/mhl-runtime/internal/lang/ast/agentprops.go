@@ -42,9 +42,11 @@ func AgentPropertyList() string { return strings.Join(agentPropertyNames, ", ") 
 
 // agentRunArgNames are the named arguments `Agent.run(...)` (and a router's
 // `.delegate(...)`, which forwards its call to the chosen agent) reads.
-// Anything else used to be accepted and silently ignored — a call passing
-// `model: "x"` ran with the declared model — so it is now an error, both in
-// mhl lint and at run time.
+// Besides these, a call may name the agent's own declared inputs
+// (Agent.Inputs) — which is also why an input may not take one of these
+// names. Anything else used to be accepted and silently ignored — a call
+// passing `model: "x"` ran with the declared model — so it is now an error,
+// both in mhl lint and at run time.
 var agentRunArgNames = []string{"prompt", "schema", "skills", "timeout"}
 
 // IsAgentRunArg reports whether name is an argument Agent.run accepts.
@@ -60,6 +62,17 @@ func IsAgentRunArg(name string) bool {
 // AgentRunArgList is every Agent.run argument name, comma-separated, for
 // diagnostics.
 func AgentRunArgList() string { return strings.Join(agentRunArgNames, ", ") }
+
+// AgentRunAccepts describes what agent's `.run(...)` accepts, for the
+// "unknown argument" diagnostic: the run arguments, plus its declared inputs
+// when it has any.
+func AgentRunAccepts(agent *Agent) string {
+	accepts := AgentRunArgList()
+	if agent != nil && len(agent.Inputs) > 0 {
+		accepts += " and the inputs " + strings.Join(agent.InputNames(), ", ")
+	}
+	return accepts
+}
 
 // LogModes are the accepted values of an agent's `log_mode:` property:
 // "append" (the default — every attempt adds to the file) or "truncate"

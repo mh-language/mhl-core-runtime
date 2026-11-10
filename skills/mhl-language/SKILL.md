@@ -185,6 +185,8 @@ test expressions {
             .map((item) -> item.id)
         are_equal(ready, [1, 2])
         are_equal([10, 20, 30, 40][1..^1], [20, 30])
+        are_equal(["a", ...ready.map((n) -> "${n}"), "z"], ["a", "1", "2", "z"])
+        are_equal(["x", "y"].flat_map((d) -> ["--dir", d]), ["--dir", "x", "--dir", "y"])
     }
 
     describe destructuring_and_shorthand {
