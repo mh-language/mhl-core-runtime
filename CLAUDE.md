@@ -312,8 +312,12 @@ the scope the agent's own expressions and hooks evaluate in (never the call's `p
 `schema:`), type-checks via `types.Check`, and forwards the call's (not the defaults')
 input values to each fallback; `"${input}"` in a literal `args` element/`stdin` is
 substituted (`substituteInputPlaceholders`). Lint mirror: `lint/agent_inputs.go`
-(declarations, fallback compatibility, call sites incl. `Router.delegate` = inputs common to
-all router agents); LSP: `declsig.go`'s `agentRunSig`. Array spread `[a, ...xs]` is
+(declarations, fallback compatibility); every `X.run(...)`/`R.delegate(...)` call site in the
+program — tool bodies, tests, hooks, nested calls — is checked by `lint/run_calls.go`'s
+reflection walk (`unknownRunArg`; `Router.delegate` = inputs common to all router agents),
+not by `checkAgentCall`; `lint/agent_names.go` reports undefined names in the expressions of
+an agent *with inputs* (`undefWalker.strict`; no-input agents keep reading the caller's
+scope, which `log:` interpolation documents); LSP: `declsig.go`'s `agentRunSig`. Array spread `[a, ...xs]` is
 `ast.Expr.Spread` (a flag on Expr, not a wrapper type, for the digest), rejected outside an
 array item by `parser/spread.go`'s reflection walk; `evalSpread` refuses `null`; `args`
 spreads go through `resolveArgsSpread`.

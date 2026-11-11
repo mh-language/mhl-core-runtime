@@ -5,8 +5,11 @@
 //
 //   input name: type [= default]
 //       the same syntax as a workflow input. `.run(prompt: ..., name: value)`
-//       fills it; one without a default is required. An undeclared name is an
-//       error in mhl lint and mhl run. args, cwd, stdin, log, timeout and the
+//       fills it; one without a default is required. An undeclared name, or a
+//       missing required input, is an error in mhl lint (wherever the call
+//       is: a workflow, a tool, a test) and in mhl run. Inside an agent that
+//       declares inputs, mhl lint also reports any name that isn't one of
+//       them (`cwd: reepo`). args, cwd, stdin, log, timeout and the
 //       before/after hooks read inputs by name; the prompt: argument does not.
 //   ...expr
 //       inside an array literal, inserts the elements of a string array.
@@ -71,15 +74,5 @@ test agent_takes_inputs_and_spreads_args {
 
     describe the_fallback_gets_the_same_inputs {
         are_equal(Flaky.run(prompt: "fix it", repo: "/usr", model: "m"), "in /usr: --model m --label=m")
-    }
-
-    describe a_missing_required_input_fails_the_call {
-        var message = ""
-        try {
-            Coder.run(prompt: "fix it")
-        } catch (e) {
-            message = e
-        }
-        is_true(message.contains("Coder.run: missing required input \"repo\""))
     }
 }

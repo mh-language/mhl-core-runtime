@@ -2,6 +2,7 @@ package lint_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
@@ -168,4 +169,167 @@ pipeline P {
 `), tc.want)
 		})
 	}
+}
+
+// The call-argument check covers every place a call can be written, not only
+// a bare call statement in a workflow step: a tool method's expression body
+// and block, a test, a lambda, an agent hook, a pipeline hook, and a call
+// nested inside another expression.
+func TestAgentRunArgumentsCheckedEverywhere(t *testing.T) {
+	cases := []struct {
+		name, decls string
+	}{
+		{"tool expression body", `tool Coder {
+    call(p: string): string -> CopilotCoder.run(prompt: p, repo: "r", modelo: "x")
+}`},
+		{"tool block body", `tool Coder {
+    call(p: string): string {
+        return CopilotCoder.run(prompt: p, repo: "r", modelo: "x")
+    }
+}`},
+		{"nested in another call", `tool Coder {
+    call(p: string): any -> json.parse(CopilotCoder.run(prompt: p, repo: "r", modelo: "x"))
+}`},
+		{"inside a lambda", `tool Coder {
+    all(ps: string[]): string[] -> ps.map((p) -> CopilotCoder.run(prompt: p, repo: "r", modelo: "x"))
+}`},
+		{"test describe", `test t {
+    describe d {
+        var out = CopilotCoder.run(prompt: "p", repo: "r", modelo: "x")
+    }
+}`},
+		{"another agent's before hook", `agent Wrapper {
+    command: "bash"
+    before: () -> { return { draft: CopilotCoder.run(prompt: "p", repo: "r", modelo: "x") } }
+}`},
+		{"pipeline hook", `workflow W {
+    session_start: (s) -> { CopilotCoder.run(prompt: "p", repo: "r", modelo: "x") }
+    step a { log("x") }
+}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertFindings(t, lintSource(t, `
+agent CopilotCoder {
+    input repo: string
+    input model: string = ""
+    command: "copilot"
+    cwd: repo
+}
+
+`+tc.decls+`
+`), `CopilotCoder.run: unknown argument "modelo"`)
+		})
+	}
+	// A missing required input inside a tool method too.
+	assertFindings(t, lintSource(t, `
+agent CopilotCoder {
+    input repo: string
+    command: "copilot"
+}
+
+tool Coder {
+    call(p: string): string -> CopilotCoder.run(prompt: p)
+}
+`), `CopilotCoder.run: missing required input "repo"`)
+}
+
+// A bad call is reported once, not once per check that sees it.
+func TestAgentRunArgumentReportedOnce(t *testing.T) {
+	findings := lintSource(t, `
+agent A {
+    input repo: string
+    command: "bash"
+}
+
+workflow W {
+    step s {
+        A.run(prompt: "p", repo: "r", modelo: "x")
+    }
+}
+`)
+	n := 0
+	for _, f := range findings {
+		if strings.Contains(f.Message, `unknown argument "modelo"`) {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("reported %d times, want 1: %v", n, findings)
+	}
+}
+
+// In an agent that declares inputs, a name that is none of them — nor a
+// builtin or a declared name — is reported wherever the agent reads it.
+func TestAgentExpressionNames(t *testing.T) {
+	cases := []struct {
+		name, props, want string
+	}{
+		{"cwd typo", `cwd: reepo`, `undefined name "reepo"`},
+		{"args element typo", `args: ["--model", modle]`, `undefined name "modle"`},
+		{"spread typo", `args: ["-c", ...dirz]`, `undefined name "dirz"`},
+		{"log interpolation typo", `log: "live/${reepo}.log"`, `undefined name "reepo" in "${reepo}"`},
+		{"timeout expression typo", `timeout: Config.limit(modle)`, `undefined name "modle"`},
+		{"before hook typo", `before: () -> { return { r: reepo } }`, `undefined name "reepo"`},
+		{"inputs, declared names and builtins", "cwd: repo\n    args: [\"--model\", model, ...Config.flags(model), env(\"X\", \"\")]\n    log: \"live/${context.session_id}-${model}.log\"\n    timeout: Config.limit(model)", ""},
+		{"raw literals are not interpolated", "args: [\"-p\", \"${prompt}\", \"--x=${model}\"]\n    stdin: \"${prompt}\"", ""},
+		{"hook parameters", "after: () -> result + model\n    system_prompt: (skills, prompt) -> prompt + model", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			findings := lintSource(t, `
+tool Config {
+    limit(m: string): string -> "30m"
+    flags(m: string): string[] -> []
+}
+
+agent Coder {
+    input repo: string
+    input model: string = ""
+    command: "copilot"
+    `+tc.props+`
+}
+
+workflow W {
+    step s {
+        Coder.run(prompt: "p", repo: "r")
+    }
+}
+`)
+			if tc.want == "" {
+				for _, f := range findings {
+					t.Errorf("unexpected finding: %s", f)
+				}
+				return
+			}
+			if !hasMessage(findings, tc.want) {
+				t.Fatalf("want a finding containing %q, got %v", tc.want, findings)
+			}
+			for _, f := range findings {
+				if f.Line <= 1 {
+					t.Errorf("finding without a real position: %s", f)
+				}
+			}
+		})
+	}
+}
+
+// An agent without inputs still reads the caller's scope, as documented
+// (`log: "run.${run_tag}.log"`), so its names are not checked.
+func TestAgentWithoutInputsKeepsCallerScope(t *testing.T) {
+	assertFindings(t, lintSource(t, `
+agent Logger {
+    command: "echo"
+    log: "logs/run.${run_tag}.log"
+    cwd: workdir
+}
+
+workflow W {
+    step s {
+        var run_tag = "a"
+        var workdir = "."
+        Logger.run(prompt: "p")
+    }
+}
+`), "")
 }

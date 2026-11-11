@@ -59,4 +59,4 @@ environment — they need real network access and credentials, not just `mhl tes
   filled by `.run(prompt: ..., name: value)` and read by `cwd:`/`args:`/`stdin:`; `...expr`
   splicing a string array into `args` (`[]` inserts nothing, `if` drops a flag pair);
   `flat_map` for a `--add-dir` per directory; `"${name}"` placeholders; the fallback receiving
-  the same inputs; a missing required input failing the call
+  the same inputs

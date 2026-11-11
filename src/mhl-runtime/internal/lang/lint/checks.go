@@ -1231,9 +1231,8 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 		}
 	}
 
-	if msg, ok := unknownRunArg(agentName+".run", call, agent); ok {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column, Message: msg}}
-	}
+	// The argument names/inputs are checkRunCallArguments' (run_calls.go),
+	// which sees every call site, not only a bare one in a step.
 
 	promptText, resolved, present, err := resolvePromptArgument(prog, call)
 	if err != nil {
@@ -1443,17 +1442,12 @@ func routerSelectCall(expr *ast.Expr) (*ast.Call, string, bool) {
 // entries that don't resolve) is checkRouterProperties/checkRouterAgentRefs'
 // job, run once per program rather than once per call site.
 func checkRouterDelegateCallShape(file string, prog *ast.Program, pos lexer.Position, call *ast.Call, routerName string) []Finding {
-	router, ok := findRouter(prog, routerName)
-	if !ok {
+	if _, ok := findRouter(prog, routerName); !ok {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("router %q not found", routerName)}}
 	}
-	// delegate forwards its call unchanged to the chosen agent's run, so the
-	// same argument set applies — inputs included, which therefore have to
-	// be ones every agent of the router declares.
-	if msg, ok := unknownRunArg(routerName+".delegate", call, routerAgentDecls(prog, router)...); ok {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column, Message: msg}}
-	}
+	// delegate's argument names/inputs (the chosen agent's run set) are
+	// checkRunCallArguments' (run_calls.go).
 	promptText, resolved, present, err := resolvePromptArgument(prog, call)
 	if err != nil {
 		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,

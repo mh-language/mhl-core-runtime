@@ -129,6 +129,14 @@ type undefWalker struct {
 	inTest bool
 	// tool is the tool whose methods are being walked, nil elsewhere.
 	tool *ast.Tool
+	// strict also reports a bare identifier (no trailer) that resolves to
+	// nothing — set only for an agent's own expressions
+	// (checkAgentExprNames), whose scope is exact.
+	strict bool
+	// interpAt, while non-zero, is the position of the string literal whose
+	// "${...}" span is being walked: the span was re-parsed on its own, so
+	// its nodes carry positions relative to the span, not the file.
+	interpAt lexer.Position
 }
 
 // isAgentDispatch reports whether p is `Agent.run(...)` or
@@ -354,6 +362,13 @@ func (u *undefWalker) postfix(p *ast.Postfix, scope map[string]types.Type, pos l
 	if name := p.Primary.Ident; name != "" && len(p.Ops) > 0 && p.Ops[0].Member != "" && !hasSpecificNotFoundCheck(p) && !u.resolvable(name, scope) {
 		u.report(pos, "undefined name %q (not a local, input/var/mem, builtin, or declared/imported name)", name)
 	}
+	if name := p.Primary.Ident; u.strict && name != "" && len(p.Ops) == 0 && !u.resolvable(name, scope) {
+		at := pos
+		if u.interpAt.Line > 0 {
+			at = u.interpAt
+		}
+		u.report(at, "undefined name %q (not an input of this agent, a builtin, or a declared/imported name — declare it as an input)", name)
+	}
 	u.internalCall(p, scope, pos)
 	u.primary(p.Primary, scope, pos)
 	for i, op := range p.Ops {
@@ -474,8 +489,14 @@ func (u *undefWalker) interpolation(s string, scope map[string]types.Type, pos l
 			if pf := ast.BarePostfix(e); pf != nil && pf.Primary != nil && pf.Primary.Ident != "" && len(pf.Ops) == 0 &&
 				!u.resolvable(pf.Primary.Ident, scope) {
 				u.report(pos, "undefined name %q in \"${%s}\"", pf.Primary.Ident, inner)
+			} else {
+				outer := u.interpAt
+				if outer.Line == 0 {
+					u.interpAt = pos
+				}
+				u.expr(e, scope)
+				u.interpAt = outer
 			}
-			u.expr(e, scope)
 		}
 		i = end + 1
 	}
