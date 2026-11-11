@@ -6,10 +6,11 @@ import (
 	"github.com/alecthomas/participle/v2/lexer"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // checkRunCallArguments holds every `Agent.run(...)` and `Router.delegate(...)`
-// call in the program to the arguments the runtime accepts (unknownRunArg:
+// call in the program to the arguments the runtime accepts (runArgProblems:
 // named only, a run argument or a declared input, every required input
 // present) — wherever the call is written: a workflow step, a tool method
 // (block or single-expression body), a test, a lambda, a hook, an agent's
@@ -21,8 +22,8 @@ import (
 //
 // It walks the AST by reflection, like parser.checkSpreadPlacement, so a
 // call site in a node added to the grammar later is covered too.
-func checkRunCallArguments(file string, prog *ast.Program) []Finding {
-	w := runCallWalker{file: file, prog: prog, seen: map[*ast.Call]bool{}}
+func checkRunCallArguments(file string, prog *ast.Program, aliases map[string]types.Type) []Finding {
+	w := runCallWalker{file: file, prog: prog, aliases: aliases, seen: map[*ast.Call]bool{}}
 	w.walk(reflect.ValueOf(prog), lexer.Position{})
 	return w.findings
 }
@@ -30,6 +31,7 @@ func checkRunCallArguments(file string, prog *ast.Program) []Finding {
 type runCallWalker struct {
 	file     string
 	prog     *ast.Program
+	aliases  map[string]types.Type
 	seen     map[*ast.Call]bool
 	findings []Finding
 }
@@ -77,25 +79,24 @@ func (w *runCallWalker) postfix(p *ast.Postfix, pos lexer.Position) {
 	}
 	w.seen[call] = true
 	name := resolveName(w.prog, p.Primary.Ident)
-	var msg string
-	var bad bool
+	var problems []string
 	switch p.Ops[0].Member {
 	case "run":
 		agent, ok := findAgent(w.prog, name)
 		if !ok {
 			return // "agent not found" is checkAgentCall's / the undefined-name check's
 		}
-		msg, bad = unknownRunArg(p.Primary.Ident+".run", call, agent)
+		problems = runArgProblems(p.Primary.Ident+".run", call, w.aliases, agent)
 	case "delegate":
 		router, ok := findRouter(w.prog, name)
 		if !ok {
 			return
 		}
-		msg, bad = unknownRunArg(p.Primary.Ident+".delegate", call, routerAgentDecls(w.prog, router)...)
+		problems = runArgProblems(p.Primary.Ident+".delegate", call, w.aliases, routerAgentDecls(w.prog, router)...)
 	default:
 		return
 	}
-	if bad {
-		w.findings = append(w.findings, Finding{File: w.file, Line: pos.Line, Column: pos.Column, Message: msg})
+	for _, msg := range problems {
+		w.findings = append(w.findings, Finding{File: fileAt(w.file, pos), Line: pos.Line, Column: pos.Column, Message: msg})
 	}
 }

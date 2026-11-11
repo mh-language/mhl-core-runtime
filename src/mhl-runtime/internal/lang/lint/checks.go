@@ -110,7 +110,7 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 			switch {
 			case m.Step != nil:
 				if seen[m.Step.Name] {
-					findings = append(findings, Finding{File: file, Line: stepLine(m.Step), Column: 1,
+					findings = append(findings, Finding{File: fileAt(file, m.Step.Pos), Line: stepLine(m.Step), Column: 1,
 						Message: fmt.Sprintf("pipeline %q declares more than one step named %q", decl.Pipeline.Name, m.Step.Name)})
 				}
 				seen[m.Step.Name] = true
@@ -118,7 +118,7 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 				for _, s := range m.Parallel.Steps {
 					inGroup[s.Name] = true
 					if seen[s.Name] {
-						findings = append(findings, Finding{File: file, Line: m.Parallel.Pos.Line, Column: m.Parallel.Pos.Column,
+						findings = append(findings, Finding{File: fileAt(file, m.Parallel.Pos), Line: m.Parallel.Pos.Line, Column: m.Parallel.Pos.Column,
 							Message: fmt.Sprintf("pipeline %q declares more than one step named %q", decl.Pipeline.Name, s.Name)})
 					}
 					seen[s.Name] = true
@@ -134,13 +134,13 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 				walkGotoBreak(step.Body, func(target string, isBreak bool, pos lexer.Position) {
 					switch {
 					case isBreak && branch:
-						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("`break` cannot be used inside a parallel group (step %q of group %q)", step.Name, m.Parallel.Name)})
 					case !isBreak && branch:
-						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("`goto` cannot be used inside a parallel group (step %q of group %q)", step.Name, m.Parallel.Name)})
 					case !isBreak && inGroup[target]:
-						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("`goto %s` targets a step inside a parallel group", target)})
 					}
 				})
@@ -170,7 +170,7 @@ func checkAgentProperties(file string, prog *ast.Program, aliases map[string]typ
 		}
 		for _, p := range a.Props {
 			if !ast.IsAgentProperty(p.Name) {
-				findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+				findings = append(findings, Finding{File: fileAt(file, p.Pos), Line: p.Pos.Line, Column: p.Pos.Column,
 					Message: fmt.Sprintf("agent %q: unknown property %q — the runtime reads only %s", name, p.Name, ast.AgentPropertyList())})
 			}
 			findings = append(findings, checkAgentPlaceholders(file, name, a, p)...)
@@ -219,14 +219,14 @@ func checkAgentSkillsProperty(file string, prog *ast.Program) []Finding {
 		a := decl.Agent
 		skills, err := ast.AgentSkillRefs(a)
 		if err != nil {
-			findings = append(findings, Finding{File: file, Line: a.Pos.Line, Column: a.Pos.Column, Message: err.Error()})
+			findings = append(findings, Finding{File: fileAt(file, a.Pos), Line: a.Pos.Line, Column: a.Pos.Column, Message: err.Error()})
 			continue
 		}
 		if len(skills) == 0 {
 			continue
 		}
 		if _, ok := agentHookLambda(a, "system_prompt"); !ok {
-			findings = append(findings, Finding{File: file, Line: a.Pos.Line, Column: a.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, a.Pos), Line: a.Pos.Line, Column: a.Pos.Column,
 				Message: fmt.Sprintf("agent %q: declares skills but no system_prompt to receive them — add system_prompt: (skills, prompt) -> ...", a.Name)})
 		}
 	}
@@ -316,7 +316,7 @@ func checkRouterProperties(file string, prog *ast.Program) []Finding {
 			if knownRouterProperties[p.Name] {
 				continue
 			}
-			findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, p.Pos), Line: p.Pos.Line, Column: p.Pos.Column,
 				Message: fmt.Sprintf("router %q: unknown property %q — the runtime reads only %s", decl.Router.Name, p.Name, knownRouterPropertyList)})
 		}
 	}
@@ -334,12 +334,12 @@ func checkRouterAgentRefs(file string, prog *ast.Program) []Finding {
 		}
 		names, err := ast.RouterAgentRefs(decl.Router)
 		if err != nil {
-			findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column, Message: err.Error()})
+			findings = append(findings, Finding{File: fileAt(file, decl.Router.Pos), Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column, Message: err.Error()})
 			continue
 		}
 		for _, name := range names {
 			if _, ok := findAgent(prog, name); !ok {
-				findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column,
+				findings = append(findings, Finding{File: fileAt(file, decl.Router.Pos), Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column,
 					Message: fmt.Sprintf("router %q: agent %q is not declared", decl.Router.Name, name)})
 			}
 		}
@@ -363,7 +363,7 @@ func checkRouterDecidable(file string, prog *ast.Program) []Finding {
 		if hasSelect || ast.RouterHasDecider(decl.Router) {
 			continue
 		}
-		findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column,
+		findings = append(findings, Finding{File: fileAt(file, decl.Router.Pos), Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column,
 			Message: fmt.Sprintf("router %q: declares neither select nor a decider — delegate() can never resolve an agent", decl.Router.Name)})
 	}
 	return findings
@@ -381,14 +381,14 @@ func checkRouterDeciderRef(file string, prog *ast.Program) []Finding {
 		}
 		ref, ok, err := ast.RouterDeciderRef(decl.Router)
 		if err != nil {
-			findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column, Message: err.Error()})
+			findings = append(findings, Finding{File: fileAt(file, decl.Router.Pos), Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column, Message: err.Error()})
 			continue
 		}
 		if !ok || ref.Inline != nil {
 			continue
 		}
 		if _, found := findAgent(prog, ref.Name); !found {
-			findings = append(findings, Finding{File: file, Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, decl.Router.Pos), Line: decl.Router.Pos.Line, Column: decl.Router.Pos.Column,
 				Message: fmt.Sprintf("router %q: decider agent %q is not declared", decl.Router.Name, ref.Name)})
 		}
 	}
@@ -467,7 +467,7 @@ func checkPipelineProperties(file string, prog *ast.Program) []Finding {
 			if m.Prop == nil || knownPipelineProperties[m.Prop.Name] {
 				continue
 			}
-			findings = append(findings, Finding{File: file, Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, m.Prop.Pos), Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column,
 				Message: fmt.Sprintf("%s %q: unknown property %q — the body reads only %s", pipelineKind(decl.Pipeline), decl.Pipeline.Name, m.Prop.Name, knownPipelinePropertyList)})
 		}
 	}
@@ -516,7 +516,7 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 		for _, m := range p.Body {
 			if m.Route != nil {
 				if routes[m.Route.Name] != nil {
-					findings = append(findings, Finding{File: file, Line: m.Route.Pos.Line, Column: m.Route.Pos.Column, Message: fmt.Sprintf("workflow %q declares more than one route named %q", p.Name, m.Route.Name)})
+					findings = append(findings, Finding{File: fileAt(file, m.Route.Pos), Line: m.Route.Pos.Line, Column: m.Route.Pos.Column, Message: fmt.Sprintf("workflow %q declares more than one route named %q", p.Name, m.Route.Name)})
 				}
 				routes[m.Route.Name] = m.Route
 			}
@@ -527,20 +527,20 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 		for _, route := range routes {
 			findings = append(findings, checkRouteArms(file, route)...)
 			if !p.IsWorkflow() {
-				findings = append(findings, Finding{File: file, Line: route.Pos.Line, Column: route.Pos.Column, Message: "`route` is only valid inside a `workflow`"})
+				findings = append(findings, Finding{File: fileAt(file, route.Pos), Line: route.Pos.Line, Column: route.Pos.Column, Message: "`route` is only valid inside a `workflow`"})
 			}
 			if len(route.Params) != 1 {
-				findings = append(findings, Finding{File: file, Line: route.Pos.Line, Column: route.Pos.Column, Message: fmt.Sprintf("route %q must declare exactly one match parameter", route.Name)})
+				findings = append(findings, Finding{File: fileAt(file, route.Pos), Line: route.Pos.Line, Column: route.Pos.Column, Message: fmt.Sprintf("route %q must declare exactly one match parameter", route.Name)})
 			}
 			if len(route.Params) == 1 && route.Params[0].Type == nil {
-				findings = append(findings, Finding{File: file, Line: route.Params[0].Pos.Line, Column: route.Params[0].Pos.Column, Message: fmt.Sprintf("route %q parameter %q requires a type", route.Name, route.Params[0].Name)})
+				findings = append(findings, Finding{File: fileAt(file, route.Params[0].Pos), Line: route.Params[0].Pos.Line, Column: route.Params[0].Pos.Column, Message: fmt.Sprintf("route %q parameter %q requires a type", route.Name, route.Params[0].Name)})
 			}
 			if len(route.Params) == 1 && route.Params[0].Default != nil {
-				findings = append(findings, Finding{File: file, Line: route.Params[0].Pos.Line, Column: route.Params[0].Pos.Column, Message: fmt.Sprintf("route %q parameter cannot have a default", route.Name)})
+				findings = append(findings, Finding{File: fileAt(file, route.Params[0].Pos), Line: route.Params[0].Pos.Line, Column: route.Params[0].Pos.Column, Message: fmt.Sprintf("route %q parameter cannot have a default", route.Name)})
 			}
 			for _, arm := range route.Arms {
 				if arm.Fail == nil && !steps[arm.Target] && !incomplete {
-					findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("route %q targets step %q, which isn't declared in workflow %q", route.Name, arm.Target, p.Name)})
+					findings = append(findings, Finding{File: fileAt(file, arm.Pos), Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("route %q targets step %q, which isn't declared in workflow %q", route.Name, arm.Target, p.Name)})
 				}
 			}
 		}
@@ -552,10 +552,10 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 					route := routes[call.Target]
 					if route == nil {
 						if !incomplete {
-							findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("workflow route %q isn't declared in workflow %q", call.Target, p.Name)})
+							findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("workflow route %q isn't declared in workflow %q", call.Target, p.Name)})
 						}
 					} else if len(call.Args) != len(route.Params) {
-						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("route %q expects %d argument(s), got %d", route.Name, len(route.Params), len(call.Args))})
+						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("route %q expects %d argument(s), got %d", route.Name, len(route.Params), len(call.Args))})
 					}
 				})
 				walkGotoBreak(step.Body, func(target string, isBreak bool, pos lexer.Position) {
@@ -566,12 +566,12 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 						return
 					}
 					if !p.IsWorkflow() {
-						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("`goto` is only valid inside a `workflow`; pipeline %q runs its steps in order — change `pipeline` to `workflow`, or restructure the jump", p.Name)})
 						return
 					}
 					if !steps[target] && !incomplete {
-						findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("`goto %s` in workflow %q targets a step that isn't declared in it", target, p.Name)})
 					}
 				})
@@ -587,7 +587,7 @@ func checkRouteArms(file string, route *ast.WorkflowRoute) []Finding {
 	wildcard := false
 	for _, arm := range route.Arms {
 		if wildcard {
-			findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: "route arm is unreachable: it follows the `_` wildcard"})
+			findings = append(findings, Finding{File: fileAt(file, arm.Pos), Line: arm.Pos.Line, Column: arm.Pos.Column, Message: "route arm is unreachable: it follows the `_` wildcard"})
 		}
 		if arm.Wildcard {
 			wildcard = true
@@ -595,7 +595,7 @@ func checkRouteArms(file string, route *ast.WorkflowRoute) []Finding {
 		}
 		key := patternKey(arm.Pattern)
 		if key != "" && seen[key] {
-			findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("duplicate route pattern %s", key)})
+			findings = append(findings, Finding{File: fileAt(file, arm.Pos), Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("duplicate route pattern %s", key)})
 		}
 		seen[key] = true
 	}
@@ -634,13 +634,13 @@ func checkGotoMatchArms(file string, stmts []*ast.Statement, workflow bool) []Fi
 		}
 		if m := s.GotoMatch; m != nil {
 			if !workflow && len(m.Arms) > 0 && allGotoMatchArmsFail(m) {
-				findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column, Message: "`goto` is only valid inside a `workflow`"})
+				findings = append(findings, Finding{File: fileAt(file, s.Pos), Line: s.Pos.Line, Column: s.Pos.Column, Message: "`goto` is only valid inside a `workflow`"})
 			}
 			seen := map[string]bool{}
 			wildcard := false
 			for _, arm := range m.Arms {
 				if wildcard {
-					findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: "goto match arm is unreachable: it follows the `_` wildcard"})
+					findings = append(findings, Finding{File: fileAt(file, arm.Pos), Line: arm.Pos.Line, Column: arm.Pos.Column, Message: "goto match arm is unreachable: it follows the `_` wildcard"})
 				}
 				if arm.Wildcard {
 					wildcard = true
@@ -648,7 +648,7 @@ func checkGotoMatchArms(file string, stmts []*ast.Statement, workflow bool) []Fi
 				}
 				key := patternKey(arm.Pattern)
 				if key != "" && seen[key] {
-					findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("duplicate goto match pattern %s", key)})
+					findings = append(findings, Finding{File: fileAt(file, arm.Pos), Line: arm.Pos.Line, Column: arm.Pos.Column, Message: fmt.Sprintf("duplicate goto match pattern %s", key)})
 				}
 				seen[key] = true
 			}
@@ -797,7 +797,7 @@ func checkExtensions(file string, prog *ast.Program) []Finding {
 		if _, err := ast.MCPProtocolFromProps(name, props); err != nil {
 			pos := propertyPos(props, "protocol")
 			findings = append(findings, Finding{
-				File: file, Line: pos.Line, Column: pos.Column, Message: err.Error(),
+				File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Message: err.Error(),
 			})
 		}
 	}
@@ -994,11 +994,11 @@ func checkStatement(file string, prog *ast.Program, statement *ast.Statement, de
 func checkSpawnStmt(file string, prog *ast.Program, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool, aliases map[string]types.Type) []Finding {
 	pos := statement.Pos
 	if selfTool != nil {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: "spawn is only valid inside a pipeline step, not a tool method"}}
 	}
 	if _, _, ok := agentRunCall(statement.Spawn.Call); !ok {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("spawn %q: right-hand side must be an <Agent>.run(...) call", statement.Spawn.Name)}}
 	}
 	var findings []Finding
@@ -1025,20 +1025,20 @@ func checkSpawnStmt(file string, prog *ast.Program, statement *ast.Statement, de
 func checkWaitStmt(file string, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
 	pos := statement.Pos
 	if selfTool != nil {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: "wait is only valid inside a pipeline step, not a tool method"}}
 	}
 	var findings []Finding
 	seen := map[string]bool{}
 	for _, name := range statement.Wait.Names {
 		if seen[name] {
-			findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 				Message: fmt.Sprintf("wait: handle %q listed twice", name)})
 			continue
 		}
 		seen[name] = true
 		if _, ok := declared[name]; !ok {
-			findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 				Message: fmt.Sprintf("wait: %q is not a spawned handle in this step", name)})
 		}
 	}
@@ -1052,22 +1052,22 @@ func checkWaitStmt(file string, statement *ast.Statement, declared map[string]ty
 func checkAssignTarget(file string, statement *ast.Statement, declared map[string]types.Type, selfTool *ast.Tool) []Finding {
 	name, self, ok := assignTargetBase(statement.Assign.Target)
 	if !ok {
-		return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
+		return []Finding{{File: fileAt(file, statement.Pos), Line: statement.Pos.Line, Column: statement.Pos.Column,
 			Message: "assignment target must be a plain variable or an array index, not a nested field"}}
 	}
 	if self {
 		if selfTool != nil {
-			return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
+			return []Finding{{File: fileAt(file, statement.Pos), Line: statement.Pos.Line, Column: statement.Pos.Column,
 				Message: fmt.Sprintf("self.%s: self.<name> is only valid inside a pipeline/workflow step, not a tool method", name)}}
 		}
 		if _, ok := declared[name]; !ok {
-			return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
+			return []Finding{{File: fileAt(file, statement.Pos), Line: statement.Pos.Line, Column: statement.Pos.Column,
 				Message: fmt.Sprintf("self.%s: not a declared input, var, or mem of this pipeline", name)}}
 		}
 		return nil
 	}
 	if _, ok := declared[name]; !ok {
-		return []Finding{{File: file, Line: statement.Pos.Line, Column: statement.Pos.Column,
+		return []Finding{{File: fileAt(file, statement.Pos), Line: statement.Pos.Line, Column: statement.Pos.Column,
 			Message: fmt.Sprintf("undefined variable %q", name)}}
 	}
 	return nil
@@ -1136,24 +1136,24 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 				// already matched here.
 			case target == "self":
 				if selfTool == nil {
-					return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+					return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 						Message: "self is only valid inside a tool method"}}
 				}
 				if err := checkToolCall(selfTool, method, memCall, declared, aliases); err != nil {
-					return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+					return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 						Message: fmt.Sprintf("self.%s: %s", method, err)}}
 				}
 			default:
 				if mem, found := findMemory(prog, target); found {
 					if err := checkMemoryOp(mem, method, memCall, declared); err != nil {
-						return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+						return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("%s.%s: %s", target, method, err)}}
 					}
 					break
 				}
 				if tool, found := findTool(prog, target); found {
 					if err := checkToolCall(tool, method, memCall, declared, aliases); err != nil {
-						return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+						return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("%s.%s: %s", target, method, err)}}
 					}
 					break
@@ -1180,7 +1180,7 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 					break
 				}
 				if isMemoryMethod(method) {
-					return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+					return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 						Message: fmt.Sprintf("memory %q not found", target)}}
 				}
 			}
@@ -1190,7 +1190,7 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 
 	agent, ok := findAgent(prog, agentName)
 	if !ok {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("agent %q not found", agentName)}}
 	}
 
@@ -1198,34 +1198,34 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 	switch {
 	case engine == "" || strings.HasPrefix(engine, "cli/"):
 		if _, _, err := ast.AgentCommand(agent); err != nil {
-			return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+			return []Finding{{File: fileAt(file, agent.Pos), Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
 		}
 	case strings.HasPrefix(engine, "ollama/"):
 		if _, _, _, err := ast.AgentOllamaConfig(agent, engine); err != nil {
-			return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+			return []Finding{{File: fileAt(file, agent.Pos), Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
 		}
 	default:
-		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column,
+		return []Finding{{File: fileAt(file, agent.Pos), Line: agent.Pos.Line, Column: agent.Pos.Column,
 			Message: fmt.Sprintf("agent %q: engine %q is not supported yet", agentName, engine)}}
 	}
 	if _, _, _, err := ast.AgentRetryConfig(agent); err != nil {
-		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+		return []Finding{{File: fileAt(file, agent.Pos), Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
 	}
 	if _, _, _, err := ast.AgentCacheConfig(agent); err != nil {
-		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+		return []Finding{{File: fileAt(file, agent.Pos), Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
 	}
 	if _, _, _, _, err := ast.AgentLimiterConfig(agent); err != nil {
-		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+		return []Finding{{File: fileAt(file, agent.Pos), Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
 	}
 	if refs, err := ast.AgentFallbackRefs(agent); err != nil {
-		return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
+		return []Finding{{File: fileAt(file, agent.Pos), Line: agent.Pos.Line, Column: agent.Pos.Column, Message: err.Error()}}
 	} else {
 		for _, ref := range refs {
 			if ref.Inline != nil {
 				continue
 			}
 			if _, ok := findAgent(prog, ref.Name); !ok {
-				return []Finding{{File: file, Line: agent.Pos.Line, Column: agent.Pos.Column,
+				return []Finding{{File: fileAt(file, agent.Pos), Line: agent.Pos.Line, Column: agent.Pos.Column,
 					Message: fmt.Sprintf("agent %q fallback: agent %q is not declared", agent.Name, ref.Name)}}
 			}
 		}
@@ -1236,16 +1236,16 @@ func checkExprCallShape(file string, prog *ast.Program, pos lexer.Position, expr
 
 	promptText, resolved, present, err := resolvePromptArgument(prog, call)
 	if err != nil {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.run: %s", agentName, err)}}
 	}
 	if !present || (resolved && promptText == "") {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.run requires a non-empty prompt", agentName)}}
 	}
 
 	if selected, hasSkills, err := callSkillsArg(call); err != nil {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.run: %s", agentName, err)}}
 	} else if hasSkills {
 		if finding, ok := checkCallSkillsSelection(file, prog, pos, agent, agentName, selected); !ok {
@@ -1290,10 +1290,10 @@ func callSkillsArg(call *ast.Call) (names []string, ok bool, err error) {
 func checkCallSkillsSelection(file string, prog *ast.Program, pos lexer.Position, agent *ast.Agent, agentName string, selected []string) (Finding, bool) {
 	allowed, err := ast.AgentSkillRefs(agent)
 	if err != nil {
-		return Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("%s: %s", agentName, err)}, false
+		return Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf("%s: %s", agentName, err)}, false
 	}
 	if len(allowed) == 0 {
-		return Finding{File: file, Line: pos.Line, Column: pos.Column,
+		return Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.run: skills selected but agent %q declares no skills property", agentName, agentName)}, false
 	}
 	allowedSet := make(map[string]bool, len(allowed))
@@ -1303,16 +1303,16 @@ func checkCallSkillsSelection(file string, prog *ast.Program, pos lexer.Position
 	seen := make(map[string]bool, len(selected))
 	for _, name := range selected {
 		if !allowedSet[name] {
-			return Finding{File: file, Line: pos.Line, Column: pos.Column,
+			return Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 				Message: fmt.Sprintf("%s.run: skill %q not permitted (declared skills: %s)", agentName, name, strings.Join(allowed, ", "))}, false
 		}
 		if seen[name] {
-			return Finding{File: file, Line: pos.Line, Column: pos.Column,
+			return Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 				Message: fmt.Sprintf("%s.run: skill %q selected more than once", agentName, name)}, false
 		}
 		seen[name] = true
 		if !declaredNameExists(prog, name) {
-			return Finding{File: file, Line: pos.Line, Column: pos.Column,
+			return Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 				Message: fmt.Sprintf("%s.run: skill %q is not declared", agentName, name)}, false
 		}
 	}
@@ -1344,16 +1344,16 @@ func nameofCall(expr *ast.Expr) (*ast.Call, bool) {
 // that reaches it.
 func checkNameofCallShape(file string, prog *ast.Program, pos lexer.Position, call *ast.Call) []Finding {
 	if len(call.Args) != 1 {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: "nameof takes exactly one argument, e.g. nameof(Billing)"}}
 	}
 	name, ok := ast.IdentValue(call.Args[0].Value)
 	if !ok {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: "nameof's argument must be a bare declared name, e.g. nameof(Billing) — not a string, variable, or expression"}}
 	}
 	if !declaredNameExists(prog, name) {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("nameof: %q is not a declared name", name)}}
 	}
 	return nil
@@ -1443,18 +1443,18 @@ func routerSelectCall(expr *ast.Expr) (*ast.Call, string, bool) {
 // job, run once per program rather than once per call site.
 func checkRouterDelegateCallShape(file string, prog *ast.Program, pos lexer.Position, call *ast.Call, routerName string) []Finding {
 	if _, ok := findRouter(prog, routerName); !ok {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("router %q not found", routerName)}}
 	}
 	// delegate's argument names/inputs (the chosen agent's run set) are
 	// checkRunCallArguments' (run_calls.go).
 	promptText, resolved, present, err := resolvePromptArgument(prog, call)
 	if err != nil {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.delegate: %s", routerName, err)}}
 	}
 	if !present || (resolved && promptText == "") {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.delegate requires a non-empty prompt", routerName)}}
 	}
 	return nil
@@ -1469,20 +1469,20 @@ func checkRouterDelegateCallShape(file string, prog *ast.Program, pos lexer.Posi
 func checkRouterSelectCallShape(file string, prog *ast.Program, pos lexer.Position, call *ast.Call, routerName string) []Finding {
 	router, ok := findRouter(prog, routerName)
 	if !ok {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("router %q not found", routerName)}}
 	}
 	if _, ok := ast.RouterSelectExpr(router); !ok {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.select: router has no select hook declared (only a decider) — its choice can't be known before calling .delegate(...)", routerName)}}
 	}
 	promptText, resolved, present, err := resolvePromptArgument(prog, call)
 	if err != nil {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.select: %s", routerName, err)}}
 	}
 	if !present || (resolved && promptText == "") {
-		return []Finding{{File: file, Line: pos.Line, Column: pos.Column,
+		return []Finding{{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("%s.select requires a non-empty prompt", routerName)}}
 	}
 	return nil
@@ -2016,14 +2016,14 @@ func checkAgentTimeout(file, name string, a *ast.Agent) []Finding {
 		}
 		switch {
 		case !ok:
-			findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, p.Pos), Line: p.Pos.Line, Column: p.Pos.Column,
 				Message: fmt.Sprintf("agent %q: %s must be a duration (e.g. 30m), a duration string or a number of seconds", name, p.Name)})
 		case d < 0 || (d == 0 && !allowZero):
 			want := "a positive duration"
 			if allowZero {
 				want = "a non-negative duration"
 			}
-			findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, p.Pos), Line: p.Pos.Line, Column: p.Pos.Column,
 				Message: fmt.Sprintf("agent %q: %s must be %s", name, p.Name, want)})
 		}
 	}
@@ -2033,7 +2033,7 @@ func checkAgentTimeout(file, name string, a *ast.Agent) []Finding {
 	if graceProp != nil {
 		check(graceProp, true)
 		if timeoutProp == nil {
-			findings = append(findings, Finding{File: file, Line: graceProp.Pos.Line, Column: graceProp.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, graceProp.Pos), Line: graceProp.Pos.Line, Column: graceProp.Pos.Column,
 				Message: fmt.Sprintf("agent %q: kill_grace has no effect without timeout", name)})
 		}
 	}

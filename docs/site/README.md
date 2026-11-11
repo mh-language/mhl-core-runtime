@@ -6,7 +6,9 @@ with its own stylesheet.
 
 | File | What it is |
 | --- | --- |
-| `index.html` | First-contact guide: the language shape, the anatomy of a workflow, determinism/audit, MCP and A2A serving, and a 30-second install-and-run. |
+| `index.html` | First-contact guide: what MHL is for, six runnable workflow examples (routing, loop/max, fan-out, parallel, pause/resume, and typed contracts/tests), a minimal quickstart, a capability catalog, use cases, a balanced framework comparison, installation, and documentation links. |
+| `home.css`, `home.js` | Responsive homepage layout, light/dark themes, en/pt translation, keyboard-accessible example tabs, and copy controls. Reuses the playground tokenizer without its editor UI. |
+| `home.test.cjs` | Homepage link and example-target checks; optional real-runtime checks for routing, loop ceilings, fan-out/wait policies, parallel steps, pause/resume, and typed contracts. Exercises the hero with a local Echo substitute. |
 | `playground.html`, `playground-en.html` | Portuguese and English playgrounds: 18 lessons in four sections, editable MHL, per-lesson drafts, explicit completion, challenges, source links, downloads, and CLI commands. |
 | `playground-lessons.js` | Complete `.mh` programs and teaching notes, from values to loops, deadlines, concurrency, recovery, routing, and MCP/A2A. |
 | `playground-lessons.en.js` | English lesson text, comments, and program messages; preserves the original lesson IDs, filenames, and execution contracts. |
@@ -17,7 +19,7 @@ with its own stylesheet.
 | `Docs-Servers.dc.html` | The server side of `mhl serve`: stdio and Streamable HTTP MCP transports, the async `run/*` methods and their `mhl_run_*` control tools, `pause()`/`run/resume` for human-in-the-loop, `mhl://` resources, per-caller ownership, `--state-dir`, and A2A skills. |
 | `Docs-Extensions.dc.html` | For runtime developers: external extension manifests, permissions, the newline-delimited JSON-RPC process protocol, and locked installation. |
 | `Docs-Proposta.html` | A pt-BR executive deck, not part of the language documentation set. |
-| `review-types.mh` | The one-line module `index.html`'s tour snippet imports. |
+| `review-types.mh` | Shared type module retained for existing review examples. |
 | `styles.css`, `docs-modern.css`, `specification.css`, `serve.css`, `extensions.css` | Per-page stylesheets. |
 | `support.js` | The design-canvas runtime the `.dc.html` pages load; generated, do not hand-edit. |
 
@@ -42,14 +44,16 @@ Completion is user-controlled. Drafts, current lesson, and completed lesson IDs 
 stored separately per language: the existing `mhl-playground-v2` key for Portuguese
 and `mhl-playground-v2-en` for English. The language link preserves the current
 lesson's URL fragment; it never translates or overwrites a user's draft. The home
-page links to the playground matching its selected language. Unavailable storage keeps editing functional for
+page links to the playground matching its selected language. The homepage shares the `mhl-lang`
+and `mhl-theme` preferences with the reference pages and stays usable if storage is unavailable.
+Unavailable storage keeps editing functional for
 the current tab. Tab moves focus by default; indentation is opt-in and Escape
 restores focus navigation. Each lesson has a stable URL fragment.
 
 Run browser-independent regression checks from the repository root:
 
 ```sh
-node --test docs/site/playground.test.cjs
+node --test docs/site/home.test.cjs docs/site/playground.test.cjs
 ```
 
 To validate all original programs in both languages with the real parser/linter and run all local
@@ -60,12 +64,16 @@ the runtime and pass its absolute path:
 cd src/mhl-runtime
 go build -o /tmp/mhl-playground-check ./cmd/mhl
 cd ../..
-MHL_BIN=/tmp/mhl-playground-check node --test docs/site/playground.test.cjs
+MHL_BIN=/tmp/mhl-playground-check node --test docs/site/home.test.cjs docs/site/playground.test.cjs
 ```
 
 Integration checks generate files and runtime state in an isolated temporary
 directory and remove them afterward. The MCP/A2A lesson is linted but never
 executed by the tests: its URLs are placeholders and require user configuration.
+The homepage's Claude-based refinement example is linted as shown, then executed
+with an Echo substitute to verify its three rounds, fan-out and feedback without
+calling a model. The other homepage examples run as copied, including approval
+in the same session and the assertions embedded in the typed workflow example.
 
 ## Keeping it honest
 

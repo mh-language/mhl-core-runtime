@@ -48,7 +48,7 @@ func mergePartials(file string, prog *ast.Program) (*ast.Program, []Finding) {
 			groups[p.Name] = g
 			order = append(order, p.Name)
 		} else if p.Kind != g.kind {
-			findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, p.Pos), Line: p.Pos.Line, Column: p.Pos.Column,
 				Message: fmt.Sprintf("partial %s %q: one fragment declares it %q, another %q", g.kind, p.Name, g.kind, p.Kind)})
 			continue
 		}
@@ -115,7 +115,7 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 		}
 		if f.Loop {
 			if loopSet {
-				findings = append(findings, Finding{File: file, Line: f.Pos.Line, Column: f.Pos.Column,
+				findings = append(findings, Finding{File: fileAt(file, f.Pos), Line: f.Pos.Line, Column: f.Pos.Column,
 					Message: fmt.Sprintf("partial %s %q: `loop` is declared on more than one fragment", kind, name)})
 			}
 			loopSet = true
@@ -123,7 +123,7 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 		}
 		if f.Max != "" {
 			if maxSet {
-				findings = append(findings, Finding{File: file, Line: f.Pos.Line, Column: f.Pos.Column,
+				findings = append(findings, Finding{File: fileAt(file, f.Pos), Line: f.Pos.Line, Column: f.Pos.Column,
 					Message: fmt.Sprintf("partial %s %q: `max` is declared on more than one fragment", kind, name)})
 			}
 			maxSet = true
@@ -131,7 +131,7 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 		}
 		if f.Param != nil || f.Returns != nil {
 			if out.Param != nil || out.Returns != nil {
-				findings = append(findings, Finding{File: file, Line: f.Pos.Line, Column: f.Pos.Column,
+				findings = append(findings, Finding{File: fileAt(file, f.Pos), Line: f.Pos.Line, Column: f.Pos.Column,
 					Message: fmt.Sprintf("partial %s %q: a typed signature is declared on more than one fragment", kind, name)})
 			} else {
 				out.Param, out.Returns = f.Param, f.Returns
@@ -145,7 +145,7 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 			if m.Parallel != nil {
 				for _, s := range m.Parallel.Steps {
 					if s.Entry {
-						findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column,
+						findings = append(findings, Finding{File: fileAt(file, s.Pos), Line: s.Pos.Line, Column: s.Pos.Column,
 							Message: fmt.Sprintf("partial %s %q: step %q can't be `entry` inside a `parallel` group", kind, name, s.Name)})
 					}
 				}
@@ -153,7 +153,7 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 		}
 	}
 	if entries > 1 || (entries == 0 && len(frags) > 1) {
-		findings = append(findings, Finding{File: file, Line: out.Pos.Line, Column: out.Pos.Column,
+		findings = append(findings, Finding{File: fileAt(file, out.Pos), Line: out.Pos.Line, Column: out.Pos.Column,
 			Message: fmt.Sprintf("partial %s %q: expected exactly one `entry step` across its fragments, found %d", kind, name, entries)})
 	}
 	// Fallthrough across a fragment *boundary* — a step with no unconditional
@@ -185,7 +185,7 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 			if next == "" {
 				continue // the next fragment declares no step either; nothing to name
 			}
-			findings = append(findings, Finding{File: file, Line: stepLine(m.Step), Column: 1,
+			findings = append(findings, Finding{File: fileAt(file, m.Step.Pos), Line: stepLine(m.Step), Column: 1,
 				Message: fmt.Sprintf("step %q has no `goto`/`fail(...)`/`pause(...)`/`break` guaranteed at the end of its body and is the last step of its fragment, with another fragment still merged after it — it will silently fall through into %q when it finishes",
 					m.Step.Name, next)})
 		}
@@ -207,7 +207,7 @@ func checkPipelineEntry(file string, prog *ast.Program) []Finding {
 		for _, m := range p.Body {
 			for _, s := range pipelineMemberSteps(m) {
 				if s.Entry {
-					findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column,
+					findings = append(findings, Finding{File: fileAt(file, s.Pos), Line: s.Pos.Line, Column: s.Pos.Column,
 						Message: fmt.Sprintf("step %q can't be `entry`: %s %q isn't `partial`", s.Name, p.Kind, p.Name)})
 				}
 			}

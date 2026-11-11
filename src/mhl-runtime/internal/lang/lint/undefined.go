@@ -165,7 +165,7 @@ func (u *undefWalker) resolvable(name string, scope map[string]types.Type) bool 
 }
 
 func (u *undefWalker) report(pos lexer.Position, format string, args ...any) {
-	u.findings = append(u.findings, Finding{File: u.file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf(format, args...)})
+	u.findings = append(u.findings, Finding{File: fileAt(u.file, pos), Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf(format, args...)})
 }
 
 func (u *undefWalker) lambda(l *ast.Lambda, outer map[string]types.Type) {
@@ -534,7 +534,7 @@ func checkPipelineHookParamTypes(file string, prog *ast.Program) []Finding {
 			if !isHookContextType(t.Name) {
 				continue
 			}
-			findings = append(findings, Finding{File: file, Line: t.Pos.Line, Column: t.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, t.Pos), Line: t.Pos.Line, Column: t.Pos.Column,
 				Message: fmt.Sprintf("%s hook parameter is bound to a %s, not a %s", member.Prop.Name, want[member.Prop.Name], t.Name)})
 		}
 	}

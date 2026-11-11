@@ -333,3 +333,86 @@ workflow W {
 }
 `), "")
 }
+
+// Every argument problem of one call is reported, not just the first: a
+// misspelled input is unknown *and* leaves the real one missing.
+func TestAgentRunReportsEveryArgumentProblem(t *testing.T) {
+	findings := lintSource(t, `
+agent Coder {
+    input repo: string
+    input dirs: string[] = []
+    command: "copilot"
+}
+
+tool T {
+    call(p: string): string -> Coder.run(prompt: p, repoo: "r", modelo: "m")
+}
+`)
+	for _, want := range []string{
+		`Coder.run: unknown argument "repoo"`,
+		`Coder.run: unknown argument "modelo"`,
+		`Coder.run: missing required input "repo"`,
+	} {
+		if !hasMessage(findings, want) {
+			t.Errorf("missing %q in %v", want, findings)
+		}
+	}
+	if len(findings) != 3 {
+		t.Errorf("want 3 findings, got %d: %v", len(findings), findings)
+	}
+}
+
+// A literal input value is checked against the input's declared type, like
+// the run does; a computed one is left to the run.
+func TestAgentRunInputLiteralTypes(t *testing.T) {
+	cases := []struct {
+		name, args, want string
+	}{
+		{"number for a string", `repo: 42`, `Coder.run: input "repo" must be string, got number`},
+		{"string for an array", `repo: "r", dirs: "a"`, `Coder.run: input "dirs" must be string[]`},
+		{"wrong element type", `repo: "r", dirs: ["a", 1]`, `Coder.run: input "dirs"`},
+		{"right types", `repo: "r", dirs: ["a"], n: 3`, ""},
+		{"computed value", `repo: Cfg.repo(), n: Cfg.n()`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertFindings(t, lintSource(t, `
+tool Cfg {
+    repo(): any -> 42
+    n(): any -> "x"
+}
+
+agent Coder {
+    input repo: string
+    input dirs: string[] = []
+    input n: number = 1
+    command: "copilot"
+}
+
+tool T {
+    call(p: string): string -> Coder.run(prompt: p, `+tc.args+`)
+}
+`), tc.want)
+		})
+	}
+}
+
+// A spread of a literal that is not an array always fails at run time, in any
+// array; in args, every literal element — spread or not — must be a string.
+func TestSpreadAndArgsLiterals(t *testing.T) {
+	cases := []struct {
+		name, src, want string
+	}{
+		{"spread of a number", `workflow W { step s { log(["a", ...42]) } }`, `spread (...) needs an array, got number`},
+		{"spread of null", `workflow W { step s { log([...null]) } }`, `spread (...) needs an array, got null`},
+		{"spread of a literal array", `workflow W { step s { log(["a", ...["b"]]) } }`, ""},
+		{"args spread with a number", "agent A {\n    command: \"sh\"\n    args: [\"-c\", ...[\"x\", 1]]\n}", `agent "A": args: element 1 of a spread (...) must be a string, got number`},
+		{"args number element", "agent A {\n    command: \"sh\"\n    args: [\"-n\", 3]\n}", `agent "A": args[1] must be a string, got number`},
+		{"args computed elements", "agent A {\n    input n: string = \"3\"\n    command: \"sh\"\n    args: [\"-n\", n, ...[n]]\n}", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertFindings(t, lintSource(t, tc.src+"\n"), tc.want)
+		})
+	}
+}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alecthomas/participle/v2/lexer"
+
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
@@ -17,29 +19,28 @@ import (
 // this agent, and may not require one a call is allowed to omit.
 func checkAgentInputs(file string, prog *ast.Program, aliases map[string]types.Type, name string, a *ast.Agent) []Finding {
 	var findings []Finding
-	add := func(line, col int, format string, args ...any) {
-		findings = append(findings, Finding{File: file, Line: line, Column: col,
+	add := func(pos lexer.Position, format string, args ...any) {
+		findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 			Message: fmt.Sprintf("agent %q: ", name) + fmt.Sprintf(format, args...)})
 	}
 	seen := map[string]bool{}
 	for _, in := range a.Inputs {
-		line, col := in.Pos.Line, in.Pos.Column
 		switch {
 		case ast.IsAgentRunArg(in.Name):
-			add(line, col, "input %q clashes with run's own %q argument — pick another name", in.Name, in.Name)
+			add(in.Pos, "input %q clashes with run's own %q argument — pick another name", in.Name, in.Name)
 		case seen[in.Name]:
-			add(line, col, "input %q is declared twice", in.Name)
+			add(in.Pos, "input %q is declared twice", in.Name)
 		}
 		seen[in.Name] = true
 		t, ok := types.FromExprAlias(in.Type, aliases)
 		if !ok {
-			add(line, col, "input %q has an unrecognized type %q", in.Name, in.Type)
+			add(in.Pos, "input %q has an unrecognized type %q", in.Name, in.Type)
 			continue
 		}
 		if in.Default != nil {
 			if v, literal := ast.LiteralValue(in.Default); literal {
 				if err := types.Check(fmt.Sprintf("default for input %q", in.Name), t, v); err != nil {
-					add(line, col, "%s", err)
+					add(in.Pos, "%s", err)
 				}
 			}
 		}
@@ -63,7 +64,7 @@ func checkAgentInputs(file string, prog *ast.Program, aliases map[string]types.T
 				continue // already reported as a clash above
 			}
 			if _, ok := fb.FindInput(in.Name); !ok {
-				add(a.Pos.Line, a.Pos.Column, "fallback %q does not declare input %q — run forwards every input a call passes to each fallback", fbName, in.Name)
+				add(a.Pos, "fallback %q does not declare input %q — run forwards every input a call passes to each fallback", fbName, in.Name)
 			}
 		}
 		for _, fin := range fb.Inputs {
@@ -71,46 +72,89 @@ func checkAgentInputs(file string, prog *ast.Program, aliases map[string]types.T
 				continue
 			}
 			if pin, ok := a.FindInput(fin.Name); !ok || pin.Default != nil {
-				add(a.Pos.Line, a.Pos.Column, "fallback %q requires input %q, which a call to %q may omit — give it a default, or require it here too", fbName, fin.Name, name)
+				add(a.Pos, "fallback %q requires input %q, which a call to %q may omit — give it a default, or require it here too", fbName, fin.Name, name)
 			}
 		}
 	}
 	return findings
 }
 
-// unknownRunArg reports the first problem the runtime would reject in the
+// runArgProblems reports every problem the runtime would reject in the
 // arguments of an `Agent.run(...)` call — or a router's `.delegate(...)`,
 // which forwards its call to whichever of its agents is chosen: a positional
-// argument, a name that is neither a run argument nor an input every one of
-// agents declares, or a required input (no default) of any of them that the
-// call leaves out. callee names the call ("Coder.run") for the message.
-// Mirrors interpreter.checkRunArgs/bindAgentInputs, so a `model: "x"` passed
-// by mistake fails mhl lint instead of running with the declared model.
-func unknownRunArg(callee string, call *ast.Call, agents ...*ast.Agent) (string, bool) {
+// argument, each name that is neither a run argument nor an input every one
+// of agents declares, and each required input (no default) of any of them
+// that the call leaves out. All of them, not just the first, so a call with a
+// misspelled input — which is then also missing — shows both at once. callee
+// names the call ("Coder.run") for the messages. A literal value given to an
+// input (`repo: 42`) is also checked against the input's declared type, the
+// way bindAgentInputs checks it at run time; a computed value is left to the
+// run. Mirrors
+// interpreter.checkRunArgs/bindAgentInputs, so a `model: "x"` passed by
+// mistake fails mhl lint instead of running with the declared model.
+func runArgProblems(callee string, call *ast.Call, aliases map[string]types.Type, agents ...*ast.Agent) []string {
 	common := commonInputs(agents)
 	accepts := ast.AgentRunArgList()
 	if len(common) > 0 {
 		accepts += " and the inputs " + strings.Join(common, ", ")
 	}
+	var problems []string
 	passed := map[string]bool{}
+	positional := false
 	for _, arg := range call.Args {
 		if arg.Name == "" {
-			return fmt.Sprintf("%s takes named arguments only (%s)", callee, accepts), true
-		}
-		passed[arg.Name] = true
-		if ast.IsAgentRunArg(arg.Name) || contains(common, arg.Name) {
+			if !positional {
+				problems = append(problems, fmt.Sprintf("%s takes named arguments only (%s)", callee, accepts))
+			}
+			positional = true
 			continue
 		}
-		return fmt.Sprintf("%s: unknown argument %q — run accepts %s", callee, arg.Name, accepts), true
+		passed[arg.Name] = true
+		if ast.IsAgentRunArg(arg.Name) {
+			continue
+		}
+		if contains(common, arg.Name) {
+			problems = append(problems, inputValueProblems(callee, arg, aliases, agents)...)
+			continue
+		}
+		problems = append(problems, fmt.Sprintf("%s: unknown argument %q — run accepts %s", callee, arg.Name, accepts))
 	}
+	missing := map[string]bool{}
 	for _, a := range agents {
 		for _, in := range a.Inputs {
-			if in.Default == nil && !passed[in.Name] {
-				return fmt.Sprintf("%s: missing required input %q", callee, in.Name), true
+			if in.Default == nil && !passed[in.Name] && !missing[in.Name] {
+				missing[in.Name] = true
+				problems = append(problems, fmt.Sprintf("%s: missing required input %q", callee, in.Name))
 			}
 		}
 	}
-	return "", false
+	return problems
+}
+
+// inputValueProblems checks a literal argument value against the type each
+// of agents declares for that input (once per distinct message).
+func inputValueProblems(callee string, arg *ast.Argument, aliases map[string]types.Type, agents []*ast.Agent) []string {
+	v, literal := ast.LiteralValue(arg.Value)
+	if !literal {
+		return nil
+	}
+	var problems []string
+	seen := map[string]bool{}
+	for _, a := range agents {
+		in, ok := a.FindInput(arg.Name)
+		if !ok {
+			continue
+		}
+		t, ok := types.FromExprAlias(in.Type, aliases)
+		if !ok {
+			continue // the declaration's own finding (checkAgentInputs)
+		}
+		if err := types.Check(fmt.Sprintf("%s: input %q", callee, arg.Name), t, v); err != nil && !seen[err.Error()] {
+			seen[err.Error()] = true
+			problems = append(problems, err.Error())
+		}
+	}
+	return problems
 }
 
 // commonInputs is the input names every one of agents declares, in the first

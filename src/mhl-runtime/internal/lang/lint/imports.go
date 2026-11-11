@@ -182,7 +182,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			fm, text, err := loadPromptSource(dir, decl.Prompt.Source)
 			if err != nil {
 				out.emit(Finding{
-					File: file, Line: decl.Prompt.Pos.Line, Column: decl.Prompt.Pos.Column,
+					File: fileAt(file, decl.Prompt.Pos), Line: decl.Prompt.Pos.Line, Column: decl.Prompt.Pos.Column,
 					Message: fmt.Sprintf("prompt %q from %q: %s", decl.Prompt.Name, decl.Prompt.Source, err),
 				})
 				continue
@@ -193,7 +193,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			fm, content, err := loadSkillSource(dir, decl.Skill.Source)
 			if err != nil {
 				out.emit(Finding{
-					File: file, Line: decl.Skill.Pos.Line, Column: decl.Skill.Pos.Column,
+					File: fileAt(file, decl.Skill.Pos), Line: decl.Skill.Pos.Line, Column: decl.Skill.Pos.Column,
 					Message: fmt.Sprintf("skill %q from %q: %s", decl.Skill.Name, decl.Skill.Source, err),
 				})
 				continue
@@ -203,7 +203,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 		case decl.Schema != nil:
 			if err := decl.Schema.Load(dir); err != nil {
 				out.emit(Finding{
-					File: file, Line: decl.Schema.Pos.Line, Column: decl.Schema.Pos.Column,
+					File: fileAt(file, decl.Schema.Pos), Line: decl.Schema.Pos.Line, Column: decl.Schema.Pos.Column,
 					Message: fmt.Sprintf("schema %q from %q: %s", decl.Schema.Name, decl.Schema.Source, err),
 				})
 			}
@@ -221,7 +221,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				module, err = loadModule(dir, decl.Import.Path)
 				if err != nil {
 					out.emit(Finding{
-						File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
+						File: fileAt(file, decl.Import.Pos), Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
 						Message: fmt.Sprintf("%s: %s", label, err),
 					})
 					continue
@@ -238,7 +238,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			missing := false
 			if err := mergeAliases(merged, module.AliasMap()); err != nil {
 				out.emit(Finding{
-					File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
+					File: fileAt(file, decl.Import.Pos), Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
 					Message: fmt.Sprintf("%s: %s", label, err),
 				})
 				missing = true
@@ -246,7 +246,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 			for _, item := range decl.Import.Items {
 				if _, found := findExport(module, item.Name); !found {
 					out.emit(Finding{
-						File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
+						File: fileAt(file, decl.Import.Pos), Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
 						Message: fmt.Sprintf("%s: %q is not exported", label, item.Name),
 					})
 					missing = true
@@ -255,7 +255,7 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 				if item.Alias != "" {
 					if err := addAlias(merged, item.Alias, item.Name); err != nil {
 						out.emit(Finding{
-							File: file, Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
+							File: fileAt(file, decl.Import.Pos), Line: decl.Import.Pos.Line, Column: decl.Import.Pos.Column,
 							Message: fmt.Sprintf("%s: %s", label, err),
 						})
 						missing = true
@@ -435,6 +435,7 @@ func loadModule(dir, path string) (*ast.Program, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", full, err)
 	}
+	stampFile(module, full)
 	return module, nil
 }
 

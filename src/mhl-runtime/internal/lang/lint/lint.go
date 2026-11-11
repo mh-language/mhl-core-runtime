@@ -69,7 +69,8 @@ func source(path, src string, cache *importCache) []Finding {
 		findings = append(findings, Finding{File: path, Line: e.Line, Column: e.Column, Message: e.Message})
 	}
 	findings = append(findings, checkAgentCalls(path, merged, aliases)...)
-	findings = append(findings, checkRunCallArguments(path, merged)...)
+	findings = append(findings, checkRunCallArguments(path, merged, aliases)...)
+	findings = append(findings, checkSpreadLiterals(path, merged)...)
 	findings = append(findings, checkParallelGroups(path, merged)...)
 	findings = append(findings, checkPipelineGoto(path, merged)...)
 	findings = append(findings, checkPipelineProperties(path, merged)...)
@@ -113,8 +114,17 @@ func Dir(dir string) ([]Finding, error) {
 	// importing file, as before — see importCache).
 	cache := newImportCache()
 	var findings []Finding
+	seen := map[Finding]bool{}
 	for _, f := range files {
-		findings = append(findings, file(f, cache)...)
+		// A finding inside an imported module is labelled with that
+		// module's file (fileAt), so every file importing it — and the
+		// module itself — reports the very same finding: keep the first.
+		for _, finding := range file(f, cache) {
+			if !seen[finding] {
+				seen[finding] = true
+				findings = append(findings, finding)
+			}
+		}
 	}
 	return findings, nil
 }

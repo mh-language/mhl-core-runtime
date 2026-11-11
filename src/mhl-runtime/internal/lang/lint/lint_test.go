@@ -2646,10 +2646,11 @@ pipeline P {
 }
 
 // Dir shares resolved import modules across the files it scans, but its
-// output must stay exactly what linting each file on its own gives: a
-// finding inside a shared module is still reported once per file that
-// reaches it, in the same order — through diamonds, a module that fails to
-// load, an unexported name, and an import cycle (which is never shared).
+// output must stay what linting each file on its own gives — minus exact
+// duplicates: a finding inside a shared module, which every file reaching it
+// reports identically, appears once, at its first occurrence — through
+// diamonds, a module that fails to load, an unexported name, and an import
+// cycle (which is never shared).
 func TestDirMatchesFileByFile(t *testing.T) {
 	cases := map[string]map[string]string{
 		"acyclic": {
@@ -2691,9 +2692,17 @@ pipeline O { step S { var r = Y.run(prompt: "hi") } }`,
 			}
 			sort.Strings(paths)
 
+			// Dir reports a finding once even when several files reach it
+			// (an import error inside a shared module), in first-seen order.
 			var want []lint.Finding
+			seen := map[lint.Finding]bool{}
 			for _, p := range paths {
-				want = append(want, lint.File(p)...)
+				for _, f := range lint.File(p) {
+					if !seen[f] {
+						seen[f] = true
+						want = append(want, f)
+					}
+				}
 			}
 			got, err := lint.Dir(dir)
 			if err != nil {

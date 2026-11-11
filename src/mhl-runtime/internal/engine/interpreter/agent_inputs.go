@@ -14,7 +14,7 @@ import (
 // (ast.IsAgentRunArg) nor one of agent's declared inputs. Such a name used to
 // be accepted and silently ignored — a call passing `model: "x"` ran with
 // the declared model — so it now fails the call. Mirrored statically by
-// lint's unknownRunArg.
+// lint's runArgProblems.
 func checkRunArgs(agentName string, agent *ast.Agent, call *ast.Call) error {
 	for _, in := range agent.Inputs {
 		if ast.IsAgentRunArg(in.Name) {

@@ -47,7 +47,7 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 						} else if inputs[s.Var.Name] {
 							msg = fmt.Sprintf("%q is an input and can't be redeclared", s.Var.Name)
 						}
-						findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
+						findings = append(findings, Finding{File: fileAt(file, s.Pos), Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
 					}
 				case s.Assign != nil:
 					if name, _, ok := assignTargetBase(s.Assign.Target); ok && consts[name] {
@@ -57,7 +57,7 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 						} else if inputs[name] {
 							msg = fmt.Sprintf("cannot assign to input %q: inputs are read-only (copy it into a var to change it)", name)
 						}
-						findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
+						findings = append(findings, Finding{File: fileAt(file, s.Pos), Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
 					}
 				case s.If != nil:
 					walk(s.If.Then)

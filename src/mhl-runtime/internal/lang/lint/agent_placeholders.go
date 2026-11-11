@@ -89,7 +89,7 @@ func agentPlaceholderFinding(file, agentName, prop, span string, pos lexer.Posit
 		recognized = `stdin: only substitutes "${prompt}"/"${schema}" and "${name}" of a declared input, wherever they appear in the string`
 	}
 	return Finding{
-		File: file, Line: pos.Line, Column: pos.Column,
+		File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 		Message: fmt.Sprintf(
 			"agent %q: %s contains %s, which is never substituted — %s. Pass the value as an expression element instead (a variable, env(...), a tool call — command/args/stdin accept any expression), not a \"${...}\" placeholder.",
 			agentName, prop, span, recognized),

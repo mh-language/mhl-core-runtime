@@ -217,6 +217,11 @@ Key packages:
 - **`internal/lang/parser`** — lexer + compiled Participle parser (`Parse`/`ParseExpr`).
 - **`internal/lang/lint`** — static analysis (broken imports, undeclared agents, misconfigured
   config) shared by `mhl lint` and diagnostics published by the LSP.
+  Checks run on the entry file merged with its imports; `loadModule` stamps each module's AST
+  positions with its file (`stampFile`), and every finding takes its file from the position
+  (`fileAt(file, pos)` — use it for a new `Finding`, never a bare `File: file`), so a module's
+  finding names the module, not the importer. `lint.Dir` drops exact duplicates; the LSP
+  (`diagnostics.go`) puts a finding from another file on line 1 with `file:line:` prefixed.
 - **`internal/engine/interpreter`** — the tree-walking evaluator. `eval.go` is expressions;
   `exec.go`/`RunStep` is statements; `agent.go`/`memory_ops.go`/`prompt_ops.go` dispatch
   `Agent.run(...)`/`Memory.method(...)`/prompt rendering; `tool.go`'s `nativeOpCall` dispatches
@@ -314,10 +319,12 @@ input values to each fallback; `"${input}"` in a literal `args` element/`stdin` 
 substituted (`substituteInputPlaceholders`). Lint mirror: `lint/agent_inputs.go`
 (declarations, fallback compatibility); every `X.run(...)`/`R.delegate(...)` call site in the
 program — tool bodies, tests, hooks, nested calls — is checked by `lint/run_calls.go`'s
-reflection walk (`unknownRunArg`; `Router.delegate` = inputs common to all router agents),
+reflection walk (`runArgProblems`, every problem of a call; `Router.delegate` = inputs common to all router agents),
 not by `checkAgentCall`; `lint/agent_names.go` reports undefined names in the expressions of
 an agent *with inputs* (`undefWalker.strict`; no-input agents keep reading the caller's
-scope, which `log:` interpolation documents); LSP: `declsig.go`'s `agentRunSig`. Array spread `[a, ...xs]` is
+scope, which `log:` interpolation documents); `lint/spread.go` rejects a literal non-array
+spread operand, `checkArgsElements` a literal non-string `args` element, and
+`inputValueProblems` a literal input value of the wrong type; LSP: `declsig.go`'s `agentRunSig`. Array spread `[a, ...xs]` is
 `ast.Expr.Spread` (a flag on Expr, not a wrapper type, for the digest), rejected outside an
 array item by `parser/spread.go`'s reflection walk; `evalSpread` refuses `null`; `args`
 spreads go through `resolveArgsSpread`.

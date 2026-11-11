@@ -35,7 +35,7 @@ func checkParamDefaults(file string, prog *ast.Program) []Finding {
 					seenDefault = true
 				case seenDefault:
 					findings = append(findings, Finding{
-						File:    file,
+						File:    fileAt(file, p.Pos),
 						Line:    p.Pos.Line,
 						Column:  p.Pos.Column,
 						Message: fmt.Sprintf("tool %q: %s: parameter %q has no default but follows a defaulted parameter", decl.Tool.Name, m.Name, p.Name),

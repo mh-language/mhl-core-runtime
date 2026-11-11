@@ -3,6 +3,7 @@ package lint
 import (
 	"fmt"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
 
@@ -15,13 +16,13 @@ import (
 // Duration, so anything else is already a parse error.
 func checkPipelineStepTimeout(file string, prog *ast.Program) []Finding {
 	var findings []Finding
-	report := func(kind, name, raw string, line, col int) {
+	report := func(kind, name, raw string, at lexer.Position, line, col int) {
 		if raw == "" {
 			return
 		}
 		if d, ok := ast.ParseDuration(raw); !ok || d <= 0 {
 			findings = append(findings, Finding{
-				File: file, Line: line, Column: col,
+				File: fileAt(file, at), Line: line, Column: col,
 				Message: fmt.Sprintf("%s %q: timeout %q is not a positive duration (e.g. 30s, 5m, 2h)", kind, name, raw),
 			})
 		}
@@ -32,10 +33,10 @@ func checkPipelineStepTimeout(file string, prog *ast.Program) []Finding {
 		}
 		for _, m := range decl.Pipeline.Body {
 			if m.Parallel != nil {
-				report("parallel group", m.Parallel.Name, m.Parallel.Timeout, m.Parallel.Pos.Line, m.Parallel.Pos.Column)
+				report("parallel group", m.Parallel.Name, m.Parallel.Timeout, m.Parallel.Pos, m.Parallel.Pos.Line, m.Parallel.Pos.Column)
 			}
 			for _, s := range pipelineMemberSteps(m) {
-				report("step", s.Name, s.Timeout, stepLine(s), 1)
+				report("step", s.Name, s.Timeout, s.Pos, stepLine(s), 1)
 			}
 		}
 	}
