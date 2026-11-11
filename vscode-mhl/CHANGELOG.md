@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.1
+
+### Added
+
+- Highlighting for the `...` spread operator in array literals
+  (`["--model", model, ...extra]`), new in mhl v1.9.0.
+
+Signature help and completion for agent `input`s, and the diagnostics for spread
+and inputs, come from `mhl lsp`, so they need mhl v1.9.0 or later rather than this
+extension version.
+
 ## 0.7.0
 
 First release on the Visual Studio Marketplace.

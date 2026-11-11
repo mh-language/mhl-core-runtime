@@ -11,7 +11,7 @@
   "bugs": {
     "url": "https://github.com/mh-language/mhl-core-runtime/issues"
   },
-  "version": "0.7.0",
+  "version": "0.7.1",
   "publisher": "mhl-language",
   "icon": "assets/mhl-logo-rebrand.png",
   "license": "MIT",

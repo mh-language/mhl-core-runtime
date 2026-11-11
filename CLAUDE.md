@@ -185,6 +185,9 @@ The extension ships on its own version and tag, not the runtime's: pushing
 `.github/workflows/publish-extension.yml`, which publishes one VSIX to the VS Marketplace via
 Trusted Publishing (OIDC, no stored PAT) and to Open VSX (`OPEN_VSX` secret). The Marketplace
 policy names that workflow file, so renaming it means updating the policy.
+`vscode-mhl/release.sh [X.Y.Z] [--dry-run]` cuts that tag: it checks package.json/lock/CHANGELOG
+agree, the tree is clean and in sync with `origin/main`, packages with the workflow's pinned
+`vsce`, then pushes the tag — it publishes nothing itself.
 
 ## Architecture — `src/mhl-runtime`
 
