@@ -8,12 +8,15 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mh-language/mhl-core-runtime/internal/a2aserver"
@@ -60,7 +63,7 @@ func init() {
 // returns a non-nil error on failure.
 func Run(args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl <command> [args]\n  commands: init, run, test, lint, lsp, serve, pack, extension, version, help\n  run `mhl help` for details")
+		return fmt.Errorf("usage: mhl <command> [args]\n  commands: init, run, test, lint, graph, lsp, serve, pack, extension, version, help\n  run `mhl help` for details")
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
@@ -80,6 +83,8 @@ func Run(args []string, out io.Writer) error {
 		return runTests(args[1:], out)
 	case "lint":
 		return runLint(args[1:], out)
+	case "graph":
+		return runGraph(args[1:], out)
 	case "lsp":
 		return runLSP(out)
 	case "serve":
@@ -111,20 +116,27 @@ func runLSP(out io.Writer) error {
 
 // runPipeline implements:
 //
-//	mhl run <pipeline.mh> [--input key=value ...] [--resume [--force]] [--session <id>] [--format text|json] [--dry-run]
+//	mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--session <id>] [--format text|json|jsonl] [--dry-run]
 //
 // It executes a pipeline from the start, or resumes it from the last saved
 // checkpoint when --resume is given (IF-1). --resume refuses a checkpoint
 // written for a structurally different version of the pipeline; --force
 // downgrades that to a warning. --format json writes one machine-readable
 // object (result on success, a typed error with kind/step/hint on failure)
-// and captures the run's own output into its `log` field. --dry-run validates
+// and captures the run's own output into its `log` field. --format jsonl
+// streams one event per line instead (run_events.go) — run_start,
+// step_start/step_end, log, and a final result — for a caller following the
+// run live. SIGINT/SIGTERM cancel the run at the next step boundary (a
+// blocking call in flight is aborted too), saving the resume checkpoint,
+// instead of killing the process; a second signal kills it. --workflow picks
+// which declared pipeline/workflow to run (default: the first entry point in
+// the file). --dry-run validates
 // the file (parse, imports, lint, input contract) and prints the static plan
 // — step order, parallel groups, checkpoint policy — without executing any
 // step or calling any agent.
 func runPipeline(args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl run <pipeline.mh> [--input key=value ...] [--resume [--force]] [--format text|json] [--dry-run]")
+		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run]")
 	}
 	defer loadSessionExtensions(out)()
 	file := args[0]
@@ -133,6 +145,7 @@ func runPipeline(args []string, out io.Writer) error {
 	dryRun := false
 	format := "text"
 	sessionFlag := ""
+	workflow := ""
 	inputs := map[string]any{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -144,13 +157,19 @@ func runPipeline(args []string, out io.Writer) error {
 			dryRun = true
 		case "--format":
 			if i+1 >= len(args) {
-				return fmt.Errorf("--format requires a value (text|json)")
+				return fmt.Errorf("--format requires a value (text|json|jsonl)")
 			}
 			i++
 			format = args[i]
-			if format != "text" && format != "json" {
-				return fmt.Errorf("--format must be text or json, got %q", format)
+			if format != "text" && format != "json" && format != "jsonl" {
+				return fmt.Errorf("--format must be text, json or jsonl, got %q", format)
 			}
+		case "--workflow":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--workflow requires a pipeline/workflow name")
+			}
+			i++
+			workflow = args[i]
 		case "--session":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--session requires an id argument")
@@ -179,7 +198,10 @@ func runPipeline(args []string, out io.Writer) error {
 		if resume {
 			return fmt.Errorf("--dry-run cannot be combined with --resume")
 		}
-		return dryRunPipeline(out, file, inputs, format)
+		if format == "jsonl" {
+			return fmt.Errorf("--dry-run cannot be combined with --format jsonl (use --format json)")
+		}
+		return dryRunPipeline(out, file, workflow, inputs, format)
 	}
 
 	// In json mode the run's own progress / log() output is captured instead
@@ -190,16 +212,37 @@ func runPipeline(args []string, out io.Writer) error {
 		runOut = &jsonLog
 	}
 
-	res, err := execsvc.Run(execsvc.Request{
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		// After the first signal, restore default handling so a second one
+		// kills a run that is slow to reach its cancellation point.
+		<-ctx.Done()
+		stop()
+	}()
+
+	req := execsvc.Request{
+		Context:     ctx,
 		Source:      file,
+		Workflow:    workflow,
 		Inputs:      inputs,
 		BaseDir:     ".",
 		Session:     sessionFlag,
 		Resume:      resume,
 		ForceResume: force,
 		Out:         runOut,
-	})
+	}
+	var events *eventWriter
+	if format == "jsonl" {
+		events = newEventWriter(out)
+		events.hook(&req)
+	}
+	res, err := execsvc.Run(req)
 
+	if events != nil {
+		events.result(res, err, file)
+		return err
+	}
 	if format == "json" {
 		writeRunJSON(out, res, err, file, jsonLog.String())
 		return err

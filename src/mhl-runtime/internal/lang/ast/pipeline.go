@@ -53,7 +53,8 @@ import "github.com/alecthomas/participle/v2/lexer"
 // (lint requires an explicit `output:` alongside it). Both nil means the
 // untyped, per-line-input form, unchanged.
 type Pipeline struct {
-	Pos lexer.Position
+	Pos    lexer.Position
+	EndPos lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
 	// Internal (`internal workflow X`) keeps the declaration from being an
 	// entry point: `mhl serve` does not publish it and `mhl run` does not
 	// pick it. It still runs as a workflow alias's target and through
@@ -181,6 +182,8 @@ func PipelineBodyPropertyNames() map[string]bool {
 // (the last opting the pipeline into the read-only `context.*` accessor its
 // steps can read).
 type PipelineMember struct {
+	Pos      lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	EndPos   lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
 	Input    *PipelineInput `parser:"( 'input' @@"`
 	Const    *ConstDecl     `parser:"| @@"`
 	Var      *VarDecl       `parser:"| @@"`
@@ -194,6 +197,7 @@ type PipelineMember struct {
 // WorkflowRoute is a reusable, statically checked step dispatch table.
 type WorkflowRoute struct {
 	Pos    lexer.Position
+	EndPos lexer.Position  `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
 	Name   string          `parser:"'route' @Ident"`
 	Params []*Param        `parser:"'(' ( @@ ( ',' @@ )* )? ')'"`
 	Arms   []*GotoMatchArm `parser:"'{' @@+ '}'"`
@@ -218,9 +222,10 @@ type WorkflowRoute struct {
 // compose and the earliest one fires.
 type ParallelGroup struct {
 	Pos     lexer.Position
-	Name    string  `parser:"'parallel' @Ident"`
-	Timeout string  `parser:"( 'timeout' @Duration )?"`
-	Steps   []*Step `parser:"'{' @@+ '}'"`
+	EndPos  lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Name    string         `parser:"'parallel' @Ident"`
+	Timeout string         `parser:"( 'timeout' @Duration )?"`
+	Steps   []*Step        `parser:"'{' @@+ '}'"`
 }
 
 // MemDecl declares and initializes a pipeline-scoped persistent variable:
@@ -247,9 +252,10 @@ type MemDecl struct {
 // before a required one.
 type PipelineInput struct {
 	Pos     lexer.Position
-	Name    string    `parser:"@Ident ':'"`
-	Type    *TypeExpr `parser:"@@"`
-	Default *Expr     `parser:"( '=' @@ )?"`
+	EndPos  lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Name    string         `parser:"@Ident ':'"`
+	Type    *TypeExpr      `parser:"@@"`
+	Default *Expr          `parser:"( '=' @@ )?"`
 }
 
 // Step is a named block of statements. An optional `timeout <duration>`
@@ -278,10 +284,11 @@ type PipelineInput struct {
 // Pipeline.Stages/Steps regardless of source order.
 type Step struct {
 	Pos     lexer.Position
-	Entry   bool         `parser:"@'entry'?"`
-	Name    string       `parser:"'step' @Ident"`
-	Timeout string       `parser:"( 'timeout' @Duration )?"`
-	Body    []*Statement `parser:"'{' @@* '}'"`
+	EndPos  lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Entry   bool           `parser:"@'entry'?"`
+	Name    string         `parser:"'step' @Ident"`
+	Timeout string         `parser:"( 'timeout' @Duration )?"`
+	Body    []*Statement   `parser:"'{' @@* '}'"`
 }
 
 // Statement is a single statement inside a step body. Assignment is tried
@@ -291,6 +298,7 @@ type Step struct {
 // identifier expression followed by a second, unrelated statement.
 type Statement struct {
 	Pos       lexer.Position
+	EndPos    lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
 	Const     *ConstDecl     `parser:"( @@"`
 	Var       *VarDecl       `parser:"| @@"`
 	Return    *ReturnStmt    `parser:"| @@"`
@@ -471,10 +479,11 @@ type GotoMatchStmt struct {
 // GotoMatchArm redirects to Target or fails with a computed reason.
 type GotoMatchArm struct {
 	Pos      lexer.Position
-	Wildcard bool   `parser:"( @'_'"`
-	Pattern  *Expr  `parser:"| @@ ) '->' ("`
-	Fail     *Expr  `parser:"'fail' '(' @@ ')'"`
-	Target   string `parser:"| @Ident )"`
+	EndPos   lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Wildcard bool           `parser:"( @'_'"`
+	Pattern  *Expr          `parser:"| @@ ) '->' ("`
+	Fail     *Expr          `parser:"'fail' '(' @@ ')'"`
+	Target   string         `parser:"| @Ident )"`
 }
 
 // Every control-flow body below (IfStmt.Then/Else, WhileStmt.Body,

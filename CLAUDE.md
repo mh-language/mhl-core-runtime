@@ -6,12 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo is the implementation of **mhl** (Meta-Harness Language, `.mh`): a declarative
 language for describing AI agent pipelines — agents, tools, memory, MCP servers,
-prompts, and the pipelines that wire them together. It has four tracked parts:
+prompts, and the pipelines that wire them together. It has five tracked parts:
 
 - **`src/mhl-runtime/`** — the Go implementation of the `mhl` CLI (parser, interpreter,
   runtime, LSP). This is where nearly all engineering work happens.
 - **`vscode-mhl/`** — a VS Code extension providing syntax highlighting, diagnostics, and
   completion for `.mh` files; it's a thin `vscode-languageclient` wrapper around `mhl lsp`.
+- **`src/mhl-studio/`** — **mhl studio**, a Tauri 2 (Rust) + React desktop app: a Step Functions-style workflow
+  designer (React Flow) synced both ways with a Monaco editor, running workflows live. It
+  vendors the runtime as a sidecar (`npm run sidecar` → `src-tauri/binaries/mhl-<triple>`) and
+  never parses `.mh` itself: the diagram is `mhl graph --stdin`, runs are `mhl run --format
+  jsonl [--workflow W]`, the editor talks to `mhl lsp`. The text is the source of truth —
+  diagram edits become span-based text edits (`src/sync/edits.ts`), so a change to `mhl
+  graph`'s JSON (`internal/lang/flow`) must be mirrored in `src/lib/types.ts`. Checks: `npm
+  run sidecar && npm run typecheck && npm test && npx vite build`, then `cargo clippy
+  --all-targets -- -D warnings && cargo test` in `src-tauri` (`.github/workflows/studio.yml`, deliberately outside the release gate: the language must release independently of the studio). See its
+  README.
 - **`docs/site/`** — `reference.html` (and `index.html`) is the single, canonical language
   reference, deployed as-is to GitHub Pages by `.github/workflows/page.yml`. There is no
   separate wiki; some example fields may still be aspirational, not yet implemented — see
@@ -54,9 +64,10 @@ The built CLI itself:
 
 ```sh
 mhl init [dir]  # scaffolds an immediately-runnable main.mh; never overwrites
-mhl run <pipeline.mh> [--input key=value ...] [--resume [--force]] [--format text|json] [--dry-run]  # --resume refuses a checkpoint whose pipeline definition changed shape (digest), --force downgrades to warning; --format json emits one typed result/error object (runtime.StepError / InvalidInputsError feed its kind/step/hint), run output → its `log` field; --dry-run = validate (parse/imports/lint/input contract — presence *and* declared value types, via the shared `execsvc.coerceInputs`) + print static plan via execsvc.Inspect, executes nothing
+mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run]  # --workflow picks the declared pipeline/workflow (default: first entry point; execsvc.Request.Workflow); --format jsonl streams events (cli/run_events.go: run_start, step_start/step_end ← execsvc.Request.OnStart/OnStep/OnStepEnd, log, result); SIGINT/SIGTERM cancel at the step boundary (checkpoint saved), a second one kills; --resume refuses a checkpoint whose pipeline definition changed shape (digest), --force downgrades to warning; --format json emits one typed result/error object (runtime.StepError / InvalidInputsError feed its kind/step/hint), run output → its `log` field; --dry-run = validate (parse/imports/lint/input contract — presence *and* declared value types, via the shared `execsvc.coerceInputs`) + print static plan via execsvc.Inspect, executes nothing
 mhl test <file.mh|dir>
 mhl lint [dir]
+mhl graph <file.mh> [--stdin]  # JSON control-flow graph for editors/visual tools, e.g. src/mhl-studio (internal/lang/flow): nodes (with each step's `callSites`)/edges — plus each `tool`'s methods (args, returns, header/body spans) and `Name.` call sites — with byte spans from the AST's parser-set Pos/EndPos (`parser:"" digest:"-"`, so DefinitionDigest is unchanged); flow.GotoTargets/AlwaysDiverts are the one copy execsvc.Inspect and lint use
 mhl lsp        # LSP server over stdio, used by vscode-mhl
 mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
 mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [--single-replica] [--workflows-pack file] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics); --single-replica (or MHL_SERVE_SINGLE_REPLICA) is required to start with a non-cas `extension state`; --workflows-pack (MHL_SERVE_WORKFLOWS_PACK, key in MHL_SERVE_WORKFLOWS_KEY, unset from the env before anything runs) loads the program from an encrypted DMPK v2 pack (`internal/pack`) in memory only — `execsvc.ParseFS`/`LoadFilesFS` → `interpreter.NewImportCacheFS`, whose read func replaces os.ReadFile for imports/prompts/skills/schemas; [dir] is then only the root a schema's path is composed under

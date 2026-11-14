@@ -1,0 +1,71 @@
+name: Studio
+
+# The mhl studio (src/mhl-studio) is an optional tool built on top of the language,
+# released on its own `studio-v*` tags. It is deliberately NOT part of gate.yml:
+# that gate is what a language release (release.yml, `v*` tags) must pass,
+# and the language must be publishable whatever the studio's state. The studio
+# depends on the runtime (it vendors src/mhl-runtime as a sidecar), never the
+# other way round — so it runs on runtime changes too, to catch a breaking
+# change to `mhl graph` / `mhl run --format jsonl` early, without blocking
+# anything.
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "src/mhl-studio/**"
+      - "src/mhl-runtime/**"
+      - "vscode-mhl/syntaxes/**"
+      - "vscode-mhl/language-configuration.json"
+      - ".github/workflows/studio.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "src/mhl-studio/**"
+      - "src/mhl-runtime/**"
+      - "vscode-mhl/syntaxes/**"
+      - "vscode-mhl/language-configuration.json"
+      - ".github/workflows/studio.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  studio:
+    name: mhl-studio (typecheck, test, build, clippy, audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/mhl-studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/mhl-runtime/go.mod
+          cache: true
+          cache-dependency-path: src/mhl-runtime/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+      - run: npm ci
+      # Vendors the runtime: builds src/mhl-runtime into src-tauri/binaries/,
+      # which the edit round-trip tests and the Rust LSP test run against.
+      - run: npm run sidecar
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx vite build
+      - name: Clippy
+        working-directory: src/mhl-studio/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Rust tests
+        working-directory: src/mhl-studio/src-tauri
+        run: cargo test
+      - run: npm audit --omit=dev
+

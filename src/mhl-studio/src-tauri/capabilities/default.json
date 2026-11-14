@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The main window: core events, the open-folder dialog and app zoom. The studio's own commands (workspace files, mhl graph/run/lsp) are app commands, not plugin permissions.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-ask",
+    "dialog:allow-message",
+    "core:webview:allow-set-webview-zoom"
+  ]
+}

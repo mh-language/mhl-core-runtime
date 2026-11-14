@@ -17,10 +17,10 @@ const dryRunScope = "dry-run: validated parse, imports, lint and the input contr
 // dryRunPipeline validates file and prints its static plan without executing
 // anything. It exits non-zero when lint finds a problem or the input contract
 // is not satisfied.
-func dryRunPipeline(out io.Writer, file string, inputs map[string]any, format string) error {
+func dryRunPipeline(out io.Writer, file, workflow string, inputs map[string]any, format string) error {
 	findings := lint.File(file)
 
-	ins, err := execsvc.Inspect(execsvc.Request{Source: file, Inputs: inputs})
+	ins, err := execsvc.Inspect(execsvc.Request{Source: file, Workflow: workflow, Inputs: inputs})
 	if err != nil {
 		if format == "json" {
 			enc := json.NewEncoder(out)

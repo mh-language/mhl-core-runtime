@@ -1,0 +1,33 @@
+{
+  // Run and Debug (F5) for the mhl studio (src/mhl-studio).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Debug the Tauri backend with breakpoints in src-tauri/src/*.rs
+      // (needs the CodeLLDB extension, vadimcn.vscode-lldb). The pre-launch
+      // task vendors the mhl sidecar and starts Vite on :1420; a plain debug
+      // build (no `custom-protocol` feature) loads the UI from that dev
+      // server, so frontend edits hot-reload while you debug. Stopping the
+      // session also stops Vite.
+      "name": "mhl-studio: debug (Rust + UI)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--manifest-path=${workspaceFolder}/src/mhl-studio/src-tauri/Cargo.toml", "--no-default-features"],
+        "filter": { "name": "mhl-studio", "kind": "bin" }
+      },
+      "cwd": "${workspaceFolder}/src/mhl-studio",
+      "preLaunchTask": "mhl-studio: ui",
+      "postDebugTask": "mhl-studio: stop ui"
+    },
+    {
+      // No debugger: exactly `npm run tauri dev` in a terminal — sidecar,
+      // Vite and the app, with Rust changes rebuilding and restarting it.
+      "name": "mhl-studio: run (tauri dev)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run tauri dev",
+      "cwd": "${workspaceFolder}/src/mhl-studio"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "mhl-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Visual workflow designer and runner for mhl (.mh)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "sidecar": "node scripts/build-sidecar.mjs",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-dialog": "2.8.4",
+    "@xyflow/react": "12.12.1",
+    "@shikijs/monaco": "4.6.0",
+    "elkjs": "0.12.1",
+    "monaco-editor": "0.57.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "shiki": "4.6.0",
+    "zustand": "5.1.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  },
+  "overrides": {
+    "dompurify": "3.4.17"
+  }
+}

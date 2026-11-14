@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "mhl studio",
+  "version": "0.1.0",
+  "identifier": "dev.mhl.studio",
+  "build": {
+    "beforeDevCommand": "npm run sidecar && npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run sidecar && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "mhl studio",
+        "width": 1480,
+        "height": 920,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["binaries/mhl"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+  }
+}

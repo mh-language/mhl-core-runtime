@@ -109,6 +109,18 @@ type Request struct {
 	// It must not block. It may be called concurrently for the steps of a
 	// `parallel` group, so an implementation must be safe for concurrent use.
 	OnStep func(step string, index, total int)
+
+	// OnStart, when non-nil, is called once, after inputs are validated and
+	// the session is resolved and before any step runs, with the pipeline
+	// name, the session id and its declared steps in execution order.
+	OnStart func(pipeline, session string, steps []string)
+
+	// OnStepEnd, when non-nil, is called once each time a step finishes,
+	// right after its body returns (before the step_end hook). status is
+	// one of "ok", "failed", "goto" (target names the destination),
+	// "pause", "break" or "complete"; err is the step's error for
+	// "failed", nil otherwise. Same concurrency contract as OnStep.
+	OnStepEnd func(step string, index int, status, target string, err error, elapsed time.Duration)
 }
 
 // Result is the structured outcome of a run.
@@ -205,6 +217,9 @@ func Run(req Request) (*Result, error) {
 	sessionID := runtime.ResolveSession(baseStore, pipeline.Name, req.Session, req.Resume)
 	if sessionID != "" {
 		fmt.Fprintf(out, "session: %s\n", sessionID)
+	}
+	if req.OnStart != nil {
+		req.OnStart(pipeline.Name, sessionID, append([]string(nil), pipeline.Steps...))
 	}
 
 	// `context` is always visible to steps as this run's own metadata
@@ -336,11 +351,28 @@ func Run(req Request) (*Result, error) {
 			return err
 		}
 		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
+		stepStarted := time.Now()
 		stepErr := interpreter.RunStep(stepCtx, prog, pipeline.Decl, step, file, stepOut, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
 		breakReason, isBreak := interpreter.IsBreak(stepErr)
 		pauseReason, isPause := interpreter.IsPause(stepErr)
 		isComplete := interpreter.IsComplete(stepErr)
 		gotoTarget, isGoto := interpreter.IsGoto(stepErr)
+		if req.OnStepEnd != nil {
+			status, target, endErr := "ok", "", error(nil)
+			switch {
+			case isBreak:
+				status = "break"
+			case isPause:
+				status = "pause"
+			case isComplete:
+				status = "complete"
+			case isGoto:
+				status, target = "goto", gotoTarget
+			case stepErr != nil:
+				status, endErr = "failed", stepErr
+			}
+			req.OnStepEnd(step, index, status, target, endErr, time.Since(stepStarted))
+		}
 		if pipeline.StepEnd != nil {
 			var hookErrVal any
 			if stepErr != nil && !isBreak && !isPause && !isComplete && !isGoto {

@@ -9,6 +9,7 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/flow"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
@@ -193,59 +194,15 @@ func collectPipelineGotos(prog *ast.Program, name string) []InspectGoto {
 		if d.Pipeline == nil || d.Pipeline.Name != name {
 			continue
 		}
-		routes := map[string]*ast.WorkflowRoute{}
-		for _, m := range d.Pipeline.Body {
-			if m.Route != nil {
-				routes[m.Route.Name] = m.Route
-			}
-		}
+		routes := flow.Routes(d.Pipeline)
 		for _, m := range d.Pipeline.Body {
 			if m.Step == nil {
 				continue
 			}
-			var targets []string
-			gotoTargets(m.Step.Body, routes, &targets)
-			for _, t := range targets {
+			for _, t := range flow.GotoTargets(m.Step.Body, routes) {
 				out = append(out, InspectGoto{From: m.Step.Name, To: t})
 			}
 		}
 	}
 	return out
-}
-
-func gotoTargets(stmts []*ast.Statement, routes map[string]*ast.WorkflowRoute, out *[]string) {
-	for _, s := range stmts {
-		if s == nil {
-			continue
-		}
-		switch {
-		case s.Goto != nil:
-			if route := routes[s.Goto.Target]; s.Goto.Called && route != nil {
-				for _, arm := range route.Arms {
-					if arm.Fail == nil {
-						*out = append(*out, arm.Target)
-					}
-				}
-			} else {
-				*out = append(*out, s.Goto.Target)
-			}
-		case s.GotoMatch != nil:
-			for _, arm := range s.GotoMatch.Arms {
-				if arm.Fail == nil {
-					*out = append(*out, arm.Target)
-				}
-			}
-		case s.If != nil:
-			gotoTargets(s.If.Then, routes, out)
-			gotoTargets(s.If.Else, routes, out)
-		case s.While != nil:
-			gotoTargets(s.While.Body, routes, out)
-		case s.ForIn != nil:
-			gotoTargets(s.ForIn.Body, routes, out)
-		case s.Try != nil:
-			gotoTargets(s.Try.Body, routes, out)
-			gotoTargets(s.Try.Catch, routes, out)
-			gotoTargets(s.Try.Finally, routes, out)
-		}
-	}
 }

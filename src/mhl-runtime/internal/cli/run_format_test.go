@@ -138,7 +138,7 @@ func TestRunFormatRejectsUnknownValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := cli.Run([]string{"run", "p.mh", "--format", "yaml"}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "text or json") {
+	if err == nil || !strings.Contains(err.Error(), "text, json or jsonl") {
 		t.Fatalf("want a --format validation error, got: %v", err)
 	}
 }
