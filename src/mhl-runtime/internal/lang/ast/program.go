@@ -32,6 +32,8 @@ func (p *Program) AliasMap() map[string]string {
 // Declaration is any top-level construct. An optional leading `export`
 // keyword may precede a declaration to mark it as exported from the module.
 type Declaration struct {
+	Pos        lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	EndPos     lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
 	Export     bool           `parser:"@'export'?"`
 	Import     *Import        `parser:"( @@"`
 	Prompt     *Prompt        `parser:"| @@"`
@@ -183,7 +185,8 @@ type ToolMember struct {
 // Ident` shape Param already uses, placed after the closing ')' since a
 // method's return type describes the whole call, not one parameter.
 type ToolMethod struct {
-	Pos lexer.Position
+	Pos    lexer.Position
+	EndPos lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
 	// Internal (`internal name(...) -> ...`) restricts the method to its own
 	// tool (`self.name(...)`) and to the tests of the file declaring the
 	// tool; any other caller is an error (mhl lint and mhl run).
@@ -206,9 +209,10 @@ type ToolMethod struct {
 // renderPromptCallDynamic).
 type Param struct {
 	Pos     lexer.Position
-	Name    string    `parser:"@Ident"`
-	Type    *TypeExpr `parser:"( ':' @@ )?"`
-	Default *Expr     `parser:"( '=' @@ )?"`
+	EndPos  lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Name    string         `parser:"@Ident"`
+	Type    *TypeExpr      `parser:"( ':' @@ )?"`
+	Default *Expr          `parser:"( '=' @@ )?"`
 }
 
 // RequiredParamCount is how many leading arguments a positional caller
@@ -227,7 +231,8 @@ func RequiredParamCount(params []*Param) int {
 
 // Property is a `key: value` pair inside a declaration body.
 type Property struct {
-	Pos   lexer.Position
-	Name  string `parser:"@Ident ':'"`
-	Value *Expr  `parser:"@@"`
+	Pos    lexer.Position
+	EndPos lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Name   string         `parser:"@Ident ':'"`
+	Value  *Expr          `parser:"@@"`
 }

@@ -19,8 +19,11 @@ import (
 // BarePostfix unwraps e down to its Postfix node when no binary or unary
 // operator is applied along the way (i.e. e is nothing but a single
 // literal/identifier/call chain); it returns nil otherwise.
+//
+// A spread element (`...xs`) is never bare: it stands for zero or more
+// values, not one, so no literal reader may take it for its operand.
 func BarePostfix(e *Expr) *Postfix {
-	if e == nil || e.Or == nil {
+	if e == nil || e.Or == nil || e.Spread {
 		return nil
 	}
 	if len(e.Tail) != 0 {

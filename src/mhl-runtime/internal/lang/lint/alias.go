@@ -18,7 +18,7 @@ import (
 func checkPipelineAliases(file string, prog *ast.Program, aliases map[string]types.Type) []Finding {
 	var findings []Finding
 	add := func(pos lexer.Position, format string, args ...any) {
-		findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf(format, args...)})
+		findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf(format, args...)})
 	}
 	for _, decl := range prog.Decls {
 		a := decl.Alias

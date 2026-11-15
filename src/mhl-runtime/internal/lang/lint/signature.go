@@ -33,7 +33,7 @@ func checkPipelineSignature(file string, prog *ast.Program, aliases map[string]t
 			continue
 		}
 		add := func(pos lexer.Position, msg string) {
-			findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column, Message: msg})
+			findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Message: msg})
 		}
 		label := fmt.Sprintf("%s %q", pipelineKind(p), p.Name)
 

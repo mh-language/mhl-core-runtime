@@ -157,6 +157,24 @@ func (r Retrier) wait(ctx context.Context, d time.Duration) error {
 	}
 }
 
+// RetryTexter is implemented by an error whose full message carries captured
+// output — a subprocess's stderr tail — that must not sway a RetryOn match:
+// RetryOn is matched against RetryText() instead of Error(). An agent's
+// timeout error reports just "timeout" this way, so it is repeated exactly
+// when RetryOn lists "timeout" (or is empty), never because a status code
+// happened to appear in the dying process's last output.
+type RetryTexter interface {
+	RetryText() string
+}
+
+func retryText(err error) string {
+	var rt RetryTexter
+	if errors.As(err, &rt) {
+		return rt.RetryText()
+	}
+	return err.Error()
+}
+
 func unwrapPermanent(err error) error {
 	var p permanentError
 	if errors.As(err, &p) {
@@ -183,7 +201,7 @@ func (r Retrier) shouldRetry(ctx context.Context, err error) bool {
 	if len(r.RetryOn) == 0 {
 		return true
 	}
-	message := strings.ToLower(err.Error())
+	message := strings.ToLower(retryText(err))
 	for _, condition := range r.RetryOn {
 		condition = strings.ToLower(strings.TrimSpace(condition))
 		if condition == "" {

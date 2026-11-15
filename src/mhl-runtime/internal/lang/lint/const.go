@@ -2,6 +2,7 @@ package lint
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
@@ -47,17 +48,21 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 						} else if inputs[s.Var.Name] {
 							msg = fmt.Sprintf("%q is an input and can't be redeclared", s.Var.Name)
 						}
-						findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
+						findings = append(findings, Finding{File: fileAt(file, s.Pos), Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
 					}
-				case s.Assign != nil:
-					if name, _, ok := assignTargetBase(s.Assign.Target); ok && consts[name] {
+				case s.Assign != nil || appendSugarTarget(s) != nil:
+					target := appendSugarTarget(s)
+					if s.Assign != nil {
+						target = s.Assign.Target
+					}
+					if name, _, ok := assignTargetBase(target); ok && consts[name] {
 						msg := fmt.Sprintf("cannot assign to constant %q", name)
 						if name == param {
 							msg = fmt.Sprintf("cannot assign to %q: the typed parameter is read-only (copy it into a var to change it)", name)
 						} else if inputs[name] {
 							msg = fmt.Sprintf("cannot assign to input %q: inputs are read-only (copy it into a var to change it)", name)
 						}
-						findings = append(findings, Finding{File: file, Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
+						findings = append(findings, Finding{File: fileAt(file, s.Pos), Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
 					}
 				case s.If != nil:
 					walk(s.If.Then)
@@ -96,17 +101,14 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 				pipelineConsts[param] = true
 			}
 			for _, m := range decl.Pipeline.Body {
-				var steps []*ast.Step
-				switch {
-				case m.Step != nil:
-					steps = []*ast.Step{m.Step}
-				case m.Parallel != nil:
-					steps = m.Parallel.Steps
-				default:
-					continue
-				}
-				for _, step := range steps {
-					check(step.Body, pipelineConsts)
+				for _, step := range pipelineMemberSteps(m) {
+					consts := pipelineConsts
+					if mp := mergeParam(m, step); mp != "" {
+						// A merge's branches object is a read-only snapshot.
+						consts = maps.Clone(pipelineConsts)
+						consts[mp] = true
+					}
+					check(step.Body, consts)
 				}
 			}
 		case decl.Tool != nil:

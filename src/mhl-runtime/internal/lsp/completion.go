@@ -12,7 +12,7 @@ var keywords = []string{
 	"agent", "router", "memory", "tool", "prompt", "schema", "internal", "pipeline", "workflow", "extension", "extensible", "loop", "partial",
 	"import", "from", "as", "export", "input", "step", "entry", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
-	"return", "break", "goto", "route", "spawn", "wait", "parallel", "timeout", "max", "ref", "with", "true", "false", "null",
+	"return", "break", "goto", "route", "spawn", "wait", "parallel", "merge", "timeout", "max", "ref", "with", "true", "false", "null",
 	"kind", "manifest", "properties",
 }
 
@@ -346,6 +346,9 @@ func completionAt(path, text string, pos position) []completionItem {
 			return items
 		}
 		if items, ok := pipelineParamCompletionAt(text, pos, target); ok {
+			return items
+		}
+		if items, ok := mergeParamCompletionAt(text, pos, target); ok {
 			return items
 		}
 		for _, s := range documentSymbols(path, text) {

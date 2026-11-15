@@ -14,7 +14,7 @@ func findingFromParseError(file string, err error) Finding {
 	var perr participle.Error
 	if errors.As(err, &perr) {
 		pos := perr.Position()
-		return Finding{File: file, Line: pos.Line, Column: pos.Column, Message: perr.Message()}
+		return Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Message: perr.Message()}
 	}
 	return Finding{File: file, Message: err.Error()}
 }

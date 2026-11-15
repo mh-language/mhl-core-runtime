@@ -155,6 +155,10 @@ test triage {
 
 - Prefer `goto match value { "a" -> StepA  _ -> fail("...") }` or a `route` over chains of
   `if`. Lint checks every destination.
+- To start the run with a dispatch, mark the route `entry route Handle(kind: Kind) { ... }`
+  instead of writing a `Dispatch` step that only calls it. The run begins at the route, its
+  parameter bound to the input of the same name and type; it runs as a step named `Handle`
+  (so `executed` starts with it) and stays callable with `goto Handle(x)`. One per workflow.
 - Give every backward `goto` a counter in a pipeline `var`. The only built-in limit is
   10000 visits per step, which fails the run with reason `max_step_visits`.
 - Steps fall through to the next declared step. That is normal; only end a step with
@@ -199,6 +203,8 @@ loop workflow PollBuild {
 | Several agent calls inside one step | `spawn` + `wait` |
 | One agent over a list | `spawn xs = A.run(prompt: "${item}") for item in items` |
 | Several whole steps at once | `parallel Name { step A {...} step B {...} }` |
+| Branches that hand results to a join | `parallel Name { var a = "" ... step A {...} merge { ... } }` |
+| Branches that fill one var | `parallel Name { ... merge (branches) { ... } }` |
 
 ```mh
 agent Checker {
@@ -243,8 +249,99 @@ test fan_out {
 - `wait a, b` fails fast. `wait any a, b` takes the first success. `wait 2 of a, b, c` is a
   quorum. `on_error: "collect"` keeps the step alive; then read `.ok`, `.error`, `.status`.
 - `parallel` branches get copies of the pipeline vars, merged at the barrier. Two branches
-  assigning the same var is a run failure, so give each branch its own var. `goto` and
-  `break` are not allowed inside a group, and a group re-runs entirely on resume.
+  assigning the same var different values is a run failure: give each branch its own var, or
+  end the group with a `merge` (below). `goto` and `break` are not allowed inside a group,
+  and a group re-runs entirely on resume. A `goto` may name the group itself
+  (`goto Verify`), which re-runs every branch; never a branch step.
+
+A group may declare its own vars before its branches. They are fresh each time the group
+starts, read and written as `self.x` by its branches and merge, and gone after the group.
+Give each branch one to fill, and combine them in a plain `merge { ... }`:
+
+```mh
+agent Claude {
+    command: "echo"
+    args: ["claude:", "${prompt}"]
+}
+
+agent Codex {
+    command: "echo"
+    args: ["codex:", "${prompt}"]
+}
+
+workflow Panel {
+    input question: string = "caching"
+    var answers = []
+
+    parallel Ask {
+        var from_claude = ""
+        var from_codex = ""
+        step AskClaude { self.from_claude = Claude.run(prompt: question) }
+        step AskCodex { self.from_codex = Codex.run(prompt: question) }
+        merge {
+            self.answers.append(self.from_claude)
+            self.answers.append(self.from_codex)
+        }
+    }
+}
+
+test panel {
+    describe both_answers_are_kept {
+        var result = Panel.run()
+        are_equal(result.vars.answers, ["claude: caching", "codex: caching"])
+    }
+}
+```
+
+When branches should add to the same var instead, a `merge (branches) { ... }` block, last
+in the group, combines them. It runs once after every branch, in the workflow's scope, and
+`branches.<Step>.<var>` is what that branch left. A var the branches wrote differently must
+be assigned there. Vars they agree on are already merged.
+
+```mh
+agent Claude {
+    command: "echo"
+    args: ["claude:", "${prompt}"]
+}
+
+agent Codex {
+    command: "echo"
+    args: ["codex:", "${prompt}"]
+}
+
+workflow Consult {
+    input question: string = "caching"
+    var replies = []
+
+    parallel Ask {
+        step AskClaude { self.replies = [...self.replies, Claude.run(prompt: question)] }
+        step AskCodex { self.replies = [...self.replies, Codex.run(prompt: question)] }
+        merge (branches) {
+            self.replies = [...branches.AskClaude.replies, ...branches.AskCodex.replies]
+        }
+    }
+
+    step Report {
+        log(replies)
+    }
+}
+
+test consult {
+    describe both_replies_are_kept {
+        var result = Consult.run()
+        are_equal(result.vars.replies, ["claude: caching", "codex: caching"])
+    }
+}
+```
+
+- A merge may end the group with `goto X` (or `goto Ask` to re-run it) or `complete()`, like
+  the end of a step. `break` and `pause()` are rejected there. `branches` is read-only and
+  must not reuse an input or var name.
+- `self.replies.append(x)` as a statement means `self.replies = self.replies.append(x)`.
+  In a branch, that write counts like any other, so two branches appending need a merge.
+- Concatenating the branches' lists repeats whatever the var held before the group. Prefer
+  group vars, which start fresh every time the group runs.
+- A group var must not reuse a workflow input or var name. It does not exist after the group.
 
 ## Human in the loop
 
@@ -331,7 +428,8 @@ partial workflow Discovery {
 }
 ```
 
-Exactly one `entry` step across all fragments; `entry` is rejected outside `partial`. The
+Exactly one `entry step` (or `entry route`) across all fragments; `entry` on a step is rejected
+outside `partial`. The
 last step of a fragment must end in an unconditional exit, or lint reports a fallthrough
 into another file. Factor what generate/commit pairs repeat into a shared `tool`, keeping
 only the final `goto` in each step.

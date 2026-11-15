@@ -1,0 +1,84 @@
+{
+  // Tasks for developing the mhl studio (src/mhl-studio). Run them with
+  // "Tasks: Run Task" (⇧⌘P). The studio depends on the language runtime
+  // (src/mhl-runtime), which it vendors as a sidecar — never the reverse.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "mhl-studio: dev",
+      "detail": "Launch the studio in development mode (installs npm deps on first run, builds the mhl sidecar, starts Vite + the Tauri app with hot reload)",
+      "type": "shell",
+      "command": "test -d node_modules || npm ci; npm run tauri dev",
+      "windows": {
+        "command": "if (!(Test-Path node_modules)) { npm ci }; npm run tauri dev"
+      },
+      "options": { "cwd": "${workspaceFolder}/src/mhl-studio" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "group": "build"
+    },
+    {
+      // Pre-launch task of the "mhl-studio: debug" launch config: vendors the
+      // sidecar, then serves the UI. The background matcher tells VS Code
+      // it is ready (Vite's "Local: http://..." line) so debugging can start.
+      "label": "mhl-studio: ui",
+      "detail": "Build the mhl sidecar and serve the studio frontend with Vite on :1420 (used by the debug launch config)",
+      "type": "shell",
+      "command": "test -d node_modules || npm ci; npm run sidecar && npm run dev",
+      "windows": {
+        "command": "if (!(Test-Path node_modules)) { npm ci }; npm run sidecar; if ($?) { npm run dev }"
+      },
+      "options": { "cwd": "${workspaceFolder}/src/mhl-studio" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "mhl-studio-vite",
+        "pattern": { "regexp": "^\\b\\B$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "> mhl-studio@|\\[sidecar\\]",
+          "endsPattern": "Local:\\s+http"
+        }
+      },
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "mhl-studio: stop ui",
+      "detail": "Stop the Vite server started by \"mhl-studio: ui\"",
+      "type": "shell",
+      "command": "echo ${input:terminateUi}",
+      "problemMatcher": [],
+      "presentation": { "reveal": "never" }
+    },
+    {
+      "label": "mhl-studio: rebuild mhl runtime",
+      "detail": "Rebuild the vendored mhl sidecar after changing src/mhl-runtime (restart \"mhl-studio: dev\" to pick it up)",
+      "type": "shell",
+      "command": "npm run sidecar",
+      "options": { "cwd": "${workspaceFolder}/src/mhl-studio" },
+      "problemMatcher": ["$go"],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "mhl-studio: test",
+      "detail": "Same checks as .github/workflows/studio.yml: sidecar, typecheck, vitest, vite build, clippy, cargo test",
+      "type": "shell",
+      "command": "npm run sidecar && npm run typecheck && npm test && npx vite build && cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo test",
+      "windows": {
+        "command": "npm run sidecar; if ($?) { npm run typecheck }; if ($?) { npm test }; if ($?) { npx vite build }; if ($?) { cd src-tauri; cargo clippy --all-targets -- -D warnings }; if ($?) { cargo test }"
+      },
+      "options": { "cwd": "${workspaceFolder}/src/mhl-studio" },
+      "problemMatcher": ["$tsc"],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "group": "test"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "terminateUi",
+      "type": "command",
+      "command": "workbench.action.tasks.terminate",
+      "args": "mhl-studio: ui"
+    }
+  ]
+}

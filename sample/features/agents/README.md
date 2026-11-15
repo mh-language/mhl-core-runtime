@@ -44,3 +44,19 @@ environment — they need real network access and credentials, not just `mhl tes
   credential): the 1-argument form always fails the run closed on an unset variable and
   redacts its resolved value, appropriate for a real secret; the 2-argument form opts out of
   both on purpose
+- [agent_timeout_stops_a_hung_process.mh](agent_timeout_stops_a_hung_process.mh)
+  — `timeout:` bounds each attempt: on expiry the agent's whole process group gets SIGTERM,
+  `kill_grace:` to exit, then SIGKILL, and the call fails with a `timeout` error that
+  `catch`/`finally`/`retry_on: ["timeout"]`/`fallback` all see; output written on SIGTERM comes
+  back as "partial stdout"; `.run(timeout:)` overrides the deadline for one call
+- [agent_runs_a_cli_without_a_wrapper.mh](agent_runs_a_cli_without_a_wrapper.mh)
+  — what a `cd … && exec cli | tee` wrapper script used to do, in the agent block itself:
+  `cwd:` (any expression, evaluated per call; a missing directory fails before the process
+  starts), `log:` as a per-call expression with `log_mode: "truncate"` so a retry starts the
+  live log empty, and the stdout tail (`partial stdout:`) on a non-zero exit
+- [agent_takes_inputs_and_spreads_args.mh](agent_takes_inputs_and_spreads_args.mh)
+  — one agent, a different argv per call: `input name: type [= default]` declarations
+  filled by `.run(prompt: ..., name: value)` and read by `cwd:`/`args:`/`stdin:`; `...expr`
+  splicing a string array into `args` (`[]` inserts nothing, `if` drops a flag pair);
+  `flat_map` for a `--add-dir` per directory; `"${name}"` placeholders; the fallback receiving
+  the same inputs

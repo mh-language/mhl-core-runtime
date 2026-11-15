@@ -284,7 +284,7 @@ func checkPostfixIdents(file string, prog *ast.Program, p *ast.Postfix, declared
 	var findings []Finding
 	if p.Primary.Ident != "" && len(p.Ops) == 0 {
 		if !isHookIdentResolvable(prog, p.Primary.Ident, declared) {
-			findings = append(findings, Finding{File: file, Line: pos.Line, Column: pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 				Message: fmt.Sprintf("undefined identifier %q", p.Primary.Ident)})
 		}
 	}

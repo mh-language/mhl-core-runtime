@@ -1,0 +1,40 @@
+// `.append(x)` returns a new array and never changes its receiver — values
+// are never aliased (append_returns_a_new_array.mh). Written as a statement
+// of its own, though, `xs.append(x)` means `xs = xs.append(x)`: the only
+// thing such a line could intend is to grow `xs`. It works on a step var, a
+// pipeline var (`self.xs.append(x)`) and an indexed element (`grid[1].append(x)`);
+// on a const or an input it is refused like any other assignment.
+
+pipeline Collect {
+    var seen = []
+
+    step Gather {
+        var local = []
+        local.append("a")
+        local.append("b")
+        self.seen.append(local.size())
+        var grid = [[], []]
+        grid[1].append(5)
+        self.seen.append(grid)
+    }
+}
+
+test append_statement_grows_the_variable {
+    describe a_bare_append_assigns_its_receiver {
+        var xs = [1]
+        xs.append(2)
+        are_equal(xs, [1, 2])
+    }
+
+    describe used_as_a_value_it_still_leaves_the_receiver_alone {
+        var base = [1, 2, 3]
+        var more = base.append(4)
+        are_equal(base, [1, 2, 3])
+        are_equal(more, [1, 2, 3, 4])
+    }
+
+    describe pipeline_vars_and_indexed_elements_grow_too {
+        var result = Collect.run()
+        are_equal(result.vars.seen, [2, [[], [5]]])
+    }
+}

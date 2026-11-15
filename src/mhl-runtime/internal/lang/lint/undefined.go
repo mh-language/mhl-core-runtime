@@ -62,8 +62,19 @@ func checkUndefinedNames(file string, prog *ast.Program, aliases map[string]type
 				}
 			}
 			for _, member := range p.Body {
+				if member.Parallel != nil {
+					// A group var's initializer sees the workflow and the
+					// group's earlier vars.
+					scope := copyScope(seed)
+					for _, v := range member.Parallel.Vars {
+						u.expr(v.Decl.Value, scope)
+						scope[v.Decl.Name] = types.Any
+					}
+				}
 				for _, step := range pipelineMemberSteps(member) {
-					u.stmts(step.Body, collectVarNames(prog, step.Body, copyScope(seed), nil))
+					scope := copyScope(seed)
+					groupScope(member, step, scope)
+					u.stmts(step.Body, collectVarNames(prog, step.Body, scope, nil))
 				}
 				if member.Prop != nil && isHookPropertyName(member.Prop.Name) {
 					if lambda, ok := ast.LambdaValue(member.Prop.Value); ok {
@@ -129,6 +140,14 @@ type undefWalker struct {
 	inTest bool
 	// tool is the tool whose methods are being walked, nil elsewhere.
 	tool *ast.Tool
+	// strict also reports a bare identifier (no trailer) that resolves to
+	// nothing — set only for an agent's own expressions
+	// (checkAgentExprNames), whose scope is exact.
+	strict bool
+	// interpAt, while non-zero, is the position of the string literal whose
+	// "${...}" span is being walked: the span was re-parsed on its own, so
+	// its nodes carry positions relative to the span, not the file.
+	interpAt lexer.Position
 }
 
 // isAgentDispatch reports whether p is `Agent.run(...)` or
@@ -157,7 +176,7 @@ func (u *undefWalker) resolvable(name string, scope map[string]types.Type) bool 
 }
 
 func (u *undefWalker) report(pos lexer.Position, format string, args ...any) {
-	u.findings = append(u.findings, Finding{File: u.file, Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf(format, args...)})
+	u.findings = append(u.findings, Finding{File: fileAt(u.file, pos), Line: pos.Line, Column: pos.Column, Message: fmt.Sprintf(format, args...)})
 }
 
 func (u *undefWalker) lambda(l *ast.Lambda, outer map[string]types.Type) {
@@ -354,6 +373,13 @@ func (u *undefWalker) postfix(p *ast.Postfix, scope map[string]types.Type, pos l
 	if name := p.Primary.Ident; name != "" && len(p.Ops) > 0 && p.Ops[0].Member != "" && !hasSpecificNotFoundCheck(p) && !u.resolvable(name, scope) {
 		u.report(pos, "undefined name %q (not a local, input/var/mem, builtin, or declared/imported name)", name)
 	}
+	if name := p.Primary.Ident; u.strict && name != "" && len(p.Ops) == 0 && !u.resolvable(name, scope) {
+		at := pos
+		if u.interpAt.Line > 0 {
+			at = u.interpAt
+		}
+		u.report(at, "undefined name %q (not an input of this agent, a builtin, or a declared/imported name — declare it as an input)", name)
+	}
 	u.internalCall(p, scope, pos)
 	u.primary(p.Primary, scope, pos)
 	for i, op := range p.Ops {
@@ -474,8 +500,14 @@ func (u *undefWalker) interpolation(s string, scope map[string]types.Type, pos l
 			if pf := ast.BarePostfix(e); pf != nil && pf.Primary != nil && pf.Primary.Ident != "" && len(pf.Ops) == 0 &&
 				!u.resolvable(pf.Primary.Ident, scope) {
 				u.report(pos, "undefined name %q in \"${%s}\"", pf.Primary.Ident, inner)
+			} else {
+				outer := u.interpAt
+				if outer.Line == 0 {
+					u.interpAt = pos
+				}
+				u.expr(e, scope)
+				u.interpAt = outer
 			}
-			u.expr(e, scope)
 		}
 		i = end + 1
 	}
@@ -513,7 +545,7 @@ func checkPipelineHookParamTypes(file string, prog *ast.Program) []Finding {
 			if !isHookContextType(t.Name) {
 				continue
 			}
-			findings = append(findings, Finding{File: file, Line: t.Pos.Line, Column: t.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, t.Pos), Line: t.Pos.Line, Column: t.Pos.Column,
 				Message: fmt.Sprintf("%s hook parameter is bound to a %s, not a %s", member.Prop.Name, want[member.Prop.Name], t.Name)})
 		}
 	}

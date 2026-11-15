@@ -287,6 +287,7 @@ var arrayMethodSigs = map[string]sig{
 	"find":      {Label: "find(predicate: (item: any) -> bool) -> any", Params: []string{"predicate"}, Doc: "First matching element, or `null`."},
 	"sort_by":   {Label: "sort_by(key: (item: any) -> any) -> any[]", Params: []string{"key"}, Doc: "New array, ascending by the key each element maps to."},
 	"map":       {Label: "map(transform: (item: any) -> any) -> any[]", Params: []string{"transform"}, Doc: "New array of `transform` applied to each element."},
+	"flat_map":  {Label: "flat_map(transform: (item: any) -> any[]) -> any[]", Params: []string{"transform"}, Doc: "New array concatenating the array each element's transform returns — `dirs.flat_map((d) -> [\"--add-dir\", d])`. A transform result that isn't an array is an error."},
 	"reduce":    {Label: "reduce(combine: (acc: any, item: any) -> any, initial: any) -> any", Params: []string{"combine", "initial"}, Doc: "Folds the array left-to-right starting from `initial`."},
 	"any":       {Label: "any(predicate: (item: any) -> bool) -> bool", Params: []string{"predicate"}, Doc: "Whether `predicate` is true for at least one element (`false` for an empty array)."},
 	"all":       {Label: "all(predicate: (item: any) -> bool) -> bool", Params: []string{"predicate"}, Doc: "Whether `predicate` is true for every element (`true` for an empty array)."},
@@ -320,9 +321,9 @@ var (
 
 var agentMethodSigs = map[string]sig{
 	"run": {
-		Label:  "run(prompt: string | Prompt(...), schema?: string, skills?: [Name, ...]) -> string",
-		Params: []string{"prompt", "schema", "skills"},
-		Doc:    "Runs the agent. `prompt:` (required) is a string literal or a declared `prompt` template call. `schema:` (optional) is a string, usually `json.stringify({...})`. `skills:` (optional) selects, in order, a subset of the agent's declared `skills:` allow-list — each entry a bare declared `skill` name, never a string. Returns the model's response text.",
+		Label:  "run(prompt: string | Prompt(...), schema?: string, skills?: [Name, ...], timeout?: duration) -> string",
+		Params: []string{"prompt", "schema", "skills", "timeout"},
+		Doc:    "Runs the agent. `prompt:` (required) is a string literal or a declared `prompt` template call. `schema:` (optional) is a string, usually `json.stringify({...})`. `skills:` (optional) selects, in order, a subset of the agent's declared `skills:` allow-list — each entry a bare declared `skill` name, never a string. `timeout:` (optional) overrides the agent's own per-attempt `timeout:` for this call (and its fallbacks) — a duration, duration string or number of seconds. Returns the model's response text.",
 	},
 }
 
@@ -400,8 +401,7 @@ func signatureForMethod(path, text string, s symbol, method string) (sig, bool) 
 		x, ok := extensionMethodSigs(path, s.ExtKind, s.ExtProvider)[method]
 		return x, ok
 	case symAgent:
-		x, ok := agentMethodSigs[method]
-		return x, ok
+		return agentRunSig(path, text, s.Name, method)
 	case symRouter:
 		x, ok := routerMethodSigs[method]
 		return x, ok

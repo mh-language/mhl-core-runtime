@@ -1,0 +1,50 @@
+// A `goto` may target a `parallel` group by its own name: the whole group
+// runs again — every branch, then the barrier — exactly as when control
+// falls into it. A branch step inside the group is still not a target
+// (`mhl lint` rejects `goto Lint` below): a jump cannot land past the
+// barrier's other branches.
+
+workflow Checks {
+    input rounds_allowed: number = 2
+
+    var rounds = 0
+    var passed = false
+
+    step Prepare {
+        log("prepare")
+    }
+
+    parallel Verify {
+        step Lint {
+            log("lint")
+        }
+        step UnitTests {
+            log("tests")
+        }
+    }
+
+    step Gate {
+        self.rounds = self.rounds + 1
+        self.passed = self.rounds >= rounds_allowed
+        goto match passed {
+            true -> Done
+            _ -> Verify
+        }
+    }
+
+    step Done {
+        complete()
+    }
+}
+
+test goto_parallel_group {
+    describe reruns_the_whole_group_until_the_gate_passes {
+        var result = Checks.run(inputs: {rounds_allowed: 2})
+        are_equal(result.executed, ["Prepare", "Lint", "UnitTests", "Gate", "Lint", "UnitTests", "Gate", "Done"])
+    }
+
+    describe one_round_needs_no_jump {
+        var result = Checks.run(inputs: {rounds_allowed: 1})
+        are_equal(result.executed, ["Prepare", "Lint", "UnitTests", "Gate", "Done"])
+    }
+}

@@ -1,0 +1,68 @@
+// `entry route` makes a route the workflow's starting point: the run begins
+// by dispatching on the input named like the route's parameter, before any
+// step — so the first declared step no longer starts the run by default.
+// The route runs as a step of its own name (it shows up in `executed`, in
+// step events and in checkpoints) and stays an ordinary route: any step can
+// still `goto Choose(x)` to dispatch through it again.
+//
+// The parameter must name an input (or the typed signature's param) of the
+// same type — `mhl lint` checks it — and a workflow has at most one entry.
+//
+//   mhl run sample/syntax/pipeline_vs_workflow/entry_route_dispatches_on_an_input.mh --input model=Codex
+enum AgentModel { Claude, Codex, All }
+
+workflow Dispatch {
+    input model: AgentModel = AgentModel.Claude
+    var reply = []
+
+    entry route Choose(model: AgentModel) {
+        AgentModel.Claude -> ProcessWithClaude
+        AgentModel.Codex  -> ProcessWithCodex
+        AgentModel.All    -> Fan
+        _ -> fail("no branch matched: ${model}")
+    }
+
+    parallel Fan {
+        step FanLeft  { self.reply = ["claude"] }
+        step FanRight { self.reply = ["codex"] }
+        merge (branches) {
+            self.reply = [...branches.FanLeft.reply, ...branches.FanRight.reply]
+            goto Done
+        }
+    }
+
+    step ProcessWithClaude {
+        self.reply.append("claude")
+        goto Done
+    }
+
+    step ProcessWithCodex {
+        self.reply.append("codex")
+        goto Done
+    }
+
+    step Done {
+        log("reply: ${reply.join(", ")}")
+        complete()
+    }
+}
+
+test entry_route_dispatches_on_an_input {
+    describe the_route_runs_first_and_picks_the_step {
+        var run = Dispatch.run(inputs: {model: "Codex"})
+        is_true(run.ok)
+        are_equal(run.executed, ["Choose", "ProcessWithCodex", "Done"])
+        are_equal(run.vars.reply, ["codex"])
+    }
+
+    describe the_default_input_value_is_dispatched_on_too {
+        var run = Dispatch.run()
+        are_equal(run.executed, ["Choose", "ProcessWithClaude", "Done"])
+    }
+
+    describe the_first_declared_step_does_not_start_the_run {
+        var run = Dispatch.run(inputs: {model: "All"})
+        are_equal(run.executed, ["Choose", "FanLeft", "FanRight", "Done"])
+        are_equal(run.vars.reply, ["claude", "codex"])
+    }
+}

@@ -315,6 +315,25 @@ func TestDefinitionDigestUnchangedByOmitzeroFields(t *testing.T) {
 	}
 }
 
+// Agent.Inputs and Expr.Spread (v1.9) are omitzero: an agent without inputs
+// and arrays without a spread hash exactly as before they existed (the
+// pinned value was computed by the build preceding them), while using either
+// does change the digest.
+func TestDefinitionDigestUnchangedByAgentInputsAndSpread(t *testing.T) {
+	src := "agent A {\n command: \"sh\"\n args: [\"-c\", \"echo ${prompt}\", \"x\"]\n retry: { max_attempts: 2 }\n}\npipeline P {\n step S { var xs = [1, [2, 3]]\n log(A.run(prompt: \"p\")) }\n}\n"
+	const want = "d61b425c14cbb622b2a3357f6c6810dacd965618984aadc8956e195142fea957"
+	if got := digestOfPipeline(t, src, "P"); got != want {
+		t.Fatalf("digest = %s, want %s (the pre-inputs/spread value)", got, want)
+	}
+	withInput := strings.Replace(src, "agent A {\n", "agent A {\n input m: string = \"\"\n", 1)
+	withSpread := strings.Replace(src, "[1, [2, 3]]", "[1, ...[2, 3]]", 1)
+	for name, variant := range map[string]string{"input": withInput, "spread": withSpread} {
+		if digestOfPipeline(t, variant, "P") == want {
+			t.Errorf("using %s must change the digest", name)
+		}
+	}
+}
+
 // Shorthand object fields and named arguments are expanded by the parser,
 // so they hash exactly like the long form they abbreviate.
 func TestDefinitionDigestShorthandEqualsLongForm(t *testing.T) {

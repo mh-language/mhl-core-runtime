@@ -1,0 +1,110 @@
+// A workflow that uses every control-flow shape `mhl graph` reports:
+//
+//   fall-through   Intake -> Enrich (no goto: the next declared step runs)
+//   parallel       Enrich runs Price and Stock concurrently, then joins
+//   goto match     Classify picks a branch per `kind`, `_` fails the run
+//   route          Retry dispatches through the reusable Handle table
+//   guarded goto   Review loops back to Classify while not approved
+//   terminals      pause(...) (human gate), complete(), break, fail(...)
+//   tool calls     Price calls Pricing.unit_price, a method of a declared tool
+//
+//   mhl graph sample/features/graph_and_events/order_triage.mh
+//   mhl run sample/features/graph_and_events/order_triage.mh --format jsonl --input kind=small
+
+// `mhl graph` reports a tool under `declarations` with each method's
+// parameters (name, type, default), return type, `internal` flag and the
+// spans of its header and body (`bodyKind`: "expr" or "block"), plus every
+// `Pricing.` call site in the file (`refs`) — what an editor needs to edit a
+// signature, a body or the tool's name in place.
+tool Pricing {
+    unit_price(kind: string, base: number = 10): number -> base
+
+    label(kind: string): string {
+        return "order:" + kind
+    }
+}
+
+workflow OrderTriage {
+    description: "Routes an order to the right handling path."
+
+    input kind: string = "small"
+    input approved: bool = false
+
+    var price = 0
+    var stock = 0
+    var visits = 0
+    var outcome = ""
+
+    route Handle(k: string) {
+        "small" -> AutoApprove
+        "large" -> Review
+        _ -> fail("unknown kind: " + k)
+    }
+
+    step Intake {
+        visits += 1
+    }
+
+    parallel Enrich timeout 1m {
+        step Price { price = Pricing.unit_price(kind) }
+        step Stock { stock = 3 }
+    }
+
+    step Classify {
+        goto match kind {
+            "small" -> AutoApprove
+            "large" -> Review
+            "retry" -> Retry
+            _ -> fail("unknown kind: " + kind)
+        }
+    }
+
+    step Retry {
+        goto Handle("large")
+    }
+
+    step Review {
+        if (!approved) {
+            pause("approve order of kind " + kind)
+        }
+        outcome = "reviewed"
+        complete()
+    }
+
+    step AutoApprove {
+        outcome = "auto"
+        break "auto-approved"
+    }
+}
+
+test order_triage {
+    describe small_orders_auto_approve {
+        var result = OrderTriage.run(inputs: {kind: "small"})
+        is_true(result.ok)
+        are_equal(result.vars["outcome"], "auto")
+        are_equal(result.vars["price"], 10)
+        are_equal(result.vars["stock"], 3)
+    }
+
+    describe tool_methods_are_callable {
+        are_equal(Pricing.unit_price("small", 4), 4)
+        are_equal(Pricing.label("large"), "order:large")
+    }
+    describe large_orders_pause_for_review {
+        var result = OrderTriage.run(inputs: {kind: "large"})
+        are_equal(result.state, "paused")
+        are_equal(result.pause_reason, "approve order of kind large")
+    }
+    describe approved_large_orders_complete {
+        var result = OrderTriage.run(inputs: {kind: "large", approved: true})
+        are_equal(result.vars["outcome"], "reviewed")
+    }
+    describe retry_goes_through_the_route {
+        var result = OrderTriage.run(inputs: {kind: "retry", approved: true})
+        are_equal(result.vars["outcome"], "reviewed")
+    }
+    describe unknown_kinds_fail {
+        var result = OrderTriage.run(inputs: {kind: "weird"})
+        is_false(result.ok)
+    }
+}

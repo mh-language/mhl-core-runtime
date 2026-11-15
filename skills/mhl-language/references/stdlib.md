@@ -29,9 +29,11 @@ string), `trim()`, `to_upper()`, `to_lower()`, `substring(start, end)` and
 
 **Array:** `get_index(i)` (raises out of range), `index_of(value)` (`-1` when absent),
 `contains(value)`, `filter(pred)`, `find(pred)` (`null` when absent), `sort_by(key)`,
-`map(fn)`, `reduce(fn, initial)`, `any(pred)`, `all(pred)`, `append(value)`, `join(sep)`,
+`map(fn)`, `flat_map(fn)` (`fn` returns an array; the results are concatenated),
+`reduce(fn, initial)`, `any(pred)`, `all(pred)`, `append(value)`, `join(sep)`,
 `unique()`, `enumerate()` (`{index, value}` items). All return new arrays. Slices:
-`xs[1..4]`, `xs[..3]`, `xs[3..]`, `xs[^3..]`.
+`xs[1..4]`, `xs[..3]`, `xs[3..]`, `xs[^3..]`. Spread, only inside an array literal:
+`["a", ...xs, "b"]` (`[]` inserts nothing, `null` raises).
 
 **Object:** `keys()` (sorted), `values()`, `get(key, default?)` (never raises).
 

@@ -79,7 +79,7 @@ func checkPipelineInputTypes(file string, prog *ast.Program, aliases map[string]
 		for _, in := range pipelineInputs(decl.Pipeline) {
 			if _, ok := types.FromExprAlias(in.Type, aliases); !ok {
 				findings = append(findings, Finding{
-					File:    file,
+					File:    fileAt(file, in.Pos),
 					Line:    in.Pos.Line,
 					Column:  in.Pos.Column,
 					Message: fmt.Sprintf("input %q: unrecognized type %q", in.Name, in.Type),
@@ -111,7 +111,7 @@ func checkToolMethodReturnTypes(file string, prog *ast.Program, aliases map[stri
 			declared, ok := types.FromExprAlias(m.Returns, aliases)
 			if !ok {
 				findings = append(findings, Finding{
-					File:    file,
+					File:    fileAt(file, m.Pos),
 					Line:    m.Pos.Line,
 					Column:  m.Pos.Column,
 					Message: fmt.Sprintf("tool %q: %s: unrecognized return type %q", decl.Tool.Name, m.Name, m.Returns),
@@ -124,7 +124,7 @@ func checkToolMethodReturnTypes(file string, prog *ast.Program, aliases map[stri
 					continue
 				}
 				if err := types.Check(fmt.Sprintf("tool %q: %s: return value", decl.Tool.Name, m.Name), declared, lv); err != nil {
-					findings = append(findings, Finding{File: file, Line: m.Pos.Line, Column: m.Pos.Column, Message: err.Error()})
+					findings = append(findings, Finding{File: fileAt(file, m.Pos), Line: m.Pos.Line, Column: m.Pos.Column, Message: err.Error()})
 				}
 			}
 		}

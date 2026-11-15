@@ -1,0 +1,85 @@
+// A coding CLI usually needs more than argv: it must start inside the repo it
+// edits, its stdout should be watchable live, and when it fails the reason is
+// often in its own JSON output rather than on stderr. These used to need a
+// bash wrapper (`cd "$repo" && exec cli ... | tee live.log`). The agent block
+// now covers all three, with no shell and the same behavior on Windows:
+//
+//   cwd:      the directory the process starts in; any string expression,
+//             evaluated on every call; it must exist or the call fails before
+//             anything starts.
+//   log:      a literal path, or an expression evaluated per call ("" = off);
+//   log_mode: "append" (default) or "truncate" (each attempt starts empty).
+//
+// A non-zero exit's error ends with `partial stdout:` and the stdout tail;
+// retry_on never matches that part.
+tool Workspace {
+    repo(): string -> fs.read("/tmp/mhl-sample-cwd/selected").trim()
+    live(): string -> "/tmp/mhl-sample-cwd/live/coder.log"
+}
+
+agent Where {
+    command: "sh"
+    args: ["-c", "pwd -P"]
+    cwd: Workspace.repo()
+}
+
+agent Missing {
+    command: "sh"
+    args: ["-c", "echo started"]
+    cwd: "/tmp/mhl-sample-cwd/does-not-exist"
+}
+
+// The first attempt fails, the retry succeeds: with "truncate" the live log
+// only shows the attempt that is actually running.
+agent Coder {
+    command: "sh"
+    args: ["-c", "if [ -e /tmp/mhl-sample-cwd/tried ]; then echo second-attempt; else touch /tmp/mhl-sample-cwd/tried; echo first-attempt; exit 1; fi"]
+    log: Workspace.live()
+    log_mode: "truncate"
+    retry: { max_attempts: 2, delay: 10ms }
+}
+
+// Codex-style: the reason for the failure is a JSON event on stdout.
+agent Failing {
+    command: "sh"
+    args: ["-c", "echo '{\"type\":\"error\",\"message\":\"quota exceeded\"}'; exit 1"]
+}
+
+test agent_runs_a_cli_without_a_wrapper {
+    describe cwd_is_evaluated_on_every_call {
+        fs.write("/tmp/mhl-sample-cwd/selected", "/")
+        are_equal(Where.run(prompt: "x"), "/")
+        fs.write("/tmp/mhl-sample-cwd/selected", "/usr")
+        are_equal(Where.run(prompt: "x"), "/usr")
+    }
+
+    describe a_missing_cwd_fails_before_starting {
+        var message = ""
+        try {
+            Missing.run(prompt: "x")
+        } catch (e) {
+            message = e
+        }
+        is_true(message.contains("cwd not found: /tmp/mhl-sample-cwd/does-not-exist"))
+    }
+
+    describe truncate_keeps_only_the_current_attempt {
+        fs.write("/tmp/mhl-sample-cwd/tried", "")
+        fs.delete("/tmp/mhl-sample-cwd/tried")   // a fresh first attempt every run
+        are_equal(Coder.run(prompt: "x"), "second-attempt")
+        var live = fs.read(Workspace.live())
+        is_true(live.contains("second-attempt"))
+        is_false(live.contains("first-attempt"))
+    }
+
+    describe the_stdout_tail_explains_the_failure {
+        var message = ""
+        try {
+            Failing.run(prompt: "x")
+        } catch (e) {
+            message = e
+        }
+        is_true(message.contains("failed: exit status 1"))
+        is_true(message.contains("partial stdout: {\"type\":\"error\",\"message\":\"quota exceeded\"}"))
+    }
+}

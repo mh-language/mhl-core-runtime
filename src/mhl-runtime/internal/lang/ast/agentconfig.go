@@ -19,8 +19,10 @@ import (
 // properties for internal/lang/lint. `command`/`args` may be any expression
 // — `command: env("MODEL_CMD")`, `args: ["-p", env("MODEL_FLAG")]` — not
 // just a string literal, so a value that fails to unwrap as one is not by
-// itself an error; only a genuinely missing `command`, or an `args` that
-// isn't even array-shaped, is. The literal command/args are still returned
+// itself an error; only a genuinely missing `command`, or an `args` that is
+// a literal of some other shape (a string, a number, an object), is. `args`
+// may also be a whole expression that yields the array at run time —
+// `args: Flags.for(model)` — which is likewise left to the interpreter. The literal command/args are still returned
 // when they happen to be literals (lint's only use of them: checking
 // err == nil), but resolving a non-literal value is
 // interpreter.resolveAgentCommand's job (agent.go) — it evaluates the full
@@ -36,7 +38,7 @@ func AgentCommand(agent *Agent) (command string, args []string, err error) {
 		case "args":
 			if a, ok := StringArrayValue(prop.Value); ok {
 				args = a
-			} else if BareArray(prop.Value) == nil {
+			} else if v, literal := LiteralValue(prop.Value); literal && !isAnyArray(v) {
 				return "", nil, fmt.Errorf("agent %q args must be an array of strings", agent.Name)
 			}
 		}
@@ -45,6 +47,11 @@ func AgentCommand(agent *Agent) (command string, args []string, err error) {
 		return "", nil, fmt.Errorf("agent %q has no command", agent.Name)
 	}
 	return command, args, nil
+}
+
+func isAnyArray(v any) bool {
+	_, ok := v.([]any)
+	return ok
 }
 
 // AgentEngine reads the agent's engine property. ok is false when the

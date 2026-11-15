@@ -32,6 +32,23 @@ not `mhl test` — pipelines aren't assertions, they're programs.
   ```
   mhl run sample/features/pipelines/parallel_steps_pipeline_example.mh --input topic=caching
   ```
+- [parallel_merge_workflow_example.mh](parallel_merge_workflow_example.mh) — a `parallel`
+  group's optional `merge (branches) { ... }` block, last in the group, is its explicit join:
+  it runs once after every branch (as the step `Ask.merge`), in the workflow's scope, with
+  `branches.<Step>.<var>` holding what each branch left. Branches may then assign the same
+  var — the merge must assign it (`self.replies = [...branches.A.replies, ...]`); vars the
+  branches agree on are already merged. Run with:
+  ```
+  mhl run sample/features/pipelines/parallel_merge_workflow_example.mh --input question=caching
+  ```
+- [parallel_group_vars_workflow_example.mh](parallel_group_vars_workflow_example.mh) — a
+  `parallel` group's own `var`s, declared before its branches: fresh each time the group
+  starts (a `goto` back to it starts them over), read and written as `self.x` by its branches
+  and its merge, gone after it. Each branch fills its own, and a `merge { ... }` (no
+  `branches` needed) combines them. Run with:
+  ```
+  mhl run sample/features/pipelines/parallel_group_vars_workflow_example.mh --input question=caching
+  ```
 - [context_pipeline_example.mh](context_pipeline_example.mh) — a `context: { source, require }`
   block exposes the read-only `context` accessor (`context.session_id`, `context.started_at`,
   `context.resumed`, `context.vars`) to every step, carrying the previous completed run's

@@ -12,10 +12,13 @@ work around the model: it fetches the data, builds the prompt, and validates the
 
 ## Declaring an agent
 
-The runtime reads exactly: `engine`, `command`, `args`, `stdin`, `endpoint`, `temperature`,
-`log`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`, `skills`, `system_prompt`,
-`before`, `after`, `description`. Anything else is a lint error, including `timeout` (use
-a step's `timeout` clause) and `api_key` (let the CLI read its own environment).
+The runtime reads exactly: `engine`, `command`, `args`, `stdin`, `cwd`, `endpoint`,
+`temperature`, `log`, `log_mode`, `trace`, `retry`, `cache`, `rate_limit`, `fallback`,
+`timeout`, `kill_grace`, `skills`, `system_prompt`, `before`, `after`, `description`.
+Anything else fails both `mhl lint` and the call itself, including `api_key` (let the CLI
+read its own environment). `Name.run(...)` takes only `prompt`, `schema`, `skills`,
+`timeout` and the agent's own declared `input`s. Any other argument is an error, not an
+ignored extra.
 
 ```mh
 agent Claude {
@@ -28,6 +31,7 @@ agent Claude {
         delay: 2s
         retry_on: [500, 503, "timeout", "rate_limit"]
     }
+    timeout: 10m                            // per attempt
     cache: { ttl: 10m, storage: "disk" }
     rate_limit: { requests_per_minute: 20, concurrency: 2 }
 }
@@ -43,7 +47,8 @@ agent Local {
 **Placeholders.** `"${prompt}"` and `"${schema}"` are recognized only as a **whole**
 `args:` element. `"pre ${prompt}"` is a lint error. Without either placeholder, the prompt
 is appended as the last argument. An `args:` element may also be an expression
-(`env("FLAG", "x")`).
+(`env("FLAG", "x")`). A `"${name}"` naming a declared `input` is substituted anywhere in a
+literal `args:` element or in `stdin:`.
 
 **Large prompts** go through `stdin:` instead of `args:`, where placeholders are
 substituted anywhere in the string. Whole documents in argv hit the ~32 KB command-line
@@ -60,6 +65,89 @@ agent Summarizer {
 test summarizer {
     describe prompt_arrives_on_stdin {
         are_equal(Summarizer.run(prompt: "a long document"), "a long document")
+    }
+}
+```
+
+**Give every network-bound agent a `timeout:`.** Without one, a CLI that hangs on a dead
+connection hangs the step forever. The deadline applies per attempt. When it elapses, the
+agent's whole process group gets SIGTERM, then SIGKILL after `kill_grace:` (default
+`10s`). The call then fails with `agent "Name" timeout after 10m: <stderr tail>`. A
+timeout is retried only when `retry_on` lists `"timeout"` (or `retry_on` is absent), so
+leave `"timeout"` out for agents that edit files. `Name.run(..., timeout: 45m)` overrides
+the deadline for one call. The value may also be an expression that yields a duration
+string, such as `"30m"`.
+
+```mh
+agent Hung {
+    command: "sh"
+    args: ["-c", "sleep 5"]                 // stands in for a CLI stuck on the network
+    timeout: 200ms
+}
+
+test hung_agent {
+    describe times_out_and_finally_runs {
+        var message = ""
+        var cleaned = false
+        try {
+            Hung.run(prompt: "x")
+        } catch (e) {
+            message = e
+        } finally {
+            cleaned = true
+        }
+        is_true(message.contains("timeout after 200ms"))
+        is_true(cleaned)
+    }
+}
+```
+
+**Run the CLI directly, not through a wrapper script.** Declare what changes per call as
+inputs: `input repo: string`, `input model: string = "auto"`. A call fills them by name,
+`Coder.run(prompt: task, repo: "/abs")`. An input without a default is required, and a
+name the agent doesn't declare is an error. `args`, `cwd`, `stdin`, `log`, `timeout` and
+the hooks read inputs by name. The `prompt:` argument doesn't see them. A fallback gets the
+same inputs, so it must declare them all.
+
+- `cwd:` sets the directory the process starts in. It must exist, or the call fails before
+  anything starts. A relative `command:` such as `"./bin/x"` still resolves against mhl's
+  directory.
+- `...expr` inside `args:` splices in a string array. `[]` inserts nothing, so
+  `...(if (e.is_empty()) [] else ["--effort", e])` drops a flag pair, and
+  `...dirs.flat_map((d) -> ["--add-dir", d])` repeats one. A `null` spread is an error.
+- `log:` streams stdout live into a file. `""` turns it off for that call. Add
+  `log_mode: "truncate"` so each retry starts the file empty.
+- When the process exits non-zero, the error ends with `partial stdout:` and the tail of
+  its stdout. `retry_on` never matches that part.
+
+```mh
+agent Coder {
+    input repo: string
+    input effort: string = ""
+    input dirs: string[] = []
+    input live: string = ""
+
+    command: "sh"
+    // stands in for a coding CLI: prints its directory and argv
+    args: [
+        "-c", "echo \"$(pwd -P) $*\"", "sh",
+        ...(if (effort.is_empty()) [] else ["--effort", effort]),
+        ...dirs.flat_map((d) -> ["--add-dir", d])
+    ]
+    stdin: "${prompt}"
+    cwd: repo                               // per call: no `cd` wrapper
+    log: live
+    log_mode: "truncate"
+}
+
+test coder_in_repo {
+    describe inputs_shape_each_call {
+        are_equal(Coder.run(prompt: "fix", repo: "/"), "/")
+        are_equal(
+            Coder.run(prompt: "fix", repo: "/", effort: "high", dirs: ["/a"], live: "/tmp/mhl-skill-live/coder.log"),
+            "/ --effort high --add-dir /a"
+        )
+        is_true(fs.read("/tmp/mhl-skill-live/coder.log").contains("--add-dir /a"))
     }
 }
 ```

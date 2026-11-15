@@ -32,6 +32,7 @@ Commands:
   run <file.mh> [flags]      Execute a pipeline or workflow
   test <file.mh|dir>         Run every test { ... } block in a file or directory
   lint [dir]                 Statically check .mh files (default ".")
+  graph <file.mh> [--stdin]  Print a file's workflow control-flow graph as JSON
   lsp                        Start the language server over stdio (used by vscode-mhl)
   serve <mcp|a2a> [flags]    Expose workflows as MCP tools or A2A skills
   pack <dir> -o <file>       Seal a workflow directory into an encrypted pack
@@ -40,10 +41,11 @@ Commands:
   help                       Show this help (aliases: -h, --help)
 
 Flags for "run":
+  --workflow <name>          Run this pipeline/workflow (default: the first in the file)
   --input key=value          Bind a pipeline input (repeatable)
   --resume [--force]         Resume from the last checkpoint; --force ignores a shape change
   --session <id>             Reuse a named session for durable state
-  --format text|json         Output format (default "text")
+  --format text|json|jsonl   Output format (default "text"); jsonl streams step events
   --dry-run                  Validate and print the static plan without executing
 
 Examples:
@@ -111,11 +113,16 @@ overwrites an existing file.
 Execute a pipeline or workflow.
 
 Flags:
+  --workflow <name>     Run this declared pipeline/workflow (default: the first
+                        entry point in the file)
   --input key=value     Bind a pipeline input (repeatable)
   --resume              Resume from the last saved checkpoint
   --force               With --resume, proceed even if the pipeline shape changed
   --session <id>        Reuse a named session for durable state
-  --format text|json    Output format (default "text"); json emits one typed object
+  --format text|json|jsonl
+                        Output format (default "text"); json emits one typed
+                        object at the end, jsonl streams one event per line
+                        (run_start, step_start, step_end, log, result)
   --dry-run             Validate (parse, imports, lint, input contract) and print
                         the static plan without executing any step
 
@@ -154,6 +161,21 @@ or misconfigured agents, syntax errors — each with a file and line.
 
   mhl lint
   mhl lint ./workflows
+`,
+	"graph": `mhl graph <file.mh> [--stdin]
+
+Print the control-flow graph of every workflow/pipeline in file.mh as one
+JSON object: steps and parallel groups (nodes), fall-through, goto, goto
+match, route and terminal transitions (edges), the declarations a workflow
+can call, and parse/lint diagnostics. Every node and edge carries the byte
+span it came from, so an editor can turn a graph edit into a text edit.
+With --stdin the source is read from stdin and file.mh only names it
+(imports resolve relative to it). A source that does not parse reports
+"ok": false with its diagnostics and still exits 0. Meant for editors
+and visual workflow tools.
+
+  mhl graph main.mh
+  cat main.mh | mhl graph main.mh --stdin
 `,
 	"lsp": `mhl lsp
 

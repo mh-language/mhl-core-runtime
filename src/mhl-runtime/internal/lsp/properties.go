@@ -55,30 +55,45 @@ var contextFieldItems = []completionItem{
 }
 
 // agentPropertyItems lists only what internal/engine/interpreter/agent.go
-// actually reads (agentEngine/agentCommand/agentOllamaConfig/agentLogPath/
+// actually reads (agentEngine/agentCommand/agentOllamaConfig/resolveAgentLog/resolveAgentCwd/
 // agentTrace/agentRetry/agentCache/agentLimiter/agentFallback/agentHookExpr)
 // — not every field docs/site/reference.html may still show aspirationally
-// (api_key, timeout, system_instructions aren't implemented yet), so this
+// (api_key, system_instructions aren't implemented yet), so this
 // list doesn't suggest config an agent declaration can write but the runtime
 // will silently ignore.
 var agentPropertyItems = []completionItem{
 	propertyItem("engine", `e.g. "cli/claude-code", "ollama/qwen2.5-coder"`),
 	propertyItem("command", "cli/* engine: the executable to run"),
-	propertyItem("args", "cli/* engine: argv (supports ${prompt}/${schema} placeholders)"),
-	propertyItem("stdin", "cli/* engine: text written to the subprocess's standard input (supports ${prompt}/${schema}, substituted wherever they appear). Keeps large content out of argv — needed on Windows, where CreateProcess caps the whole command line at ~32,767 characters"),
+	propertyItem("args", "cli/* engine: argv — an array (supports ${prompt}/${schema} placeholders as whole elements, ${name} of a declared input anywhere in an element, and ...expr to splice in a string array, [] inserting nothing), or any expression yielding a string array"),
+	propertyItem("stdin", "cli/* engine: text written to the subprocess's standard input (supports ${prompt}/${schema} and ${name} of a declared input, substituted wherever they appear). Keeps large content out of argv — needed on Windows, where CreateProcess caps the whole command line at ~32,767 characters"),
+	propertyItem("cwd", "cli/* engine: directory the process starts in — any string expression, evaluated per call; relative to mhl's working directory; must exist (the call fails before starting otherwise); \"\" = mhl's own"),
 	propertyItem("endpoint", "ollama/* engine: server URL"),
 	propertyItem("temperature", "ollama/* engine only"),
-	propertyItem("log", "cli/* engine: file path every call's raw stdout is appended to (interpolated for ${...} spans, e.g. ${context.session_id}, so each run gets its own file)"),
+	propertyItem("log", "cli/* engine: file path every call's raw stdout streams into, line by line — a string (interpolated for ${...} spans, e.g. ${context.session_id}) or any expression evaluated per call; \"\" turns it off for that call"),
+	propertyItem("log_mode", `"append" (default: every attempt adds to the file) or "truncate" (each attempt starts the file empty)`),
 	propertyItem("trace", "boolean: echo calling/response lines to the console (default off)"),
 	propertyItem("retry", "{ max_attempts, delay, retry_on, backoff }"),
 	propertyItem("cache", "{ ttl, storage, strategy }"),
 	propertyItem("rate_limit", "{ requests_per_minute, concurrency, on_exceeded }"),
 	propertyItem("fallback", "array of inline agent {...} literals or declared agent names"),
+	propertyItem("timeout", "duration (e.g. 30m), duration string or seconds: per-attempt deadline — on expiry the process tree gets SIGTERM, then SIGKILL after kill_grace, and the call fails with a `timeout` error retry_on can match"),
+	propertyItem("kill_grace", "duration (default 10s): wait between SIGTERM and SIGKILL once timeout elapses; 0s kills at once (Windows always kills at once)"),
 	propertyItem("skills", "array of declared skill names this agent may receive via run(skills: [...]) — requires system_prompt"),
 	propertyItem("system_prompt", "(skills, prompt) -> string: composes the outgoing prompt when a call selects skills; skills is a list of {name, frontmatter, content}"),
 	propertyItem("before", "() -> {...}: runs once before the prompt is built; its returned object's fields become ${...} bindings"),
 	propertyItem("after", "() -> {...}: runs once on the final response (bound as result); a returned string replaces it"),
 	propertyItem("description", "string: optional summary of what this agent is for; a router's decider folds it into the decision prompt alongside the agent's name"),
+}
+
+// agentInputItem is the `input name: type [= default]` declaration an agent
+// body may carry alongside its properties (ast.Agent.Inputs) — a per-call
+// parameter `.run(prompt: ..., name: value)` fills.
+var agentInputItem = completionItem{
+	Label:            "input",
+	Kind:             kindKeyword,
+	Detail:           "per-call parameter: `input name: type [= default]`, filled by `.run(prompt: ..., name: value)` and readable by args, cwd, stdin, log, timeout and the hooks",
+	InsertText:       "input ${1:name}: ${2:string}",
+	InsertTextFormat: insertTextFormatSnippet,
 }
 
 // routerPropertyItems is what's valid directly inside a `router { ... }`
@@ -140,7 +155,9 @@ func propertyItemsFor(path string, stack []blockRef) []completionItem {
 		items = append(items, loopPipelineExtraPropertyItems...)
 		return items
 	case blockAgent:
-		return agentPropertyItems
+		items := make([]completionItem, 0, len(agentPropertyItems)+1)
+		items = append(items, agentInputItem)
+		return append(items, agentPropertyItems...)
 	case blockRouter:
 		return routerPropertyItems
 	case blockCheckpoint:

@@ -11,11 +11,28 @@ func configureProcessGroup(command *exec.Cmd) {
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
-func killProcessGroup(command *exec.Cmd) {
-	if command.Process != nil {
-		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
-	}
+// processTree is a started command's whole process group — the leader
+// configureProcessGroup made it, plus every descendant that didn't leave the
+// group (setsid). Signals go to the negative pid, i.e. the group.
+type processTree struct{ pid int }
+
+func attachProcessTree(command *exec.Cmd) *processTree {
+	return &processTree{pid: command.Process.Pid}
 }
+
+// terminate asks the whole group to exit (SIGTERM), leaving it room to flush
+// its final state. It reports true: Unix always has a polite request.
+func (t *processTree) terminate() bool {
+	_ = syscall.Kill(-t.pid, syscall.SIGTERM)
+	return true
+}
+
+// kill forcibly ends every process still in the group (SIGKILL).
+func (t *processTree) kill() {
+	_ = syscall.Kill(-t.pid, syscall.SIGKILL)
+}
+
+func (t *processTree) release() {}
 
 // checkCommandLineLength is a no-op outside Windows: execve's ARG_MAX on
 // macOS/Linux is on the order of 1-2MB (getconf ARG_MAX), dozens of times

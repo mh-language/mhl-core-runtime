@@ -23,7 +23,7 @@ func checkLoopMax(file string, prog *ast.Program) []Finding {
 			continue
 		}
 		add := func(msg string) {
-			findings = append(findings, Finding{File: file, Line: p.Pos.Line, Column: p.Pos.Column, Message: msg})
+			findings = append(findings, Finding{File: fileAt(file, p.Pos), Line: p.Pos.Line, Column: p.Pos.Column, Message: msg})
 		}
 		if n, err := strconv.Atoi(p.Max); err != nil || n <= 0 {
 			add(fmt.Sprintf("%s %q: max %q is not a positive integer (e.g. max 3)", pipelineKind(p), p.Name, p.Max))
@@ -107,7 +107,7 @@ func checkLoopStopWhen(file string, prog *ast.Program) []Finding {
 				}
 				seen[name] = true
 				findings = append(findings, Finding{
-					File: file, Line: member.Prop.Pos.Line, Column: member.Prop.Pos.Column,
+					File: fileAt(file, member.Prop.Pos), Line: member.Prop.Pos.Line, Column: member.Prop.Pos.Column,
 					Message: fmt.Sprintf("loop pipeline %q: stop_when references var %q, but stop_when never sees pipeline vars and they reset every iteration anyway — use memory (e.g. a kv memory's get/set) for state stop_when needs to read", decl.Pipeline.Name, name),
 				})
 			})

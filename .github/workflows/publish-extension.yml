@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: vscode-mhl
+        working-directory: src/vscode-mhl
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: vscode-mhl/package-lock.json
+          cache-dependency-path: src/vscode-mhl/package-lock.json
 
       - name: Check the tag matches package.json
         run: |
@@ -49,7 +49,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vsix
-          path: vscode-mhl/mhl-language.vsix
+          path: src/vscode-mhl/mhl-language.vsix
           if-no-files-found: error
 
   # Only this job can mint an OIDC token, and it installs nothing from the repo.

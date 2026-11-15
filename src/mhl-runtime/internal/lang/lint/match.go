@@ -37,13 +37,13 @@ func checkOneMatch(file string, prog *ast.Program, m *ast.MatchExpr, declared ma
 			continue
 		}
 		if wildcardAt != -1 {
-			findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, arm.Pos), Line: arm.Pos.Line, Column: arm.Pos.Column,
 				Message: "match arm is unreachable: it follows the `_` wildcard"})
 			continue
 		}
 		key := patternKey(arm.Pattern)
 		if key != "" && seen[key] {
-			findings = append(findings, Finding{File: file, Line: arm.Pos.Line, Column: arm.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, arm.Pos), Line: arm.Pos.Line, Column: arm.Pos.Column,
 				Message: fmt.Sprintf("duplicate match pattern %s", key)})
 		}
 		seen[key] = true
@@ -69,7 +69,7 @@ func checkOneMatch(file string, prog *ast.Program, m *ast.MatchExpr, declared ma
 		}
 		if len(missing) > 0 {
 			sort.Strings(missing)
-			findings = append(findings, Finding{File: file, Line: m.Pos.Line, Column: m.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, m.Pos), Line: m.Pos.Line, Column: m.Pos.Column,
 				Message: fmt.Sprintf("match on enum %q is not exhaustive: missing %s", enumName, strings.Join(missing, ", "))})
 		}
 		return findings
@@ -92,7 +92,7 @@ func checkOneMatch(file string, prog *ast.Program, m *ast.MatchExpr, declared ma
 			}
 		}
 		if len(missing) > 0 {
-			findings = append(findings, Finding{File: file, Line: m.Pos.Line, Column: m.Pos.Column,
+			findings = append(findings, Finding{File: fileAt(file, m.Pos), Line: m.Pos.Line, Column: m.Pos.Column,
 				Message: fmt.Sprintf("match on bool is not exhaustive: missing %s", strings.Join(missing, ", "))})
 		}
 	}

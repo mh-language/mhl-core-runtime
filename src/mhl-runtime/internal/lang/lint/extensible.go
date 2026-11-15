@@ -34,12 +34,12 @@ func checkOneExtensible(file string, ext *ast.Extensible) []Finding {
 			switch {
 			case manifestCount > 1:
 				findings = append(findings, Finding{
-					File: file, Line: item.Pos.Line, Column: item.Pos.Column,
+					File: fileAt(file, item.Pos), Line: item.Pos.Line, Column: item.Pos.Column,
 					Message: `extensible ` + ext.Kind + `: "manifest" declared more than once`,
 				})
 			case ast.BareObject(item.Manifest) == nil:
 				findings = append(findings, Finding{
-					File: file, Line: item.Pos.Line, Column: item.Pos.Column,
+					File: fileAt(file, item.Pos), Line: item.Pos.Line, Column: item.Pos.Column,
 					Message: `extensible ` + ext.Kind + `: "manifest" must be a literal object, e.g. { id: "...", api_version: "1", executable: "..." }`,
 				})
 			}
@@ -47,7 +47,7 @@ func checkOneExtensible(file string, ext *ast.Extensible) []Finding {
 			for _, p := range item.Properties {
 				if seenProps[p.Name] {
 					findings = append(findings, Finding{
-						File: file, Line: p.Pos.Line, Column: p.Pos.Column,
+						File: fileAt(file, p.Pos), Line: p.Pos.Line, Column: p.Pos.Column,
 						Message: `extensible ` + ext.Kind + `: property "` + p.Name + `" declared more than once`,
 					})
 				}
@@ -57,14 +57,14 @@ func checkOneExtensible(file string, ext *ast.Extensible) []Finding {
 			m := item.Method
 			if seenMethods[m.Name] {
 				findings = append(findings, Finding{
-					File: file, Line: m.Pos.Line, Column: m.Pos.Column,
+					File: fileAt(file, m.Pos), Line: m.Pos.Line, Column: m.Pos.Column,
 					Message: `extensible ` + ext.Kind + `: method "` + m.Name + `" declared more than once`,
 				})
 			}
 			seenMethods[m.Name] = true
 			if m.LegacyArrow {
 				findings = append(findings, Finding{
-					File: file, Line: m.Pos.Line, Column: m.Pos.Column,
+					File: fileAt(file, m.Pos), Line: m.Pos.Line, Column: m.Pos.Column,
 					Message: `extensible ` + ext.Kind + `: method "` + m.Name + `" declares its return type with "->"; write it after ":" like a tool method, e.g. ` + m.Name + `(...): ` + m.Returns.String(),
 				})
 			}
@@ -72,7 +72,7 @@ func checkOneExtensible(file string, ext *ast.Extensible) []Finding {
 	}
 	if manifestCount == 0 {
 		findings = append(findings, Finding{
-			File: file, Line: ext.Pos.Line, Column: ext.Pos.Column,
+			File: fileAt(file, ext.Pos), Line: ext.Pos.Line, Column: ext.Pos.Column,
 			Message: `extensible ` + ext.Kind + `: missing a "manifest: { ... }" block`,
 		})
 	}

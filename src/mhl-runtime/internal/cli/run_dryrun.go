@@ -17,10 +17,10 @@ const dryRunScope = "dry-run: validated parse, imports, lint and the input contr
 // dryRunPipeline validates file and prints its static plan without executing
 // anything. It exits non-zero when lint finds a problem or the input contract
 // is not satisfied.
-func dryRunPipeline(out io.Writer, file string, inputs map[string]any, format string) error {
+func dryRunPipeline(out io.Writer, file, workflow string, inputs map[string]any, format string) error {
 	findings := lint.File(file)
 
-	ins, err := execsvc.Inspect(execsvc.Request{Source: file, Inputs: inputs})
+	ins, err := execsvc.Inspect(execsvc.Request{Source: file, Workflow: workflow, Inputs: inputs})
 	if err != nil {
 		if format == "json" {
 			enc := json.NewEncoder(out)
@@ -74,7 +74,11 @@ func printDryRunText(out io.Writer, ins *execsvc.Inspection, warnings []string) 
 	fmt.Fprintf(out, "  steps (%d):\n", len(ins.Steps))
 	for i, st := range ins.Stages {
 		if st.Parallel {
-			fmt.Fprintf(out, "    %2d. parallel %s: %v\n", i+1, st.Name, st.Steps)
+			line := fmt.Sprintf("    %2d. parallel %s: %v", i+1, st.Name, st.Steps)
+			if st.Merge != "" {
+				line += " → merge"
+			}
+			fmt.Fprintln(out, line)
 		} else {
 			line := fmt.Sprintf("    %2d. %s", i+1, st.Name)
 			if d, ok := ins.StepTimeouts[st.Name]; ok {

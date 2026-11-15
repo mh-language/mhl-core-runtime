@@ -42,7 +42,7 @@ func checkPipelineContext(file string, prog *ast.Program) []Finding {
 				}
 				if !knownContextKeys[key] {
 					findings = append(findings, Finding{
-						File: file, Line: member.Prop.Pos.Line, Column: member.Prop.Pos.Column,
+						File: fileAt(file, member.Prop.Pos), Line: member.Prop.Pos.Line, Column: member.Prop.Pos.Column,
 						Message: fmt.Sprintf("pipeline %q: context block has unknown key %q (known: require, source)", decl.Pipeline.Name, key),
 					})
 					continue
@@ -50,7 +50,7 @@ func checkPipelineContext(file string, prog *ast.Program) []Finding {
 				if key == "source" {
 					if s, ok := ast.StringValue(f.Value); ok && !validContextSource(s) {
 						findings = append(findings, Finding{
-							File: file, Line: member.Prop.Pos.Line, Column: member.Prop.Pos.Column,
+							File: fileAt(file, member.Prop.Pos), Line: member.Prop.Pos.Line, Column: member.Prop.Pos.Column,
 							Message: fmt.Sprintf("pipeline %q: context source %q is not recognized — use \"latest\" or \"session:<id>\"", decl.Pipeline.Name, s),
 						})
 					}
