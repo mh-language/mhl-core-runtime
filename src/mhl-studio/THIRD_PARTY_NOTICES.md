@@ -8,11 +8,10 @@ the app, and the bundled `mhl` runtime.
 
 ## npm packages
 
-Production dependencies of the frontend bundle (`npm ls --omit=dev`).
+Production dependencies of the frontend bundle (package-lock.json, without dev-only packages).
 
 | Package | Version | License | Source |
 | --- | --- | --- | --- |
-| @emnapi/wasi-threads | 2.2.0 | MIT | https://github.com/toyobayashi/emnapi |
 | @shikijs/core | 4.6.0 | MIT | https://github.com/shikijs/shiki |
 | @shikijs/engine-javascript | 4.6.0 | MIT | https://github.com/shikijs/shiki |
 | @shikijs/engine-oniguruma | 4.6.0 | MIT | https://github.com/shikijs/shiki |
@@ -32,8 +31,6 @@ Production dependencies of the frontend bundle (`npm ls --omit=dev`).
 | @types/d3-zoom | 3.0.9 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | @types/hast | 3.0.5 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | @types/mdast | 4.0.4 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
-| @types/react | 19.3.0 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
-| @types/react-dom | 19.3.0 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | @types/trusted-types | 2.0.7 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | @types/unist | 3.0.3 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | @ungap/structured-clone | 1.4.0 | ISC | https://github.com/ungap/structured-clone |
@@ -44,7 +41,6 @@ Production dependencies of the frontend bundle (`npm ls --omit=dev`).
 | character-entities-legacy | 3.0.0 | MIT | wooorm/character-entities-legacy |
 | classcat | 5.0.5 | MIT | jorgebucaran/classcat |
 | comma-separated-tokens | 2.0.3 | MIT | wooorm/comma-separated-tokens |
-| csstype | 3.2.3 | MIT | https://github.com/frenic/csstype |
 | d3-color | 3.1.1 | ISC | https://github.com/d3/d3-color |
 | d3-dispatch | 3.0.2 | ISC | https://github.com/d3/d3-dispatch |
 | d3-drag | 3.0.1 | ISC | https://github.com/d3/d3-drag |
@@ -82,7 +78,6 @@ Production dependencies of the frontend bundle (`npm ls --omit=dev`).
 | space-separated-tokens | 2.0.2 | MIT | wooorm/space-separated-tokens |
 | stringify-entities | 4.0.4 | MIT | wooorm/stringify-entities |
 | trim-lines | 3.0.1 | MIT | wooorm/trim-lines |
-| tslib | 2.9.1 | 0BSD | https://github.com/Microsoft/tslib |
 | unist-util-is | 6.0.1 | MIT | syntax-tree/unist-util-is |
 | unist-util-position | 5.0.0 | MIT | syntax-tree/unist-util-position |
 | unist-util-stringify-position | 4.0.0 | MIT | syntax-tree/unist-util-stringify-position |
@@ -96,32 +91,6 @@ Production dependencies of the frontend bundle (`npm ls --omit=dev`).
 | zwitch | 2.0.4 | MIT | wooorm/zwitch |
 
 ### npm packages: license texts
-
-Used by: @emnapi/wasi-threads 2.2.0 (LICENSE)
-
-```text
-MIT License
-
-Copyright (c) 2021-present Toyobayashi
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
 
 Used by: @shikijs/core 4.6.0 (LICENSE), @shikijs/engine-javascript 4.6.0 (LICENSE), @shikijs/engine-oniguruma 4.6.0 (LICENSE), @shikijs/langs 4.6.0 (LICENSE), @shikijs/monaco 4.6.0 (LICENSE), @shikijs/primitive 4.6.0 (LICENSE), @shikijs/themes 4.6.0 (LICENSE), @shikijs/types 4.6.0 (LICENSE), shiki 4.6.0 (LICENSE)
 
@@ -433,7 +402,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-Used by: @types/d3-color 3.1.3 (LICENSE), @types/d3-drag 3.0.7 (LICENSE), @types/d3-interpolate 3.0.4 (LICENSE), @types/d3-selection 3.0.12 (LICENSE), @types/d3-transition 3.0.9 (LICENSE), @types/d3-zoom 3.0.9 (LICENSE), @types/hast 3.0.5 (LICENSE), @types/mdast 4.0.4 (LICENSE), @types/react 19.3.0 (LICENSE), @types/react-dom 19.3.0 (LICENSE), @types/trusted-types 2.0.7 (LICENSE), @types/unist 3.0.3 (LICENSE)
+Used by: @types/d3-color 3.1.3 (LICENSE), @types/d3-drag 3.0.7 (LICENSE), @types/d3-interpolate 3.0.4 (LICENSE), @types/d3-selection 3.0.12 (LICENSE), @types/d3-transition 3.0.9 (LICENSE), @types/d3-zoom 3.0.9 (LICENSE), @types/hast 3.0.5 (LICENSE), @types/mdast 4.0.4 (LICENSE), @types/trusted-types 2.0.7 (LICENSE), @types/unist 3.0.3 (LICENSE)
 
 ```text
 MIT License
@@ -569,30 +538,6 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-Used by: csstype 3.2.3 (LICENSE)
-
-```text
-Copyright (c) 2017-2018 Fredrik Nicol
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 ```
 
 Used by: d3-color 3.1.1 (LICENSE), d3-dispatch 3.0.2 (LICENSE), d3-drag 3.0.1 (LICENSE), d3-interpolate 3.0.2 (LICENSE), d3-selection 3.0.1 (LICENSE), d3-timer 3.0.2 (LICENSE), d3-transition 3.0.2 (LICENSE), d3-zoom 3.0.1 (LICENSE)
@@ -1835,23 +1780,6 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-Used by: tslib 2.9.1 (LICENSE.txt)
-
-```text
-Copyright (c) Microsoft Corporation.
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
 ```
 
 Used by: unist-util-is 6.0.1 (license)

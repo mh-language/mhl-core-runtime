@@ -172,3 +172,33 @@ func TestFormatDuration(t *testing.T) {
 		}
 	}
 }
+
+// A cancel that lands while `sh` is forking its child must still end the run
+// promptly. A single group kill can miss that child (it joins the group just
+// after the signal), leaving an orphan that holds the output pipes, so Wait
+// blocked until the orphan exited on its own — the whole `sleep`. Exec keeps
+// killing the group until Wait returns (killUntilExit). The race window is a
+// few milliseconds after Start, so the cancel is swept across it, many times.
+func TestExecCancelDuringForkStillKillsTheChild(t *testing.T) {
+	if testing.Short() {
+		t.Skip("stress test")
+	}
+	const runs = 300
+	for i := 0; i < runs; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		delay := time.Duration(i%8) * 500 * time.Microsecond
+		go func() {
+			time.Sleep(delay)
+			cancel()
+		}()
+		start := time.Now()
+		_, err := (Cmd{}).Exec(ctx, "sh", "-c", "sleep 3; echo late")
+		cancel()
+		if took := time.Since(start); took > 2*time.Second {
+			t.Fatalf("run %d (cancel after %s): Exec took %s — a child forked during the kill survived it", i, delay, took)
+		}
+		if err == nil {
+			t.Fatalf("run %d: want a cancellation error", i)
+		}
+	}
+}

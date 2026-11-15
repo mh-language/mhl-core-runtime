@@ -41,14 +41,21 @@ function repoUrl(r) {
   return url ? url.replace(/^git\+/, "").replace(/\.git$/, "").replace(/^git:\/\//, "https://") : "";
 }
 
+// The production packages, from package-lock.json rather than `npm ls`: the
+// lockfile is the same on every OS (no production dependency is
+// platform-specific), needs no network, and marks what only development
+// needs (`dev`, or `devOptional` such as @types/*), which never reaches the
+// bundle.
 function npmPackages() {
-  const dirs = execFileSync("npm", ["ls", "--omit=dev", "--all", "--parseable"], { cwd: studio, encoding: "utf8" })
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && l !== studio);
+  const lock = JSON.parse(readFileSync(join(studio, "package-lock.json"), "utf8"));
+  const dirs = Object.entries(lock.packages)
+    .filter(([key, entry]) => key && !entry.dev && !entry.devOptional)
+    .map(([key]) => join(studio, key));
   const seen = new Map();
   for (const dir of dirs) {
-    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    const manifest = join(dir, "package.json");
+    if (!existsSync(manifest)) throw new Error(`${manifest} is missing — run npm ci first`);
+    const pkg = JSON.parse(readFileSync(manifest, "utf8"));
     const id = `${pkg.name}@${pkg.version}`;
     if (seen.has(id)) continue;
     const author = typeof pkg.author === "string" ? pkg.author : pkg.author?.name;
@@ -146,7 +153,7 @@ const doc = [
   "third-party software below: the frontend's npm packages, the Rust crates linked into",
   "the app, and the bundled `mhl` runtime.",
   "",
-  section("npm packages", "Production dependencies of the frontend bundle (`npm ls --omit=dev`).", npmPackages()),
+  section("npm packages", "Production dependencies of the frontend bundle (package-lock.json, without dev-only packages).", npmPackages()),
   section("Rust crates", `Normal dependencies of the app for ${TARGETS.join(", ")}.`, rustCrates()),
   "## The bundled mhl runtime (Go)",
   "",

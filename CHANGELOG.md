@@ -36,6 +36,14 @@ Per-tag release notes are also generated automatically on the
   `step_end`, `log`, `result`), and **`--workflow <name>`** picks which declared
   pipeline/workflow to run.
 
+### Fixed
+
+- **A cancelled agent or `cmd.exec` no longer lingers.** When the cancel (from
+  `wait any`, a quorum, a timeout or SIGINT) landed while the command's shell was
+  starting a child, that child could escape the kill and hold the run until it finished
+  on its own (`wait any` waited out the full `sleep 30` of the slower agent). The
+  process group is now killed again until the command has really exited.
+
 ### Changed
 
 - **SIGINT / SIGTERM cancel a run cleanly.** `mhl run` stops at the next step boundary
