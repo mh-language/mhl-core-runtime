@@ -55,8 +55,14 @@ func TestExecTimeoutFailsWithErrTimeout(t *testing.T) {
 	}
 }
 
+// startupGrace is the timeout the tests below give `sh` to reach the state
+// they exercise (a trap installed, a child's pid printed) before the deadline
+// fires. A tighter one raced shell startup on a loaded CI runner: the signal
+// landed first and the scenario never happened.
+const startupGrace = time.Second
+
 func TestExecTimeoutKillsWholeProcessGroup(t *testing.T) {
-	result, err := (Cmd{Timeout: 300 * time.Millisecond, KillGrace: time.Second}).Exec(context.Background(),
+	result, err := (Cmd{Timeout: startupGrace, KillGrace: time.Second}).Exec(context.Background(),
 		"sh", "-c", "sleep 100 & echo $!; wait")
 	if !errors.Is(err, ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
@@ -70,7 +76,7 @@ func TestExecTimeoutKillsWholeProcessGroup(t *testing.T) {
 
 func TestExecTimeoutKeepsOutputWrittenOnSIGTERM(t *testing.T) {
 	start := time.Now()
-	result, err := (Cmd{Timeout: 200 * time.Millisecond, KillGrace: 5 * time.Second}).Exec(context.Background(),
+	result, err := (Cmd{Timeout: startupGrace, KillGrace: 5 * time.Second}).Exec(context.Background(),
 		"sh", "-c", `trap 'echo final-state; exit 143' TERM; sleep 100 & wait`)
 	if !errors.Is(err, ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
@@ -81,7 +87,7 @@ func TestExecTimeoutKeepsOutputWrittenOnSIGTERM(t *testing.T) {
 	if result.ExitCode != 143 {
 		t.Errorf("exit code = %d, want 143", result.ExitCode)
 	}
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
+	if elapsed := time.Since(start); elapsed > startupGrace+2*time.Second {
 		t.Errorf("took %s: the handler exited on SIGTERM, Exec should not wait out the 5s grace", elapsed)
 	}
 }
@@ -97,16 +103,16 @@ func TestExecTimeoutIsAnErrorEvenWhenCommandExitsZero(t *testing.T) {
 func TestExecTimeoutSIGKILLsAfterGraceWhenSIGTERMIgnored(t *testing.T) {
 	start := time.Now()
 	// An ignored signal stays ignored across exec, so sleep ignores TERM too.
-	_, err := (Cmd{Timeout: 100 * time.Millisecond, KillGrace: 400 * time.Millisecond}).Exec(context.Background(),
+	_, err := (Cmd{Timeout: startupGrace, KillGrace: 400 * time.Millisecond}).Exec(context.Background(),
 		"sh", "-c", `trap '' TERM; sleep 100`)
 	if !errors.Is(err, ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
 	}
 	elapsed := time.Since(start)
-	if elapsed < 450*time.Millisecond {
+	if elapsed < startupGrace+350*time.Millisecond {
 		t.Errorf("took %s: the forced kill came before the grace ran out", elapsed)
 	}
-	if elapsed > 3*time.Second {
+	if elapsed > startupGrace+3*time.Second {
 		t.Errorf("took %s: SIGKILL should end it right after the 400ms grace", elapsed)
 	}
 }
