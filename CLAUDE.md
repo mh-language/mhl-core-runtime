@@ -243,7 +243,12 @@ Key packages:
   and checkpoint persistence for `--resume`. Knows step *names* only, not step behavior.
   `pipeline` and `workflow` are one node (`ast.Pipeline.Kind`) and run identically here —
   `goto` works in both; `internal/lang/lint` (`checkPipelineGoto`) is what rejects `goto`
-  outside a `workflow` and validates the target step exists. `Runner.Run` / `LoopRunner.Run`
+  outside a `workflow` and validates the target step exists. An `entry route Name(p: T)`
+  (`ast.WorkflowRoute.Entry`) is a workflow's starting point: `PipelineFromAST` prepends a
+  stage named after the route (`Pipeline.EntryRoute`), `interpreter.RunStep` evaluates it via
+  `execEntryRoute` with `p` bound to the input of that name, and its arm's goto picks the
+  step; lint `checkEntryRoutes` (one per workflow, input name+type, no step-name clash);
+  `mhl graph` makes its arms the `$start` edges (kind `route`, `Route.entry`). `Runner.Run` / `LoopRunner.Run`
   take a `context.Context` first arg, checked at each step / iteration boundary; `StepFunc` is
   `func(ctx, step, *RunContext) error`. `interpreter.RunStep` takes that ctx too and sets it as
   `evalCtx.goctx`, so a run-level cancel also aborts a blocking call already in flight — an
@@ -260,10 +265,20 @@ Key packages:
   barrier through the same `StepFunc` under the step name `<group>.merge`
   (`ast.MergeStepName`; `interpreter.findStep` resolves it, `Stage.Merge`/`MergeParam`
   carry it), with param bound read-only to `{branch: vars}`; a var two branches wrote
-  differently must be assigned there or the group fails. It is not in `Pipeline.Steps` /
-  `RunResult.Executed`. Lint: `lint/merge.go` (`checkParallelMerges`, and
-  `checkDiscardedResults` — a bare `x.append(...)` is a no-op since values never alias);
-  `pipelineMemberSteps` includes the merge (`mergeParam` adds its param to scope). A `loop pipeline`/`loop
+  differently must be assigned there or the group fails. A `goto`/`complete()` in it is
+  returned unwrapped and handled by `Run` like one ending a step (`break`/`pause()` are
+  refused); `flow` takes the group's edges/`fallsThrough` from the merge body. It is not in
+  `Pipeline.Steps` / `RunResult.Executed`. Lint: `lint/merge.go` (`checkParallelMerges`;
+  `checkDiscardedResults` flags a bare `name.trim()`-style call, a no-op since values never
+  alias); `pipelineMemberSteps` includes the merge (`mergeParam` adds its param to scope).
+  A group may also declare `var`s before its branches (`ast.ParallelGroup.Vars`,
+  `Stage.Vars`): `runParallelStage` seeds them via `Pipeline.GroupVarsInit` (set by execsvc
+  and `interpreter/test_run.go` to `interpreter.EvalGroupVars` — the runtime can't evaluate
+  expressions; a group with vars and no init fails) each time the group starts, before the
+  fork, and deletes them when it ends; lint puts them in scope via `groupScope`. The merge
+  param is optional (`merge { ... }`, `Stage.MergeParam ""`).
+  A bare `recv.append(x)` statement is sugar for `recv = recv.append(x)`
+  (`interpreter.appendSugar`, mirrored by `lint.appendSugarTarget` for const/input checks). A `loop pipeline`/`loop
   workflow` declaration may also carry a `max <N>` header clause (`ast.Pipeline.Max`,
   `loop workflow Refine max 3 { ... }`) — pure sugar for `repeat { max_iterations: N }`,
   projected onto `runtime.Pipeline.MaxIterations` in `PipelineFromAST` (an explicit

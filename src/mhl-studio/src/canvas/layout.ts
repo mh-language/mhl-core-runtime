@@ -4,12 +4,83 @@
 // change, never stored, so code and diagram cannot disagree.
 import ELK, { type ElkExtendedEdge, type ElkNode } from "elkjs/lib/elk.bundled.js";
 import type { Edge, Node } from "@xyflow/react";
-import { END, FAIL, START, type GraphEdge, type GraphNode, type Workflow } from "../lib/types";
+import { END, FAIL, START, type GraphEdge, type GraphNode, type Route, type Workflow } from "../lib/types";
 
 /** An edge's label as drawn: a match/route arm's `_` reads "otherwise". */
 export function edgeLabel(e: { kind: string; label?: string }): string | undefined {
   if (!e.label || (e.kind !== "match" && e.kind !== "route")) return e.label;
   return e.label.replace(/(^|\s)_$/, "$1otherwise");
+}
+
+/** The canvas id of a `route Name(...) { arms }`, drawn as a Choice state of its own. */
+export const ROUTE_PREFIX = "route:";
+export const routeId = (name: string) => `${ROUTE_PREFIX}${name}`;
+
+/**
+ * The guard part of a `goto Route(x)` edge's label: `mhl graph` joins the
+ * guard and the arm's pattern as "guard → pattern" (flow.joinLabel).
+ */
+function routeGuard(label: string | undefined, r: Route): string {
+  if (!label) return "";
+  for (const a of r.arms) {
+    if (label === a.pattern) return "";
+    if (label.endsWith(` → ${a.pattern}`)) return label.slice(0, -(a.pattern.length + 3));
+  }
+  return label;
+}
+
+/** The routes some step runs `goto Route(x)` on — the only ones in the flow. */
+export function usedRoutes(wf: Workflow): Set<string> {
+  return new Set(wf.edges.flatMap((e) => (e.kind === "route" && e.via ? [e.via] : [])));
+}
+
+/**
+ * The edges as drawn. `mhl graph` flattens a `goto Route(x)` into one
+ * caller → target edge per arm; the canvas draws the route itself instead:
+ * caller → route once (per guard), route → each arm target. A route no step
+ * calls has no edges: nothing reaches it, so its arms are never taken (it
+ * is drawn apart, its arms listed inside — see layoutWorkflow).
+ */
+export function drawnEdges(wf: Workflow): GraphEdge[] {
+  if (wf.routes.length === 0) return wf.edges;
+  const used = usedRoutes(wf);
+  const routes = new Map(wf.routes.filter((r) => used.has(r.name)).map((r) => [r.name, r]));
+  const out: GraphEdge[] = [];
+  const seen = new Set<string>();
+  for (const e of wf.edges) {
+    const r = e.kind === "route" && e.via ? routes.get(e.via) : undefined;
+    if (!r) {
+      out.push(e);
+      continue;
+    }
+    const guard = routeGuard(e.label, r);
+    const key = `${e.from}>${r.name}>${guard}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // From Start (an `entry route`), the edge is the start edge.
+    out.push({ from: e.from, to: routeId(r.name), kind: e.from === START ? "next" : "goto", ...(guard ? { label: guard } : {}) });
+  }
+  for (const r of routes.values())
+    for (const a of r.arms) {
+      const to = a.fail ? FAIL : a.target;
+      if (to) out.push({ from: routeId(r.name), to, kind: "route", label: a.pattern, via: r.name, span: a.targetSpan });
+    }
+  return out;
+}
+
+/**
+ * Where each called route goes in ELK's model order (which also breaks
+ * cycles): right after Start for an `entry route`, else right after the
+ * first step that calls it — so its edges point down, not back up.
+ */
+function routesAfter(wf: Workflow, top: GraphNode[]): Map<string, Route[]> {
+  const after = new Map<string, Route[]>();
+  const calls = (from: string, r: Route) => wf.edges.some((e) => e.from === from && e.kind === "route" && e.via === r.name);
+  for (const r of wf.routes) {
+    const caller = calls(START, r) ? START : top.find((n) => calls(n.id, r))?.id;
+    if (caller) after.set(caller, [...(after.get(caller) ?? []), r]);
+  }
+  return after;
 }
 
 const elk = new ELK();
@@ -156,6 +227,8 @@ export interface Point {
 export type StepNodeData = { node: GraphNode; workflow: string };
 export type TerminalNodeData = { role: "start" | "end" | "fail" };
 export type ExternalNodeData = { name: string };
+/** `used`: some step runs `goto Route(x)` — it is in the flow, with edges. */
+export type RouteNodeData = { route: Route; workflow: string; used: boolean };
 export type FlowEdgeData = { edge: GraphEdge; points: Point[]; labelAt?: Point; index: number };
 
 export interface Layout {
@@ -174,12 +247,30 @@ export function edgeId(e: GraphEdge, i: number) {
 /** Height of a parallel group's merge bar (nodes.tsx ParallelNode). */
 export const MERGE_H = 30;
 
+/** A route node's height (nodes.tsx RouteNode): a header and its signature. */
+export const ROUTE_H = 54;
+/** One arm row inside an unused route's card. */
+export const ARM_ROW_H = 20;
+
+/** A route node's height: an unused one lists its arms inside, since it has no edges. */
+export function routeHeight(r: Route, used: boolean): number {
+  return used ? ROUTE_H : ROUTE_H + r.arms.length * ARM_ROW_H + 6;
+}
+
+/** Gap between the diagram and the column of unused routes on its right. */
+const ASIDE_GAP = 72;
+
 export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
   const top = wf.nodes.filter((n) => !n.parent);
   const childrenOf = (id: string) => wf.nodes.filter((n) => n.parent === id);
-  const usesFail = wf.edges.some((e) => e.to === FAIL);
+  const drawn = drawnEdges(wf);
+  const usesFail = drawn.some((e) => e.to === FAIL);
+  const used = usedRoutes(wf);
+  const after = routesAfter(wf, top);
+  const routeNode = (r: Route): ElkNode => ({ id: routeId(r.name), width: STEP_W, height: ROUTE_H });
 
   const children: ElkNode[] = [{ id: START, width: TERM_W, height: TERM_H }];
+  for (const r of after.get(START) ?? []) children.push(routeNode(r));
   for (const n of top) {
     if (n.kind === "parallel") {
       children.push({
@@ -194,6 +285,7 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
     } else {
       children.push({ id: n.id, width: STEP_W, height: stepHeight(n) });
     }
+    for (const r of after.get(n.id) ?? []) children.push(routeNode(r));
   }
   for (const x of wf.externals) children.push({ id: `ext:${x}`, width: 170, height: 44 });
   children.push({ id: END, width: TERM_W, height: TERM_H });
@@ -201,7 +293,7 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
 
   const ext = new Set(wf.externals);
   const ref = (id: string) => (ext.has(id) ? `ext:${id}` : id);
-  const edges: ElkExtendedEdge[] = wf.edges.map((e, i) => {
+  const edges: ElkExtendedEdge[] = drawn.map((e, i) => {
     const text = edgeLabel(e);
     return {
       id: edgeId(e, i),
@@ -211,14 +303,39 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
     };
   });
 
-  const line = mainLine(wf.edges.map((e) => [ref(e.from), ref(e.to)]));
+  const line = mainLine(drawn.map((e) => [ref(e.from), ref(e.to)]));
   const root = await elk.layout({ id: "root", layoutOptions: LAYERED, children, edges: linkMainLine(edges, line) });
   centerMainLine(root, line);
 
   const byId = new Map(wf.nodes.map((n) => [n.id, n]));
+  const routes = new Map(wf.routes.map((r) => [routeId(r.name), r]));
   const nodes: Node[] = [];
-  for (const c of root.children ?? []) {
+  // A route no step calls is outside the flow: a card in a column on the
+  // diagram's right, its arms listed inside, no edges.
+  const laidOut = root.children ?? [];
+  let asideY = Math.min(...laidOut.map((c) => c.y ?? 0));
+  const asideX = Math.max(...laidOut.map((c) => (c.x ?? 0) + (c.width ?? 0))) + ASIDE_GAP;
+  for (const r of wf.routes.filter((r) => !used.has(r.name))) {
+    const height = routeHeight(r, false);
+    nodes.push({
+      id: routeId(r.name),
+      type: "route",
+      position: { x: asideX, y: asideY },
+      data: { route: r, workflow: wf.name, used: false } satisfies RouteNodeData,
+      style: { height },
+      draggable: false,
+      connectable: false,
+      deletable: false,
+    });
+    asideY += height + 24;
+  }
+  for (const c of laidOut) {
     const pos = { x: c.x ?? 0, y: c.y ?? 0 };
+    const route = routes.get(c.id);
+    if (route) {
+      nodes.push({ id: c.id, type: "route", position: pos, data: { route, workflow: wf.name, used: true } satisfies RouteNodeData, draggable: false, connectable: false, deletable: false });
+      continue;
+    }
     if (c.id === START || c.id === END || c.id === FAIL) {
       const role = c.id === START ? "start" : c.id === END ? "end" : "fail";
       nodes.push({ id: c.id, type: "terminal", position: pos, data: { role } satisfies TerminalNodeData, draggable: false, connectable: c.id !== START, deletable: false });
@@ -256,7 +373,7 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
   }
 
   const laid = new Map((root.edges ?? []).map((e) => [e.id, e]));
-  const flowEdges: Edge<FlowEdgeData>[] = wf.edges.map((e, i) => {
+  const flowEdges: Edge<FlowEdgeData>[] = drawn.map((e, i) => {
     const id = edgeId(e, i);
     const le = laid.get(id);
     const sec = le?.sections?.[0];
@@ -277,12 +394,29 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
 /**
  * Edges a run actually took, as "from>to" keys over top-level ids: the
  * visit sequence with parallel branches folded into their group, plus the
- * start edge and the terminal edge for a run that ended.
+ * start edge and the terminal edge for a run that ended. A hop a route
+ * made (`goto Route(x)`) is drawn through the route's node: both its legs.
  */
 export function takenEdges(wf: Workflow, visits: string[], ended: "end" | "fail" | null): Set<string> {
+  const out = new Set<string>();
+  for (const key of hops(wf, visits, ended)) {
+    out.add(key);
+    const [from, to] = key.split(">");
+    for (const e of wf.edges)
+      if (e.kind === "route" && e.via && e.from === from && e.to === to) {
+        out.add(`${from}>${routeId(e.via)}`);
+        out.add(`${routeId(e.via)}>${to}`);
+      }
+  }
+  return out;
+}
+
+function hops(wf: Workflow, visits: string[], ended: "end" | "fail" | null): Set<string> {
   const parent = new Map(wf.nodes.filter((n) => n.parent).map((n) => [n.id, n.parent!]));
   // A group's merge runs as its own step ("Fan.merge"): it is part of the group.
   for (const n of wf.nodes) if (n.merge) parent.set(n.merge.stepName, n.id);
+  // An `entry route` runs as a step of its own name: its node is the route's.
+  for (const r of wf.routes) if (r.entry) parent.set(r.name, routeId(r.name));
   const seq: string[] = [];
   for (const v of visits) {
     const id = parent.get(v) ?? v;

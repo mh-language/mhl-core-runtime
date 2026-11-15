@@ -49,6 +49,11 @@ the duration is measured fresh on each attempt, never persisted — and
   both branches until the gate passes.
 - [goto_match_artifact_review.mh](goto_match_artifact_review.mh) — a review gate
   that routes feedback to generation and approved artifacts to commit.
+- [entry_route_dispatches_on_an_input.mh](entry_route_dispatches_on_an_input.mh)
+  — `entry route Choose(model: AgentModel) { ... }`: the run starts at the route,
+  dispatching on the input of the same name and type, before any step (it runs as
+  the step `Choose`, so `executed` starts with it); it stays callable with
+  `goto Choose(x)`. Run with `--input model=Codex` (or `Claude`, `All`).
 
 Run from the repository root. The first command pauses; the second regenerates
 and pauses again; the third commits:

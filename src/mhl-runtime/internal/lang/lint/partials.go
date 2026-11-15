@@ -154,7 +154,7 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 	}
 	if entries > 1 || (entries == 0 && len(frags) > 1) {
 		findings = append(findings, Finding{File: fileAt(file, out.Pos), Line: out.Pos.Line, Column: out.Pos.Column,
-			Message: fmt.Sprintf("partial %s %q: expected exactly one `entry step` across its fragments, found %d", kind, name, entries)})
+			Message: fmt.Sprintf("partial %s %q: expected exactly one `entry step` or `entry route` across its fragments, found %d", kind, name, entries)})
 	}
 	// Fallthrough across a fragment *boundary* — a step with no unconditional
 	// `goto`/`fail(...)`/`pause(...)`/`break` at the end of its body, sitting

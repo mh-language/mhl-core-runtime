@@ -5,7 +5,7 @@ import { useStore } from "../app/store";
 import type { CallSite, Declaration } from "../lib/types";
 import type { ImportOrigin } from "../sync/imports";
 import { useImportOrigins } from "./ImportsCard";
-import { MAX_BOXES, MERGE_H, type ExternalNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
+import { ARM_ROW_H, MAX_BOXES, MERGE_H, type ExternalNodeData, type RouteNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
 
 const CALL_ICON: Record<string, string> = { tool: "🛠", agent: "⚙", router: "⇄", extension: "⧉", memory: "▤", prompt: "❝" };
 
@@ -148,19 +148,28 @@ export const ParallelNode = memo(function ParallelNode({ id, data, selected }: N
         <span className="node-name">{data.node.name}</span>
         <span className="node-kind">Parallel</span>
         {data.node.timeout && <span className="badge">⏱ {data.node.timeout}</span>}
+        {!!data.node.vars?.length && (
+          <span className="badge mono" title={`the group's own vars, alive only while it runs:\n${data.node.vars.map((v) => v.name).join(", ")}`}>
+            var {data.node.vars.map((v) => v.name).join(", ")}
+          </span>
+        )}
       </div>
       {merge && (
         <div
           className={`merge-bar ${mergeStatus ? `run-${mergeStatus}` : ""}`}
           style={{ height: MERGE_H }}
-          title={`merge (${merge.param}) { ... } — runs once after every branch and combines their vars (${merge.param}.<Step>.<var>)\nClick to show it in the code`}
+          title={
+            merge.param
+              ? `merge (${merge.param}) { ... } — runs once after every branch and combines their vars (${merge.param}.<Step>.<var>)\nClick to show it in the code`
+              : "merge { ... } — runs once after every branch\nClick to show it in the code"
+          }
           onClick={(e) => {
             e.stopPropagation();
             revealSpan(merge.span);
           }}
         >
           <span className="merge-icon">⤓</span>
-          <span className="mono">merge ({merge.param})</span>
+          <span className="mono">{merge.param ? `merge (${merge.param})` : "merge"}</span>
           {merge.calls.length > 0 && <span className="merge-calls mono">{merge.calls.join(", ")}</span>}
         </div>
       )}
@@ -189,4 +198,50 @@ export const ExternalNode = memo(function ExternalNode({ data }: NodeProps<Node<
   );
 });
 
-export const nodeTypes = { step: StepNode, parallel: ParallelNode, terminal: TerminalNode, external: ExternalNode };
+/**
+ * A `route Name(param) { arms }`: a Choice state shared by every step that
+ * runs `goto Name(x)`; its arms leave it as edges. One no step calls is
+ * outside the flow: a card beside the diagram listing its arms, no edges.
+ * Click shows it in the code.
+ */
+export const RouteNode = memo(function RouteNode({ data }: NodeProps<Node<RouteNodeData>>) {
+  const { route: r, used } = data;
+  // An `entry route` runs as a step of its own name.
+  const status = useStatus(r.entry ? r.name : "");
+  const arms = `${r.arms.length} ${r.arms.length === 1 ? "arm" : "arms"}`;
+  const how = r.entry ? `\nentry: the run starts by dispatching on input ${r.params[0] ?? ""}` : used ? "" : `\nNo step runs goto ${r.name}(...): the run never reaches it`;
+  return (
+    <div
+      className={`node route ${used ? "" : "unused"} ${status ? `run-${status}` : ""}`}
+      title={`route ${r.name}(${r.params.join(", ")}) — ${arms}${how}\nClick to show it in the code`}
+      onClick={() => revealSpan(r.span)}
+    >
+      {used && <Handle type="target" position={Position.Top} isConnectable={false} />}
+      <div className="node-title">
+        <span className="node-icon">◇</span>
+        <span className="node-name">{r.name}</span>
+        <span className="node-kind mono">({r.params.join(", ")})</span>
+        {r.entry && <span className="badge" title="entry route: the run starts here">entry</span>}
+        {!used && <span className="badge warn">unused</span>}
+      </div>
+      {used ? (
+        <div className="node-sub">
+          <span className="node-kind">Route · {arms}</span>
+        </div>
+      ) : (
+        <div className="route-arms mono">
+          {r.arms.map((a, i) => (
+            <div key={i} className="route-arm" style={{ height: ARM_ROW_H }}>
+              <span className="route-pattern">{a.wildcard ? "otherwise" : a.pattern}</span>
+              <span className="route-arrow">→</span>
+              <span className={a.fail ? "route-fail" : "route-target"}>{a.fail ? "Fail" : a.target}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {used && <Handle type="source" position={Position.Bottom} isConnectable={false} />}
+    </div>
+  );
+});
+
+export const nodeTypes = { step: StepNode, parallel: ParallelNode, terminal: TerminalNode, external: ExternalNode, route: RouteNode };

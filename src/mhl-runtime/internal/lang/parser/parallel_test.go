@@ -128,11 +128,44 @@ workflow W {
 	}
 	for name, src := range map[string]string{
 		"merge not last": `workflow W { parallel Fan { merge (b) { log("m") } step L { log("l") } } }`,
-		"no param":       `workflow W { parallel Fan { step L { log("l") } merge () { log("m") } } }`,
+		"var after a step": `workflow W { parallel Fan { step L { log("l") } var x = 1 } }`,
 		"two merges":     `workflow W { parallel Fan { step L { log("l") } merge (b) { log("m") } merge (c) { log("n") } } }`,
 	} {
 		if _, err := Parse(src); err == nil {
 			t.Errorf("%s: want a parse error", name)
 		}
+	}
+}
+
+// A group may declare its own vars before its branches, and a merge may
+// omit its param (`merge { ... }` or `merge () { ... }`).
+func TestParallelGroupVarsParse(t *testing.T) {
+	prog, err := Parse(`
+workflow W {
+    parallel Fan {
+        var left = ""
+        var right = left
+        step L { left = "a" }
+        step R { right = "b" }
+        merge { log(left, right) }
+    }
+    parallel Again {
+        step X { log("x") }
+        merge () { log("m") }
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	fan := prog.Decls[0].Pipeline.Body[0].Parallel
+	if len(fan.Vars) != 2 || fan.Vars[0].Decl.Name != "left" || fan.Vars[1].Decl.Name != "right" {
+		t.Fatalf("vars = %+v", fan.Vars)
+	}
+	if fan.Merge == nil || fan.Merge.Param != "" || len(fan.Merge.Body) != 1 {
+		t.Fatalf("merge = %+v", fan.Merge)
+	}
+	if m := prog.Decls[0].Pipeline.Body[1].Parallel.Merge; m == nil || m.Param != "" {
+		t.Fatalf("merge () = %+v", m)
 	}
 }

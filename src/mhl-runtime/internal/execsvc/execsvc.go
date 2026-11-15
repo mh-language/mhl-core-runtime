@@ -405,6 +405,14 @@ func Run(req Request) (*Result, error) {
 	}
 
 	init := pipelineVarsInit(prog, pipeline.Decl, file, out, store, jsonStore, contextView)
+	// A parallel group's own vars are seeded as it starts (each time it does).
+	pipeline.GroupVarsInit = func(goctx context.Context, group string, rc *runtime.RunContext) error {
+		groupOut := out
+		if rc.Out != nil {
+			groupOut = rc.Out
+		}
+		return interpreter.EvalGroupVars(goctx, prog, pipeline.Decl, group, file, groupOut, store, jsonStore, rc.Vars, memContextFor(memInit, pipeline.Name, rc.InstanceID), contextView)
+	}
 
 	// Bind every checkpoint this run writes to the structure of the pipeline
 	// it came from (its own declaration plus the shared decls it can

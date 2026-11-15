@@ -68,9 +68,7 @@ func checkAgentCalls(file string, prog *ast.Program, aliases map[string]types.Ty
 				// every step (this run's session metadata); a `context:` block only
 				// adds `context.vars` on top. See interpreter.isContextRef.
 				seed["context"] = types.Object
-				if param := mergeParam(member, step); param != "" {
-					seed[param] = types.Object
-				}
+				groupScope(member, step, seed)
 				declared := collectVarNames(prog, step.Body, seed, nil)
 				findings = append(findings, checkStatements(file, prog, step.Body, declared, nil, aliases)...)
 			}
@@ -134,10 +132,12 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 			steps := pipelineMemberSteps(m)
 			branch := m.Parallel != nil
 			for _, step := range steps {
-				where := ""
+				// A group's merge runs after the barrier, so it may leave the
+				// group with a goto like a plain step; a branch may not.
+				where, merge := "", isMergeStep(m, step)
 				if branch {
 					where = fmt.Sprintf("a parallel group (step %q of group %q)", step.Name, m.Parallel.Name)
-					if mergeParam(m, step) != "" {
+					if merge {
 						where = fmt.Sprintf("the merge of parallel group %q", m.Parallel.Name)
 					}
 				}
@@ -146,7 +146,7 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 					case isBreak && branch:
 						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: "`break` cannot be used inside " + where})
-					case !isBreak && branch:
+					case !isBreak && branch && !merge:
 						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: "`goto` cannot be used inside " + where})
 					case !isBreak && inGroup[target]:

@@ -149,6 +149,50 @@ describe.skipIf(!MHL)("edits round-trip through mhl graph", () => {
     expect(trace(out).filter((t) => t.startsWith("Classify>"))).toEqual(["Classify>$fail:match"]);
   });
 
+  it("removes a route arm (the canvas draws it leaving the route's node)", () => {
+    const src = `workflow R {
+    input kind: string = "a"
+    route Pick(k: string) {
+        "a" -> A
+        "b" -> B
+        _ -> fail("unknown")
+    }
+    step Gate {
+        goto Pick(kind)
+    }
+    step A {
+        complete()
+    }
+    step B {
+        complete()
+    }
+}
+`;
+    const d = doc(src);
+    const arm = d.graph.workflows[0].routes[0].arms.find((a) => a.target === "B")!;
+    const out = apply(d, removeEdge(d, "R", { from: "route:Pick", to: "B", kind: "route", via: "Pick", label: arm.pattern, span: arm.targetSpan }));
+    expect(out.wf.routes[0].arms.map((a) => a.pattern)).toEqual(['"a"', "_"]);
+    expect(trace(out).filter((t) => t.startsWith("Gate>"))).toEqual(["Gate>A:route", "Gate>$fail:route"]);
+  });
+
+  it("graphs an entry route: marked entry, the start edges are its arms", () => {
+    const g = graphOf(`workflow R {
+    input k: string = "a"
+    step First { }
+    entry route Pick(k: string) {
+        "a" -> A
+        _ -> fail("unknown")
+    }
+    step A { complete() }
+}
+`);
+    expect(g.ok, JSON.stringify(g.diagnostics)).toBe(true);
+    const wf = g.workflows[0];
+    expect(wf.routes[0]).toMatchObject({ name: "Pick", entry: true });
+    expect(trace({ wf }).filter((t) => t.startsWith("$start>"))).toEqual(["$start>A:route", "$start>$fail:route"]);
+    expect(wf.edges.filter((e) => e.from === "$start").every((e) => e.via === "Pick")).toBe(true);
+  });
+
   it("reads and replaces a step body", () => {
     const d = doc();
     expect(getBody(d, "Orders", "Classify")).toBe('goto match kind {\n    "small" -> Ship\n    _ -> fail("unknown")\n}');

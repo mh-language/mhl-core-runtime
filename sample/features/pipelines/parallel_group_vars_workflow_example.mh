@@ -1,0 +1,75 @@
+// A `parallel` group may declare its own vars, before its branches. They are
+// the group's scratch space: initialized each time the group starts (a
+// `goto` back to it starts them over), visible to its branches and its
+// merge as `self.x` like any workflow var, and gone once the group ends —
+// a later step cannot see them, and they are not in the run's result.
+//
+// The usual shape: each branch writes its own group var, and the merge
+// combines them into the workflow's state. No branch writes another's var,
+// so nothing conflicts, and the merge needs no `branches` object — just
+// `merge { ... }`. Run with:
+//
+//   mhl run sample/features/pipelines/parallel_group_vars_workflow_example.mh --input question=caching
+
+agent Claude {
+    command: "sh"
+    args: ["-c", "echo claude-answer"]
+}
+
+agent Codex {
+    command: "sh"
+    args: ["-c", "echo codex-answer"]
+}
+
+workflow Panel {
+    input question: string
+
+    var answers = []
+    var rounds = 0
+
+    parallel Ask {
+        // Fresh every round: "" each time the group starts.
+        var from_claude = ""
+        var from_codex = ""
+
+        step AskClaude {
+            self.from_claude = Claude.run(prompt: question)
+        }
+
+        step AskCodex {
+            self.from_codex = Codex.run(prompt: question)
+        }
+
+        merge {
+            self.answers.append({claude: self.from_claude, codex: self.from_codex})
+            self.rounds += 1
+            // A second round starts from empty group vars again, so nothing
+            // from the first one is repeated.
+            if (self.rounds < 2) {
+                goto Ask
+            }
+        }
+    }
+
+    step Report {
+        log("${rounds} rounds: ${answers}")
+    }
+}
+
+test parallel_group_vars {
+    describe each_round_starts_from_fresh_group_vars {
+        var result = Panel.run(inputs: {question: "caching"})
+        is_true(result.ok)
+        are_equal(result.vars.rounds, 2)
+        are_equal(result.vars.answers, [
+            {claude: "claude-answer", codex: "codex-answer"},
+            {claude: "claude-answer", codex: "codex-answer"},
+        ])
+    }
+
+    describe group_vars_do_not_outlive_the_group {
+        var result = Panel.run(inputs: {question: "caching"})
+        is_false(result.vars.keys().contains("from_claude"))
+        is_false(result.vars.keys().contains("from_codex"))
+    }
+}

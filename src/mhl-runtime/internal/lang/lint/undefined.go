@@ -62,11 +62,18 @@ func checkUndefinedNames(file string, prog *ast.Program, aliases map[string]type
 				}
 			}
 			for _, member := range p.Body {
+				if member.Parallel != nil {
+					// A group var's initializer sees the workflow and the
+					// group's earlier vars.
+					scope := copyScope(seed)
+					for _, v := range member.Parallel.Vars {
+						u.expr(v.Decl.Value, scope)
+						scope[v.Decl.Name] = types.Any
+					}
+				}
 				for _, step := range pipelineMemberSteps(member) {
 					scope := copyScope(seed)
-					if param := mergeParam(member, step); param != "" {
-						scope[param] = types.Object
-					}
+					groupScope(member, step, scope)
 					u.stmts(step.Body, collectVarNames(prog, step.Body, scope, nil))
 				}
 				if member.Prop != nil && isHookPropertyName(member.Prop.Name) {

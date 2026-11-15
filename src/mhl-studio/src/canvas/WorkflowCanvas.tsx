@@ -17,7 +17,7 @@ import { edit } from "../app/controller";
 import { connect, deleteNode, insertState, removeEdge, type Placement } from "../sync/edits";
 import { END, FAIL, START } from "../lib/types";
 import type { StateKind } from "../sync/templates";
-import { layoutWorkflow, takenEdges, type FlowEdgeData, type Layout } from "./layout";
+import { layoutWorkflow, ROUTE_PREFIX, takenEdges, type FlowEdgeData, type Layout } from "./layout";
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./ElkEdge";
 import { ImportsCard } from "./ImportsCard";
@@ -311,7 +311,9 @@ function Canvas() {
         edgeTypes={edgeTypes}
         onNodeClick={(_, n) => {
           setSelectedEdge(null);
-          set({ selection: n.id === START || n.id === END || n.id === FAIL || n.id.startsWith("ext:") ? null : n.id });
+          // A route is not a step: clicking it shows its declaration (RouteNode).
+          const inert = n.id === START || n.id === END || n.id === FAIL || n.id.startsWith("ext:") || n.id.startsWith(ROUTE_PREFIX);
+          set({ selection: inert ? null : n.id });
         }}
         onEdgeClick={(_, e) => {
           setSelectedEdge(e.id);

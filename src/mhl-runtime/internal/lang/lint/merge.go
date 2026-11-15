@@ -9,19 +9,25 @@ import (
 	"github.com/alecthomas/participle/v2/lexer"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
 // checkParallelMerges checks each parallel group's `merge (param) { ... }`
 // block (ast.ParallelMerge) — the rules runtime.runMerge relies on:
 //
-//   - `pause(...)` and `complete()` are not called in it (`goto`/`break` are
-//     checkParallelGroups', with every other step of a group): the merge is
-//     part of the group's barrier, not a step the run can stop or end at;
+//   - `pause(...)` is not called in it (a resume would re-run every branch);
+//     `break` is checkParallelGroups'. `goto` and `complete()` are allowed:
+//     the merge runs after the barrier, so it leaves the group like a step;
 //   - param does not shadow a workflow input, var, const, mem or its typed
 //     signature's param — runMerge binds it over that name for the merge;
 //   - every `param.X` names one of the group's branch steps.
 //
 // Writes to param are checkConstReassign's (it is seeded as a const there).
+//
+// It also checks a group's own vars (ast.ParallelGroup.Vars): none reuses a
+// workflow input/var/const/mem/param name or another var of the group — the
+// runtime seeds them into the same vars a workflow's live in — and the
+// merge's param does not reuse one.
 func checkParallelMerges(file string, prog *ast.Program) []Finding {
 	var findings []Finding
 	for _, decl := range prog.Decls {
@@ -47,12 +53,28 @@ func checkParallelMerges(file string, prog *ast.Program) []Finding {
 		}
 		for _, m := range p.Body {
 			pg := m.Parallel
-			if pg == nil || pg.Merge == nil {
+			if pg == nil {
+				continue
+			}
+			at := func(pos lexer.Position, msg string) {
+				findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Message: msg})
+			}
+			groupVars := map[string]bool{}
+			for _, v := range pg.Vars {
+				name := v.Decl.Name
+				if kind, ok := taken[name]; ok {
+					at(v.Pos, fmt.Sprintf("var %q of parallel group %q shadows the %s %q of %s %q — a group var is a separate variable that lives only while the group runs; name it something else", name, pg.Name, kind, name, p.Kind, p.Name))
+				} else if groupVars[name] {
+					at(v.Pos, fmt.Sprintf("parallel group %q declares var %q more than once", pg.Name, name))
+				}
+				groupVars[name] = true
+			}
+			if pg.Merge == nil {
 				continue
 			}
 			mg := pg.Merge
-			at := func(pos lexer.Position, msg string) {
-				findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Message: msg})
+			if groupVars[mg.Param] {
+				at(mg.Pos, fmt.Sprintf("merge of parallel group %q: parameter %q is also a var of the group — name it something else (e.g. branches)", pg.Name, mg.Param))
 			}
 			if kind, ok := taken[mg.Param]; ok {
 				at(mg.Pos, fmt.Sprintf("merge of parallel group %q: parameter %q shadows the %s %q of %s %q — name it something else (e.g. branches)", pg.Name, mg.Param, kind, mg.Param, p.Kind, p.Name))
@@ -67,8 +89,8 @@ func checkParallelMerges(file string, prog *ast.Program) []Finding {
 			walkPostfixes(mg.Body, mg.Pos, func(pf *ast.Postfix, pos lexer.Position) {
 				id := pf.Primary.Ident
 				switch {
-				case (id == "pause" || id == "complete") && len(pf.Ops) > 0 && pf.Ops[0].Call != nil:
-					at(pos, fmt.Sprintf("`%s()` cannot be used inside the merge of parallel group %q", id, pg.Name))
+				case id == "pause" && len(pf.Ops) > 0 && pf.Ops[0].Call != nil:
+					at(pos, fmt.Sprintf("`pause()` cannot be used inside the merge of parallel group %q: resuming would re-run every branch — pause in a step after the group", pg.Name))
 				case id == mg.Param && len(pf.Ops) > 0 && pf.Ops[0].Member != "" && !branches[pf.Ops[0].Member]:
 					at(pos, fmt.Sprintf("%s.%s: parallel group %q has no step %q (its steps: %s)", id, pf.Ops[0].Member, pg.Name, pf.Ops[0].Member, strings.Join(names, ", ")))
 				}
@@ -78,13 +100,34 @@ func checkParallelMerges(file string, prog *ast.Program) []Finding {
 	return findings
 }
 
+// isMergeStep reports whether step is m's merge (a parallel group's
+// ast.MergeStep, as pipelineMemberSteps returns it).
+func isMergeStep(m *ast.PipelineMember, step *ast.Step) bool {
+	return m.Parallel != nil && m.Parallel.Merge != nil && step.Name == ast.MergeStepName(m.Parallel.Name)
+}
+
 // mergeParam is the branches parameter in scope in step, when step is m's
-// merge (a parallel group's ast.MergeStep), else "".
+// merge and names one, else "".
 func mergeParam(m *ast.PipelineMember, step *ast.Step) string {
-	if m.Parallel == nil || m.Parallel.Merge == nil || step.Name != ast.MergeStepName(m.Parallel.Name) {
+	if !isMergeStep(m, step) {
 		return ""
 	}
 	return m.Parallel.Merge.Param
+}
+
+// groupScope adds to scope the names a step of m sees beyond the workflow's:
+// a parallel group's own vars (in its branches and merge) and the merge's
+// param (in the merge).
+func groupScope(m *ast.PipelineMember, step *ast.Step, scope map[string]types.Type) {
+	if m.Parallel == nil {
+		return
+	}
+	for _, v := range m.Parallel.Vars {
+		scope[v.Decl.Name] = types.Any
+	}
+	if p := mergeParam(m, step); p != "" {
+		scope[p] = types.Object
+	}
 }
 
 // valueReturningMethods are the value methods (interpreter.callValueMethod)
@@ -92,8 +135,11 @@ func mergeParam(m *ast.PipelineMember, step *ast.Step) string {
 // leave the receiver as it was — every value method does, since values are
 // never aliased. Lambda-taking ones (map, filter, ...) are left out: a call
 // for its lambda's side effects is odd, but not a no-op.
+//
+// append is absent: as a statement, `x.append(v)` means `x = x.append(v)`
+// (interpreter.appendSugar; appendSugarTarget below).
 var valueReturningMethods = map[string]string{
-	"append": "array", "remove": "value", "remove_content": "string",
+	"remove": "value", "remove_content": "string",
 	"replace": "string", "trim": "string", "to_upper": "string", "to_lower": "string",
 	"unique": "array", "substring": "string", "join": "string",
 }
@@ -220,4 +266,29 @@ func walkPostfixes(body []*ast.Statement, start lexer.Position, fn func(*ast.Pos
 		}
 	}
 	walk(reflect.ValueOf(body), start)
+}
+
+// appendSugarTarget is the receiver of a bare `recv.append(x)` statement
+// when recv has an assignable shape — the statement the interpreter runs as
+// `recv = recv.append(x)` (interpreter.appendSugar) — else nil. Whether recv
+// names a variable (and not, say, a `memory` with its own append) is a
+// run-time question; checks using this only look at names already known to
+// be consts or inputs.
+func appendSugarTarget(s *ast.Statement) *ast.Postfix {
+	if s.Expr == nil {
+		return nil
+	}
+	pf := ast.BarePostfix(s.Expr.Expr)
+	if pf == nil || pf.Primary == nil || len(pf.WithTail) > 0 || len(pf.Ops) < 2 {
+		return nil
+	}
+	call, method := pf.Ops[len(pf.Ops)-1], pf.Ops[len(pf.Ops)-2]
+	if call.Call == nil || method.Member != "append" || method.Optional {
+		return nil
+	}
+	recv := &ast.Postfix{Primary: pf.Primary, Ops: pf.Ops[:len(pf.Ops)-2]}
+	if _, _, ok := assignTargetBase(recv); !ok {
+		return nil
+	}
+	return recv
 }

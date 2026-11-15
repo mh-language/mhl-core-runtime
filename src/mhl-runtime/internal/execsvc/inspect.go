@@ -199,11 +199,26 @@ func collectPipelineGotos(prog *ast.Program, name string) []InspectGoto {
 		}
 		routes := flow.Routes(d.Pipeline)
 		for _, m := range d.Pipeline.Body {
-			if m.Step == nil {
+			from, body := "", []*ast.Statement(nil)
+			switch {
+			case m.Route != nil && m.Route.Entry:
+				// The entry route runs as the first stage: its arms are its gotos.
+				for _, a := range m.Route.Arms {
+					if a.Fail == nil {
+						out = append(out, InspectGoto{From: m.Route.Name, To: a.Target})
+					}
+				}
+				continue
+			case m.Step != nil:
+				from, body = m.Step.Name, m.Step.Body
+			case m.Parallel != nil && m.Parallel.Merge != nil:
+				// A group's merge may leave it with a goto: the edge is the group's.
+				from, body = m.Parallel.Name, m.Parallel.Merge.Body
+			default:
 				continue
 			}
-			for _, t := range flow.GotoTargets(m.Step.Body, routes) {
-				out = append(out, InspectGoto{From: m.Step.Name, To: t})
+			for _, t := range flow.GotoTargets(body, routes) {
+				out = append(out, InspectGoto{From: from, To: t})
 			}
 		}
 	}

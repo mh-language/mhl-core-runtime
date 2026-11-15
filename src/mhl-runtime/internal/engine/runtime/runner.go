@@ -526,6 +526,22 @@ func (r *Runner) execStage(runCtx context.Context, p Pipeline, stage Stage, ctx 
 // variable only counts as "assigned" when it points somewhere else, not
 // when a ref it holds was mutated (value.Equal compares refs by ID).
 func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stage, ctx *RunContext, exec StepFunc) error {
+	// The group's own vars live from here to the end of the group, however
+	// it ends: seeded fresh each time it starts, before the fork, so every
+	// branch copies them and the merge rules apply to them as to any var.
+	if len(stage.Vars) > 0 {
+		defer func() {
+			for _, k := range stage.Vars {
+				delete(ctx.Vars, k)
+			}
+		}()
+		if p.GroupVarsInit == nil {
+			return fmt.Errorf("parallel group %q declares vars, but this runner cannot evaluate them (no GroupVarsInit)", stage.Name)
+		}
+		if err := p.GroupVarsInit(runCtx, stage.Name, ctx); err != nil {
+			return fmt.Errorf("parallel group %q: %w", stage.Name, err)
+		}
+	}
 	base := cloneVars(ctx.Vars)
 	n := len(stage.Steps)
 	bctxs := make([]*RunContext, n)
@@ -626,6 +642,9 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 	}
 	if stage.Merge != "" {
 		if err := runMerge(runCtx, stage, ctx, bctxs, conflicts, exec); err != nil {
+			// A goto/complete() from the merge is the group's: Run handles it
+			// exactly as one ending a plain step.
+			ctx.Vars["__last_step"] = stage.Name
 			return err
 		}
 	}
@@ -639,11 +658,20 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 // (value.Materialize), a snapshot the merge cannot write back through. param
 // is unbound again afterwards. Every var two branches disagreed on
 // (conflicts) must be assigned by the merge: one left at its pre-group value
-// would silently drop both branches' work. Control flow (goto, break, pause,
-// complete) is refused — lint rejects it statically too.
+// would silently drop both branches' work.
+//
+// A `goto` or `complete()` in the merge ends the group the way it ends a
+// step: the signal is returned unwrapped, once the merge's writes are
+// checked, for Run to act on — the group is complete, then control goes to
+// the target (or the run completes). `break` and `pause()` are refused (lint
+// rejects them statically too): a pause would re-run every branch on resume,
+// and a break means no more than it does at the end of any step.
 func runMerge(runCtx context.Context, stage Stage, ctx *RunContext, bctxs []*RunContext, conflicts map[string][2]int, exec StepFunc) error {
 	branches := make(map[string]any, len(bctxs))
 	for i, bctx := range bctxs {
+		if stage.MergeParam == "" {
+			break // `merge { ... }`: nothing to bind
+		}
 		vars := make(map[string]any, len(bctx.Vars))
 		for k, v := range bctx.Vars {
 			if strings.HasPrefix(k, "__") || k == stage.MergeParam {
@@ -661,14 +689,20 @@ func runMerge(runCtx context.Context, stage Stage, ctx *RunContext, bctxs []*Run
 	for k := range conflicts {
 		before[k] = value.DeepCopy(ctx.Vars[k])
 	}
-	prev, had := ctx.Vars[stage.MergeParam]
-	ctx.Vars[stage.MergeParam] = branches
-	err := exec(runCtx, stage.Merge, ctx)
-	if had {
-		ctx.Vars[stage.MergeParam] = prev
+	var err error
+	if stage.MergeParam == "" {
+		err = exec(runCtx, stage.Merge, ctx)
 	} else {
-		delete(ctx.Vars, stage.MergeParam)
+		prev, had := ctx.Vars[stage.MergeParam]
+		ctx.Vars[stage.MergeParam] = branches
+		err = exec(runCtx, stage.Merge, ctx)
+		if had {
+			ctx.Vars[stage.MergeParam] = prev
+		} else {
+			delete(ctx.Vars, stage.MergeParam)
+		}
 	}
+	var signal error
 	if err != nil {
 		var (
 			brk *BreakSignal
@@ -676,10 +710,16 @@ func runMerge(runCtx context.Context, stage Stage, ctx *RunContext, bctxs []*Run
 			ps  *PauseSignal
 			cs  *CompleteSignal
 		)
-		if errors.As(err, &brk) || errors.As(err, &gt) || errors.As(err, &ps) || errors.As(err, &cs) {
+		switch {
+		case errors.As(err, &gt):
+			signal = gt
+		case errors.As(err, &cs):
+			signal = cs
+		case errors.As(err, &brk) || errors.As(err, &ps):
 			return fmt.Errorf("parallel group %q: `%s` cannot be used inside a merge", stage.Name, err.Error())
+		default:
+			return fmt.Errorf("parallel group %q: merge: %w", stage.Name, err)
 		}
-		return fmt.Errorf("parallel group %q: merge: %w", stage.Name, err)
 	}
 	keys := make([]string, 0, len(conflicts))
 	for k := range conflicts {
@@ -693,7 +733,7 @@ func runMerge(runCtx context.Context, stage Stage, ctx *RunContext, bctxs []*Run
 				stage.Name, stage.Steps[c[0]], stage.Steps[c[1]], k, k)
 		}
 	}
-	return nil
+	return signal
 }
 
 // mergeRefFields applies each branch's field changes on ref objects back to

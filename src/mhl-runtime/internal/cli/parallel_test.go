@@ -146,3 +146,95 @@ workflow W {
 		t.Fatalf("want an unassigned-conflict error, got %v\n%s", err, out)
 	}
 }
+
+// A merge may leave its group with a goto — back to the group itself (every
+// branch re-runs) or on to a later step, skipping what is in between — and
+// `x.append(v)` as a statement grows x in a branch.
+func TestParallelMergeGoto(t *testing.T) {
+	src := `
+workflow W {
+    var reply = []
+    var rounds = 0
+    parallel Fan {
+        step Left  { self.reply.append("claude") }
+        step Right { self.reply.append("codex") }
+        merge (branches) {
+            self.reply = [...branches.Left.reply, ...branches.Right.reply]
+            self.rounds += 1
+            if (self.rounds < 2) { goto Fan }
+            goto Done
+        }
+    }
+    step Skipped { log("skipped ran") }
+    step Done { log("rounds=${rounds} size=${reply.size()}") }
+}
+`
+	out, err := runParallel(t, src)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if strings.Count(out, "step: Fan.merge") != 2 || strings.Contains(out, "skipped ran") || !strings.Contains(out, "rounds=2 size=6") {
+		t.Fatalf("unexpected run:\n%s", out)
+	}
+}
+
+// `x.append(v)` as a bare statement assigns x (it would otherwise be a no-op,
+// values never alias): a step var, a workflow var through self, an indexed
+// element; a const is refused like any assignment.
+func TestAppendStatementAssigns(t *testing.T) {
+	out, err := runParallel(t, `
+pipeline P {
+    var top = []
+    step S {
+        var items = []
+        items.append("x")
+        top.append("y")
+        self.top.append("z")
+        var grid = [[], []]
+        grid[1].append(5)
+        log("items=${items} top=${top} grid=${grid}")
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `items=["x"] top=["y","z"] grid=[[],[5]]`) {
+		t.Fatalf("unexpected output:\n%s", out)
+	}
+}
+
+// A group's own vars are fresh each time it starts — a goto back to it
+// re-initializes them — visible to its branches and its merge, and gone
+// afterwards: not in a later step, not in the run's result.
+func TestParallelGroupVars(t *testing.T) {
+	src := `
+workflow W {
+    var reply = []
+    var rounds = 0
+    parallel Fan {
+        var left = ""
+        var right = "r${rounds}"
+        step Left  { self.left = "claude" }
+        step Right { self.right = "${self.right}-codex" }
+        merge {
+            self.reply.append(self.left)
+            self.reply.append(self.right)
+            self.rounds += 1
+            if (self.rounds < 2) { goto Fan }
+        }
+    }
+    step Done { log("reply=${reply}") }
+}
+`
+	out, err := runParallel(t, src, "--format", "json")
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `reply=[\"claude\",\"r0-codex\",\"claude\",\"r1-codex\"]`) {
+		t.Fatalf("each round should start from fresh group vars:\n%s", out)
+	}
+	if strings.Contains(out, `"left"`) || strings.Contains(out, `"right"`) {
+		t.Fatalf("group vars leaked into the result:\n%s", out)
+	}
+}

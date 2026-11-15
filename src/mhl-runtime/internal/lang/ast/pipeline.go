@@ -79,7 +79,7 @@ type PipelineParam struct {
 }
 
 // EntryStepCount counts how many of this declaration's steps (including a
-// `parallel` group's branch steps) are marked `entry`. A `partial`
+// `parallel` group's branch steps) and routes are marked `entry`. A `partial`
 // declaration needs exactly one across every fragment merged into it before
 // it's usable — runtime.FindPipeline is where that's actually enforced,
 // deliberately not at import-resolution time: a lone fragment file (its
@@ -93,6 +93,9 @@ func (p *Pipeline) EntryStepCount() int {
 		if m.Step != nil && m.Step.Entry {
 			n++
 		}
+		if m.Route != nil && m.Route.Entry {
+			n++
+		}
 		if m.Parallel != nil {
 			for _, s := range m.Parallel.Steps {
 				if s.Entry {
@@ -102,6 +105,20 @@ func (p *Pipeline) EntryStepCount() int {
 		}
 	}
 	return n
+}
+
+// EntryRoute is the declaration's `entry route`, or nil — the first one
+// when several are (wrongly) marked; lint.checkEntryRoutes reports that.
+func (p *Pipeline) EntryRoute() *WorkflowRoute {
+	if p == nil {
+		return nil
+	}
+	for _, m := range p.Body {
+		if m.Route != nil && m.Route.Entry {
+			return m.Route
+		}
+	}
+	return nil
 }
 
 // IsWorkflow reports whether this declaration used the `workflow` keyword
@@ -195,9 +212,19 @@ type PipelineMember struct {
 }
 
 // WorkflowRoute is a reusable, statically checked step dispatch table.
+//
+// Entry (`entry route Choose(model: M) { ... }`) makes it the workflow's
+// starting point: the run begins by dispatching on the workflow input
+// named like its parameter, before any step. It runs as a stage of its own,
+// under the route's name (runtime.PipelineFromAST puts it first;
+// interpreter.RunStep evaluates it via execEntryRoute), so it shows up in
+// step events and checkpoints like a step. It stays reusable through
+// `goto Choose(x)`. lint.checkEntryRoutes requires a `workflow`, at most one
+// entry, and an input matching the parameter's name and type.
 type WorkflowRoute struct {
 	Pos    lexer.Position
 	EndPos lexer.Position  `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Entry  bool            `parser:"@'entry'?" digest:"omitzero"`
 	Name   string          `parser:"'route' @Ident"`
 	Params []*Param        `parser:"'(' ( @@ ( ',' @@ )* )? ')'"`
 	Arms   []*GotoMatchArm `parser:"'{' @@+ '}'"`
@@ -223,13 +250,29 @@ type WorkflowRoute struct {
 //
 // An optional `merge (branches) { ... }` block, last in the group, decides
 // how the branches' writes combine (see ParallelMerge).
+//
+// Vars, declared before the branches (`var left = ""`), are the group's own
+// variables: initialized each time the group starts (runtime.Pipeline.
+// GroupVarsInit, interpreter.EvalGroupVars), visible to its branches and its
+// merge exactly like workflow vars (copied per branch, merged at the
+// barrier), and gone once the group ends — never in a later step, the run's
+// result or a checkpoint. A name may not reuse a workflow input/var/const/
+// mem (lint.checkParallelMerges).
 type ParallelGroup struct {
 	Pos     lexer.Position
 	EndPos  lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
 	Name    string         `parser:"'parallel' @Ident"`
 	Timeout string         `parser:"( 'timeout' @Duration )?"`
-	Steps   []*Step        `parser:"'{' @@+"`
+	Vars    []*GroupVar    `parser:"'{' @@*" digest:"omitzero"`
+	Steps   []*Step        `parser:"@@+"`
 	Merge   *ParallelMerge `parser:"@@? '}'" digest:"omitzero"`
+}
+
+// GroupVar is one `var name = expr` of a parallel group (ParallelGroup.Vars).
+type GroupVar struct {
+	Pos    lexer.Position
+	EndPos lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Decl   *VarDecl       `parser:"@@"`
 }
 
 // ParallelMerge is a parallel group's explicit join: a body that runs once,
@@ -239,6 +282,9 @@ type ParallelGroup struct {
 //	merge (branches) {
 //	    self.reply = [...branches.Left.reply, ...branches.Right.reply]
 //	}
+//
+// Param is optional (`merge { ... }`, Param ""): with group vars, one per
+// branch, the merge rarely needs the branches' own views.
 //
 // Without one, two branches assigning one variable different values is a
 // hard error (runtime.Runner's runParallelStage). With one, that variable
@@ -250,7 +296,7 @@ type ParallelGroup struct {
 type ParallelMerge struct {
 	Pos    lexer.Position
 	EndPos lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
-	Param  string         `parser:"'merge' '(' @Ident ')'"`
+	Param  string         `parser:"'merge' ( '(' @Ident? ')' )?"`
 	Body   []*Statement   `parser:"'{' @@* '}'"`
 }
 

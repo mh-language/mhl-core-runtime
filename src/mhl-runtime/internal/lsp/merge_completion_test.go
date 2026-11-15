@@ -39,3 +39,38 @@ workflow W {
 		t.Errorf("`merge` missing from keyword completion")
 	}
 }
+
+// Inside a parallel group, `self.` also offers the group's own vars; outside
+// it, it does not.
+func TestSelfCompletionOffersGroupVarsInsideTheGroup(t *testing.T) {
+	src, pos := posAtMarker(t, `
+workflow W {
+    var reply = []
+    parallel Fan {
+        var left = ""
+        step L {
+            self.§
+        }
+    }
+}
+`)
+	items := completionAt("main.mh", src, pos)
+	if !hasLabel(items, "left") || !hasLabel(items, "reply") {
+		t.Fatalf("want left and reply, got %+v", items)
+	}
+	src, pos = posAtMarker(t, `
+workflow W {
+    var reply = []
+    parallel Fan {
+        var left = ""
+        step L { log("l") }
+    }
+    step After {
+        self.§
+    }
+}
+`)
+	if hasLabel(completionAt("main.mh", src, pos), "left") {
+		t.Fatalf("a group var offered outside its group")
+	}
+}

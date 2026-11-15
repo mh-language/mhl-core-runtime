@@ -10,6 +10,7 @@ import { END, FAIL } from "../lib/types";
 import { OffsetMap } from "./offsets";
 import { renderState, uniqueName, STATE_PREFIX, type StateKind, type TemplateContext } from "./templates";
 import { addArm, choiceTemplate, nextPattern, type ChoiceTemplate } from "./choice";
+import { addMerge } from "./merge";
 
 /** A replacement of the UTF-16 range [start, end) with text. */
 export interface TextEdit {
@@ -346,7 +347,6 @@ export function connect(doc: Doc, wfName: string, from: string, to: string): Edi
     return addArm(doc, wfName, from, nextPattern(decls, wf, n.choice, to), to);
   }
   if (n.parent) throw new EditError("a step inside a parallel group cannot goto; connect the group instead");
-  if (n.kind === "parallel") throw new EditError("a parallel group always continues with the next step; connect from a step");
   if (to !== END && to !== FAIL) {
     const target = doc.node(wf, to);
     if (target.parent) throw new EditError(`${to} is inside a parallel group; a goto must target a top-level step`);
@@ -358,6 +358,9 @@ export function connect(doc: Doc, wfName: string, from: string, to: string): Edi
   const i = tops.findIndex((x) => x.id === from);
   if (n.fallsThrough && tops[i + 1]?.id === to) return { edits: [] };
   if (n.fallsThrough && i === tops.length - 1 && to === END) return { edits: [] };
+  // A group leaves through its merge, which runs after the barrier: the
+  // transfer is written there (a new merge, when it has none).
+  if (n.kind === "parallel" && !n.merge) return addMerge(doc, wfName, from, [statementFor(to)]);
   // Retarget an existing unconditional trailing `goto X`.
   if (to !== END && to !== FAIL) {
     const plain = wf.edges.filter((e) => e.from === from && e.kind === "goto" && !e.label && e.span);
@@ -366,7 +369,8 @@ export function connect(doc: Doc, wfName: string, from: string, to: string): Edi
       return { edits: [{ start, end, text: to }] };
     }
   }
-  return { edits: [appendStatement(doc, n, statementFor(to))] };
+  const body = n.kind === "parallel" && n.merge ? { ...n, bodyOpen: n.merge.bodyOpen, bodyClose: n.merge.bodyClose, span: n.merge.span } : n;
+  return { edits: [appendStatement(doc, body, statementFor(to))] };
 }
 
 /** Removes the transfer an edge stands for, when it maps to one line. */
@@ -378,7 +382,8 @@ export function removeEdge(doc: Doc, wfName: string, edge: GraphEdge): EditResul
     if (n.kind === "parallel" || n.parent) throw new EditError("a parallel group always continues with the next step");
     return { edits: [appendStatement(doc, n, "complete()")] };
   }
-  if ((edge.kind === "goto" || edge.kind === "match") && edge.span) {
+  // A route arm (`pattern -> Target` in a `route` block) reads like a match arm.
+  if ((edge.kind === "goto" || edge.kind === "match" || edge.kind === "route") && edge.span) {
     const [s] = doc.span(edge.span);
     const ls = doc.lineStart(s);
     const line = doc.src.slice(ls, doc.lineEnd(s)).trim();

@@ -50,8 +50,12 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 						}
 						findings = append(findings, Finding{File: fileAt(file, s.Pos), Line: s.Pos.Line, Column: s.Pos.Column, Message: msg})
 					}
-				case s.Assign != nil:
-					if name, _, ok := assignTargetBase(s.Assign.Target); ok && consts[name] {
+				case s.Assign != nil || appendSugarTarget(s) != nil:
+					target := appendSugarTarget(s)
+					if s.Assign != nil {
+						target = s.Assign.Target
+					}
+					if name, _, ok := assignTargetBase(target); ok && consts[name] {
 						msg := fmt.Sprintf("cannot assign to constant %q", name)
 						if name == param {
 							msg = fmt.Sprintf("cannot assign to %q: the typed parameter is read-only (copy it into a var to change it)", name)

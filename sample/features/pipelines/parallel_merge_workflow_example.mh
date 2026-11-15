@@ -11,6 +11,10 @@
 // branches agree on, or that only one of them wrote, is already merged when
 // the merge runs. A var they disagree on keeps its pre-group value there and
 // must be assigned by the merge, or the run fails rather than dropping both.
+//
+// The merge may also leave the group with a `goto` (or end the run with
+// `complete()`), like the end of a step: here it skips Escalate when both
+// agents answered. `pause()` and `break` are not allowed in it.
 // Run with:
 //
 //   mhl run sample/features/pipelines/parallel_merge_workflow_example.mh --input question=caching
@@ -33,15 +37,13 @@ workflow Consult {
 
     parallel Ask {
         step AskClaude {
-            // `[...self.replies, x]` (or `self.replies.append(x)` assigned
-            // back) — a bare `self.replies.append(x)` would be a no-op, and
-            // `mhl lint` says so.
-            self.replies = [...self.replies, Claude.run(prompt: question)]
+            // As a statement, `xs.append(x)` means `xs = xs.append(x)`.
+            self.replies.append(Claude.run(prompt: question))
             self.asked = 2
         }
 
         step AskCodex {
-            self.replies = [...self.replies, Codex.run(prompt: question)]
+            self.replies.append(Codex.run(prompt: question))
             self.asked = 2
         }
 
@@ -50,7 +52,15 @@ workflow Consult {
         merge (branches) {
             self.replies = [...branches.AskClaude.replies, ...branches.AskCodex.replies]
             log("merged ${replies.size()} replies from ${asked} agents")
+            if (self.replies.size() == self.asked) {
+                goto Report
+            }
         }
+    }
+
+    // Reached only when an agent came back empty-handed.
+    step Escalate {
+        log("only ${replies.size()} of ${asked} agents answered")
     }
 
     step Report {
@@ -68,6 +78,7 @@ test parallel_merge {
 
     // The merge is part of its group: `executed` lists the declared steps
     // (what a resume skips), while `mhl run` prints it as "step: Ask.merge".
+    // Escalate is missing: both agents answered, so the merge jumped past it.
     describe merge_is_part_of_the_group {
         var result = Consult.run(inputs: {question: "caching"})
         are_equal(result.executed, ["AskClaude", "AskCodex", "Report"])

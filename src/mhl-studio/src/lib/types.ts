@@ -86,6 +86,7 @@ export interface Arm {
  */
 export interface Merge {
   stepName: string;
+  /** "" for `merge { ... }` (no branches object). */
   param: string;
   paramSpan: Span;
   /** `merge` through the closing brace. */
@@ -109,6 +110,8 @@ export interface Choice {
 
 export interface Route {
   name: string;
+  /** `entry route`: the run starts by dispatching on it (the start edges are its arms). */
+  entry?: boolean;
   params: string[];
   span: Span;
   arms: Arm[];
@@ -133,6 +136,8 @@ export interface GraphNode {
   callSites: CallSite[];
   /** The body's first top-level `goto match`, if any. */
   choice?: Choice;
+  /** A parallel group's own `var`s (declared before its branches; live only while it runs). */
+  vars?: { name: string; kind: string; span: Span }[];
   /** A parallel group's `merge (param) { ... }` block, if any. */
   merge?: Merge;
   exits: string[];

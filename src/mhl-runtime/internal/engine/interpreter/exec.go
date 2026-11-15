@@ -45,6 +45,11 @@ import (
 func RunStep(goctx context.Context, prog *ast.Program, pipelineName, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView, spawnSem chan struct{}) (err error) {
 	step, owner := findStep(prog, pipelineName, stepName)
 	if step == nil {
+		// An `entry route` runs as the run's first stage, under its own name.
+		if r := findWorkflowRoute(prog, pipelineName, stepName); r != nil && r.Entry {
+			ctx := &evalCtx{prog: prog, pipelineName: pipelineName, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, pipelineName)}
+			return execEntryRoute(ctx, r)
+		}
 		return fmt.Errorf("pipeline step %q not found", stepName)
 	}
 
@@ -107,6 +112,38 @@ func findStep(prog *ast.Program, pipelineName, stepName string) (*ast.Step, stri
 		}
 	}
 	return nil, ""
+}
+
+// EvalGroupVars evaluates parallel group's own `var` initializers
+// (ast.ParallelGroup.Vars), in order, into pipelineEnv — the run's vars —
+// as the group starts; runtime.Runner removes them when it ends (wired as
+// runtime.Pipeline.GroupVarsInit). An initializer sees the workflow's inputs,
+// vars and mem, and the group's earlier vars. goctx governs any blocking call
+// it makes, as in RunStep.
+func EvalGroupVars(goctx context.Context, prog *ast.Program, pipelineName, group, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView) error {
+	var pg *ast.ParallelGroup
+	for _, decl := range prog.Decls {
+		if decl.Pipeline == nil || decl.Pipeline.Name != pipelineName {
+			continue
+		}
+		for _, m := range decl.Pipeline.Body {
+			if m.Parallel != nil && m.Parallel.Name == group {
+				pg = m.Parallel
+			}
+		}
+	}
+	if pg == nil {
+		return fmt.Errorf("parallel group %q not found in %s", group, pipelineName)
+	}
+	ctx := &evalCtx{prog: prog, pipelineName: pipelineName, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, pipelineName)}
+	for _, v := range pg.Vars {
+		val, err := evalExpr(ctx, v.Decl.Value)
+		if err != nil {
+			return fmt.Errorf("var %q: %w", v.Decl.Name, err)
+		}
+		pipelineEnv[v.Decl.Name] = val
+	}
+	return nil
 }
 
 // mergeParamOf is the branches parameter of the merge stepName runs (a
@@ -493,8 +530,46 @@ func execExprStatement(ctx *evalCtx, expr *ast.Expr) error {
 			return nil
 		}
 	}
+	if assign := appendSugar(ctx, expr); assign != nil {
+		return execAssign(ctx, assign)
+	}
 	_, err := evalExpr(ctx, expr)
 	return err
+}
+
+// appendSugar reads a bare `recv.append(x)` statement as `recv =
+// recv.append(x)`. Values never alias, so append returns a new array and the
+// statement on its own would change nothing; written as a statement, the
+// intent can only be to grow recv. It applies when recv is an assignable
+// target (execAssign's shapes: `name`, `name[i]...`, `self.name`) naming a
+// variable — a step var, a pipeline input/var/mem — so a declaration with
+// its own append (a `memory` log) is still called as before. nil otherwise.
+// Writing to a const or an input this way fails like any assignment.
+func appendSugar(ctx *evalCtx, expr *ast.Expr) *ast.AssignStmt {
+	pf := ast.BarePostfix(expr)
+	if pf == nil || pf.Primary == nil || len(pf.WithTail) > 0 || len(pf.Ops) < 2 {
+		return nil
+	}
+	call, method := pf.Ops[len(pf.Ops)-1], pf.Ops[len(pf.Ops)-2]
+	if call.Call == nil || method.Member != "append" || method.Optional {
+		return nil
+	}
+	recv := &ast.Postfix{Primary: pf.Primary, Ops: pf.Ops[:len(pf.Ops)-2]}
+	name, self, ok := assignTargetBase(recv)
+	if !ok {
+		return nil
+	}
+	_, inEnv := ctx.env[name]
+	_, inPipeline := ctx.pipelineEnv[name]
+	switch {
+	case self && ctx.pipelineName != "" && (inPipeline || isMemVar(ctx, name)):
+	case !self && (inEnv || inPipeline || isMemVar(ctx, name)):
+	case !self && ctx.constNames[name]:
+		// A const or input: let execAssign refuse it, rather than a silent no-op.
+	default:
+		return nil
+	}
+	return &ast.AssignStmt{Target: recv, Op: "=", Value: expr}
 }
 
 // execAssign handles `x = expr` and `x[i] = expr` (chained: `matrix[i][j] =

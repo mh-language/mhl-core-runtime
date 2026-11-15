@@ -1114,6 +1114,64 @@ select {
   color: var(--muted);
   font-family: var(--mono);
 }
+/* A `route` (layout.ts ROUTE_H): a Choice state shared by its callers. */
+.node.route {
+  width: 236px;
+  height: 54px;
+  padding: 7px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--panel-2);
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.node.route .node-icon {
+  color: var(--accent);
+}
+.node.route .node-title .node-kind {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node.route .node-title .badge {
+  margin-left: auto;
+}
+.node.route.unused {
+  height: 100%;
+  justify-content: flex-start;
+  gap: 6px;
+  border-style: dashed;
+  border-color: var(--node-border);
+  background: transparent;
+  opacity: 0.85;
+}
+.route-arms {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+}
+.route-arm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.route-arm .route-pattern {
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.route-arm .route-arrow {
+  color: var(--muted);
+}
+.route-arm .route-fail {
+  color: var(--bad);
+}
 
 .run-running {
   border-color: var(--run) !important;
@@ -1260,6 +1318,54 @@ select {
   line-height: 1.5;
   tab-size: 4;
 }
+/* The amount box and the unit buttons read as one control: one border, one
+   radius, a divider between them, focus ringing the whole thing. */
+.timeout-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.timeout-control {
+  display: flex;
+  align-items: stretch;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.timeout-control:focus-within {
+  border-color: var(--accent);
+}
+.field .timeout-control input {
+  width: 64px;
+  flex: none;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.timeout-control .segmented {
+  height: 100%;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+}
+.timeout-control .segmented button {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 10px;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.timeout-control .segmented button.active {
+  background: var(--accent-soft);
+}
 .field input:focus,
 .field textarea:focus {
   outline: none;
@@ -1335,6 +1441,112 @@ select {
   width: 90px;
   flex: 1;
 }
+/* Workflow loop toggle + max (inspector/Inspector.tsx LoopSection). */
+.loop-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.toggle-row input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+.field input.loop-max {
+  width: 96px;
+}
+
+/* Workflow inputs (inspector/Inspector.tsx WorkflowInspector): one row per
+   input, the add row in the footer, on the same columns. */
+.io-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+.io-table col.io-name {
+  width: 30%;
+}
+.io-table col.io-type {
+  width: 30%;
+}
+.io-table col.io-action {
+  width: 26px;
+}
+.io-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.io-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.io-table td:last-child,
+.io-table th:last-child {
+  padding: 0;
+  text-align: center;
+}
+.io-table td.io-empty {
+  white-space: normal;
+}
+.io-table tbody tr:hover td {
+  background: var(--panel-2);
+}
+.io-table .io-muted {
+  color: var(--muted);
+}
+.io-table .io-required {
+  color: var(--muted);
+  font-style: italic;
+  font-family: var(--sans, inherit);
+}
+.io-table tfoot td {
+  border-bottom: none;
+  padding: 6px 3px 0;
+}
+.io-table tfoot td:first-child {
+  padding-left: 0;
+}
+.io-table tfoot input,
+.io-table tfoot select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 6px;
+  background: var(--panel-2);
+  font-size: 12px;
+  min-width: 0;
+}
+.io-table tfoot input:focus,
+.io-table tfoot select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.io-table .io-add {
+  font-size: 16px;
+  color: var(--accent);
+}
+.io-table .io-add:disabled {
+  color: var(--muted);
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Choice step: "branch on" + one rule per row (inspector/ChoiceEditor.tsx). */
 .choice-editor {
   display: flex;

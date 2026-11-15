@@ -92,6 +92,19 @@ func TestBuildEdges(t *testing.T) {
 				`B->$fail:fail[kind == "x"]`},
 		},
 		{
+			name: "entry route: the start edges are its arms",
+			src: `workflow W {
+    input kind: string = "a"
+    step First { }
+    entry route Go(kind: string) {
+        "a" -> A
+        _ -> fail("unknown")
+    }
+    step A { complete() }
+}`,
+			want: []string{`$start->A:route["a"]`, `$start->$fail:route[_]`, `First->A:next`, `A->$end:end[complete]`},
+		},
+		{
 			name: "parallel group is one top-level node",
 			src: `pipeline P {
     parallel G timeout 2m {
@@ -525,5 +538,57 @@ workflow W {
 	}
 	if w.Nodes[1].Merge != nil {
 		t.Fatalf("a branch step has no merge")
+	}
+}
+
+// A merge that leaves its group with a goto makes the group's own edges,
+// and a merge that always diverts stops the group falling through.
+func TestBuildParallelMergeGoto(t *testing.T) {
+	src := `workflow W {
+    var reply = []
+    parallel Fan {
+        step L { self.reply = ["a"] }
+        merge (branches) {
+            if (branches.L.reply.is_empty()) { goto Fan }
+            goto Done
+        }
+    }
+    step Skipped { log("x") }
+    step Done { complete() }
+}
+`
+	w := build(t, src).Workflows[0]
+	if w.Nodes[0].FallsThrough {
+		t.Fatalf("Fan always diverts through its merge, got fallsThrough")
+	}
+	var got []string
+	for _, e := range w.Edges {
+		if e.From == "Fan" {
+			got = append(got, e.Kind+":"+e.To)
+			if e.Span == nil || src[e.Span[0]:e.Span[1]] != e.To {
+				t.Errorf("edge %s→%s span = %v", e.From, e.To, e.Span)
+			}
+		}
+	}
+	if strings.Join(got, ",") != "goto:Fan,goto:Done" {
+		t.Fatalf("Fan edges = %v", got)
+	}
+}
+
+func TestBuildParallelGroupVars(t *testing.T) {
+	src := `workflow W {
+    parallel Fan {
+        var left = ""
+        step L { self.left = "a" }
+        merge { log(left) }
+    }
+}
+`
+	g := build(t, src).Workflows[0].Nodes[0]
+	if len(g.Vars) != 1 || g.Vars[0].Name != "left" || src[g.Vars[0].Span[0]:g.Vars[0].Span[1]] != `var left = ""` {
+		t.Fatalf("vars = %+v", g.Vars)
+	}
+	if g.Merge == nil || g.Merge.Param != "" || g.Merge.ParamSpan != (Span{}) {
+		t.Fatalf("merge = %+v", g.Merge)
 	}
 }

@@ -163,9 +163,12 @@ type Prop struct {
 	Span Span   `json:"span"`
 }
 
-// Route is a `route Name(params) { arms }` dispatch table.
+// Route is a `route Name(params) { arms }` dispatch table. Entry marks an
+// `entry route`: the run starts by dispatching on it, so the start edges
+// are its arms (kind "route", from StartID).
 type Route struct {
 	Name   string   `json:"name"`
+	Entry  bool     `json:"entry,omitempty"`
 	Params []string `json:"params"`
 	Span   Span     `json:"span"`
 	Arms   []Arm    `json:"arms"`
@@ -189,7 +192,8 @@ type Arm struct {
 // Merge is a parallel group's `merge (Param) { ... }` join (ast.ParallelMerge):
 // it runs once after every branch, as the step "<group>.merge" (StepName).
 type Merge struct {
-	StepName  string `json:"stepName"`
+	StepName string `json:"stepName"`
+	// Param is "" for `merge { ... }`, and ParamSpan then zero.
 	Param     string `json:"param"`
 	ParamSpan Span   `json:"paramSpan"`
 	// Span runs from `merge` through the body's closing brace.
@@ -233,6 +237,8 @@ type Node struct {
 	CallSites []CallSite `json:"callSites"`
 	// Choice is the body's first top-level `goto match`, if any.
 	Choice *Choice `json:"choice,omitempty"`
+	// Vars are a parallel group's own `var`s, declared before its branches.
+	Vars []Var `json:"vars,omitempty"`
 	// Merge is a parallel group's `merge (param) { ... }` block, if any.
 	Merge        *Merge   `json:"merge,omitempty"`
 	Exits        []string `json:"exits"`
@@ -581,7 +587,7 @@ func (b *builder) workflow(d *ast.Declaration) Workflow {
 }
 
 func (b *builder) route(r *ast.WorkflowRoute, s Span) Route {
-	out := Route{Name: r.Name, Span: s, Params: []string{}, Arms: []Arm{}}
+	out := Route{Name: r.Name, Entry: r.Entry, Span: s, Params: []string{}, Arms: []Arm{}}
 	for _, p := range r.Params {
 		out.Params = append(out.Params, p.Name)
 	}
@@ -688,11 +694,14 @@ func (b *builder) parallel(pg *ast.ParallelGroup, s Span) Node {
 	for _, st := range pg.Steps {
 		n.Children = append(n.Children, st.Name)
 	}
+	for _, v := range pg.Vars {
+		n.Vars = append(n.Vars, Var{Name: v.Decl.Name, Kind: "var", Span: Span{v.Pos.Offset, v.EndPos.Offset}})
+	}
 	if mg := pg.Merge; mg != nil {
 		ms := Span{mg.Pos.Offset, mg.EndPos.Offset}
 		m := &Merge{StepName: ast.MergeStepName(pg.Name), Param: mg.Param, Span: ms, BodyClose: b.closeOf(ms), Calls: b.calls(ms), CallSites: b.callSites(ms)}
 		for _, t := range b.in(ms) {
-			if t.Kind == "Ident" && t.Value == mg.Param && m.ParamSpan == (Span{}) {
+			if mg.Param != "" && t.Kind == "Ident" && t.Value == mg.Param && m.ParamSpan == (Span{}) {
 				m.ParamSpan = tokSpan(t)
 			}
 			if t.Kind == "Punct" && t.Value == "{" {
@@ -701,6 +710,8 @@ func (b *builder) parallel(pg *ast.ParallelGroup, s Span) Node {
 			}
 		}
 		n.Merge = m
+		n.FallsThrough = !AlwaysDiverts(mg.Body)
+		n.Exits = exits(mg.Body)
 	}
 	return n
 }
@@ -873,17 +884,35 @@ func (b *builder) edges(p *ast.Pipeline, top []*Node) []Edge {
 			break
 		}
 	}
-	out = append(out, Edge{From: StartID, To: first.ID, Kind: "next"})
+	if r := p.EntryRoute(); r != nil {
+		// The run starts by dispatching on the entry route: one start edge
+		// per arm, flattened like a step's `goto Route(x)`.
+		for _, a := range r.Arms {
+			arm := b.arm(a)
+			e := Edge{From: StartID, To: a.Target, Kind: "route", Via: r.Name, Label: arm.Pattern, Span: arm.TargetSpan}
+			if a.Fail != nil {
+				e.To = FailID
+			}
+			out = append(out, e)
+		}
+	} else {
+		out = append(out, Edge{From: StartID, To: first.ID, Kind: "next"})
+	}
 
 	routes := Routes(p)
+	// A step's transitions come from its body; a parallel group's, from its
+	// merge (the only part of a group that may goto, after the barrier).
 	steps := map[string]*ast.Step{}
 	for _, m := range p.Body {
 		if m.Step != nil {
 			steps[m.Step.Name] = m.Step
 		}
+		if ms := m.Parallel.MergeStep(); ms != nil {
+			steps[m.Parallel.Name] = ms
+		}
 	}
 	for i, n := range top {
-		if st := steps[n.ID]; st != nil && n.Kind == "step" {
+		if st := steps[n.ID]; st != nil {
 			WalkGotos(st.Body, routes, func(g GotoRef) {
 				e := Edge{From: n.ID, To: g.Target, Label: b.guardLabel(g.Guard, g.Else)}
 				if g.Target == "" {
