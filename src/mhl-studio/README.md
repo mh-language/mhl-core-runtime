@@ -103,6 +103,11 @@ Requirements:
 - Rust stable
 - On Linux, the Tauri system dependencies (WebKitGTK 4.1, GTK 3, librsvg)
 
+When you add or update a dependency, write the lockfile with **npm 10** — the npm CI
+runs (Node 22): `npx npm@10 install`. npm 11 leaves out the dependencies of optional
+packages that don't install on your machine (e.g. the WebAssembly fallback of Vite's
+bundler on macOS), and npm 10's `npm ci` then refuses that lockfile as out of sync.
+
 ```sh
 npm install
 npm run tauri dev       # builds the sidecar, starts Vite and the app
