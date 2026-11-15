@@ -133,13 +133,18 @@ func TestExecTimeoutReturnsWhenEscapedDescendantHoldsPipe(t *testing.T) {
 	pipeDrainDelay = 300 * time.Millisecond
 	defer func() { pipeDrainDelay = old }()
 
+	// The timeout must leave perl time to start and call setsid(): fired
+	// earlier, it kills perl while it is still in the group, and the scenario
+	// under test never happens (a loaded CI runner took over 200ms).
 	start := time.Now()
-	result, err := (Cmd{Timeout: 200 * time.Millisecond, KillGrace: 100 * time.Millisecond}).Exec(context.Background(),
+	result, err := (Cmd{Timeout: 1500 * time.Millisecond, KillGrace: 100 * time.Millisecond}).Exec(context.Background(),
 		"sh", "-c", `perl -e 'use POSIX; setsid(); $|=1; print "$$\n"; sleep 100' & wait`)
 	if !errors.Is(err, ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
 	}
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
+	// Timeout + KillGrace + pipeDrainDelay is about 1.9s; blocking on the pipe
+	// would take perl's whole 100s.
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Errorf("took %s: Exec blocked on a pipe held by an escaped descendant", elapsed)
 	}
 	if pid := firstLinePID(t, result.Stdout); pid > 0 {
