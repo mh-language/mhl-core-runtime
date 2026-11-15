@@ -59,6 +59,10 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match the studio version $conf"
             exit 1
           fi
+          # Its section becomes the release notes (create-release).
+          grep -Eq "^## \[?$(printf '%s' "$conf" | sed 's/\./\\./g')\]?([[:space:]]|$)" CHANGELOG.md \
+            || { echo "::error::src/mhl-studio/CHANGELOG.md has no \"## $conf\" section"; exit 1; }
+          [ -f THIRD_PARTY_NOTICES.md ] || { echo "::error::src/mhl-studio/THIRD_PARTY_NOTICES.md is missing (npm run notices)"; exit 1; }
           echo "version=$conf" >> "$GITHUB_OUTPUT"
 
   create-release:
@@ -71,6 +75,7 @@ jobs:
     outputs:
       release-id: ${{ steps.create.outputs.id }}
     steps:
+      - uses: actions/checkout@v4
       - id: create
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,8 +83,16 @@ jobs:
         run: |
           prerelease=false
           case "$VERSION" in *-*) prerelease=true ;; esac
-          cat > notes.md <<EOF
+          # This version's CHANGELOG section, then how to install.
+          awk -v v="$VERSION" '
+            index($0, "## " v) == 1 && (length($0) == length(v) + 3 || substr($0, length(v) + 4, 1) ~ /[[:space:]]/) { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' src/mhl-studio/CHANGELOG.md > changes.md
+          cat > install.md <<EOF
           Desktop designer for mhl workflows — the diagram and the code edit the same \`.mh\` file, and runs stream live. Each installer bundles the mhl runtime it needs.
+
+          ### Downloads
 
           | Platform | Download |
           | --- | --- |
@@ -93,7 +106,10 @@ jobs:
           - **macOS** — if it says the app "is damaged" or "can't be opened", run \`xattr -dr com.apple.quarantine "/Applications/mhl studio.app"\` once after moving it to Applications (or right-click → Open).
           - **Windows** — SmartScreen shows "Windows protected your PC": click **More info → Run anyway**.
           - **Linux** — make the AppImage executable: \`chmod +x mhl.studio_*.AppImage\`.
+
+          Third-party licenses: [THIRD_PARTY_NOTICES.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/src/mhl-studio/THIRD_PARTY_NOTICES.md) (also inside the app bundle).
           EOF
+          { cat install.md; echo; echo "## What's new"; cat changes.md; } > notes.md
           # make_latest=false: the repository's "Latest" release stays the
           # language's (v*), which is what people expect from that badge.
           id="$(gh api "repos/$GITHUB_REPOSITORY/releases" \

@@ -87,7 +87,7 @@ can install it by searching for **Meta-Harness Language (MHL)** in the Extension
 
 ## Development
 
-From `vscode-mhl/` in the [repository](https://github.com/mh-language/mhl-core-runtime):
+From `src/vscode-mhl/` in the [repository](https://github.com/mh-language/mhl-core-runtime):
 
 ```bash
 npm install

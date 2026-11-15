@@ -10,7 +10,7 @@ prompts, and the pipelines that wire them together. It has five tracked parts:
 
 - **`src/mhl-runtime/`** — the Go implementation of the `mhl` CLI (parser, interpreter,
   runtime, LSP). This is where nearly all engineering work happens.
-- **`vscode-mhl/`** — a VS Code extension providing syntax highlighting, diagnostics, and
+- **`src/vscode-mhl/`** — a VS Code extension providing syntax highlighting, diagnostics, and
   completion for `.mh` files; it's a thin `vscode-languageclient` wrapper around `mhl lsp`.
 - **`src/mhl-studio/`** — **mhl studio**, a Tauri 2 (Rust) + React desktop app: a Step Functions-style workflow
   designer (React Flow) synced both ways with a Monaco editor, running workflows live. It
@@ -48,7 +48,12 @@ make functional-test  # runs `mhl test` against sample/syntax and sample/feature
 go vet ./...
 make release          # cross-compiles linux-amd64, darwin-arm64, windows-amd64
 make verify-release   # release + asserts each binary is non-empty
+./release.sh vX.Y.Z [--dry-run] [--no-verify-release]  # cut a language release: ci.yml's checks, then push the v* tag (→ release.yml)
 ```
+
+Each product has its own `release.sh` next to it and its own tag: the language here
+(`vX.Y.Z`), `src/vscode-mhl/release.sh` (`extensions-vX.Y.Z`), `src/mhl-studio/release.sh`
+(`studio-vX.Y.Z`).
 
 Focused iteration:
 
@@ -184,7 +189,7 @@ as one object by `Pipeline.BindInputs`; `Out` requires an explicit `output:` (li
 `types.Type.Optional`). New AST fields are tagged `digest:"omitzero"` so unused ones don't change
 `DefinitionDigest` (pinned by `TestDefinitionDigestUnchangedByOmitzeroFields`).
 
-VS Code extension, from `vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
+VS Code extension, from `src/vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
 `mhl` on `PATH`):
 
 ```sh
@@ -193,14 +198,14 @@ npm run compile   # esbuild bundle to out/extension.js
 npm run watch
 npx @vscode/vsce package   # .vsix
 ```
-Open `vscode-mhl/` in VS Code and press F5 for an Extension Development Host.
+Open `src/vscode-mhl/` in VS Code and press F5 for an Extension Development Host.
 
 The extension ships on its own version and tag, not the runtime's: pushing
 `extensions-v<version>` (must equal `package.json`'s version) runs
 `.github/workflows/publish-extension.yml`, which publishes one VSIX to the VS Marketplace via
 Trusted Publishing (OIDC, no stored PAT) and to Open VSX (`OPEN_VSX` secret). The Marketplace
 policy names that workflow file, so renaming it means updating the policy.
-`vscode-mhl/release.sh [X.Y.Z] [--dry-run]` cuts that tag: it checks package.json/lock/CHANGELOG
+`src/vscode-mhl/release.sh [X.Y.Z] [--dry-run]` cuts that tag: it checks package.json/lock/CHANGELOG
 agree, the tree is clean and in sync with `origin/main`, packages with the workflow's pinned
 `vsce`, then pushes the tag — it publishes nothing itself.
 

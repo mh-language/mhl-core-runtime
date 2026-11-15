@@ -1,20 +1,21 @@
 #!/bin/sh
-# Cuts a release: validates the working tree the same way CI does, then pushes a
-# vX.Y.Z tag. The push triggers .github/workflows/release.yml, which cross-compiles
+# Cuts a language release: validates the working tree the same way CI does, then
+# pushes a vX.Y.Z tag. The push triggers .github/workflows/release.yml, which cross-compiles
 # the binaries, packages the archives, builds the VS Code extension, writes
 # checksums, and publishes the GitHub Release with generated notes.
 #
-# Usage:
+# Usage (from src/mhl-runtime, like src/vscode-mhl/release.sh and src/mhl-studio/release.sh):
 #   ./release.sh v0.2.0
 #   ./release.sh v0.3.0-beta.1                # prerelease (GitHub marks it as such)
 #   ./release.sh v0.2.0 --no-verify-release   # skip the cross-compile dry run
 #   ./release.sh v0.2.0 --dry-run             # run checks, don't tag or push
 #
 # The tag also sets what `mhl version` reports (Makefile embeds `git describe`).
+# The VS Code extension (extensions-vX.Y.Z) and mhl studio (studio-vX.Y.Z) have
+# their own release.sh and tags.
 
 set -eu
 
-RUNTIME_DIR="src/mhl-runtime"
 REMOTE="origin"
 MAIN_BRANCH="main"
 
@@ -32,7 +33,7 @@ for arg in "$@"; do
     --no-verify-release) run_verify_release=0 ;;
     --dry-run) dry_run=1 ;;
     -h|--help)
-      sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     v*.*.*) tag="$arg" ;;
@@ -48,9 +49,9 @@ printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9
 need_cmd git
 need_cmd go
 
-# --- repo root -------------------------------------------------------------
+# --- runtime dir: every check below runs here; git works from any subdirectory --
 cd "$(dirname "$0")"
-[ -d "$RUNTIME_DIR" ] || die "run this from the repo root ($RUNTIME_DIR not found)"
+[ -f Makefile ] && [ -f go.mod ] || die "release.sh must stay in src/mhl-runtime (no Makefile/go.mod next to it)"
 
 # --- preflight -----------------------------------------------------------------
 branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -75,20 +76,20 @@ fi
 
 # --- validation (mirrors .github/workflows/ci.yml, in order) ------------------
 info "go vet ./..."
-( cd "$RUNTIME_DIR" && go vet ./... )
+go vet ./...
 
 info "make build"
-( cd "$RUNTIME_DIR" && make build )
+make build
 
 info "make test"
-( cd "$RUNTIME_DIR" && make test )
+make test
 
 info "make functional-test"
-( cd "$RUNTIME_DIR" && make functional-test )
+make functional-test
 
 if [ "$run_verify_release" -eq 1 ]; then
   info "make verify-release (cross-compile dry run)"
-  ( cd "$RUNTIME_DIR" && make verify-release )
+  make verify-release
 fi
 
 # --- tag & push -------------------------------------------------------------

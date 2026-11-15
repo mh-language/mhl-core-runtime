@@ -140,6 +140,13 @@ aarch64 and x86_64 (`.dmg`), Windows x86_64 (`.msi`, `-setup.exe`) and Linux x86
 release is published only after every target uploaded. It is never marked "Latest", which
 stays the language's release.
 
+Before a release, `CHANGELOG.md` needs a `## X.Y.Z` section (the workflow publishes it as
+the release notes), and `THIRD_PARTY_NOTICES.md` must list today's dependencies: run
+`npm run notices` after changing any npm or Rust dependency. `studio.yml` fails while it is
+stale. The file covers the frontend's npm packages, the Rust crates for every released
+target, and the bundled runtime's Go modules, and `tauri.conf.json` ships it (with
+`LICENSE.md`) inside every installer.
+
 Running the workflow by hand (`workflow_dispatch`) builds every installer as workflow
 artifacts and publishes nothing — a way to try a build before tagging.
 

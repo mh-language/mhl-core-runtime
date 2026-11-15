@@ -30,14 +30,15 @@ PATH. Supported platforms today: `linux-amd64`, `linux-arm64`, `darwin-arm64` (A
 ### Install a specific version (alpha / beta)
 
 By default the scripts install the newest **stable** release and skip prereleases. To install a
-specific tag — an alpha or beta included — set `MHL_VERSION` (with or without the leading `v`):
+specific tag — an alpha or beta included, such as `1.5.0-alpha.5` — set `MHL_VERSION` (with or
+without the leading `v`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | MHL_VERSION=1.5.0-alpha.1 sh
+curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | MHL_VERSION=1.10.1 sh
 ```
 
 ```powershell
-$env:MHL_VERSION = "1.5.0-alpha.1"
+$env:MHL_VERSION = "1.10.1"
 irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.ps1 | iex
 ```
 
@@ -84,11 +85,11 @@ Download a binary and/or the `.vsix` directly from the
 (cd src/mhl-runtime && ./build.sh build)
 
 # VS Code extension
-cd vscode-mhl && npm install && npx @vscode/vsce package   # outputs mhl-language-<version>.vsix
+cd src/vscode-mhl && npm install && npx @vscode/vsce package   # outputs mhl-language-<version>.vsix
 ```
 
 Then install the `.vsix` in VS Code via **Extensions → ⋯ → Install from VSIX...**, or run
-`vscode-mhl/install.sh`, which builds and installs it in one step.
+`src/vscode-mhl/install.sh`, which builds and installs it in one step.
 
 ## Documentation
 
@@ -111,9 +112,12 @@ feature — run any of them directly with `mhl test <file>`:
 
 - [`src/mhl-runtime/`](src/mhl-runtime) — the Go implementation of the `mhl` CLI (parser,
   interpreter, runtime, LSP)
-- [`vscode-mhl/`](vscode-mhl) — the VS Code extension (syntax highlighting, diagnostics,
+- [`src/vscode-mhl/`](src/vscode-mhl) — the VS Code extension (syntax highlighting, diagnostics,
   completion), a thin wrapper around `mhl lsp`
+- [`src/mhl-studio/`](src/mhl-studio) — mhl studio, the optional desktop IDE: a workflow diagram
+  kept in sync with the `.mh` code, with live runs
 - [`docs/site/`](docs/site) — the canonical language reference, deployed to GitHub Pages
+- [`skills/`](skills) — agent skills that teach models to write `.mh`
 - [`sample/`](sample) — worked `.mh` examples, doubling as the docs-facing test suite
 - [`tests_e2e/cloud/`](tests_e2e/cloud) — scenarios that aren't `go test`, exercising
   `mhl serve mcp` across a pod fleet

@@ -5,7 +5,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/mh-language/mhl-core-runtime.git",
-    "directory": "vscode-mhl"
+    "directory": "src/vscode-mhl"
   },
   "homepage": "https://mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html",
   "bugs": {

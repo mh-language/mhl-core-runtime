@@ -7,8 +7,8 @@ import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { shikiToMonaco } from "@shikijs/monaco";
 import githubDark from "shiki/themes/github-dark-default.mjs";
 import githubLight from "shiki/themes/github-light-default.mjs";
-import grammar from "../../../../vscode-mhl/syntaxes/mhl.tmLanguage.json";
-import langConf from "../../../../vscode-mhl/language-configuration.json";
+import grammar from "../../../vscode-mhl/syntaxes/mhl.tmLanguage.json";
+import langConf from "../../../vscode-mhl/language-configuration.json";
 import markdown from "shiki/langs/markdown.mjs";
 import json from "shiki/langs/json.mjs";
 

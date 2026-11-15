@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "sidecar": "node scripts/build-sidecar.mjs",
+    "notices": "node scripts/third-party-notices.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

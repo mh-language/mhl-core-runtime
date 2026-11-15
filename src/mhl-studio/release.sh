@@ -5,7 +5,8 @@
 # installers on their own runners and publishes them to a GitHub Release.
 # Nothing is built for release or published from this machine.
 #
-# The version lives in four files that must agree — bump them and commit first:
+# The version lives in four files that must agree — bump them, add a "## X.Y.Z"
+# section to CHANGELOG.md (it becomes the release notes), and commit first:
 #   ./release.sh --bump 0.2.0   # writes tauri.conf.json, package.json,
 #                               # package-lock.json and Cargo.toml (no commit)
 #
@@ -40,7 +41,7 @@ while [ $# -gt 0 ]; do
       bump="$1"
       ;;
     -h|--help)
-      sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     v*|studio-v*) die "pass the bare version (e.g. 0.2.0), not a tag: $1" ;;
@@ -74,6 +75,8 @@ if [ -n "$bump" ]; then
   awk -v v="$bump" '!done && /^version = "/ { print "version = \"" v "\""; done = 1; next } { print }' \
     src-tauri/Cargo.toml > src-tauri/Cargo.toml.tmp && mv src-tauri/Cargo.toml.tmp src-tauri/Cargo.toml
   info "set $bump in tauri.conf.json, package.json, package-lock.json and Cargo.toml"
+  grep -Eq "^## \[?$(printf '%s' "$bump" | sed 's/\./\\./g')\]?([[:space:]]|$)" CHANGELOG.md \
+    || info "add a \"## $bump\" section to CHANGELOG.md (it becomes the release notes)"
   info "review, commit and push, then run ./release.sh $bump"
   exit 0
 fi
@@ -92,6 +95,10 @@ for pair in "package.json:$pkg_version" "package-lock.json:$lock_version" "Cargo
   [ "${pair#*:}" = "$version" ] \
     || die "${pair%%:*} says ${pair#*:} but tauri.conf.json says $version — run: ./release.sh --bump $version"
 done
+# The release workflow publishes this section as the release notes.
+grep -Eq "^## \[?$(printf '%s' "$version" | sed 's/\./\\./g')\]?([[:space:]]|$)" CHANGELOG.md \
+  || die "CHANGELOG.md has no \"## $version\" section"
+[ -f THIRD_PARTY_NOTICES.md ] || die "THIRD_PARTY_NOTICES.md is missing — run: npm run notices"
 
 # --- preflight: the tag must point at what is on origin/main ------------------
 branch="$(git rev-parse --abbrev-ref HEAD)"

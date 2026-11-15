@@ -46,7 +46,7 @@ jobs:
           node-version: "20"
 
       - name: Build VS Code extension
-        working-directory: vscode-mhl
+        working-directory: src/vscode-mhl
         run: |
           npm ci
           npm run compile

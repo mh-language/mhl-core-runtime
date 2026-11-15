@@ -1,7 +1,7 @@
 name: CI
 
 # No paths: filter — the previous scoping to src/mhl-runtime/** let changes
-# under vscode-mhl/, tests_e2e/, docs/site/, install.sh/install.ps1 merge
+# under src/vscode-mhl/, tests_e2e/, docs/site/, install.sh/install.ps1 merge
 # with zero validation (maturity-audit finding B5). The gate itself already
 # separates concerns into independent jobs, which run in parallel and make
 # failures attributable to the affected subsystem.

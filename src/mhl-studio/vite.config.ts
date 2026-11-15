@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 // The TextMate grammar and language configuration are imported straight from
 // vscode-mhl (one copy for both editors), which lives outside this package.
-const vscodeMhl = fileURLToPath(new URL("../../vscode-mhl", import.meta.url));
+const vscodeMhl = fileURLToPath(new URL("../vscode-mhl", import.meta.url));
 // monaco-editor's ESM tree, for importing editor contributions without its
 // package "exports" map (see src/editor/monaco-core.js).
 const monacoEsm = fileURLToPath(new URL("./node_modules/monaco-editor/esm/vs", import.meta.url));

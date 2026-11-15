@@ -14,16 +14,16 @@ on:
     paths:
       - "src/mhl-studio/**"
       - "src/mhl-runtime/**"
-      - "vscode-mhl/syntaxes/**"
-      - "vscode-mhl/language-configuration.json"
+      - "src/vscode-mhl/syntaxes/**"
+      - "src/vscode-mhl/language-configuration.json"
       - ".github/workflows/studio.yml"
   pull_request:
     branches: [main, develop]
     paths:
       - "src/mhl-studio/**"
       - "src/mhl-runtime/**"
-      - "vscode-mhl/syntaxes/**"
-      - "vscode-mhl/language-configuration.json"
+      - "src/vscode-mhl/syntaxes/**"
+      - "src/vscode-mhl/language-configuration.json"
       - ".github/workflows/studio.yml"
   workflow_dispatch:
   # studio-release.yml runs these checks before building any installer.
@@ -70,4 +70,7 @@ jobs:
         working-directory: src/mhl-studio/src-tauri
         run: cargo test
       - run: npm audit --omit=dev
+      # The installers ship THIRD_PARTY_NOTICES.md: it must list today's deps.
+      - name: Third-party notices are up to date
+        run: npm run notices -- --check
 
