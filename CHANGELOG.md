@@ -36,6 +36,12 @@ Per-tag release notes are also generated automatically on the
   `step_end`, `log`, `result`), and **`--workflow <name>`** picks which declared
   pipeline/workflow to run.
 
+### Security
+
+- Built with **Go 1.26.11**, which fixes GO-2026-6859 in the standard library: an
+  HTTP/1 server crash (a `MaxBytesReader` header race in `net/http`) that
+  `mhl serve mcp --http` and `mhl serve a2a` were exposed to.
+
 ### Fixed
 
 - **A cancelled agent or `cmd.exec` no longer lingers.** When the cancel (from
