@@ -14,7 +14,9 @@ optional `loop` prefix. The difference is a single static rule:
 | Reading guarantee | "runs top to bottom" | "may branch — read the `goto`s" |
 
 `mhl lint` also checks that every `goto` target names a step declared in the
-same `workflow`.
+same `workflow` — or a `parallel` group, by its own name, which runs the whole
+group again (every branch, then the barrier). A branch step inside a group is
+never a target.
 
 `goto match value { pattern -> StepName ... _ -> fail(reason) }` selects a
 step using the same pattern equality and first-match order as expression
@@ -42,8 +44,16 @@ the duration is measured fresh on each attempt, never persisted — and
   `nameof(...)`-wrapped spelling of a goto target: pure grammar sugar for the
   bare `goto Review` form (not the real `nameof(...)` builtin evaluated as a
   call), checked identically by `mhl lint`'s goto rules.
+- [goto_parallel_group.mh](goto_parallel_group.mh) — a `Gate` step whose
+  `goto match` sends a failed round back to the `parallel Verify` group, re-running
+  both branches until the gate passes.
 - [goto_match_artifact_review.mh](goto_match_artifact_review.mh) — a review gate
   that routes feedback to generation and approved artifacts to commit.
+- [entry_route_dispatches_on_an_input.mh](entry_route_dispatches_on_an_input.mh)
+  — `entry route Choose(model: AgentModel) { ... }`: the run starts at the route,
+  dispatching on the input of the same name and type, before any step (it runs as
+  the step `Choose`, so `executed` starts with it); it stays callable with
+  `goto Choose(x)`. Run with `--input model=Codex` (or `Claude`, `All`).
 
 Run from the repository root. The first command pauses; the second regenerates
 and pauses again; the third commits:

@@ -109,7 +109,7 @@ To change an input, copy it into a pipeline `var` first.
 | Habit from other languages | What mhl needs |
 |---|---|
 | `obj.field = v` | `obj["field"] = v`, including nested `o["a"]["b"] = v`, or `obj = obj with { field: v }`. `.field` is read-only outside `self.name` |
-| `list.append(x)` mutates | `list = list.append(x)` or `list += [x]`. Array methods return new arrays *(lint silent)* |
+| `list.append(x)` mutates | Only as a statement of its own, where `list.append(x)` means `list = list.append(x)`. As a value, `.append` and every other array method return a new array and leave the receiver alone: `name.trim()` on its own line does nothing *(lint flags it)* |
 | `b = a` aliases an object | Objects and arrays copy on every read. Use `ref { ... }` when sharing is the point |
 | `break` leaves a loop | `break` ends the **whole run**, even inside `for`/`while` *(lint silent)*. To stop early, use `.find()`/`.filter()`, or a `while` with a flag |
 | `continue` | Does not exist, and fails only when reached *(lint silent)*. Put `.filter()` first, or an `if` around the body |

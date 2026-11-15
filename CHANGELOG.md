@@ -10,6 +10,171 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+### Added
+
+- **`entry route` — a workflow can start with a dispatch.**
+  `entry route Choose(model: AgentModel) { ... }` is evaluated before any step, its
+  parameter bound to the workflow input of the same name, and the run continues at the
+  step its arm selects. It runs as a step named after the route (so it appears in
+  `executed`, step events and checkpoints) and stays callable with `goto Choose(x)`.
+  `mhl lint` allows one per workflow and checks the input's name and type. In a
+  `partial` workflow it counts as the single entry.
+- **`merge` — an explicit join for a `parallel` group.** A `merge (branches) { ... }`
+  block, last in the group, runs once after every branch (as the step `<Group>.merge`)
+  with `branches.<Step>.<var>` holding what each branch left. Branches may then write the
+  same var; the merge decides the result. `merge { ... }` takes no parameter.
+- **Group vars.** A `parallel` group may declare its own `var`s before its branches:
+  fresh each time the group starts, shared by its branches and its merge as `self.x`,
+  gone after it.
+- **`xs.append(x)` as a statement** means `xs = xs.append(x)`; as a value, `.append`
+  still leaves its receiver alone. `mhl lint` reports other discarded results, such as a
+  bare `name.trim()`.
+- **`mhl graph <file> [--stdin]`** prints a workflow's control-flow graph as JSON —
+  steps, groups, routes, edges, the calls each step makes, and source spans — for
+  editors and visual tools.
+- **`mhl run --format jsonl`** streams a run as events (`run_start`, `step_start` /
+  `step_end`, `log`, `result`), and **`--workflow <name>`** picks which declared
+  pipeline/workflow to run.
+
+### Security
+
+- Built with **Go 1.26.11**, which fixes GO-2026-6859 in the standard library: an
+  HTTP/1 server crash (a `MaxBytesReader` header race in `net/http`) that
+  `mhl serve mcp --http` and `mhl serve a2a` were exposed to.
+
+### Fixed
+
+- **A cancelled agent or `cmd.exec` no longer lingers.** When the cancel (from
+  `wait any`, a quorum, a timeout or SIGINT) landed while the command's shell was
+  starting a child, that child could escape the kill and hold the run until it finished
+  on its own (`wait any` waited out the full `sleep 30` of the slower agent). The
+  process group is now killed again until the command has really exited.
+
+### Changed
+
+- **SIGINT / SIGTERM cancel a run cleanly.** `mhl run` stops at the next step boundary
+  (aborting a blocking call in flight), saves the resume checkpoint, and reports
+  `"kind": "cancelled"`; a second signal kills it.
+
+### Repository
+
+- **mhl studio** (`src/mhl-studio`), an optional desktop IDE that draws a workflow as a
+  diagram kept in sync with its code, is released separately on `studio-vX.Y.Z` tags
+  (see its own `CHANGELOG.md`).
+- The VS Code extension moved to `src/vscode-mhl`, and the language's `release.sh` to
+  `src/mhl-runtime`.
+
+## 1.10.1 — 2026-11-10
+
+### Fixed
+
+- **Findings in imported modules name the module.** `mhl lint` reports each finding
+  with the file and line it is in, not the importing file's. The language server shows a
+  finding from another file on line 1, prefixed with `file:line:`.
+- **A spread of a literal that is not an array** (`[...1]`) is a lint error.
+
+## 1.10.0 — 2026-11-10
+
+### Changed
+
+- **Every `Agent.run(...)` / `Router.delegate(...)` call is checked,** wherever it is —
+  tool bodies, tests, hooks, nested calls — for unknown arguments and wrongly typed
+  input values.
+- **An agent with `input`s reads only its own scope.** `mhl lint` reports an undefined
+  name in such an agent's expressions; an agent without inputs still reads the caller's
+  scope.
+
+## 1.9.0 — 2026-11-10
+
+### Added
+
+- **Agent inputs.** `input repo: string [= default]` declares a per-call input that
+  `.run(prompt: ..., repo: ...)` fills and the agent's own `cwd:`, `args:`, `stdin:`,
+  `log:` and hooks read; a fallback receives the same inputs. `"${repo}"` in a literal
+  `args` element or `stdin` is substituted.
+- **Array spread** `[a, ...xs]` in array literals, including `args:`. A spread of
+  `null` is an error, never an empty array.
+
+## 1.8.0 — 2026-11-10
+
+### Added
+
+- **Agent `cwd:`** — the process's working directory, evaluated per call; a missing
+  directory fails before the process starts.
+- **`log:` as an expression and `log_mode: "append" | "truncate"`** — a per-call log
+  file, emptied at each attempt with `truncate`.
+- A non-zero exit now reports the tail of the process's output (`partial stdout:`).
+
+### Changed
+
+- **An unknown agent property or `run` argument is an error** (lint and run), no
+  longer silently ignored.
+
+## 1.7.1 — 2026-11-10
+
+No language changes (CI: macOS 15 runners).
+
+## 1.7.0 — 2026-11-10
+
+### Added
+
+- **Agent `timeout:` and `kill_grace:`.** `timeout:` bounds each attempt of a `cli/*`
+  or `ollama/*` agent: on expiry its whole process group gets SIGTERM, `kill_grace:`
+  (default 10s) to exit, then SIGKILL, and the call fails with a `timeout` error that
+  `catch`, `finally`, `retry_on: ["timeout"]` and `fallback` all see. `.run(timeout:)`
+  overrides it for one call.
+- Agent skills (`skills/`) that teach models to write `.mh`.
+
+### Fixed
+
+- On Windows, a timed-out agent or `cmd.exec` ends its whole process tree (a Job
+  Object), no longer orphaning grandchildren.
+
+## 1.6.0 — 2026-11-03
+
+### Breaking
+
+- **`mhl serve mcp` no longer serves a workflow's `.mh` source** as a resource
+  (`mhl://workflow/<name>/source`): a client only needs the interface. Reading it now
+  returns `-32602`.
+
+### Added
+
+- **Encrypted workflow packs.** `mhl pack <dir> -o <file> [--new-key]` seals a workflow
+  directory into a DMPK v2 pack; `mhl serve mcp --http --workflows-pack <file>` serves it
+  decrypted in memory only, with the key in `MHL_SERVE_WORKFLOWS_KEY` (removed from the
+  environment before anything runs).
+
+## 1.5.0-alpha.5 — 2026-10-11
+
+### Added
+
+- **`extension <kind> <Name> from "<id>"`** names which installed extension serves a
+  declaration, so several of one kind can be used side by side.
+
+### Changed
+
+- `extension store` is now **`extension state`**; the old kind name still works.
+
+## 1.5.0-alpha.4 — 2026-10-09
+
+### Changed
+
+- **Faster `mhl serve` startup** on large directories: imported modules are resolved once
+  and shared, and files are parsed concurrently.
+- `make redhat` (linux amd64 + arm64) and `make mac-apple-silicon` build targets;
+  `make release` now also builds linux/arm64. Go 1.26.9, `golang.org/x/net` v0.60.0.
+
+## 1.5.0-alpha.3 — 2026-10-08
+
+### Added
+
+- **Text encodings at the boundary.** `fs.read`, `fs.write`, `fs.append`, `cmd.exec`
+  and `cmd.exec_all` take `encoding:` (e.g. `"windows-1252"`, `"utf-16"`,
+  `"utf-8-bom"`, `"auto"`); strings stay UTF-8 inside mhl.
+
+## 1.5.0-alpha.2 — 2026-10-02
+
 ### Upgrade notes
 
 - **`extensible` method signatures declare their return type with `:`.**
@@ -24,6 +189,10 @@ Per-tag release notes are also generated automatically on the
   `count(items): number { ... }` is the same as `count(items): number -> { ... }`;
   the `{` already marks where the body starts. `->` is still required before an
   expression body, and `-> { key: value }` is still an object literal.
+
+### Added
+
+- `THIRD_PARTY_NOTICES.md` with the licenses of the Go modules linked into `mhl`.
 
 ## 1.5.0-alpha.1
 

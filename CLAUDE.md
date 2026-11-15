@@ -6,12 +6,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo is the implementation of **mhl** (Meta-Harness Language, `.mh`): a declarative
 language for describing AI agent pipelines — agents, tools, memory, MCP servers,
-prompts, and the pipelines that wire them together. It has four tracked parts:
+prompts, and the pipelines that wire them together. It has five tracked parts:
 
 - **`src/mhl-runtime/`** — the Go implementation of the `mhl` CLI (parser, interpreter,
   runtime, LSP). This is where nearly all engineering work happens.
-- **`vscode-mhl/`** — a VS Code extension providing syntax highlighting, diagnostics, and
+- **`src/vscode-mhl/`** — a VS Code extension providing syntax highlighting, diagnostics, and
   completion for `.mh` files; it's a thin `vscode-languageclient` wrapper around `mhl lsp`.
+- **`src/mhl-studio/`** — **mhl studio**, a Tauri 2 (Rust) + React desktop app: a Step Functions-style workflow
+  designer (React Flow) synced both ways with a Monaco editor, running workflows live. It
+  vendors the runtime as a sidecar (`npm run sidecar` → `src-tauri/binaries/mhl-<triple>`) and
+  never parses `.mh` itself: the diagram is `mhl graph --stdin`, runs are `mhl run --format
+  jsonl [--workflow W]`, the editor talks to `mhl lsp`. The text is the source of truth —
+  diagram edits become span-based text edits (`src/sync/edits.ts`), so a change to `mhl
+  graph`'s JSON (`internal/lang/flow`) must be mirrored in `src/lib/types.ts`. Checks: `npm
+  run sidecar && npm run typecheck && npm test && npx vite build`, then `cargo clippy
+  --all-targets -- -D warnings && cargo test` in `src-tauri` (`.github/workflows/studio.yml`, deliberately outside the release gate: the language must release independently of the studio). Released on its own
+  `studio-vX.Y.Z` tags (`src/mhl-studio/release.sh` → `.github/workflows/studio-release.yml`:
+  studio.yml's checks via `workflow_call`, a tauri-action build per target, draft release
+  published once all uploaded, never "Latest"; unsigned for now). The version lives in
+  `tauri.conf.json`, `package.json`, `package-lock.json` and `Cargo.toml` — `release.sh --bump`
+  sets all four. `release.yml` drops `studio-v*` refs before GoReleaser. See its README.
 - **`docs/site/`** — `reference.html` (and `index.html`) is the single, canonical language
   reference, deployed as-is to GitHub Pages by `.github/workflows/page.yml`. There is no
   separate wiki; some example fields may still be aspirational, not yet implemented — see
@@ -34,7 +48,12 @@ make functional-test  # runs `mhl test` against sample/syntax and sample/feature
 go vet ./...
 make release          # cross-compiles linux-amd64, darwin-arm64, windows-amd64
 make verify-release   # release + asserts each binary is non-empty
+./release.sh vX.Y.Z [--dry-run] [--no-verify-release]  # cut a language release: ci.yml's checks, then push the v* tag (→ release.yml)
 ```
+
+Each product has its own `release.sh` next to it and its own tag: the language here
+(`vX.Y.Z`), `src/vscode-mhl/release.sh` (`extensions-vX.Y.Z`), `src/mhl-studio/release.sh`
+(`studio-vX.Y.Z`).
 
 Focused iteration:
 
@@ -54,9 +73,10 @@ The built CLI itself:
 
 ```sh
 mhl init [dir]  # scaffolds an immediately-runnable main.mh; never overwrites
-mhl run <pipeline.mh> [--input key=value ...] [--resume [--force]] [--format text|json] [--dry-run]  # --resume refuses a checkpoint whose pipeline definition changed shape (digest), --force downgrades to warning; --format json emits one typed result/error object (runtime.StepError / InvalidInputsError feed its kind/step/hint), run output → its `log` field; --dry-run = validate (parse/imports/lint/input contract — presence *and* declared value types, via the shared `execsvc.coerceInputs`) + print static plan via execsvc.Inspect, executes nothing
+mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run]  # --workflow picks the declared pipeline/workflow (default: first entry point; execsvc.Request.Workflow); --format jsonl streams events (cli/run_events.go: run_start, step_start/step_end ← execsvc.Request.OnStart/OnStep/OnStepEnd, log, result); SIGINT/SIGTERM cancel at the step boundary (checkpoint saved), a second one kills; --resume refuses a checkpoint whose pipeline definition changed shape (digest), --force downgrades to warning; --format json emits one typed result/error object (runtime.StepError / InvalidInputsError feed its kind/step/hint), run output → its `log` field; --dry-run = validate (parse/imports/lint/input contract — presence *and* declared value types, via the shared `execsvc.coerceInputs`) + print static plan via execsvc.Inspect, executes nothing
 mhl test <file.mh|dir>
 mhl lint [dir]
+mhl graph <file.mh> [--stdin]  # JSON control-flow graph for editors/visual tools, e.g. src/mhl-studio (internal/lang/flow): nodes (with each step's `callSites`)/edges — plus each `tool`'s methods (args, returns, header/body spans) and `Name.` call sites — with byte spans from the AST's parser-set Pos/EndPos (`parser:"" digest:"-"`, so DefinitionDigest is unchanged); flow.GotoTargets/AlwaysDiverts are the one copy execsvc.Inspect and lint use
 mhl lsp        # LSP server over stdio, used by vscode-mhl
 mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
 mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [--single-replica] [--workflows-pack file] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics); --single-replica (or MHL_SERVE_SINGLE_REPLICA) is required to start with a non-cas `extension state`; --workflows-pack (MHL_SERVE_WORKFLOWS_PACK, key in MHL_SERVE_WORKFLOWS_KEY, unset from the env before anything runs) loads the program from an encrypted DMPK v2 pack (`internal/pack`) in memory only — `execsvc.ParseFS`/`LoadFilesFS` → `interpreter.NewImportCacheFS`, whose read func replaces os.ReadFile for imports/prompts/skills/schemas; [dir] is then only the root a schema's path is composed under
@@ -169,7 +189,7 @@ as one object by `Pipeline.BindInputs`; `Out` requires an explicit `output:` (li
 `types.Type.Optional`). New AST fields are tagged `digest:"omitzero"` so unused ones don't change
 `DefinitionDigest` (pinned by `TestDefinitionDigestUnchangedByOmitzeroFields`).
 
-VS Code extension, from `vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
+VS Code extension, from `src/vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
 `mhl` on `PATH`):
 
 ```sh
@@ -178,14 +198,14 @@ npm run compile   # esbuild bundle to out/extension.js
 npm run watch
 npx @vscode/vsce package   # .vsix
 ```
-Open `vscode-mhl/` in VS Code and press F5 for an Extension Development Host.
+Open `src/vscode-mhl/` in VS Code and press F5 for an Extension Development Host.
 
 The extension ships on its own version and tag, not the runtime's: pushing
 `extensions-v<version>` (must equal `package.json`'s version) runs
 `.github/workflows/publish-extension.yml`, which publishes one VSIX to the VS Marketplace via
 Trusted Publishing (OIDC, no stored PAT) and to Open VSX (`OPEN_VSX` secret). The Marketplace
 policy names that workflow file, so renaming it means updating the policy.
-`vscode-mhl/release.sh [X.Y.Z] [--dry-run]` cuts that tag: it checks package.json/lock/CHANGELOG
+`src/vscode-mhl/release.sh [X.Y.Z] [--dry-run]` cuts that tag: it checks package.json/lock/CHANGELOG
 agree, the tree is clean and in sync with `origin/main`, packages with the workflow's pinned
 `vsce`, then pushes the tag — it publishes nothing itself.
 
@@ -232,7 +252,12 @@ Key packages:
   and checkpoint persistence for `--resume`. Knows step *names* only, not step behavior.
   `pipeline` and `workflow` are one node (`ast.Pipeline.Kind`) and run identically here —
   `goto` works in both; `internal/lang/lint` (`checkPipelineGoto`) is what rejects `goto`
-  outside a `workflow` and validates the target step exists. `Runner.Run` / `LoopRunner.Run`
+  outside a `workflow` and validates the target step exists. An `entry route Name(p: T)`
+  (`ast.WorkflowRoute.Entry`) is a workflow's starting point: `PipelineFromAST` prepends a
+  stage named after the route (`Pipeline.EntryRoute`), `interpreter.RunStep` evaluates it via
+  `execEntryRoute` with `p` bound to the input of that name, and its arm's goto picks the
+  step; lint `checkEntryRoutes` (one per workflow, input name+type, no step-name clash);
+  `mhl graph` makes its arms the `$start` edges (kind `route`, `Route.entry`). `Runner.Run` / `LoopRunner.Run`
   take a `context.Context` first arg, checked at each step / iteration boundary; `StepFunc` is
   `func(ctx, step, *RunContext) error`. `interpreter.RunStep` takes that ctx too and sets it as
   `evalCtx.goctx`, so a run-level cancel also aborts a blocking call already in flight — an
@@ -244,7 +269,25 @@ Key packages:
   `context.WithTimeout` on that one step's ctx; an expiry wraps `runtime.ErrStepTimeout` and
   flows through `saveCancelCheckpoint` (resume point written when checkpointing is on), i.e.
   it fails the step like `fail()` — per attempt, deadline never persisted.
-  `lint.checkPipelineStepTimeout` rejects a non-positive value. A `loop pipeline`/`loop
+  `lint.checkPipelineStepTimeout` rejects a non-positive value. A `parallel` group may end
+  with `merge (param) { ... }` (`ast.ParallelMerge`): `runtime.runMerge` runs it after the
+  barrier through the same `StepFunc` under the step name `<group>.merge`
+  (`ast.MergeStepName`; `interpreter.findStep` resolves it, `Stage.Merge`/`MergeParam`
+  carry it), with param bound read-only to `{branch: vars}`; a var two branches wrote
+  differently must be assigned there or the group fails. A `goto`/`complete()` in it is
+  returned unwrapped and handled by `Run` like one ending a step (`break`/`pause()` are
+  refused); `flow` takes the group's edges/`fallsThrough` from the merge body. It is not in
+  `Pipeline.Steps` / `RunResult.Executed`. Lint: `lint/merge.go` (`checkParallelMerges`;
+  `checkDiscardedResults` flags a bare `name.trim()`-style call, a no-op since values never
+  alias); `pipelineMemberSteps` includes the merge (`mergeParam` adds its param to scope).
+  A group may also declare `var`s before its branches (`ast.ParallelGroup.Vars`,
+  `Stage.Vars`): `runParallelStage` seeds them via `Pipeline.GroupVarsInit` (set by execsvc
+  and `interpreter/test_run.go` to `interpreter.EvalGroupVars` — the runtime can't evaluate
+  expressions; a group with vars and no init fails) each time the group starts, before the
+  fork, and deletes them when it ends; lint puts them in scope via `groupScope`. The merge
+  param is optional (`merge { ... }`, `Stage.MergeParam ""`).
+  A bare `recv.append(x)` statement is sugar for `recv = recv.append(x)`
+  (`interpreter.appendSugar`, mirrored by `lint.appendSugarTarget` for const/input checks). A `loop pipeline`/`loop
   workflow` declaration may also carry a `max <N>` header clause (`ast.Pipeline.Max`,
   `loop workflow Refine max 3 { ... }`) — pure sugar for `repeat { max_iterations: N }`,
   projected onto `runtime.Pipeline.MaxIterations` in `PipelineFromAST` (an explicit

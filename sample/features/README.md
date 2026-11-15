@@ -17,3 +17,4 @@ how they're wired together at runtime.
 - [git/](git/README.md) — the `git` native namespace: `git.status/diff/log/rev_parse/add/commit`
 - [http/](http/README.md) — the `http` native namespace: one op per verb (`get/post/put/patch/delete/head/options`) plus `download`, with `query`, `body`/`text`/`form`, `auth`, `tls` (PEM client certificates), `proxy`, and secret redaction
 - [html/](html/README.md) — the `html` native namespace: `html.parse` into plain `{tag, attrs, text, children}` nodes, `get_element(s)`/`get_element_by_id`/`get_attribute`/`get_text`/`to_html`
+- [graph_and_events/](graph_and_events/README.md) — machine interfaces for tools: `mhl graph` (a workflow as a JSON graph with source spans) and `mhl run --format jsonl` (a run as streamed step events)

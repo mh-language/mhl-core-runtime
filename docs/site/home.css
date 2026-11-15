@@ -184,7 +184,7 @@ summary:hover { color: #f79a7d; }
 .start-example-link:hover { text-decoration: underline; }
 .run-result { font-size: 10px; color: #b9d7a5; margin: 10px 0 0 34px; }
 .docs-section { padding-bottom: 65px; }
-.docs-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--line); }
+.docs-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-block: 1px solid var(--line); }
 .docs-grid > a { padding: 23px; border-right: 1px solid var(--line); transition: background .15s; }
 .docs-grid > a:first-child { padding-left: 0; }
 .docs-grid > a:last-child { border: 0; padding-right: 0; }
@@ -248,9 +248,9 @@ summary:hover { color: #f79a7d; }
   .start-copy .start-note { max-width: 65ch !important; }
   .docs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .docs-grid > a:nth-child(2) { border-right: 0; padding-right: 0; }
-  .docs-grid > a:nth-child(3) { padding-left: 0; }
-  .docs-grid > a:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .docs-grid > a:nth-child(even) { border-right: 0; padding-right: 0; }
+  .docs-grid > a:nth-child(odd) { padding-left: 0; }
+  .docs-grid > a:not(:last-child) { border-bottom: 1px solid var(--line); }
   .site-footer { flex-wrap: wrap; }
   .site-footer p { display: none; }
 }

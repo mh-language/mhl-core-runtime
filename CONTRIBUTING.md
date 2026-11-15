@@ -24,9 +24,18 @@ editor support, and runtime changes.
 - `tests_e2e/cloud/` contains scenarios that are not `go test`: it exercises `mhl serve mcp`
   across a pod fleet (and `tests_e2e/cloud/k8s/` under a real cluster). Its
   `tests_mcp_pods/` subdirectory has a `run-all.sh` regression runner.
-- `vscode-mhl/` contains the VS Code extension.
-- `docs/` contains the public documentation: the language reference and guides under `docs/site/`,
-  plus the standalone spec and design notes (`docs/mhl-language-spec.html`, `docs/mhl-eks-plan.html`).
+- `src/vscode-mhl/` contains the VS Code extension.
+- `src/mhl-studio/` contains mhl studio, the optional desktop IDE (Tauri + React). It is released
+  on its own `studio-v*` tags and is not part of the language's release gate.
+- `docs/` contains the public documentation under `docs/site/` (reference, specification, guides),
+  plus design notes (`docs/MHL-*.md`).
+- `skills/` contains agent skills that teach models to write `.mh`; check their examples with
+  `MHL=src/mhl-runtime/dist/mhl skills/check.sh`.
+
+Each product has its own `release.sh` next to it and its own tag: `src/mhl-runtime/release.sh`
+(`vX.Y.Z`), `src/vscode-mhl/release.sh` (`extensions-vX.Y.Z`) and `src/mhl-studio/release.sh`
+(`studio-vX.Y.Z`). The installers (`install.sh`, `install.ps1`, `uninstall.*`) stay at the
+repository root: their `raw.githubusercontent.com/.../main/...` URLs are published.
 
 The runtime is divided into four main areas under `src/mhl-runtime/internal/`:
 
@@ -57,12 +66,12 @@ make test
 To work on the VS Code extension, install a current Node.js release and run:
 
 ```sh
-cd vscode-mhl
+cd src/vscode-mhl
 npm install
 npm run compile
 ```
 
-Open `vscode-mhl/` in VS Code and press `F5` to launch an Extension Development Host. The extension
+Open `src/vscode-mhl/` in VS Code and press `F5` to launch an Extension Development Host. The extension
 uses `mhl lsp`, so build the runtime first and ensure that the `mhl` binary is on your `PATH`, or set
 `mhl.serverPath` in VS Code.
 
@@ -132,7 +141,7 @@ the affected `tests_e2e/**/run-all.sh` yourself, and report the result in the pu
 For VS Code extension changes, also run:
 
 ```sh
-cd vscode-mhl
+cd src/vscode-mhl
 npm run compile
 ```
 

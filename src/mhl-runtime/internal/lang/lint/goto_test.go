@@ -147,3 +147,57 @@ loop workflow W {
 		}
 	}
 }
+
+// A `parallel` group is a goto target by its own name (the whole group
+// runs); a branch step inside it is not; and the group's name shares the
+// step namespace.
+func TestGotoParallelGroup(t *testing.T) {
+	dir := t.TempDir()
+	ok := filepath.Join(dir, "ok.mh")
+	write(t, ok, `
+workflow W {
+    parallel Fan {
+        step L { log("l") }
+        step R { log("r") }
+    }
+    step Gate { goto Fan }
+    step Pick {
+        goto match 1 {
+            1 -> Fan
+            _ -> fail("no")
+        }
+    }
+}
+`)
+	for _, f := range lint.File(ok) {
+		if strings.Contains(f.Message, "goto") || strings.Contains(f.Message, "Fan") {
+			t.Fatalf("unexpected finding for goto to a parallel group: %+v", f)
+		}
+	}
+
+	branch := filepath.Join(dir, "branch.mh")
+	write(t, branch, `
+workflow W {
+    parallel Fan {
+        step L { log("l") }
+    }
+    step Gate { goto L }
+}
+`)
+	if !hasMessage(lint.File(branch), "targets a step inside a parallel group") {
+		t.Fatalf("expected goto into a group's branch to be rejected")
+	}
+
+	dup := filepath.Join(dir, "dup.mh")
+	write(t, dup, `
+workflow W {
+    step Fan { log("s") }
+    parallel Fan {
+        step L { log("l") }
+    }
+}
+`)
+	if !hasMessage(lint.File(dup), "more than one step or parallel group named \"Fan\"") {
+		t.Fatalf("expected a step/group name clash finding, got %+v", lint.File(dup))
+	}
+}

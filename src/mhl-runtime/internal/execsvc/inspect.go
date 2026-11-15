@@ -9,6 +9,7 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/flow"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
@@ -47,6 +48,9 @@ type InspectStage struct {
 	Name     string   `json:"name"`
 	Steps    []string `json:"steps"`
 	Parallel bool     `json:"parallel,omitempty"`
+	// Merge is a parallel group's merge step name ("<group>.merge"), when
+	// it declares one.
+	Merge string `json:"merge,omitempty"`
 }
 
 // InspectGoto is one `goto` edge: From is the step it appears in, To its
@@ -125,7 +129,7 @@ func Inspect(req Request) (*Inspection, error) {
 	}
 	ins.Goto = collectPipelineGotos(prog, pipeline.Decl)
 	for _, s := range pipeline.Stages {
-		ins.Stages = append(ins.Stages, InspectStage{Name: s.Name, Steps: s.Steps, Parallel: s.Parallel})
+		ins.Stages = append(ins.Stages, InspectStage{Name: s.Name, Steps: s.Steps, Parallel: s.Parallel, Merge: s.Merge})
 	}
 	for name, d := range pipeline.StepTimeouts {
 		if ins.StepTimeouts == nil {
@@ -193,59 +197,30 @@ func collectPipelineGotos(prog *ast.Program, name string) []InspectGoto {
 		if d.Pipeline == nil || d.Pipeline.Name != name {
 			continue
 		}
-		routes := map[string]*ast.WorkflowRoute{}
+		routes := flow.Routes(d.Pipeline)
 		for _, m := range d.Pipeline.Body {
-			if m.Route != nil {
-				routes[m.Route.Name] = m.Route
-			}
-		}
-		for _, m := range d.Pipeline.Body {
-			if m.Step == nil {
+			from, body := "", []*ast.Statement(nil)
+			switch {
+			case m.Route != nil && m.Route.Entry:
+				// The entry route runs as the first stage: its arms are its gotos.
+				for _, a := range m.Route.Arms {
+					if a.Fail == nil {
+						out = append(out, InspectGoto{From: m.Route.Name, To: a.Target})
+					}
+				}
+				continue
+			case m.Step != nil:
+				from, body = m.Step.Name, m.Step.Body
+			case m.Parallel != nil && m.Parallel.Merge != nil:
+				// A group's merge may leave it with a goto: the edge is the group's.
+				from, body = m.Parallel.Name, m.Parallel.Merge.Body
+			default:
 				continue
 			}
-			var targets []string
-			gotoTargets(m.Step.Body, routes, &targets)
-			for _, t := range targets {
-				out = append(out, InspectGoto{From: m.Step.Name, To: t})
+			for _, t := range flow.GotoTargets(body, routes) {
+				out = append(out, InspectGoto{From: from, To: t})
 			}
 		}
 	}
 	return out
-}
-
-func gotoTargets(stmts []*ast.Statement, routes map[string]*ast.WorkflowRoute, out *[]string) {
-	for _, s := range stmts {
-		if s == nil {
-			continue
-		}
-		switch {
-		case s.Goto != nil:
-			if route := routes[s.Goto.Target]; s.Goto.Called && route != nil {
-				for _, arm := range route.Arms {
-					if arm.Fail == nil {
-						*out = append(*out, arm.Target)
-					}
-				}
-			} else {
-				*out = append(*out, s.Goto.Target)
-			}
-		case s.GotoMatch != nil:
-			for _, arm := range s.GotoMatch.Arms {
-				if arm.Fail == nil {
-					*out = append(*out, arm.Target)
-				}
-			}
-		case s.If != nil:
-			gotoTargets(s.If.Then, routes, out)
-			gotoTargets(s.If.Else, routes, out)
-		case s.While != nil:
-			gotoTargets(s.While.Body, routes, out)
-		case s.ForIn != nil:
-			gotoTargets(s.ForIn.Body, routes, out)
-		case s.Try != nil:
-			gotoTargets(s.Try.Body, routes, out)
-			gotoTargets(s.Try.Catch, routes, out)
-			gotoTargets(s.Try.Finally, routes, out)
-		}
-	}
 }

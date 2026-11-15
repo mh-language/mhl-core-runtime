@@ -20,7 +20,7 @@ func pipelineFromAlias(a *ast.PipelineAlias, aliases map[string]types.Type, prog
 	}
 	if target.Partial {
 		if n := target.EntryStepCount(); n != 1 {
-			return Pipeline{}, fmt.Errorf("%s %q: its target, partial %s %q, has %d `entry step`s across its fragments, want exactly one", a.Kind, a.Name, target.Kind, target.Name, n)
+			return Pipeline{}, fmt.Errorf("%s %q: its target, partial %s %q, has %d entries (`entry step` / `entry route`) across its fragments, want exactly one", a.Kind, a.Name, target.Kind, target.Name, n)
 		}
 	}
 	p := PipelineFromAST(target, aliases, prog)

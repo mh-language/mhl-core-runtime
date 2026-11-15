@@ -97,6 +97,24 @@ func execGotoRoute(ctx *evalCtx, call *ast.GotoStmt) error {
 	return execGotoArms(&routeCtx, routeCtx.env[route.Params[0].Name], route.Arms)
 }
 
+// execEntryRoute evaluates a workflow's `entry route` (ast.WorkflowRoute.
+// Entry) as the run's first stage: its parameter is bound to the workflow
+// variable of the same name — an input, or a typed signature's param, as
+// lint.checkEntryRoutes requires — and its arms pick the step to goto.
+func execEntryRoute(ctx *evalCtx, route *ast.WorkflowRoute) error {
+	if len(route.Params) != 1 {
+		return fmt.Errorf("route %s must declare exactly one match parameter", route.Name)
+	}
+	param := route.Params[0].Name
+	v, ok := ctx.pipelineEnv[param]
+	if !ok {
+		return fmt.Errorf("entry route %s: the workflow has no input %q to dispatch on", route.Name, param)
+	}
+	routeCtx := *ctx
+	routeCtx.env = Env{param: v}
+	return execGotoArms(&routeCtx, v, route.Arms)
+}
+
 func findWorkflowRoute(prog *ast.Program, pipelineName, name string) *ast.WorkflowRoute {
 	for _, decl := range prog.Decls {
 		if decl.Pipeline == nil || decl.Pipeline.Name != pipelineName {

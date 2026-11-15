@@ -55,8 +55,14 @@ func TestExecTimeoutFailsWithErrTimeout(t *testing.T) {
 	}
 }
 
+// startupGrace is the timeout the tests below give `sh` to reach the state
+// they exercise (a trap installed, a child's pid printed) before the deadline
+// fires. A tighter one raced shell startup on a loaded CI runner: the signal
+// landed first and the scenario never happened.
+const startupGrace = time.Second
+
 func TestExecTimeoutKillsWholeProcessGroup(t *testing.T) {
-	result, err := (Cmd{Timeout: 300 * time.Millisecond, KillGrace: time.Second}).Exec(context.Background(),
+	result, err := (Cmd{Timeout: startupGrace, KillGrace: time.Second}).Exec(context.Background(),
 		"sh", "-c", "sleep 100 & echo $!; wait")
 	if !errors.Is(err, ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
@@ -70,7 +76,7 @@ func TestExecTimeoutKillsWholeProcessGroup(t *testing.T) {
 
 func TestExecTimeoutKeepsOutputWrittenOnSIGTERM(t *testing.T) {
 	start := time.Now()
-	result, err := (Cmd{Timeout: 200 * time.Millisecond, KillGrace: 5 * time.Second}).Exec(context.Background(),
+	result, err := (Cmd{Timeout: startupGrace, KillGrace: 5 * time.Second}).Exec(context.Background(),
 		"sh", "-c", `trap 'echo final-state; exit 143' TERM; sleep 100 & wait`)
 	if !errors.Is(err, ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
@@ -81,7 +87,7 @@ func TestExecTimeoutKeepsOutputWrittenOnSIGTERM(t *testing.T) {
 	if result.ExitCode != 143 {
 		t.Errorf("exit code = %d, want 143", result.ExitCode)
 	}
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
+	if elapsed := time.Since(start); elapsed > startupGrace+2*time.Second {
 		t.Errorf("took %s: the handler exited on SIGTERM, Exec should not wait out the 5s grace", elapsed)
 	}
 }
@@ -97,16 +103,16 @@ func TestExecTimeoutIsAnErrorEvenWhenCommandExitsZero(t *testing.T) {
 func TestExecTimeoutSIGKILLsAfterGraceWhenSIGTERMIgnored(t *testing.T) {
 	start := time.Now()
 	// An ignored signal stays ignored across exec, so sleep ignores TERM too.
-	_, err := (Cmd{Timeout: 100 * time.Millisecond, KillGrace: 400 * time.Millisecond}).Exec(context.Background(),
+	_, err := (Cmd{Timeout: startupGrace, KillGrace: 400 * time.Millisecond}).Exec(context.Background(),
 		"sh", "-c", `trap '' TERM; sleep 100`)
 	if !errors.Is(err, ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
 	}
 	elapsed := time.Since(start)
-	if elapsed < 450*time.Millisecond {
+	if elapsed < startupGrace+350*time.Millisecond {
 		t.Errorf("took %s: the forced kill came before the grace ran out", elapsed)
 	}
-	if elapsed > 3*time.Second {
+	if elapsed > startupGrace+3*time.Second {
 		t.Errorf("took %s: SIGKILL should end it right after the 400ms grace", elapsed)
 	}
 }
@@ -133,13 +139,18 @@ func TestExecTimeoutReturnsWhenEscapedDescendantHoldsPipe(t *testing.T) {
 	pipeDrainDelay = 300 * time.Millisecond
 	defer func() { pipeDrainDelay = old }()
 
+	// The timeout must leave perl time to start and call setsid(): fired
+	// earlier, it kills perl while it is still in the group, and the scenario
+	// under test never happens (a loaded CI runner took over 200ms).
 	start := time.Now()
-	result, err := (Cmd{Timeout: 200 * time.Millisecond, KillGrace: 100 * time.Millisecond}).Exec(context.Background(),
+	result, err := (Cmd{Timeout: 1500 * time.Millisecond, KillGrace: 100 * time.Millisecond}).Exec(context.Background(),
 		"sh", "-c", `perl -e 'use POSIX; setsid(); $|=1; print "$$\n"; sleep 100' & wait`)
 	if !errors.Is(err, ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
 	}
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
+	// Timeout + KillGrace + pipeDrainDelay is about 1.9s; blocking on the pipe
+	// would take perl's whole 100s.
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Errorf("took %s: Exec blocked on a pipe held by an escaped descendant", elapsed)
 	}
 	if pid := firstLinePID(t, result.Stdout); pid > 0 {
@@ -169,6 +180,36 @@ func TestFormatDuration(t *testing.T) {
 	for d, want := range cases {
 		if got := FormatDuration(d); got != want {
 			t.Errorf("FormatDuration(%s) = %q, want %q", d, got, want)
+		}
+	}
+}
+
+// A cancel that lands while `sh` is forking its child must still end the run
+// promptly. A single group kill can miss that child (it joins the group just
+// after the signal), leaving an orphan that holds the output pipes, so Wait
+// blocked until the orphan exited on its own — the whole `sleep`. Exec keeps
+// killing the group until Wait returns (killUntilExit). The race window is a
+// few milliseconds after Start, so the cancel is swept across it, many times.
+func TestExecCancelDuringForkStillKillsTheChild(t *testing.T) {
+	if testing.Short() {
+		t.Skip("stress test")
+	}
+	const runs = 300
+	for i := 0; i < runs; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		delay := time.Duration(i%8) * 500 * time.Microsecond
+		go func() {
+			time.Sleep(delay)
+			cancel()
+		}()
+		start := time.Now()
+		_, err := (Cmd{}).Exec(ctx, "sh", "-c", "sleep 3; echo late")
+		cancel()
+		if took := time.Since(start); took > 2*time.Second {
+			t.Fatalf("run %d (cancel after %s): Exec took %s — a child forked during the kill survived it", i, delay, took)
+		}
+		if err == nil {
+			t.Fatalf("run %d: want a cancellation error", i)
 		}
 	}
 }

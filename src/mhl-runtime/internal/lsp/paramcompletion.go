@@ -132,3 +132,41 @@ func pipelineParamCompletionAt(text string, pos position, target string) ([]comp
 	}
 	return nil, false
 }
+
+// mergeParamCompletionAt completes `<param>.` inside a parallel group's
+// `merge (param) { ... }` with the group's branch step names — the keys of
+// the branches object runtime.runMerge binds param to.
+func mergeParamCompletionAt(text string, pos position, target string) ([]completionItem, bool) {
+	repaired := repairForParse(text, pos)
+	stack := blockStack(textUpToPosition(repaired, pos))
+	group := ""
+	for i := len(stack) - 1; i > 0; i-- {
+		if stack[i].Kind == blockMerge && stack[i].Name == target && stack[i-1].Kind == blockParallel {
+			group = stack[i-1].Name
+			break
+		}
+	}
+	if group == "" {
+		return nil, false
+	}
+	prog, err := parser.Parse(repaired)
+	if err != nil {
+		return nil, false
+	}
+	for _, decl := range prog.Decls {
+		if decl.Pipeline == nil {
+			continue
+		}
+		for _, m := range decl.Pipeline.Body {
+			if m.Parallel == nil || m.Parallel.Name != group || m.Parallel.Merge == nil || m.Parallel.Merge.Param != target {
+				continue
+			}
+			items := make([]completionItem, 0, len(m.Parallel.Steps))
+			for _, s := range m.Parallel.Steps {
+				items = append(items, completionItem{Label: s.Name, Kind: kindField, Detail: "branch step's vars (parallel " + group + ")"})
+			}
+			return items, true
+		}
+	}
+	return nil, false
+}

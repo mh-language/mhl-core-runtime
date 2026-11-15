@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -69,7 +70,24 @@ type Stage struct {
 	Name     string
 	Steps    []string
 	Parallel bool
+	// Merge is the step name a parallel group's `merge (Param) { ... }`
+	// block runs under (ast.MergeStepName), "" without one; MergeParam is
+	// the name its branches object is bound to ("" for `merge { ... }`).
+	// See runParallelStage.
+	Merge      string
+	MergeParam string
+	// Vars are a parallel group's own var names (ast.ParallelGroup.Vars):
+	// Pipeline.GroupVarsInit seeds them as the group starts, and they are
+	// removed from the run's vars once it ends.
+	Vars []string
 }
+
+// GroupVarsFunc evaluates parallel group's `var` initializers into rc.Vars,
+// as the group starts (each time it does — a goto back to it re-initializes
+// them). The runtime cannot evaluate an expression itself, so whoever runs a
+// pipeline with group vars (execsvc, interpreter's test runner) sets
+// Pipeline.GroupVarsInit to interpreter.EvalGroupVars.
+type GroupVarsFunc func(ctx context.Context, group string, rc *RunContext) error
 
 // Pipeline is the runtime-facing view of an ast.Pipeline: its name, ordered
 // stages (and the flattened step-name list), checkpoint configuration, and —
@@ -89,6 +107,9 @@ type Pipeline struct {
 	// type-checked), merged into every run's inputs; they are not in
 	// Inputs, so a caller can neither see nor pass them. nil otherwise.
 	Bound map[string]any
+	// EntryRoute names the declaration's `entry route`, "" without one: the
+	// run's first stage (Stages[0]) evaluates it — see PipelineFromAST.
+	EntryRoute string
 	// Kind is "pipeline" or "workflow" (ast.Pipeline.Kind, projected
 	// verbatim) — purely informational here (the runtime executes both
 	// identically), surfaced to a session_start/session_end hook's payload
@@ -122,6 +143,11 @@ type Pipeline struct {
 	// RunContext.InstanceID for cli.go's `mem` support. Left empty for a
 	// plain (non-`loop`) pipeline — Run treats that as instance "default".
 	InstanceID string
+	// GroupVarsInit seeds a parallel group's own vars (Stage.Vars) as it
+	// starts. Like InstanceID, never set by PipelineFromAST: the caller that
+	// can evaluate expressions sets it. A group with vars and no
+	// GroupVarsInit fails.
+	GroupVarsInit GroupVarsFunc
 	// Context is the resolved `context:` block, or nil when the pipeline
 	// declares none — see ContextConfig.
 	Context *ContextConfig
@@ -285,7 +311,14 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 				out.setStepTimeout(s.Name, s.Timeout)
 			}
 			out.Steps = append(out.Steps, names...)
-			out.Stages = append(out.Stages, Stage{Name: m.Parallel.Name, Steps: names, Parallel: true})
+			stage := Stage{Name: m.Parallel.Name, Steps: names, Parallel: true}
+			if m.Parallel.Merge != nil {
+				stage.Merge, stage.MergeParam = ast.MergeStepName(m.Parallel.Name), m.Parallel.Merge.Param
+			}
+			for _, v := range m.Parallel.Vars {
+				stage.Vars = append(stage.Vars, v.Decl.Name)
+			}
+			out.Stages = append(out.Stages, stage)
 			out.setStepTimeout(m.Parallel.Name, m.Parallel.Timeout)
 		case m.Prop != nil && m.Prop.Name == "checkpoint":
 			out.Checkpoint = checkpointFromExpr(m.Prop.Value)
@@ -346,6 +379,15 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 		for _, stage := range out.Stages {
 			out.Steps = append(out.Steps, stage.Steps...)
 		}
+	}
+	// An `entry route` (ast.WorkflowRoute.Entry) runs first, as a stage of
+	// its own under the route's name: it never falls through — it always
+	// ends in a goto (or a fail), which the Runner follows like any step's.
+	// interpreter.RunStep recognizes the name and evaluates the route.
+	if r := p.EntryRoute(); r != nil {
+		out.EntryRoute = r.Name
+		out.Stages = append([]Stage{{Name: r.Name, Steps: []string{r.Name}}}, out.Stages...)
+		out.Steps = append([]string{r.Name}, out.Steps...)
 	}
 	return out
 }
@@ -483,7 +525,7 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 		if (name == "" && !d.Pipeline.Internal) || d.Pipeline.Name == name {
 			if d.Pipeline.Partial {
 				if n := d.Pipeline.EntryStepCount(); n != 1 {
-					return Pipeline{}, fmt.Errorf("partial %s %q: expected exactly one `entry step` across its fragments, found %d", d.Pipeline.Kind, d.Pipeline.Name, n)
+					return Pipeline{}, fmt.Errorf("partial %s %q: expected exactly one `entry step` or `entry route` across its fragments, found %d", d.Pipeline.Kind, d.Pipeline.Name, n)
 				}
 			}
 			return PipelineFromAST(d.Pipeline, aliases, prog), nil

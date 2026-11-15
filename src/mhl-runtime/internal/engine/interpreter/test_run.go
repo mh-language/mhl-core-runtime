@@ -184,6 +184,13 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 		return nil
 	}
 
+	pipeline.GroupVarsInit = func(goctx context.Context, group string, rc *runtime.RunContext) error {
+		out := ctx.out
+		if rc.Out != nil {
+			out = rc.Out
+		}
+		return EvalGroupVars(goctx, ctx.prog, pipeline.Decl, group, ctx.file, out, ctx.store, ctx.jsonStore, rc.Vars, mem, contextView)
+	}
 	runner := runtime.NewRunner(tmpDir).Session(sessionID).WithStateStore(newMemStateStore())
 	res, runErr := runner.Run(goctxOf(ctx), pipeline, init, exec, false)
 

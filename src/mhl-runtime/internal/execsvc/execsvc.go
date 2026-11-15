@@ -109,6 +109,18 @@ type Request struct {
 	// It must not block. It may be called concurrently for the steps of a
 	// `parallel` group, so an implementation must be safe for concurrent use.
 	OnStep func(step string, index, total int)
+
+	// OnStart, when non-nil, is called once, after inputs are validated and
+	// the session is resolved and before any step runs, with the pipeline
+	// name, the session id and its declared steps in execution order.
+	OnStart func(pipeline, session string, steps []string)
+
+	// OnStepEnd, when non-nil, is called once each time a step finishes,
+	// right after its body returns (before the step_end hook). status is
+	// one of "ok", "failed", "goto" (target names the destination),
+	// "pause", "break" or "complete"; err is the step's error for
+	// "failed", nil otherwise. Same concurrency contract as OnStep.
+	OnStepEnd func(step string, index int, status, target string, err error, elapsed time.Duration)
 }
 
 // Result is the structured outcome of a run.
@@ -206,6 +218,9 @@ func Run(req Request) (*Result, error) {
 	if sessionID != "" {
 		fmt.Fprintf(out, "session: %s\n", sessionID)
 	}
+	if req.OnStart != nil {
+		req.OnStart(pipeline.Name, sessionID, append([]string(nil), pipeline.Steps...))
+	}
 
 	// `context` is always visible to steps as this run's own metadata
 	// (session_id / started_at / resumed / principal). A `context:` block is
@@ -273,7 +288,13 @@ func Run(req Request) (*Result, error) {
 
 	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
 
+	// A parallel group's merge runs as one more step execution.
 	stepTotal := len(pipeline.Steps)
+	for _, st := range pipeline.Stages {
+		if st.Merge != "" {
+			stepTotal++
+		}
+	}
 	var stepSeq int64
 
 	// runHook evaluates one of the pipeline's optional lifecycle hooks —
@@ -336,11 +357,28 @@ func Run(req Request) (*Result, error) {
 			return err
 		}
 		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
+		stepStarted := time.Now()
 		stepErr := interpreter.RunStep(stepCtx, prog, pipeline.Decl, step, file, stepOut, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
 		breakReason, isBreak := interpreter.IsBreak(stepErr)
 		pauseReason, isPause := interpreter.IsPause(stepErr)
 		isComplete := interpreter.IsComplete(stepErr)
 		gotoTarget, isGoto := interpreter.IsGoto(stepErr)
+		if req.OnStepEnd != nil {
+			status, target, endErr := "ok", "", error(nil)
+			switch {
+			case isBreak:
+				status = "break"
+			case isPause:
+				status = "pause"
+			case isComplete:
+				status = "complete"
+			case isGoto:
+				status, target = "goto", gotoTarget
+			case stepErr != nil:
+				status, endErr = "failed", stepErr
+			}
+			req.OnStepEnd(step, index, status, target, endErr, time.Since(stepStarted))
+		}
 		if pipeline.StepEnd != nil {
 			var hookErrVal any
 			if stepErr != nil && !isBreak && !isPause && !isComplete && !isGoto {
@@ -367,6 +405,14 @@ func Run(req Request) (*Result, error) {
 	}
 
 	init := pipelineVarsInit(prog, pipeline.Decl, file, out, store, jsonStore, contextView)
+	// A parallel group's own vars are seeded as it starts (each time it does).
+	pipeline.GroupVarsInit = func(goctx context.Context, group string, rc *runtime.RunContext) error {
+		groupOut := out
+		if rc.Out != nil {
+			groupOut = rc.Out
+		}
+		return interpreter.EvalGroupVars(goctx, prog, pipeline.Decl, group, file, groupOut, store, jsonStore, rc.Vars, memContextFor(memInit, pipeline.Name, rc.InstanceID), contextView)
+	}
 
 	// Bind every checkpoint this run writes to the structure of the pipeline
 	// it came from (its own declaration plus the shared decls it can

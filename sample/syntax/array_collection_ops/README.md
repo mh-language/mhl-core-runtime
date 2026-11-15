@@ -6,6 +6,9 @@ them, de-duplicating, and comparing by value. (Lambda-taking transforms — `.ma
 
 - [append_returns_a_new_array.mh](append_returns_a_new_array.mh) — `.append(x)` yields a new
   array; the receiver is untouched
+- [append_statement_grows_the_variable.mh](append_statement_grows_the_variable.mh) — a bare
+  `xs.append(x)` statement means `xs = xs.append(x)` (a step var, `self.xs`, `grid[i]`);
+  used as a value, `.append` still leaves its receiver alone
 - [join_formats_each_element.mh](join_formats_each_element.mh) — `.join(sep)` to a string,
   non-string elements formatted the way `log` prints them
 - [join_separator_can_be_an_operator_token.mh](join_separator_can_be_an_operator_token.mh) —

@@ -41,8 +41,11 @@ import (
 func selfCompletionAt(path, text string, pos position) []completionItem {
 	repaired := repairForParse(text, pos)
 	stack := blockStack(textUpToPosition(repaired, pos))
+	group := ""
 	for i := len(stack) - 1; i >= 0; i-- {
 		switch stack[i].Kind {
+		case blockParallel:
+			group = stack[i].Name
 		case blockTool:
 			for _, s := range documentSymbols(path, repaired) {
 				if s.Kind == symTool && s.Name == stack[i].Name {
@@ -51,10 +54,38 @@ func selfCompletionAt(path, text string, pos position) []completionItem {
 			}
 			return nil
 		case blockPipeline, blockLoopPipeline:
-			return pipelineScopeItems(path, repaired, stack[i].Name)
+			return append(pipelineScopeItems(path, repaired, stack[i].Name), groupVarItems(repaired, stack[i].Name, group)...)
 		}
 	}
 	return nil
+}
+
+// groupVarItems are self.<name> items for the own vars of parallel group
+// `group` of pipelineName — in scope only inside that group's branches and
+// merge. None when group is "" or the buffer does not parse.
+func groupVarItems(text, pipelineName, group string) []completionItem {
+	if group == "" {
+		return nil
+	}
+	prog, err := parser.Parse(text)
+	if err != nil {
+		return nil
+	}
+	var items []completionItem
+	for _, d := range prog.Decls {
+		if d.Pipeline == nil || d.Pipeline.Name != pipelineName {
+			continue
+		}
+		for _, m := range d.Pipeline.Body {
+			if m.Parallel == nil || m.Parallel.Name != group {
+				continue
+			}
+			for _, v := range m.Parallel.Vars {
+				items = append(items, completionItem{Label: v.Decl.Name, Kind: kindVariable, Detail: "var (parallel " + group + ")"})
+			}
+		}
+	}
+	return items
 }
 
 // repairForParse inserts a harmless placeholder identifier at pos so a

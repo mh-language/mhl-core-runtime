@@ -1,0 +1,86 @@
+// A `parallel` group's optional `merge (branches) { ... }` block is its
+// explicit join. Without one, two branches assigning the same var different
+// values fail the run at the barrier, so each branch needs a var of its own.
+// With one, the branches can write the same var — here both append to
+// `replies` — and the merge decides how their values combine.
+//
+// The merge runs once, after every branch, in the workflow's own scope (it
+// reads and assigns `self.x` like a step), as the step "Ask.merge".
+// `branches` is read-only, and holds each branch's vars by step name:
+// `branches.AskClaude.replies` is what AskClaude left in `replies`. A var the
+// branches agree on, or that only one of them wrote, is already merged when
+// the merge runs. A var they disagree on keeps its pre-group value there and
+// must be assigned by the merge, or the run fails rather than dropping both.
+//
+// The merge may also leave the group with a `goto` (or end the run with
+// `complete()`), like the end of a step: here it skips Escalate when both
+// agents answered. `pause()` and `break` are not allowed in it.
+// Run with:
+//
+//   mhl run sample/features/pipelines/parallel_merge_workflow_example.mh --input question=caching
+
+agent Claude {
+    command: "sh"
+    args: ["-c", "echo claude-answer"]
+}
+
+agent Codex {
+    command: "sh"
+    args: ["-c", "sleep 0.1; echo codex-answer"]
+}
+
+workflow Consult {
+    input question: string
+
+    var replies = []
+    var asked = 0
+
+    parallel Ask {
+        step AskClaude {
+            // As a statement, `xs.append(x)` means `xs = xs.append(x)`.
+            self.replies.append(Claude.run(prompt: question))
+            self.asked = 2
+        }
+
+        step AskCodex {
+            self.replies.append(Codex.run(prompt: question))
+            self.asked = 2
+        }
+
+        // Both branches set `asked` to 2: no conflict, already merged here.
+        // `replies` differs per branch, so it is the merge's to combine.
+        merge (branches) {
+            self.replies = [...branches.AskClaude.replies, ...branches.AskCodex.replies]
+            log("merged ${replies.size()} replies from ${asked} agents")
+            if (self.replies.size() == self.asked) {
+                goto Report
+            }
+        }
+    }
+
+    // Reached only when an agent came back empty-handed.
+    step Escalate {
+        log("only ${replies.size()} of ${asked} agents answered")
+    }
+
+    step Report {
+        log("replies => ${replies}")
+    }
+}
+
+test parallel_merge {
+    describe merge_combines_what_both_branches_wrote {
+        var result = Consult.run(inputs: {question: "caching"})
+        is_true(result.ok)
+        are_equal(result.vars.replies, ["claude-answer", "codex-answer"])
+        are_equal(result.vars.asked, 2)
+    }
+
+    // The merge is part of its group: `executed` lists the declared steps
+    // (what a resume skips), while `mhl run` prints it as "step: Ask.merge".
+    // Escalate is missing: both agents answered, so the merge jumped past it.
+    describe merge_is_part_of_the_group {
+        var result = Consult.run(inputs: {question: "caching"})
+        are_equal(result.executed, ["AskClaude", "AskCodex", "Report"])
+    }
+}

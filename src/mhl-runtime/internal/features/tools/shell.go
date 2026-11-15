@@ -33,6 +33,10 @@ const DefaultKillGrace = 10 * time.Second
 // wait-for-every-writer behavior. A var so tests can shorten it.
 var pipeDrainDelay = 5 * time.Second
 
+// killRetryInterval is how often killUntilExit repeats the kill while Wait
+// has not returned. A var so tests can shorten it.
+var killRetryInterval = 50 * time.Millisecond
+
 // Result contains captured subprocess output and its exit status.
 type Result struct {
 	Stdout   string
@@ -120,8 +124,7 @@ func (c Cmd) Exec(ctx context.Context, name string, args ...string) (Result, err
 		err = ignorePipeDrain(err)
 		return commandResult(command, stdout.String(), stderr.String(), err), err
 	case <-ctx.Done():
-		tree.kill()
-		err := <-done
+		err := killUntilExit(tree, done)
 		result := commandResult(command, stdout.String(), stderr.String(), err)
 		return result, fmt.Errorf("tools: command %q cancelled: %w", name, ctx.Err())
 	case <-timeoutC:
@@ -139,8 +142,7 @@ func (c Cmd) Exec(ctx context.Context, name string, args ...string) (Result, err
 // outlive it. Returns Wait's error.
 func (c Cmd) stopAfterTimeout(ctx context.Context, tree *processTree, done <-chan error) error {
 	if c.KillGrace <= 0 || !tree.terminate() {
-		tree.kill()
-		return <-done
+		return killUntilExit(tree, done)
 	}
 	grace := time.NewTimer(c.KillGrace)
 	defer grace.Stop()
@@ -151,8 +153,29 @@ func (c Cmd) stopAfterTimeout(ctx context.Context, tree *processTree, done <-cha
 	case <-grace.C:
 	case <-ctx.Done():
 	}
+	return killUntilExit(tree, done)
+}
+
+// killUntilExit force-kills the process tree and keeps killing it until Wait
+// returns, then returns Wait's error. One kill is not enough: a group kill
+// can miss a child the leader is forking at that very moment. That child
+// joins the group just after the signal went out, survives as an orphan, and
+// keeps the output pipes open, so Wait would block until it exits on its own
+// (a `sh -c "sleep 30; ..."` agent cancelled by `wait any` held the run for
+// the full 30s). The group outlives its leader while any member is alive, so
+// the next kill reaches it.
+func killUntilExit(tree *processTree, done <-chan error) error {
 	tree.kill()
-	return <-done
+	tick := time.NewTicker(killRetryInterval)
+	defer tick.Stop()
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-tick.C:
+			tree.kill()
+		}
+	}
 }
 
 // ignorePipeDrain treats exec.ErrWaitDelay — the command exited successfully
