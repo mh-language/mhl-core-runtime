@@ -12,7 +12,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { currentWorkflow, get, set, useStore } from "../app/store";
-import { addAgentCallToStep, addAgentStep, addToolCallStep, addToolCallToStep } from "../app/library";
+import { addAgentCallToStep, addAgentStep, addToolCallStep, addToolCallToStep, hintSchema } from "../app/library";
 import { edit } from "../app/controller";
 import { connect, deleteNode, insertState, removeEdge, type Placement } from "../sync/edits";
 import { END, FAIL, START } from "../lib/types";
@@ -21,6 +21,7 @@ import { layoutWorkflow, takenEdges, type FlowEdgeData, type Layout } from "./la
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./ElkEdge";
 import { ImportsCard } from "./ImportsCard";
+import { centerPoint, FIT, loadKeepCentered, saveKeepCentered, ViewportButtons } from "./viewport";
 import { dropPrompt, type PromptDrag, type PromptTarget } from "../app/prompts";
 import { dropSchema, type SchemaDrag } from "../app/schemas";
 
@@ -66,6 +67,46 @@ function Canvas() {
   const flow = useReactFlow();
   const wrapper = useRef<HTMLDivElement>(null);
   const lastFit = useRef("");
+  const [keepCentered, setKeepCentered] = useState(loadKeepCentered);
+  const keepRef = useRef(keepCentered);
+  keepRef.current = keepCentered;
+
+  const fit = useCallback((duration = 200) => void flow.fitView({ ...FIT, duration }), [flow]);
+  /** Pans the diagram to the middle of the canvas at the current zoom. */
+  const center = useCallback(
+    (duration = 200) => {
+      const el = wrapper.current;
+      const ns = flow.getNodes();
+      if (!el || ns.length === 0) return;
+      const zoom = flow.getZoom();
+      const p = centerPoint(flow.getNodesBounds(ns), { width: el.clientWidth, height: el.clientHeight }, zoom);
+      void flow.setCenter(p.x, p.y, { zoom, duration });
+    },
+    [flow],
+  );
+  const toggleKeepCentered = useCallback(() => {
+    const on = !keepRef.current;
+    setKeepCentered(on);
+    saveKeepCentered(on);
+    if (on) center();
+  }, [center]);
+
+  // Re-center when the canvas changes size (a panel toggled, the split moved).
+  useEffect(() => {
+    const el = wrapper.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const ro = new ResizeObserver(() => {
+      if (!keepRef.current) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => center(0));
+    });
+    ro.observe(el);
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+    };
+  }, [center]);
 
   // Relayout whenever the graph (i.e. the text) changes.
   useEffect(() => {
@@ -81,7 +122,10 @@ function Canvas() {
         const key = `${activePath}:${wf.name}`;
         if (lastFit.current !== key) {
           lastFit.current = key;
-          requestAnimationFrame(() => flow.fitView({ padding: 0.12, maxZoom: 1, minZoom: 0.7 }));
+          requestAnimationFrame(() => fit(0));
+        } else if (keepRef.current) {
+          // After an edit: same zoom, back in the middle.
+          requestAnimationFrame(() => requestAnimationFrame(() => center()));
         }
       })
       .catch((e) => console.error("layout", e));
@@ -129,8 +173,14 @@ function Canvas() {
 
   const onKeyDown = useCallback(
     (ev: React.KeyboardEvent) => {
-      if (!wf || (ev.key !== "Delete" && ev.key !== "Backspace")) return;
       if ((ev.target as HTMLElement).closest("input, textarea, .monaco-editor")) return;
+      if (ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey && (ev.code === "Digit1" || ev.code === "Digit2")) {
+        if (ev.code === "Digit1") fit();
+        else center();
+        ev.preventDefault();
+        return;
+      }
+      if (!wf || (ev.key !== "Delete" && ev.key !== "Backspace")) return;
       if (selectedEdge) {
         const e = layout.edges.find((x) => x.id === selectedEdge);
         if (e) void edit((doc) => removeEdge(doc, wf.name, (e.data as FlowEdgeData).edge));
@@ -141,7 +191,7 @@ function Canvas() {
         ev.preventDefault();
       }
     },
-    [wf, selectedEdge, selection, layout.edges],
+    [wf, selectedEdge, selection, layout.edges, fit, center],
   );
 
   /** Where a palette state dropped at a screen point goes. */
@@ -230,7 +280,7 @@ function Canvas() {
       void edit((doc) => {
         const method = call && doc.graph.declarations.find((d) => d.name === call!.tool)?.methods?.find((m) => m.name === call!.method);
         return insertState(doc, wf.name, kind, placement, call && method ? { tool: call.tool, method } : undefined, agent?.agent);
-      });
+      }).then((ok) => agent && hintSchema(ok, agent.agent));
     },
     [wf, placementAt, callTargetAt],
   );
@@ -295,7 +345,9 @@ function Canvas() {
         maxZoom={2}
       >
         <Background gap={20} size={1} />
-        <Controls showInteractive={false} position="top-right" />
+        <Controls showInteractive={false} showFitView={false} position="top-right">
+          <ViewportButtons onFit={() => fit()} onCenter={() => center()} keepCentered={keepCentered} onToggle={toggleKeepCentered} />
+        </Controls>
       </ReactFlow>
     </div>
   );

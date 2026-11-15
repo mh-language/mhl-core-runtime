@@ -91,3 +91,58 @@ pipeline P {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+// A `merge (branches) { ... }` block combines a var two branches both
+// assigned — what is otherwise a conflict error — reading each branch's
+// value through the branches object, while vars the branches agree on are
+// already merged when it runs.
+func TestParallelMergeCombinesConflictingWrites(t *testing.T) {
+	src := `
+workflow W {
+    var reply = []
+    var n = 0
+    parallel Fan {
+        step Left  { self.reply = [...self.reply, "claude"]  self.n = 1 }
+        step Right { self.reply = [...self.reply, "codex"] }
+        merge (branches) {
+            self.reply = [...branches.Left.reply, ...branches.Right.reply]
+            log("n=${n}")
+        }
+    }
+    step Done {
+        log("reply=${reply}")
+    }
+}
+`
+	out, err := runParallel(t, src)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	for _, want := range []string{"step: Fan.merge", "n=1", `reply=["claude","codex"]`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Index(out, "step: Right") > strings.Index(out, "step: Fan.merge") {
+		t.Errorf("merge ran before the barrier:\n%s", out)
+	}
+}
+
+// A merge that leaves a conflicting var unassigned fails the group rather
+// than silently dropping both branches' values.
+func TestParallelMergeMustAssignConflicts(t *testing.T) {
+	src := `
+workflow W {
+    var reply = []
+    parallel Fan {
+        step Left  { self.reply = ["a"] }
+        step Right { self.reply = ["b"] }
+        merge (branches) { log("noop") }
+    }
+}
+`
+	out, err := runParallel(t, src)
+	if err == nil || !strings.Contains(err.Error(), "its merge did not assign it") {
+		t.Fatalf("want an unassigned-conflict error, got %v\n%s", err, out)
+	}
+}

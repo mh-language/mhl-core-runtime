@@ -42,15 +42,7 @@ func checkAgentCalls(file string, prog *ast.Program, aliases map[string]types.Ty
 		for _, member := range decl.Pipeline.Body {
 			// A `parallel` group's branch steps are checked exactly like
 			// plain steps — the runtime runs them through the same RunStep.
-			var steps []*ast.Step
-			switch {
-			case member.Step != nil:
-				steps = []*ast.Step{member.Step}
-			case member.Parallel != nil:
-				steps = member.Parallel.Steps
-			default:
-				continue
-			}
+			steps := pipelineMemberSteps(member)
 			for _, step := range steps {
 				// A pipeline-level `input`, `var`, or `mem` is a valid
 				// plain-assignment target inside any of that pipeline's steps
@@ -76,6 +68,9 @@ func checkAgentCalls(file string, prog *ast.Program, aliases map[string]types.Ty
 				// every step (this run's session metadata); a `context:` block only
 				// adds `context.vars` on top. See interpreter.isContextRef.
 				seed["context"] = types.Object
+				if param := mergeParam(member, step); param != "" {
+					seed[param] = types.Object
+				}
 				declared := collectVarNames(prog, step.Body, seed, nil)
 				findings = append(findings, checkStatements(file, prog, step.Body, declared, nil, aliases)...)
 			}
@@ -88,11 +83,12 @@ func checkAgentCalls(file string, prog *ast.Program, aliases map[string]types.Ty
 // atomic-checkpoint / concurrent-branch model depends on, mirroring the
 // guards runtime.Runner.Run applies at run time:
 //   - every step name in a pipeline is unique (a `parallel` branch step
-//     included) — findStep/goto resolve a name to the first match, so a
-//     duplicate is silently ambiguous;
+//     and a group's own name included) — findStep/goto resolve a name to
+//     the first match, so a duplicate is silently ambiguous;
 //   - `goto` is not used from inside a branch step, and does not target a
 //     step that lives inside a group (either would need the pipeline state
-//     machine to jump into or out of a barrier);
+//     machine to jump into or out of a barrier) — the group itself, by its
+//     name, is a valid target: the whole group runs;
 //   - `break` is not used from inside a branch step (it unwinds the whole
 //     pipeline/loop — meaningless from one concurrent branch).
 func checkParallelGroups(file string, prog *ast.Program) []Finding {
@@ -115,6 +111,13 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 				}
 				seen[m.Step.Name] = true
 			case m.Parallel != nil:
+				// The group's own name is a goto target, so it shares the
+				// step namespace.
+				if seen[m.Parallel.Name] {
+					findings = append(findings, Finding{File: fileAt(file, m.Parallel.Pos), Line: m.Parallel.Pos.Line, Column: m.Parallel.Pos.Column,
+						Message: fmt.Sprintf("pipeline %q declares more than one step or parallel group named %q", decl.Pipeline.Name, m.Parallel.Name)})
+				}
+				seen[m.Parallel.Name] = true
 				for _, s := range m.Parallel.Steps {
 					inGroup[s.Name] = true
 					if seen[s.Name] {
@@ -131,14 +134,21 @@ func checkParallelGroups(file string, prog *ast.Program) []Finding {
 			steps := pipelineMemberSteps(m)
 			branch := m.Parallel != nil
 			for _, step := range steps {
+				where := ""
+				if branch {
+					where = fmt.Sprintf("a parallel group (step %q of group %q)", step.Name, m.Parallel.Name)
+					if mergeParam(m, step) != "" {
+						where = fmt.Sprintf("the merge of parallel group %q", m.Parallel.Name)
+					}
+				}
 				walkGotoBreak(step.Body, func(target string, isBreak bool, pos lexer.Position) {
 					switch {
 					case isBreak && branch:
 						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
-							Message: fmt.Sprintf("`break` cannot be used inside a parallel group (step %q of group %q)", step.Name, m.Parallel.Name)})
+							Message: "`break` cannot be used inside " + where})
 					case !isBreak && branch:
 						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
-							Message: fmt.Sprintf("`goto` cannot be used inside a parallel group (step %q of group %q)", step.Name, m.Parallel.Name)})
+							Message: "`goto` cannot be used inside " + where})
 					case !isBreak && inGroup[target]:
 						findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
 							Message: fmt.Sprintf("`goto %s` targets a step inside a parallel group", target)})
@@ -523,6 +533,12 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 			for _, s := range pipelineMemberSteps(m) {
 				steps[s.Name] = true
 			}
+			// A `parallel` group is a goto target too, by its own name: the
+			// whole group runs. (A branch step inside it is not — see
+			// checkParallelGroups.)
+			if m.Parallel != nil {
+				steps[m.Parallel.Name] = true
+			}
 		}
 		for _, route := range routes {
 			findings = append(findings, checkRouteArms(file, route)...)
@@ -680,13 +696,17 @@ func allGotoMatchArmsFail(m *ast.GotoMatchStmt) bool {
 }
 
 // pipelineMemberSteps returns the step(s) a pipeline body member contributes
-// — one for a plain `step`, all branches for a `parallel` group, none
-// otherwise.
+// — one for a plain `step`, all branches for a `parallel` group (and its
+// merge, as ast.MergeStep — see mergeParam for the name it adds to scope),
+// none otherwise.
 func pipelineMemberSteps(m *ast.PipelineMember) []*ast.Step {
 	switch {
 	case m.Step != nil:
 		return []*ast.Step{m.Step}
 	case m.Parallel != nil:
+		if ms := m.Parallel.MergeStep(); ms != nil {
+			return append(append([]*ast.Step(nil), m.Parallel.Steps...), ms)
+		}
 		return m.Parallel.Steps
 	default:
 		return nil

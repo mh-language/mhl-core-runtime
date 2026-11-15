@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyEdits, Doc, insertState } from "./edits";
-import { addImport, exportDeclaration, importOrigins, importSpec, isImported, resolveImport } from "./imports";
+import { addImport, addImports, exportDeclaration, importOrigins, importSpec, isImported, resolveImport } from "./imports";
 import { newFileSource } from "./templates";
 import { graphOf, MHL } from "./testutil";
 
@@ -122,5 +122,23 @@ describe("importOrigins", () => {
 
   it("falls back to the resolved path for a file outside the library", () => {
     expect(importOrigins(graph, "/w/flows/main.mh", []).get("Tools")?.path).toBe("/w/lib/tools.mh");
+  });
+});
+
+describe.skipIf(!MHL)("addImports (a file dropped on the Imports card)", () => {
+  const MAIN = "/w/main.mh";
+  it("writes one import line for several names, and merges into an existing one", () => {
+    const fresh = `workflow W {\n    step A { }\n}\n`;
+    const out = applyEdits(fresh, addImports(doc(fresh), MAIN, ["A", "B"], "/w/lib/x.mh").edits);
+    expect(out.startsWith('import { A, B } from "./lib/x.mh"\n')).toBe(true);
+    expect(graphOf(out).ok).toBe(true);
+
+    const has = `import { A } from "./lib/x.mh"\n\n${fresh}`;
+    const merged = applyEdits(has, addImports(doc(has), MAIN, ["A", "B", "C"], "/w/lib/x.mh").edits);
+    expect(merged).toContain('import { A, B, C } from "./lib/x.mh"');
+  });
+  it("refuses names the file already uses", () => {
+    const src = `agent B { command: "x" }\nworkflow W {\n    step A { }\n}\n`;
+    expect(() => addImports(doc(src), MAIN, ["B"], "/w/lib/x.mh")).toThrow(/B is already declared/);
   });
 });

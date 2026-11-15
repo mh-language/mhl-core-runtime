@@ -5,7 +5,6 @@ import { addWorkflow } from "../sync/edits";
 import { newWorkflowSource } from "../sync/templates";
 import { WorkflowCanvas } from "../canvas/WorkflowCanvas";
 import { CodeEditor } from "../editor/CodeEditor";
-import { Palette } from "../palette/Palette";
 import { StatesBar } from "../palette/StatesBar";
 import { Inspector } from "../inspector/Inspector";
 import { RunPanel } from "../run/RunPanel";
@@ -52,7 +51,7 @@ function LayoutToggles() {
   if (!root) return null;
   return (
     <span className="layout-toggles">
-      <PanelToggle panel="left" open={leftOpen} label="files and toolbox" keys={`${MOD}B`} />
+      <PanelToggle panel="left" open={leftOpen} label="files" keys={`${MOD}B`} />
       {activePath && !noFlow && <PanelToggle panel="bottom" open={bottomOpen} label="run panel" keys={`${MOD}J`} />}
       {isMh(activePath) && view !== "code" && <PanelToggle panel="right" open={rightOpen} label="inspector" keys={`${ALT}${MOD}B`} />}
     </span>
@@ -194,12 +193,6 @@ export function App() {
           {leftOpen && (
             <aside className="sidebar-left">
               <FileTree />
-              {isMh(activePath) && view !== "code" && (
-                <>
-                  <div className="panel-head">Toolbox</div>
-                  <Palette />
-                </>
-              )}
             </aside>
           )}
           <main className="main-area">

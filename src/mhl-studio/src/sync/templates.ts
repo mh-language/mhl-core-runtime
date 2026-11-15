@@ -2,6 +2,7 @@
 // step it stands for. Indentation is 4 spaces, like the samples and skills.
 
 import type { Declaration, ToolMethod } from "../lib/types";
+import { choiceLines, type ChoiceTemplate } from "./choice";
 
 export type StateKind =
   | "pass"
@@ -37,7 +38,7 @@ export const STATE_PREFIX: Record<StateKind, string> = {
  */
 export const PALETTE: PaletteItem[] = [
   { kind: "pass", label: "Pass", hint: "An empty step — fill it in" },
-  { kind: "choice", label: "Choice", hint: "goto match — branch on a value" },
+  { kind: "choice", label: "Choice", hint: "goto match — branch on an input or a var, one rule per value" },
   { kind: "parallel", label: "Parallel", hint: "parallel { … } — run branches concurrently" },
   { kind: "approval", label: "Human approval", hint: "pause(…) until resumed with a decision" },
   { kind: "succeed", label: "Succeed", hint: "complete() — end the run successfully" },
@@ -50,8 +51,10 @@ export interface TemplateContext {
   indent: string;
   agents: Declaration[];
   tools: Declaration[];
-  /** Names of the other top-level nodes (choice targets). */
+  /** Names of the other top-level nodes, those after the new one first (choice targets). */
   others: string[];
+  /** For a "choice" step, what it branches on and its first rules. */
+  choice?: ChoiceTemplate;
   /** For a "tool" step, the method to call (else the first one declared). */
   call?: { tool: string; method: ToolMethod };
   /** For an "agent" step, the agent to call (else the first one declared). */
@@ -121,17 +124,8 @@ export function renderState(kind: StateKind, ctx: TemplateContext): string {
     }
     case "choice": {
       const [a, b] = ctx.others;
-      return block(
-        `step ${name}`,
-        [
-          `goto match "a" {`,
-          `${IND}"a" -> ${a ?? 'fail("TODO: pick a target step")'}`,
-          ...(b ? [`${IND}"b" -> ${b}`] : []),
-          `${IND}_ -> fail("no branch matched")`,
-          `}`,
-        ],
-        indent,
-      );
+      const arms: ChoiceTemplate["arms"] = [['"a"', a ?? null], ...(b ? [['"b"', b] as [string, string]] : [])];
+      return block(`step ${name}`, choiceLines(ctx.choice ?? { subject: '"a"', arms }), indent);
     }
     case "parallel":
       return `${indent}parallel ${name} {\n${block(`step ${name}Left`, [], indent + IND)}\n${block(`step ${name}Right`, [], indent + IND)}\n${indent}}`;
@@ -297,10 +291,11 @@ most severe first. For each one, quote the line and say how to fix it.
  * A new JSON Schema for an agent's structured answer — the shape engines
  * with strict structured output accept (every property required, no extra
  * ones), used as `Agent.run(prompt: ..., schema: Answer.content)`.
+ * No "$schema" line: Claude Code's --json-schema refuses a 2020-12 meta-schema
+ * ("no schema with key or ref"), and every engine reads the plain form.
  */
 export function newJsonSchemaSource(): string {
   return `{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Answer",
   "type": "object",
   "properties": {

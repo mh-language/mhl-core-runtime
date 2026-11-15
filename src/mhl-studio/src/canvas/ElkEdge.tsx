@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type Edge, type EdgeProps } from "@xyflow/react";
-import type { FlowEdgeData, Point } from "./layout";
+import { edgeLabel, type FlowEdgeData, type Point } from "./layout";
 
 /** An SVG path through ELK's orthogonal route, with rounded corners. */
 function roundedPath(points: Point[], r = 8): string {
@@ -48,7 +48,7 @@ export const ElkEdge = memo(function ElkEdge(props: EdgeProps<ElkEdgeType>) {
             style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)` }}
             title={e.via ? `via route ${e.via}` : undefined}
           >
-            {e.label}
+            {edgeLabel(e)}
           </div>
         </EdgeLabelRenderer>
       )}

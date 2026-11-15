@@ -69,6 +69,11 @@ type Stage struct {
 	Name     string
 	Steps    []string
 	Parallel bool
+	// Merge is the step name a parallel group's `merge (Param) { ... }`
+	// block runs under (ast.MergeStepName), "" without one; MergeParam is
+	// the name its branches object is bound to. See runParallelStage.
+	Merge      string
+	MergeParam string
 }
 
 // Pipeline is the runtime-facing view of an ast.Pipeline: its name, ordered
@@ -285,7 +290,11 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 				out.setStepTimeout(s.Name, s.Timeout)
 			}
 			out.Steps = append(out.Steps, names...)
-			out.Stages = append(out.Stages, Stage{Name: m.Parallel.Name, Steps: names, Parallel: true})
+			stage := Stage{Name: m.Parallel.Name, Steps: names, Parallel: true}
+			if m.Parallel.Merge != nil {
+				stage.Merge, stage.MergeParam = ast.MergeStepName(m.Parallel.Name), m.Parallel.Merge.Param
+			}
+			out.Stages = append(out.Stages, stage)
 			out.setStepTimeout(m.Parallel.Name, m.Parallel.Timeout)
 		case m.Prop != nil && m.Prop.Name == "checkpoint":
 			out.Checkpoint = checkpointFromExpr(m.Prop.Value)

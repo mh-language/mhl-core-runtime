@@ -86,7 +86,8 @@ func gotoTargetItems(path, text string, pos position) []completionItem {
 }
 
 // pipelineStepItems returns a completion item for every step p's own Body
-// declares directly — a plain `step`, and each branch of a `parallel` group.
+// declares directly — a plain `step`, a `parallel` group by its name, and
+// each branch of a group.
 func pipelineStepItems(p *ast.Pipeline) []completionItem {
 	var items []completionItem
 	for _, m := range p.Body {
@@ -94,6 +95,8 @@ func pipelineStepItems(p *ast.Pipeline) []completionItem {
 		case m.Step != nil:
 			items = append(items, completionItem{Label: m.Step.Name, Kind: kindMethod, Detail: "step"})
 		case m.Parallel != nil:
+			// The group by its own name: `goto` runs the whole group.
+			items = append(items, completionItem{Label: m.Parallel.Name, Kind: kindMethod, Detail: "parallel group"})
 			for _, s := range m.Parallel.Steps {
 				items = append(items, completionItem{Label: s.Name, Kind: kindMethod, Detail: "step (parallel " + m.Parallel.Name + ")"})
 			}
@@ -248,7 +251,7 @@ func stepLocationInText(path, src string, pipelinePos int, stepName string) (loc
 	if !ok {
 		return location{}, false
 	}
-	re := regexp.MustCompile(`(?m)^[ \t]*(?:entry[ \t]+)?step[ \t]+(` + regexp.QuoteMeta(stepName) + `)\b`)
+	re := regexp.MustCompile(`(?m)^[ \t]*(?:entry[ \t]+)?(?:step|parallel)[ \t]+(` + regexp.QuoteMeta(stepName) + `)\b`)
 	m := re.FindStringSubmatchIndex(src[bodyStart:bodyEnd])
 	if m == nil {
 		return location{}, false

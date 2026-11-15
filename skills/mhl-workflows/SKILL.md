@@ -199,6 +199,7 @@ loop workflow PollBuild {
 | Several agent calls inside one step | `spawn` + `wait` |
 | One agent over a list | `spawn xs = A.run(prompt: "${item}") for item in items` |
 | Several whole steps at once | `parallel Name { step A {...} step B {...} }` |
+| Branches that fill one var | `parallel Name { ... merge (branches) { ... } }` |
 
 ```mh
 agent Checker {
@@ -243,8 +244,57 @@ test fan_out {
 - `wait a, b` fails fast. `wait any a, b` takes the first success. `wait 2 of a, b, c` is a
   quorum. `on_error: "collect"` keeps the step alive; then read `.ok`, `.error`, `.status`.
 - `parallel` branches get copies of the pipeline vars, merged at the barrier. Two branches
-  assigning the same var is a run failure, so give each branch its own var. `goto` and
-  `break` are not allowed inside a group, and a group re-runs entirely on resume.
+  assigning the same var different values is a run failure: give each branch its own var, or
+  end the group with a `merge` (below). `goto` and `break` are not allowed inside a group,
+  and a group re-runs entirely on resume. A `goto` may name the group itself
+  (`goto Verify`), which re-runs every branch; never a branch step.
+
+When branches should add to the same var, a `merge (branches) { ... }` block, last in the
+group, combines them. It runs once after every branch, in the workflow's scope, and
+`branches.<Step>.<var>` is what that branch left. A var the branches wrote differently must
+be assigned there. Vars they agree on are already merged.
+
+```mh
+agent Claude {
+    command: "echo"
+    args: ["claude:", "${prompt}"]
+}
+
+agent Codex {
+    command: "echo"
+    args: ["codex:", "${prompt}"]
+}
+
+workflow Consult {
+    input question: string = "caching"
+    var replies = []
+
+    parallel Ask {
+        step AskClaude { self.replies = [...self.replies, Claude.run(prompt: question)] }
+        step AskCodex { self.replies = [...self.replies, Codex.run(prompt: question)] }
+        merge (branches) {
+            self.replies = [...branches.AskClaude.replies, ...branches.AskCodex.replies]
+        }
+    }
+
+    step Report {
+        log(replies)
+    }
+}
+
+test consult {
+    describe both_replies_are_kept {
+        var result = Consult.run()
+        are_equal(result.vars.replies, ["claude: caching", "codex: caching"])
+    }
+}
+```
+
+- `goto`, `break`, `pause()` and `complete()` are rejected inside a merge, and `branches` is
+  read-only and must not reuse an input or var name.
+- A value method returns a new value and never changes its receiver.
+  `self.replies.append(x)` on its own does nothing, and lint flags it. Write
+  `self.replies = self.replies.append(x)`, or use a spread.
 
 ## Human in the loop
 

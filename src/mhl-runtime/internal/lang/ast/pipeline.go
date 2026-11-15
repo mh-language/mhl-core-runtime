@@ -220,12 +220,57 @@ type WorkflowRoute struct {
 // so an expiry cancels every still-running branch at once and fails the
 // group. A branch step may carry its own `timeout` too — the deadlines
 // compose and the earliest one fires.
+//
+// An optional `merge (branches) { ... }` block, last in the group, decides
+// how the branches' writes combine (see ParallelMerge).
 type ParallelGroup struct {
 	Pos     lexer.Position
 	EndPos  lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
 	Name    string         `parser:"'parallel' @Ident"`
 	Timeout string         `parser:"( 'timeout' @Duration )?"`
-	Steps   []*Step        `parser:"'{' @@+ '}'"`
+	Steps   []*Step        `parser:"'{' @@+"`
+	Merge   *ParallelMerge `parser:"@@? '}'" digest:"omitzero"`
+}
+
+// ParallelMerge is a parallel group's explicit join: a body that runs once,
+// after every branch finished, in the workflow's own scope, with Param bound
+// (read-only) to an object holding each branch's variables by step name —
+//
+//	merge (branches) {
+//	    self.reply = [...branches.Left.reply, ...branches.Right.reply]
+//	}
+//
+// Without one, two branches assigning one variable different values is a
+// hard error (runtime.Runner's runParallelStage). With one, that variable
+// keeps its pre-group value for the merge to read and must be assigned by
+// it; every variable the branches agree on is merged as before, so the merge
+// sees it already combined. `goto`, `break`, `pause` and `complete` are
+// rejected inside it (lint.checkParallelGroups): it is part of the group's
+// barrier, not a step of the state machine.
+type ParallelMerge struct {
+	Pos    lexer.Position
+	EndPos lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Param  string         `parser:"'merge' '(' @Ident ')'"`
+	Body   []*Statement   `parser:"'{' @@* '}'"`
+}
+
+// MergeStepSuffix joins a group's name to the step name its merge runs
+// under ("Fan.merge"): not an identifier, so it can never collide with a
+// declared step or be a goto target.
+const MergeStepSuffix = ".merge"
+
+// MergeStepName is the step name group's merge runs under — what `mhl run`
+// prints, step_start/step_end hooks and run events report.
+func MergeStepName(group string) string { return group + MergeStepSuffix }
+
+// MergeStep is the group's merge as a step (MergeStepName, the merge's
+// body), or nil without one — so everything that walks step bodies covers
+// it. A fresh value per call.
+func (pg *ParallelGroup) MergeStep() *Step {
+	if pg == nil || pg.Merge == nil {
+		return nil
+	}
+	return &Step{Pos: pg.Merge.Pos, EndPos: pg.Merge.EndPos, Name: MergeStepName(pg.Name), Body: pg.Merge.Body}
 }
 
 // MemDecl declares and initializes a pipeline-scoped persistent variable:

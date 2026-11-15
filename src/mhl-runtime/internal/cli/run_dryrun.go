@@ -74,7 +74,11 @@ func printDryRunText(out io.Writer, ins *execsvc.Inspection, warnings []string) 
 	fmt.Fprintf(out, "  steps (%d):\n", len(ins.Steps))
 	for i, st := range ins.Stages {
 		if st.Parallel {
-			fmt.Fprintf(out, "    %2d. parallel %s: %v\n", i+1, st.Name, st.Steps)
+			line := fmt.Sprintf("    %2d. parallel %s: %v", i+1, st.Name, st.Steps)
+			if st.Merge != "" {
+				line += " → merge"
+			}
+			fmt.Fprintln(out, line)
 		} else {
 			line := fmt.Sprintf("    %2d. %s", i+1, st.Name)
 			if d, ok := ins.StepTimeouts[st.Name]; ok {

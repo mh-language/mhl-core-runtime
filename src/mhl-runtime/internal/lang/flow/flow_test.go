@@ -445,3 +445,85 @@ pipeline P { step S { log("s") } }`)
 		}
 	}
 }
+
+func TestBuildChoice(t *testing.T) {
+	src := `enum Kind { Bug, Feature }
+workflow W {
+    input kind: Kind
+    step Pick {
+        log(kind)
+        goto match kind {
+            Kind.Bug -> Fix
+            _ -> fail("unhandled: ${kind}")
+        }
+    }
+    step Fix {
+        complete()
+    }
+}
+`
+	g := build(t, src)
+	if got := g.Declarations[0].Variants; strings.Join(got, ",") != "Bug,Feature" {
+		t.Fatalf("enum variants = %v", got)
+	}
+	w := g.Workflows[0]
+	if w.Nodes[1].Choice != nil {
+		t.Fatalf("Fix has no goto match, got a choice")
+	}
+	c := w.Nodes[0].Choice
+	if c == nil {
+		t.Fatal("Pick: no choice")
+	}
+	if c.Subject != "kind" || slice(src, c.SubjectSpan) != "kind" {
+		t.Errorf("subject = %q / %q", c.Subject, slice(src, c.SubjectSpan))
+	}
+	if !strings.HasPrefix(slice(src, c.Span), "goto match kind {") || src[c.Close] != '}' || c.Close != c.Span[1]-1 {
+		t.Errorf("span = %q, close at %q", slice(src, c.Span), src[c.Close])
+	}
+	want := [][2]string{{"Kind.Bug", "Fix"}, {"_", `fail("unhandled: ${kind}")`}}
+	if len(c.Arms) != len(want) {
+		t.Fatalf("arms = %d", len(c.Arms))
+	}
+	for i, a := range c.Arms {
+		if p, th := slice(src, a.PatternSpan), slice(src, a.ThenSpan); p != want[i][0] || th != want[i][1] {
+			t.Errorf("arm %d = %q -> %q, want %q -> %q", i, p, th, want[i][0], want[i][1])
+		}
+	}
+	if c.Arms[0].Wildcard || !c.Arms[1].Wildcard || !c.Arms[1].Fail {
+		t.Errorf("arm flags = %+v", c.Arms)
+	}
+}
+
+func TestBuildParallelMerge(t *testing.T) {
+	src := `agent A { command: "echo" }
+workflow W {
+    var reply = []
+    parallel Fan {
+        step L { self.reply = ["a"] }
+        step R { self.reply = ["b"] }
+        merge (branches) {
+            self.reply = A.run(prompt: "${branches}")
+        }
+    }
+}
+`
+	w := build(t, src).Workflows[0]
+	g := w.Nodes[0]
+	if g.Kind != "parallel" || g.Merge == nil {
+		t.Fatalf("Fan: want a parallel node with a merge, got %+v", g)
+	}
+	m := g.Merge
+	text := func(s Span) string { return src[s[0]:s[1]] }
+	if m.StepName != "Fan.merge" || m.Param != "branches" || text(m.ParamSpan) != "branches" {
+		t.Fatalf("merge = %+v", m)
+	}
+	if !strings.HasPrefix(text(m.Span), "merge (branches) {") || src[m.BodyOpen] != '{' || src[m.BodyClose] != '}' || m.BodyClose != m.Span[1]-1 {
+		t.Fatalf("merge spans: %q open=%q close=%q", text(m.Span), src[m.BodyOpen], src[m.BodyClose])
+	}
+	if strings.Join(m.Calls, ",") != "A.run" || len(m.CallSites) != 1 {
+		t.Fatalf("merge calls = %v / %+v", m.Calls, m.CallSites)
+	}
+	if w.Nodes[1].Merge != nil {
+		t.Fatalf("a branch step has no merge")
+	}
+}

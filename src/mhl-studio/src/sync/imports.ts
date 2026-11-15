@@ -54,24 +54,37 @@ export function isImported(graph: Graph, activePath: string, name: string, targe
 
 /** Adds `name` from `targetFile` to the open file's imports. */
 export function addImport(doc: Doc, activePath: string, name: string, targetFile: string): EditResult {
+  return addImports(doc, activePath, [name], targetFile);
+}
+
+/** Whether `name` would clash with a declaration, workflow or import of the open file. */
+export function clashes(graph: Graph, name: string): boolean {
+  return (
+    graph.declarations.some((d) => d.name === name) ||
+    graph.workflows.some((w) => w.name === name) ||
+    graph.imports.some((i) => i.names.includes(name) || (i.locals ?? []).includes(name))
+  );
+}
+
+/** Adds `names` from `targetFile` to the open file's imports, in one edit; ones already imported from it are skipped. */
+export function addImports(doc: Doc, activePath: string, names: string[], targetFile: string): EditResult {
   if (norm(activePath) === norm(targetFile)) return { edits: [] };
   const existing = importOf(doc.graph, activePath, targetFile);
-  if (existing && (existing.names.length === 0 || existing.names.includes(name))) return { edits: [] };
-  const clash =
-    doc.graph.declarations.some((d) => d.name === name) ||
-    doc.graph.workflows.some((w) => w.name === name) ||
-    doc.graph.imports.some((i) => i.names.includes(name));
-  if (clash) throw new EditError(`${name} is already declared or imported in this file`);
+  if (existing && existing.names.length === 0) return { edits: [] };
+  const todo = [...new Set(names)].filter((n) => !existing?.names.includes(n));
+  if (todo.length === 0) return { edits: [] };
+  const clash = todo.filter((n) => clashes(doc.graph, n));
+  if (clash.length) throw new EditError(`${clash.join(", ")} ${clash.length > 1 ? "are" : "is"} already declared or imported in this file`);
 
   if (existing) {
-    // import { A, B } from "x" → import { A, B, name } from "x"
+    // import { A, B } from "x" → import { A, B, C, D } from "x"
     const [s, e] = doc.span(existing.span);
     let at = s + doc.src.slice(s, e).lastIndexOf("}");
     while (at > s && /[ \t\n]/.test(doc.src[at - 1])) at--;
-    return { edits: [{ start: at, end: at, text: `, ${name}` }] };
+    return { edits: [{ start: at, end: at, text: `, ${todo.join(", ")}` }] };
   }
 
-  const line = `import { ${name} } from ${JSON.stringify(importSpec(activePath, targetFile))}`;
+  const line = `import { ${todo.join(", ")} } from ${JSON.stringify(importSpec(activePath, targetFile))}`;
   const last = [...doc.graph.imports].sort((a, b) => a.span[1] - b.span[1]).pop();
   if (last) {
     const end = doc.at(last.span[1]);

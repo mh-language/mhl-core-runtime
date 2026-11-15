@@ -3,7 +3,8 @@
 // branch step has finished (a barrier), then each branch's variable writes
 // are merged back into the pipeline's shared environment. A key that two
 // branches assign to different values is a hard error, so the outcome is
-// always deterministic.
+// always deterministic — unless the group ends with a `merge (branches) { ... }`
+// block that combines them (parallel_merge_workflow_example.mh).
 //
 // This is the step-level counterpart of `spawn`/`wait`
 // (concurrent_agents_pipeline_example.mh): `spawn` parallelises agent calls

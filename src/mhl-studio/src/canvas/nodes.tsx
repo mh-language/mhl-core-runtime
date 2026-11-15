@@ -5,7 +5,7 @@ import { useStore } from "../app/store";
 import type { CallSite, Declaration } from "../lib/types";
 import type { ImportOrigin } from "../sync/imports";
 import { useImportOrigins } from "./ImportsCard";
-import { MAX_BOXES, type ExternalNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
+import { MAX_BOXES, MERGE_H, type ExternalNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
 
 const CALL_ICON: Record<string, string> = { tool: "🛠", agent: "⚙", router: "⇄", extension: "⧉", memory: "▤", prompt: "❝" };
 
@@ -64,6 +64,7 @@ const EXIT_BADGE: Record<string, { icon: string; title: string; cls: string }> =
 
 function kindOf(data: StepNodeData): { icon: string; label: string } {
   const n = data.node;
+  if (n.choice) return { icon: "◇", label: `Choice · ${n.choice.subject}` };
   if (n.calls.length) return { icon: "⚙", label: "Task" };
   if (n.exits.includes("pause")) return { icon: "👤", label: "Human approval" };
   if (n.exits.includes("fail") && !n.fallsThrough && n.exits.length === 1) return { icon: "✕", label: "Fail" };
@@ -127,7 +128,9 @@ export const StepNode = memo(function StepNode({ id, data, selected }: NodeProps
 
 export const ParallelNode = memo(function ParallelNode({ id, data, selected }: NodeProps<Node<StepNodeData>>) {
   const statuses = useStore((s) => s.run.statuses);
-  const kids = data.node.children ?? [];
+  const merge = data.node.merge;
+  // The merge runs as one more step of the group, after every branch.
+  const kids = [...(data.node.children ?? []), ...(merge ? [merge.stepName] : [])];
   const ks = kids.map((k) => statuses[k]).filter(Boolean);
   const status = ks.includes("failed")
     ? "failed"
@@ -136,6 +139,7 @@ export const ParallelNode = memo(function ParallelNode({ id, data, selected }: N
       : ks.length === kids.length && ks.length > 0
         ? "succeeded"
         : statuses[id];
+  const mergeStatus = merge ? statuses[merge.stepName] : undefined;
   return (
     <div className={`node parallel ${selected ? "selected" : ""} ${status ? `run-${status}` : ""}`}>
       <Handle type="target" position={Position.Top} />
@@ -145,6 +149,21 @@ export const ParallelNode = memo(function ParallelNode({ id, data, selected }: N
         <span className="node-kind">Parallel</span>
         {data.node.timeout && <span className="badge">⏱ {data.node.timeout}</span>}
       </div>
+      {merge && (
+        <div
+          className={`merge-bar ${mergeStatus ? `run-${mergeStatus}` : ""}`}
+          style={{ height: MERGE_H }}
+          title={`merge (${merge.param}) { ... } — runs once after every branch and combines their vars (${merge.param}.<Step>.<var>)\nClick to show it in the code`}
+          onClick={(e) => {
+            e.stopPropagation();
+            revealSpan(merge.span);
+          }}
+        >
+          <span className="merge-icon">⤓</span>
+          <span className="mono">merge ({merge.param})</span>
+          {merge.calls.length > 0 && <span className="merge-calls mono">{merge.calls.join(", ")}</span>}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} />
     </div>
   );

@@ -318,9 +318,9 @@ select {
 }
 
 .file-tree {
-  max-height: 40%;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-  border-bottom: 1px solid var(--border);
 }
 .tree {
   padding: 2px 0 6px;
@@ -532,151 +532,6 @@ select {
   background: var(--panel);
 }
 
-/* ------------------------------------------------------------ toolbox */
-
-.toolbox {
-  flex: 1;
-  overflow: auto;
-  padding: 6px 6px 12px;
-}
-.tb-filter input {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel-2);
-  padding: 4px 8px;
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-.tb-filter input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-.tb-group {
-  margin-top: 6px;
-}
-.tb-group-head {
-  display: flex;
-  align-items: center;
-}
-.tb-toggle {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  background: none;
-  padding: 3px 2px;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  text-align: left;
-}
-.tb-chevron {
-  width: 10px;
-  font-size: 10px;
-}
-.tb-count {
-  font-weight: 400;
-  letter-spacing: 0;
-  opacity: 0.8;
-}
-.tb-item,
-.tb-method {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 5px;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-}
-.tb-item {
-  padding-left: 14px;
-}
-.tb-method {
-  padding-left: 38px;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-.tb-item[draggable="true"],
-.tb-method[draggable="true"] {
-  cursor: grab;
-}
-.tb-item:hover,
-.tb-method:hover {
-  background: var(--panel-2);
-}
-.tb-item.active,
-.tb-method.active {
-  background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-.tb-icon {
-  width: 16px;
-  flex-shrink: 0;
-  text-align: center;
-  font-size: 12px;
-}
-.tb-name {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tb-method-name {
-  color: var(--text);
-}
-.tb-method-params {
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tb-method.internal {
-  opacity: 0.6;
-}
-.tb-detail,
-.tb-file {
-  font-size: 11px;
-  color: var(--muted);
-}
-.tb-file {
-  margin-left: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.tb-imported {
-  color: var(--good);
-  font-size: 11px;
-  flex-shrink: 0;
-}
-.tb-action {
-  flex-shrink: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  cursor: pointer;
-  padding: 0 2px;
-  font-size: 13px;
-  visibility: hidden;
-}
-.tb-item:hover .tb-action,
-.tb-action:focus-visible {
-  visibility: visible;
-}
-.tb-empty {
-  margin: 2px 8px 6px 14px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
 /* ------------------------------------------------------------ tools */
 
 .param-row {
@@ -875,6 +730,15 @@ select {
 }
 .react-flow__controls {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+/* The viewport buttons (canvas/viewport.tsx); "active" = keep centered on. */
+.react-flow__controls-button svg {
+  max-width: 14px;
+  max-height: 14px;
+}
+.react-flow__controls-button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* ------------------------------------------------------------ nodes */
@@ -1188,6 +1052,39 @@ select {
   color: var(--muted);
   font-weight: 400;
 }
+.node.parallel {
+  position: relative;
+}
+/* A group's merge: the join bar along its bottom edge (layout.ts MERGE_H). */
+.merge-bar {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.merge-bar:hover {
+  border-color: var(--accent);
+}
+.merge-bar .merge-icon {
+  color: var(--accent);
+}
+.merge-bar .merge-calls {
+  margin-left: auto;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .node.terminal {
   width: 104px;
@@ -1438,6 +1335,66 @@ select {
   width: 90px;
   flex: 1;
 }
+/* Choice step: "branch on" + one rule per row (inspector/ChoiceEditor.tsx). */
+.choice-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.choice-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.choice-rule,
+.choice-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.choice-rule input,
+.choice-add input {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--panel-2);
+}
+.choice-rule input:focus,
+.choice-add input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.choice-rule select,
+.choice-add select {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.choice-add {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.choice-arrow {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.choice-otherwise {
+  flex: 1 1 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted);
+  padding-left: 7px;
+}
+.choice-warn {
+  margin: 0;
+  color: var(--warn, #d29922);
+  line-height: 1.45;
+}
+.choice-warn .link {
+  font-size: inherit;
+}
 .problem {
   color: var(--bad);
   margin: 2px 0;
@@ -1654,4 +1611,22 @@ select {
 }
 .agent-picker-foot {
   margin: 6px 4px 0;
+}
+
+/* The Imports card as a drop target for a .mh file from the explorer. */
+.imports-card.drop-ready {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+.imports-card.drop-over {
+  border-style: solid;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.imports-drop-hint {
+  padding: 6px 10px;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

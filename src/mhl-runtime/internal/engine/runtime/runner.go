@@ -369,10 +369,14 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 			return result, nil
 
 		case errors.As(err, &gt):
-			if !p.hasStep(gt.Target) {
-				return result, fmt.Errorf("runtime: goto target %q is not a step of pipeline %q", gt.Target, p.Name)
+			// A target is a step, or a whole `parallel` group by its name
+			// (a stage: all its branches run, then the barrier) — never one
+			// branch step of a group.
+			_, isStage := p.stageByName(gt.Target)
+			if !isStage && !p.hasStep(gt.Target) {
+				return result, fmt.Errorf("runtime: goto target %q is not a step or parallel group of pipeline %q", gt.Target, p.Name)
 			}
-			if p.stepInParallelGroup(gt.Target) {
+			if !isStage && p.stepInParallelGroup(gt.Target) {
 				return result, fmt.Errorf("runtime: goto target %q is a step inside a parallel group of pipeline %q", gt.Target, p.Name)
 			}
 			if err := r.checkpointStep(p, perStep, current, gt.Target, result.Executed, ctx); err != nil {
@@ -580,8 +584,10 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 
 	// writtenBy records which branch first set a given key to a value that
 	// differs from the pre-fork snapshot; a second branch setting the same
-	// key to a different value is a conflict.
+	// key to a different value is a conflict — an error, unless the group
+	// has a merge, which then has to assign that key itself.
 	writtenBy := make(map[string]int, n)
+	conflicts := map[string][2]int{}
 	for i, bctx := range bctxs {
 		for k, v := range bctx.Vars {
 			if strings.HasPrefix(k, "__") {
@@ -592,8 +598,13 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 			}
 			if prev, ok := writtenBy[k]; ok {
 				if !value.Equal(bctxs[prev].Vars[k], v) {
-					return fmt.Errorf("parallel group %q: steps %q and %q both assigned pipeline var %q",
-						stage.Name, stage.Steps[prev], stage.Steps[i], k)
+					if stage.Merge == "" {
+						return fmt.Errorf("parallel group %q: steps %q and %q both assigned pipeline var %q — give each branch its own var, or combine them in a `merge (branches) { ... }` block at the end of the group",
+							stage.Name, stage.Steps[prev], stage.Steps[i], k)
+					}
+					if _, seen := conflicts[k]; !seen {
+						conflicts[k] = [2]int{prev, i}
+					}
 				}
 				continue
 			}
@@ -601,10 +612,87 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 			ctx.Vars[k] = v
 		}
 	}
+	// A conflicting var keeps its pre-group value for the merge to read
+	// (each branch's own value is in the branches object).
+	for k := range conflicts {
+		if b, ok := base[k]; ok {
+			ctx.Vars[k] = b
+		} else {
+			delete(ctx.Vars, k)
+		}
+	}
 	if err := mergeRefFields(stage, ctx.Vars, base, bctxs); err != nil {
 		return err
 	}
+	if stage.Merge != "" {
+		if err := runMerge(runCtx, stage, ctx, bctxs, conflicts, exec); err != nil {
+			return err
+		}
+	}
 	ctx.Vars["__last_step"] = stage.Name
+	return nil
+}
+
+// runMerge runs a parallel group's `merge (param) { ... }` block once, after
+// the barrier and the automatic merge, in the workflow's own vars (ctx), with
+// param bound to {branch step name: that branch's vars} — plain values
+// (value.Materialize), a snapshot the merge cannot write back through. param
+// is unbound again afterwards. Every var two branches disagreed on
+// (conflicts) must be assigned by the merge: one left at its pre-group value
+// would silently drop both branches' work. Control flow (goto, break, pause,
+// complete) is refused — lint rejects it statically too.
+func runMerge(runCtx context.Context, stage Stage, ctx *RunContext, bctxs []*RunContext, conflicts map[string][2]int, exec StepFunc) error {
+	branches := make(map[string]any, len(bctxs))
+	for i, bctx := range bctxs {
+		vars := make(map[string]any, len(bctx.Vars))
+		for k, v := range bctx.Vars {
+			if strings.HasPrefix(k, "__") || k == stage.MergeParam {
+				continue
+			}
+			m, err := value.Materialize(v)
+			if err != nil {
+				return fmt.Errorf("parallel group %q: merge: branch %q var %q: %w", stage.Name, stage.Steps[i], k, err)
+			}
+			vars[k] = m
+		}
+		branches[stage.Steps[i]] = vars
+	}
+	before := make(map[string]any, len(conflicts))
+	for k := range conflicts {
+		before[k] = value.DeepCopy(ctx.Vars[k])
+	}
+	prev, had := ctx.Vars[stage.MergeParam]
+	ctx.Vars[stage.MergeParam] = branches
+	err := exec(runCtx, stage.Merge, ctx)
+	if had {
+		ctx.Vars[stage.MergeParam] = prev
+	} else {
+		delete(ctx.Vars, stage.MergeParam)
+	}
+	if err != nil {
+		var (
+			brk *BreakSignal
+			gt  *GotoSignal
+			ps  *PauseSignal
+			cs  *CompleteSignal
+		)
+		if errors.As(err, &brk) || errors.As(err, &gt) || errors.As(err, &ps) || errors.As(err, &cs) {
+			return fmt.Errorf("parallel group %q: `%s` cannot be used inside a merge", stage.Name, err.Error())
+		}
+		return fmt.Errorf("parallel group %q: merge: %w", stage.Name, err)
+	}
+	keys := make([]string, 0, len(conflicts))
+	for k := range conflicts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if value.Equal(before[k], ctx.Vars[k]) {
+			c := conflicts[k]
+			return fmt.Errorf("parallel group %q: steps %q and %q both assigned pipeline var %q, and its merge did not assign it — combine them there (e.g. self.%s = ...)",
+				stage.Name, stage.Steps[c[0]], stage.Steps[c[1]], k, k)
+		}
+	}
 	return nil
 }
 

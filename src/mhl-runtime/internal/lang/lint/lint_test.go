@@ -917,7 +917,7 @@ func TestLocalArrayAppendNotFlaggedAsMemory(t *testing.T) {
 pipeline P {
     step S {
         var items = []
-        items.append("x")
+        items = items.append("x")
         var n = items.get(0)
     }
 }

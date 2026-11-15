@@ -33,6 +33,8 @@ describe.skipIf(!MHL)("new file templates", () => {
     const text = newFileSource("schema-json", "Sample");
     const parsed = JSON.parse(text);
     expect(parsed).toMatchObject({ type: "object", additionalProperties: false });
+    // Claude Code's --json-schema rejects the 2020-12 meta-schema it would name.
+    expect(parsed).not.toHaveProperty("$schema");
     expect([...parsed.required].sort()).toEqual(Object.keys(parsed.properties).sort());
     expect(newFilePath("schemas/answer", "schema-json")).toBe("schemas/answer.schema.json");
     expect(newFilePath("data.json", "schema-json")).toBe("data.json");

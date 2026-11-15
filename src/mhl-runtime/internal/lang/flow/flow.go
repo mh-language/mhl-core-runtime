@@ -71,8 +71,9 @@ type Declaration struct {
 	// literal "${schema}" element), "stdin" (inside a literal `stdin:`) or
 	// "none" (nowhere: the argument would be ignored); empty when `args`/
 	// `stdin` are computed and it cannot be told statically.
-	Schema  string   `json:"schema,omitempty"`
-	Methods []Method `json:"methods,omitempty"` // tool methods, `internal` ones included
+	Schema   string   `json:"schema,omitempty"`
+	Methods  []Method `json:"methods,omitempty"`  // tool methods, `internal` ones included
+	Variants []string `json:"variants,omitempty"` // an enum's variants, in order
 	// The rest is set for a tool only, so an editor can rewrite it in place:
 	// its name, the braces around its members, and every `Name.` call site
 	// in this file (a rename rewrites them too).
@@ -172,11 +173,42 @@ type Route struct {
 
 // Arm is one `pattern -> Target` / `pattern -> fail(...)` arm.
 type Arm struct {
-	Pattern    string `json:"pattern"`
-	Target     string `json:"target,omitempty"`
-	Fail       bool   `json:"fail,omitempty"`
-	Span       Span   `json:"span"`
-	TargetSpan *Span  `json:"targetSpan,omitempty"`
+	Pattern  string `json:"pattern"`
+	Target   string `json:"target,omitempty"`
+	Fail     bool   `json:"fail,omitempty"`
+	Wildcard bool   `json:"wildcard,omitempty"`
+	Span     Span   `json:"span"`
+	// PatternSpan covers the pattern (`_` for the wildcard), ThenSpan what
+	// follows `->` (the target name or the whole `fail(...)`), so an editor
+	// can rewrite either side alone.
+	PatternSpan Span  `json:"patternSpan"`
+	ThenSpan    Span  `json:"thenSpan"`
+	TargetSpan  *Span `json:"targetSpan,omitempty"`
+}
+
+// Merge is a parallel group's `merge (Param) { ... }` join (ast.ParallelMerge):
+// it runs once after every branch, as the step "<group>.merge" (StepName).
+type Merge struct {
+	StepName  string `json:"stepName"`
+	Param     string `json:"param"`
+	ParamSpan Span   `json:"paramSpan"`
+	// Span runs from `merge` through the body's closing brace.
+	Span      Span       `json:"span"`
+	BodyOpen  int        `json:"bodyOpen"`
+	BodyClose int        `json:"bodyClose"`
+	Calls     []string   `json:"calls"`
+	CallSites []CallSite `json:"callSites"`
+}
+
+// Choice is a step's top-level `goto match Subject { arms }` statement —
+// what an editor shows as a Step Functions-style Choice state.
+type Choice struct {
+	Subject     string `json:"subject"`
+	SubjectSpan Span   `json:"subjectSpan"`
+	// Span runs from `goto` through the closing `}`; Close is that `}`.
+	Span  Span  `json:"span"`
+	Close int   `json:"close"`
+	Arms  []Arm `json:"arms"`
 }
 
 // Node is a step or a parallel group. Steps inside a group are nodes too,
@@ -198,9 +230,13 @@ type Node struct {
 	Calls       []string `json:"calls"`
 	// CallSites are the same calls, one per occurrence in source order, each
 	// with its text and span — an editor draws one action box per call.
-	CallSites    []CallSite `json:"callSites"`
-	Exits        []string   `json:"exits"`
-	FallsThrough bool       `json:"fallsThrough"`
+	CallSites []CallSite `json:"callSites"`
+	// Choice is the body's first top-level `goto match`, if any.
+	Choice *Choice `json:"choice,omitempty"`
+	// Merge is a parallel group's `merge (param) { ... }` block, if any.
+	Merge        *Merge   `json:"merge,omitempty"`
+	Exits        []string `json:"exits"`
+	FallsThrough bool     `json:"fallsThrough"`
 }
 
 // CallSite is one `Receiver.method(...)` call in a step body whose receiver
@@ -308,7 +344,7 @@ func (b *builder) declarationOf(d *ast.Declaration) (Declaration, bool) {
 	case d.Type != nil:
 		decl.Kind, decl.Name = "type", d.Type.Name
 	case d.Enum != nil:
-		decl.Kind, decl.Name = "enum", d.Enum.Name
+		decl.Kind, decl.Name, decl.Variants = "enum", d.Enum.Name, d.Enum.Variants
 	case d.Alias != nil:
 		decl.Kind, decl.Name, decl.Detail = "alias", d.Alias.Name, d.Alias.Target
 	case d.Test != nil:
@@ -557,11 +593,17 @@ func (b *builder) route(r *ast.WorkflowRoute, s Span) Route {
 
 func (b *builder) arm(a *ast.GotoMatchArm) Arm {
 	s := Span{a.Pos.Offset, a.EndPos.Offset}
-	out := Arm{Span: s, Target: a.Target, Fail: a.Fail != nil}
+	out := Arm{Span: s, Target: a.Target, Fail: a.Fail != nil, Wildcard: a.Wildcard}
 	ts := b.in(s)
 	for i, t := range ts {
 		if t.Kind == "Punct" && t.Value == "->" {
 			out.Pattern = b.text(Span{s[0], t.Offset})
+			if i > 0 {
+				out.PatternSpan = Span{ts[0].Offset, ts[i-1].End()}
+			}
+			if i+1 < len(ts) {
+				out.ThenSpan = Span{ts[i+1].Offset, ts[len(ts)-1].End()}
+			}
 			if !out.Fail && i+1 < len(ts) {
 				ts := tokSpan(ts[i+1])
 				out.TargetSpan = &ts
@@ -593,8 +635,35 @@ func (b *builder) step(st *ast.Step, s Span, parent string) Node {
 	n.BodyClose = b.closeOf(s)
 	n.Calls = b.calls(Span{n.BodyOpen, n.BodyClose})
 	n.CallSites = b.callSites(Span{n.BodyOpen, n.BodyClose})
+	n.Choice = b.choice(st.Body)
 	n.Exits = exits(st.Body)
 	return n
+}
+
+// choice projects the first top-level `goto match` of a step body.
+func (b *builder) choice(body []*ast.Statement) *Choice {
+	for _, st := range body {
+		if st.GotoMatch == nil {
+			continue
+		}
+		s := Span{st.Pos.Offset, st.EndPos.Offset}
+		ts := b.in(s)
+		if len(ts) < 4 {
+			return nil
+		}
+		i := bodyBrace(ts[2:])
+		if i < 1 {
+			return nil
+		}
+		c := &Choice{Span: s, Close: b.closeOf(s), Arms: []Arm{}}
+		c.SubjectSpan = Span{ts[2].Offset, ts[2+i-1].End()}
+		c.Subject = b.text(c.SubjectSpan)
+		for _, a := range st.GotoMatch.Arms {
+			c.Arms = append(c.Arms, b.arm(a))
+		}
+		return c
+	}
+	return nil
 }
 
 func (b *builder) parallel(pg *ast.ParallelGroup, s Span) Node {
@@ -618,6 +687,20 @@ func (b *builder) parallel(pg *ast.ParallelGroup, s Span) Node {
 	n.BodyClose = b.closeOf(s)
 	for _, st := range pg.Steps {
 		n.Children = append(n.Children, st.Name)
+	}
+	if mg := pg.Merge; mg != nil {
+		ms := Span{mg.Pos.Offset, mg.EndPos.Offset}
+		m := &Merge{StepName: ast.MergeStepName(pg.Name), Param: mg.Param, Span: ms, BodyClose: b.closeOf(ms), Calls: b.calls(ms), CallSites: b.callSites(ms)}
+		for _, t := range b.in(ms) {
+			if t.Kind == "Ident" && t.Value == mg.Param && m.ParamSpan == (Span{}) {
+				m.ParamSpan = tokSpan(t)
+			}
+			if t.Kind == "Punct" && t.Value == "{" {
+				m.BodyOpen = t.Offset
+				break
+			}
+		}
+		n.Merge = m
 	}
 	return n
 }

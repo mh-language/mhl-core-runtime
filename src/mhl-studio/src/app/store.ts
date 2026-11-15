@@ -73,6 +73,10 @@ export interface State {
   dropTarget: string | null;
   /** What is dragged over `dropTarget`: a call to add, or a prompt/schema for its agent call. */
   dropKind: "call" | "prompt" | "schema";
+  /** The .mh file being dragged from the explorer (absolute path), which the Imports card accepts. */
+  dragFile: string | null;
+  /** Imported names the diagram highlights the steps of (the imports card). */
+  importFocus: string[] | null;
   /** Every workspace file's declarations (the open file included). */
   library: LibraryFile[];
   /** The tool (and method) open in the inspector; exclusive with `selection`. */
@@ -86,7 +90,7 @@ export interface State {
   runInputs: Record<string, string>;
   runTab: RunTab;
   bottomOpen: boolean;
-  /** The left side bar (files + toolbox) is shown. */
+  /** The left side bar (the files) is shown. */
   leftOpen: boolean;
   /** The right side bar (inspector) is shown. */
   rightOpen: boolean;
@@ -94,8 +98,6 @@ export interface State {
   clis: Record<string, string> | null;
   /** The run inputs popover (under the Run button's ▾) is open. */
   inputsOpen: boolean;
-  /** Imported names the diagram highlights the steps of (the imports card). */
-  importFocus: string[] | null;
 }
 
 export const useStore = create<State>(() => ({
@@ -113,6 +115,8 @@ export const useStore = create<State>(() => ({
   library: [],
   dropTarget: null,
   dropKind: "call",
+  dragFile: null,
+  importFocus: null,
   tool: null,
   view: "split",
   toast: null,
@@ -124,7 +128,6 @@ export const useStore = create<State>(() => ({
   bottomOpen: true,
   leftOpen: true,
   rightOpen: true,
-  importFocus: null,
   inputsOpen: false,
   clis: null,
 }));

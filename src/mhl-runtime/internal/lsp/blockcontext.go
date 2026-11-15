@@ -45,6 +45,10 @@ const (
 	blockStepStartHook
 	blockStepEndHook
 	blockStopFailureHook
+
+	// blockMerge is a parallel group's `merge (param) { ... }` body; Name
+	// carries the param (see mergeParamCompletionAt).
+	blockMerge
 )
 
 // blockRef is one classified open "{": its kind plus, for blockExtension, the
@@ -83,7 +87,8 @@ var headerRe = []struct {
 	{blockTool, regexp.MustCompile(`\btool\s+(\w+)\s*$`)},
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
 	{blockRouter, regexp.MustCompile(`\brouter\s+\w+\s*$`)},
-	{blockParallel, regexp.MustCompile(`\bparallel\s+\w+\s*$`)},
+	{blockParallel, regexp.MustCompile(`\bparallel\s+(\w+)(?:\s+timeout\s+\S+)?\s*$`)},
+	{blockMerge, regexp.MustCompile(`\bmerge\s*\(\s*(\w+)\s*\)\s*$`)},
 	{blockCheckpoint, regexp.MustCompile(`\bcheckpoint\s*:\s*$`)},
 	{blockSpawn, regexp.MustCompile(`\bspawn\s*:\s*$`)},
 	{blockRepeat, regexp.MustCompile(`\brepeat\s*:\s*$`)},

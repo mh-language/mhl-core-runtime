@@ -48,6 +48,9 @@ type InspectStage struct {
 	Name     string   `json:"name"`
 	Steps    []string `json:"steps"`
 	Parallel bool     `json:"parallel,omitempty"`
+	// Merge is a parallel group's merge step name ("<group>.merge"), when
+	// it declares one.
+	Merge string `json:"merge,omitempty"`
 }
 
 // InspectGoto is one `goto` edge: From is the step it appears in, To its
@@ -126,7 +129,7 @@ func Inspect(req Request) (*Inspection, error) {
 	}
 	ins.Goto = collectPipelineGotos(prog, pipeline.Decl)
 	for _, s := range pipeline.Stages {
-		ins.Stages = append(ins.Stages, InspectStage{Name: s.Name, Steps: s.Steps, Parallel: s.Parallel})
+		ins.Stages = append(ins.Stages, InspectStage{Name: s.Name, Steps: s.Steps, Parallel: s.Parallel, Merge: s.Merge})
 	}
 	for name, d := range pipeline.StepTimeouts {
 		if ins.StepTimeouts == nil {

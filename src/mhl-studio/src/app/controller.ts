@@ -11,9 +11,8 @@ import type { Declaration, Graph, RunEvent, RunResult, Span, StepStatus } from "
 import { applyEdits, Doc, type EditResult, type TextEdit } from "../sync/edits";
 import { exportDeclaration, resolveImport } from "../sync/imports";
 import { moverFor, relinkEdits } from "../sync/relink";
-import { declNameFor, newFilePath, newFileSource, uniqueName, type NewFileKind } from "../sync/templates";
-import { agentName, BACKENDS, renderAgent, type Backend, type Companion, type Role } from "../sync/agentTemplates";
-import { declaredNames, insertBlock } from "../sync/prompts";
+import { declNameFor, newFilePath, newFileSource, type NewFileKind } from "../sync/templates";
+import { BACKENDS, renderAgent, type Backend, type Companion, type Role } from "../sync/agentTemplates";
 import { LspClient } from "../editor/lsp";
 import { JSON_LANG, LANG, MD_LANG, monaco, setupMonaco } from "../editor/monaco";
 import { emptyRun, get, isJson, isMarkdown, isMh, selectTool, set, type LibraryFile, type NodeRunStatus, type Toast } from "./store";
@@ -146,31 +145,43 @@ export async function useFromFile(file: LibraryFile, name: string, then: (doc: D
   const decl = file.declarations.find((d) => d.name === name);
   if (!decl) return false;
   if (!decl.exported) {
-    if (get().dirty[file.path]) {
-      toast("error", `Save ${file.rel} first: ${name} has to be marked export there.`);
-      return false;
-    }
-    try {
-      const model = models.get(file.path);
-      const src = model?.getValue() ?? (await api.readFile(file.path));
-      const g = await api.graph(file.path, src);
-      if (!g.ok) throw new Error(`${file.rel} has errors`);
-      const r = exportDeclaration(new Doc(src, g), name);
-      const next = applyEdits(src, r.edits);
-      if (model) {
-        applyToModel(model, r.edits);
-        await save(file.path);
-      } else {
-        await api.writeFile(file.path, next);
-      }
-      setLibraryFile(file.rel, file.path, await api.graph(file.path, next));
-      toast("info", `Exported ${name} from ${file.rel}`);
-    } catch (e) {
-      toast("error", `Could not export ${name} from ${file.rel}: ${errorText(e)}`);
-      return false;
-    }
+    const ok = await editLibraryFile(file, `${name} has to be marked export there`, (doc) => exportDeclaration(doc, name));
+    if (!ok) return false;
+    toast("info", `Exported ${name} from ${file.rel}`);
   }
   return edit(then);
+}
+
+/**
+ * Applies `action` to another workspace file — its open buffer (then saved),
+ * else the file on disk — and refreshes its library entry. Refused while that
+ * file has unsaved edits (`why` says what the edit is for) or errors.
+ */
+export async function editLibraryFile(file: LibraryFile, why: string, action: (doc: Doc) => EditResult | null): Promise<boolean> {
+  if (get().dirty[file.path]) {
+    toast("error", `Save ${file.rel} first: ${why}.`);
+    return false;
+  }
+  try {
+    const model = models.get(file.path);
+    const src = model?.getValue() ?? (await api.readFile(file.path));
+    const g = await api.graph(file.path, src);
+    if (!g.ok) throw new Error(`${file.rel} has errors`);
+    const r = action(new Doc(src, g));
+    if (!r) return false;
+    const next = applyEdits(src, r.edits);
+    if (model) {
+      applyToModel(model, r.edits);
+      await save(file.path);
+    } else {
+      await api.writeFile(file.path, next);
+    }
+    setLibraryFile(file.rel, file.path, await api.graph(file.path, next));
+    return true;
+  } catch (e) {
+    toast("error", `Could not edit ${file.rel}: ${errorText(e)}`);
+    return false;
+  }
 }
 
 /** `path` relative to `root`, "/"-separated. */
@@ -298,6 +309,7 @@ export async function edit(action: (doc: Doc) => EditResult): Promise<boolean> {
   applyToModel(model, result.edits);
   await refreshGraph();
   if (result.select) set({ selection: result.select });
+  if (result.note) toast(result.note.kind, result.note.text);
   return true;
 }
 
@@ -397,27 +409,6 @@ export async function newAgentFile(relName: string, backend: Backend, role: Role
   await writeCompanions(root, dir, t.companions);
   await refreshFiles();
   await openFile(path);
-}
-
-/** Adds a ready-made agent to the open file (plus its companion files next to it). */
-export async function insertAgentTemplate(backend: Backend, role: Role): Promise<boolean> {
-  const { root, activePath } = get();
-  if (!root || !activePath || !isMh(activePath)) return false;
-  const rel = relPath(root, activePath);
-  const dir = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
-  let companions: Companion[] = [];
-  let added = "";
-  const ok = await edit((doc) => {
-    added = uniqueName(agentName(backend, role), declaredNames(doc));
-    const t = renderAgent(backend, role, { name: added, dir });
-    companions = t.companions;
-    return insertBlock(doc, "agent", t.source);
-  });
-  if (!ok) return false;
-  await writeCompanions(root, dir, companions);
-  if (companions.length) await refreshFiles();
-  toast("info", `Added agent ${added}`);
-  return true;
 }
 
 /** Creates the folder `relName` (and any missing parents) in the workspace. */

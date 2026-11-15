@@ -19,6 +19,8 @@ import {
 } from "../sync/edits";
 import { END, FAIL, type GraphNode, type Workflow } from "../lib/types";
 import { ToolInspector } from "./ToolInspector";
+import { ChoiceEditor } from "./ChoiceEditor";
+import { addMerge, removeMerge, sharedWrites } from "../sync/merge";
 
 /** A text field that commits on Enter or blur, and resets when `value` changes. */
 export function Field(props: {
@@ -84,7 +86,7 @@ function StepInspector({ wf, node, doc }: { wf: Workflow; node: GraphNode; doc: 
   const isPipeline = wf.kind !== "workflow";
   return (
     <div className="inspector-body">
-      <div className="inspector-kind">{node.kind === "parallel" ? "Parallel group" : node.parent ? `Branch of ${node.parent}` : "Step"}</div>
+      <div className="inspector-kind">{node.kind === "parallel" ? "Parallel group" : node.parent ? `Branch of ${node.parent}` : node.choice ? "Choice" : "Step"}</div>
       <Field label="Name" value={node.name} mono onCommit={(v) => void edit((d) => renameNode(d, wf.name, node.id, v.trim()))} />
       <Field
         label="Timeout"
@@ -115,7 +117,11 @@ function StepInspector({ wf, node, doc }: { wf: Workflow; node: GraphNode; doc: 
         </section>
       )}
 
-      {!node.parent && (
+      {node.kind === "parallel" && <MergeSection wf={wf} node={node} doc={doc} />}
+
+      {node.choice && !node.parent && <ChoiceEditor wf={wf} node={node} choice={node.choice} />}
+
+      {!node.parent && !node.choice && (
         <section>
           <h4>Transitions</h4>
           {out.length === 0 && <p className="muted small">None — this step ends the run.</p>}
@@ -307,5 +313,59 @@ export function Inspector() {
     <fieldset className="inspector" disabled={stale}>
       {node ? <StepInspector key={node.id} wf={wf} node={node} doc={doc} /> : <WorkflowInspector wf={wf} />}
     </fieldset>
+  );
+}
+
+/**
+ * A parallel group's merge: what happens to the branches' writes at the
+ * barrier. Without one, branches must write different vars; with one, it
+ * combines a var several branches wrote (sync/merge.ts).
+ */
+function MergeSection({ wf, node, doc }: { wf: Workflow; node: GraphNode; doc: Doc }) {
+  const shared = useMemo(() => sharedWrites(doc, wf, node), [doc, wf, node]);
+  const m = node.merge;
+  return (
+    <section className="merge-section">
+      <h4>Merge</h4>
+      {m ? (
+        <>
+          <p className="muted small">
+            Runs once after every branch, in the workflow's scope. Each branch's vars are{" "}
+            <span className="mono">
+              {m.param}.&lt;Step&gt;.&lt;var&gt;
+            </span>
+            ; a var several branches wrote must be assigned here.
+          </p>
+          {m.calls.length > 0 && (
+            <div className="info-row">
+              <span>Calls</span>
+              <span className="mono">{m.calls.join(", ")}</span>
+            </div>
+          )}
+          <div className="add-row">
+            <button className="btn small" onClick={() => revealSpan(m.span)}>
+              Show in code
+            </button>
+            <button className="btn small" onClick={() => void edit((d) => removeMerge(d, wf.name, node.id))}>
+              Remove merge
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          {shared.length > 0 ? (
+            <p className="choice-warn small">
+              {shared.map((s) => `${s.name} (${s.by.join(", ")})`).join("; ")}: more than one branch assigns it, which fails the run at
+              the barrier. Add a merge to combine them.
+            </p>
+          ) : (
+            <p className="muted small">None: each var a branch writes lands as-is; two branches writing one var is an error.</p>
+          )}
+          <button className="btn small" onClick={() => void edit((d) => addMerge(d, wf.name, node.id))}>
+            + Add merge
+          </button>
+        </>
+      )}
+    </section>
   );
 }

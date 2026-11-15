@@ -288,7 +288,13 @@ func Run(req Request) (*Result, error) {
 
 	spawnSem := interpreter.NewSpawnSem(pipeline.Spawn.MaxConcurrency)
 
+	// A parallel group's merge runs as one more step execution.
 	stepTotal := len(pipeline.Steps)
+	for _, st := range pipeline.Stages {
+		if st.Merge != "" {
+			stepTotal++
+		}
+	}
 	var stepSeq int64
 
 	// runHook evaluates one of the pipeline's optional lifecycle hooks —

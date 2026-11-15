@@ -26,6 +26,8 @@ export interface Declaration {
   schema?: "args" | "stdin" | "none";
   /** A tool's methods, `internal` ones included. */
   methods?: ToolMethod[];
+  /** An enum's variants, in order. */
+  variants?: string[];
   // Set for a tool only: its name, the braces around its members, and every
   // `Name.` call site in this file.
   nameSpan?: Span;
@@ -68,8 +70,41 @@ export interface Arm {
   pattern: string;
   target?: string;
   fail?: boolean;
+  wildcard?: boolean;
   span: Span;
+  /** The pattern alone (`_` for the wildcard). */
+  patternSpan: Span;
+  /** What follows `->`: the target name, or the whole `fail(...)`. */
+  thenSpan: Span;
   targetSpan?: Span;
+}
+
+/**
+ * A parallel group's `merge (param) { ... }`: runs once after every branch,
+ * as the step `stepName` ("<group>.merge") in run events, with param bound
+ * to each branch's vars by step name.
+ */
+export interface Merge {
+  stepName: string;
+  param: string;
+  paramSpan: Span;
+  /** `merge` through the closing brace. */
+  span: Span;
+  bodyOpen: number;
+  bodyClose: number;
+  calls: string[];
+  callSites: CallSite[];
+}
+
+/** A step's top-level `goto match subject { arms }` — a Choice state. */
+export interface Choice {
+  subject: string;
+  subjectSpan: Span;
+  /** `goto` through the closing `}`. */
+  span: Span;
+  /** The closing `}`. */
+  close: number;
+  arms: Arm[];
 }
 
 export interface Route {
@@ -96,6 +131,10 @@ export interface GraphNode {
   calls: string[];
   /** Every `Receiver.method(...)` call in the body, in source order. */
   callSites: CallSite[];
+  /** The body's first top-level `goto match`, if any. */
+  choice?: Choice;
+  /** A parallel group's `merge (param) { ... }` block, if any. */
+  merge?: Merge;
   exits: string[];
   fallsThrough: boolean;
 }

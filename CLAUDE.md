@@ -255,7 +255,15 @@ Key packages:
   `context.WithTimeout` on that one step's ctx; an expiry wraps `runtime.ErrStepTimeout` and
   flows through `saveCancelCheckpoint` (resume point written when checkpointing is on), i.e.
   it fails the step like `fail()` — per attempt, deadline never persisted.
-  `lint.checkPipelineStepTimeout` rejects a non-positive value. A `loop pipeline`/`loop
+  `lint.checkPipelineStepTimeout` rejects a non-positive value. A `parallel` group may end
+  with `merge (param) { ... }` (`ast.ParallelMerge`): `runtime.runMerge` runs it after the
+  barrier through the same `StepFunc` under the step name `<group>.merge`
+  (`ast.MergeStepName`; `interpreter.findStep` resolves it, `Stage.Merge`/`MergeParam`
+  carry it), with param bound read-only to `{branch: vars}`; a var two branches wrote
+  differently must be assigned there or the group fails. It is not in `Pipeline.Steps` /
+  `RunResult.Executed`. Lint: `lint/merge.go` (`checkParallelMerges`, and
+  `checkDiscardedResults` — a bare `x.append(...)` is a no-op since values never alias);
+  `pipelineMemberSteps` includes the merge (`mergeParam` adds its param to scope). A `loop pipeline`/`loop
   workflow` declaration may also carry a `max <N>` header clause (`ast.Pipeline.Max`,
   `loop workflow Refine max 3 { ... }`) — pure sugar for `repeat { max_iterations: N }`,
   projected onto `runtime.Pipeline.MaxIterations` in `PipelineFromAST` (an explicit

@@ -1,5 +1,5 @@
 // Showing and hiding the side bars and the bottom run panel, like VS Code:
-// ⌘B toggles the left side bar (files + toolbox), ⌥⌘B the right one
+// ⌘B toggles the left side bar (the files), ⌥⌘B the right one
 // (inspector), ⌘J the run panel — Ctrl instead of ⌘ off macOS. Which ones
 // are open is remembered across launches.
 import { get, set, useStore } from "./store";

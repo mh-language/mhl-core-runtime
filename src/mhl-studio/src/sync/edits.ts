@@ -9,6 +9,7 @@ import type { Declaration, Graph, GraphEdge, GraphNode, Span, Workflow } from ".
 import { END, FAIL } from "../lib/types";
 import { OffsetMap } from "./offsets";
 import { renderState, uniqueName, STATE_PREFIX, type StateKind, type TemplateContext } from "./templates";
+import { addArm, choiceTemplate, nextPattern, type ChoiceTemplate } from "./choice";
 
 /** A replacement of the UTF-16 range [start, end) with text. */
 export interface TextEdit {
@@ -21,6 +22,8 @@ export interface EditResult {
   edits: TextEdit[];
   /** Node id to select once the edit is applied (a newly created state). */
   select?: string;
+  /** Something to tell the user once it is applied. */
+  note?: { kind: "info" | "error"; text: string };
 }
 
 export class EditError extends Error {}
@@ -150,25 +153,64 @@ export function insertState(
   const taken = [...wf.nodes.map((n) => n.id), ...wf.routes.map((r) => r.name), ...wf.externals];
   const name = uniqueName(STATE_PREFIX[kind], taken);
   const tops = topLevel(wf);
+  // Where the new state lands among the top-level ones: a choice prefers
+  // the steps after it as targets.
+  const pos = (() => {
+    if ("end" in where || "into" in where) return tops.length;
+    const id = "after" in where ? where.after : where.before;
+    const parent = wf.nodes.find((n) => n.id === id)?.parent ?? id;
+    const i = tops.findIndex((n) => n.id === parent);
+    return i < 0 ? tops.length : "after" in where ? i + 1 : i;
+  })();
+  const others = [...tops.slice(pos), ...tops.slice(0, pos)].map((n) => n.id);
+  const decls = [...doc.graph.declarations, ...doc.external];
+  // Its rules go forward only (a jump back is a loop, a deliberate choice);
+  // with no step after it, to the ones before.
+  const forward = tops.slice(pos).map((n) => n.id);
+  const choice: ChoiceTemplate | undefined = kind === "choice" ? choiceTemplate(decls, wf, forward.length ? forward : others) : undefined;
   const ctx = (indent: string) => ({
     name,
     indent,
     agents: declsOf(doc, "agent"),
     tools: declsOf(doc, "tool"),
-    others: tops.map((n) => n.id),
+    others,
     call,
     agent,
     prompt,
     schema,
+    choice,
   });
+  const result = insertStateAt(doc, wf, kind, where, name, tops, ctx);
+  if (choice?.needsVar) {
+    // Nothing to branch on yet: declare the var the choice reads.
+    const v = choice.needsVar;
+    const first = tops[0];
+    const at = first ? doc.lineStart(doc.at(first.span[0])) : -1;
+    if (first) result.edits.push({ start: at, end: at, text: `${doc.indentAt(doc.at(first.span[0]))}var ${v} = ""\n\n` });
+    else result.edits[0].text = result.edits[0].text.replace(/^(\n?)([ \t]*)/, `$1$2var ${v} = ""\n\n$2`);
+    result.note = { kind: "info", text: `${name} branches on the workflow var ${v} — set it in an earlier step (self.${v} = ...), or pick another value in the inspector.` };
+  }
+  return result;
+}
 
+function insertStateAt(
+  doc: Doc,
+  wf: Workflow,
+  kind: StateKind,
+  where: Placement,
+  name: string,
+  tops: GraphNode[],
+  ctx: (indent: string) => TemplateContext,
+): EditResult {
   if ("into" in where) {
     const group = doc.node(wf, where.into);
     if (group.kind !== "parallel") throw new EditError(`${group.id} is not a parallel group`);
     if (kind === "parallel" || kind === "choice") {
       throw new EditError("a parallel branch cannot itself branch: no goto or nested parallel inside a parallel group");
     }
-    const close = doc.at(group.bodyClose);
+    // A new branch goes after the last one: before the group's merge, which
+    // the grammar wants last, else before its closing brace.
+    const close = doc.at(group.merge ? group.merge.span[0] : group.bodyClose);
     const indent = doc.indentAt(doc.at(group.span[0])) + IND;
     const text = renderState(kind, ctx(indent));
     if (doc.startsLine(close)) return { edits: [{ start: doc.lineStart(close), end: doc.lineStart(close), text: text + "\n" }], select: name };
@@ -296,6 +338,13 @@ function statementFor(to: string): string {
 export function connect(doc: Doc, wfName: string, from: string, to: string): EditResult {
   const wf = doc.workflow(wfName);
   const n = doc.node(wf, from);
+  if (n.choice && wf.kind === "workflow") {
+    // A choice always diverts: a new transition is one more rule.
+    if (to === END) throw new EditError(`${from} is a choice: a rule goes to a step or fails — add a step that calls complete()`);
+    if (n.choice.arms.some((a) => (to === FAIL ? a.fail : a.target === to))) return { edits: [] };
+    const decls = [...doc.graph.declarations, ...doc.external];
+    return addArm(doc, wfName, from, nextPattern(decls, wf, n.choice, to), to);
+  }
   if (n.parent) throw new EditError("a step inside a parallel group cannot goto; connect the group instead");
   if (n.kind === "parallel") throw new EditError("a parallel group always continues with the next step; connect from a step");
   if (to !== END && to !== FAIL) {

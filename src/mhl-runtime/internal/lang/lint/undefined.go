@@ -63,7 +63,11 @@ func checkUndefinedNames(file string, prog *ast.Program, aliases map[string]type
 			}
 			for _, member := range p.Body {
 				for _, step := range pipelineMemberSteps(member) {
-					u.stmts(step.Body, collectVarNames(prog, step.Body, copyScope(seed), nil))
+					scope := copyScope(seed)
+					if param := mergeParam(member, step); param != "" {
+						scope[param] = types.Object
+					}
+					u.stmts(step.Body, collectVarNames(prog, step.Body, scope, nil))
 				}
 				if member.Prop != nil && isHookPropertyName(member.Prop.Name) {
 					if lambda, ok := ast.LambdaValue(member.Prop.Value); ok {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -209,4 +210,50 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// A `goto` naming a parallel group runs the whole group again (every
+// branch, then the barrier); one naming a branch step inside it still fails.
+func TestGotoTargetsWholeParallelGroup(t *testing.T) {
+	p := runtime.Pipeline{
+		Name:  "Retry",
+		Steps: []string{"Pre", "A", "B", "Gate", "Post"},
+		Stages: []runtime.Stage{
+			{Name: "Pre", Steps: []string{"Pre"}},
+			{Name: "G", Steps: []string{"A", "B"}, Parallel: true},
+			{Name: "Gate", Steps: []string{"Gate"}},
+			{Name: "Post", Steps: []string{"Post"}},
+		},
+	}
+	gates := 0
+	var mu sync.Mutex
+	var ran []string
+	res, err := runtime.NewRunner(t.TempDir()).Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
+		mu.Lock()
+		ran = append(ran, step)
+		mu.Unlock()
+		if step == "Gate" {
+			gates++
+			if gates == 1 {
+				return &runtime.GotoSignal{Target: "G"}
+			}
+		}
+		return nil
+	}, false)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !equalStrings(res.Executed, []string{"Pre", "A", "B", "Gate", "A", "B", "Gate", "Post"}) {
+		t.Fatalf("executed = %v, want the group re-run after the first Gate", res.Executed)
+	}
+
+	_, err = runtime.NewRunner(t.TempDir()).Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
+		if step == "Gate" {
+			return &runtime.GotoSignal{Target: "A"}
+		}
+		return nil
+	}, false)
+	if err == nil || !strings.Contains(err.Error(), "inside a parallel group") {
+		t.Fatalf("goto a branch step: err = %v, want the inside-a-parallel-group error", err)
+	}
 }

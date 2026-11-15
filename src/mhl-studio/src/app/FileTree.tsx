@@ -14,8 +14,9 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { deletePath, movePath, newAgentFile, newFile, newFolder, openFile, refreshFiles } from "./controller";
 import { AgentPicker } from "../palette/AgentPicker";
 import { BACKENDS, ROLES, type Backend, type Role } from "../sync/agentTemplates";
-import { isJson, isMarkdown, useStore } from "./store";
-import { DRAG_MIME, PROMPT_MIME, SCHEMA_MIME } from "../canvas/WorkflowCanvas";
+import { isJson, isMarkdown, isMh, set, useStore, type LibraryFile } from "./store";
+import { AGENT_MIME, DRAG_MIME, PROMPT_MIME, SCHEMA_MIME } from "../canvas/WorkflowCanvas";
+import { PATH_MIME } from "../canvas/mime";
 import { ancestors, buildTree, type TreeNode } from "./tree";
 import { joinPath } from "../lib/api";
 import { NEW_FILE_ITEMS, type NewFileItem } from "../sync/templates";
@@ -27,7 +28,13 @@ type NewEntry = NewFileItem | "folder" | AgentChoice;
 const isAgentChoice = (e: NewEntry): e is AgentChoice => typeof e === "object" && "template" in e;
 
 /** A tree row moved by drag-and-drop. */
-const PATH_MIME = "application/x-mhl-path";
+
+/** The agent a workspace .mh file declares, when it declares exactly one. */
+function soleAgent(library: LibraryFile[], abs: string): string | undefined {
+  const norm = (p: string) => p.replace(/\\/g, "/");
+  const agents = library.find((l) => norm(l.path) === norm(abs))?.declarations.filter((d) => d.kind === "agent") ?? [];
+  return agents.length === 1 ? agents[0].name : undefined;
+}
 
 type At = { top: number; left: number };
 
@@ -220,6 +227,7 @@ export function FileTree() {
   const dirs = useStore((s) => s.dirs);
   const activePath = useStore((s) => s.activePath);
   const dirty = useStore((s) => s.dirty);
+  const library = useStore((s) => s.library);
   const [menu, setMenu] = useState<{ at: At; dir: string } | null>(null);
   const [rowMenu, setRowMenu] = useState<{ at: At; entry: Entry | null } | null>(null);
   const [creating, setCreating] = useState<{ item: NewEntry; dir: string } | null>(null);
@@ -339,23 +347,32 @@ export function FileTree() {
     },
   });
 
-  /** What a row carries onto the diagram besides its path: a prompt (.md) or a schema (.json). */
-  type As = "prompt" | "schema" | null;
+  /**
+   * What a row carries onto the diagram besides its path: a prompt (.md), a
+   * schema (.json), or the agent a .mh file declares (when it declares one).
+   */
+  type As = "prompt" | "schema" | { agent: string } | null;
   const dragProps = (entry: Entry, abs: string, as: As) => ({
     draggable: renaming !== entry.rel,
     onDragStart: (e: React.DragEvent) => {
       dragging = entry;
       e.dataTransfer.setData(PATH_MIME, entry.rel);
+      // Another .mh file can be dropped on the diagram's Imports card.
+      // (Next tick: changing the page inside dragstart can cancel the drag.)
+      if (!entry.dir && isMh(entry.rel) && abs !== activePath) setTimeout(() => set({ dragFile: abs }));
       // A Markdown file is also a prompt the diagram accepts, a JSON file a schema.
       if (as) {
         e.dataTransfer.setData(DRAG_MIME, "agent");
         if (as === "prompt") e.dataTransfer.setData(PROMPT_MIME, JSON.stringify({ md: abs }));
-        else e.dataTransfer.setData(SCHEMA_MIME, JSON.stringify({ json: abs }));
+        else if (as === "schema") e.dataTransfer.setData(SCHEMA_MIME, JSON.stringify({ json: abs }));
+        // The open file's own agent needs no import: no file in the payload.
+        else e.dataTransfer.setData(AGENT_MIME, JSON.stringify(abs === activePath ? { agent: as.agent } : { agent: as.agent, file: abs }));
       }
       e.dataTransfer.effectAllowed = as ? "copyMove" : "move";
     },
     onDragEnd: () => {
       dragging = null;
+      set({ dragFile: null });
       setDropDir(null);
       clearTimeout(unfoldTimer.current);
     },
@@ -434,6 +451,7 @@ export function FileTree() {
         const abs = joinPath(root, n.path);
         const md = isMarkdown(n.path);
         const json = isJson(n.path);
+        const agent = soleAgent(library, abs);
         rows.push(
           <div
             key={`f:${n.path}`}
@@ -455,9 +473,11 @@ export function FileTree() {
                   ? `${n.path}\nDrag onto the diagram to run it as a prompt, or onto a folder to move it.`
                   : json
                     ? `${n.path}\nDrag onto a step to shape its agent's answer (schema:), or onto a folder to move it.`
-                    : n.path
+                    : agent
+                      ? `${n.path}\nDrag onto a step to call ${agent} there, onto the diagram for a new step, or onto a folder to move it.`
+                      : n.path
               }
-              {...dragProps(entry, abs, md ? "prompt" : json ? "schema" : null)}
+              {...dragProps(entry, abs, md ? "prompt" : json ? "schema" : agent ? { agent } : null)}
             >
               {indent}
               <span className="tree-chevron" />

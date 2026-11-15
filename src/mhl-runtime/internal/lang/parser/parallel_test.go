@@ -100,3 +100,39 @@ pipeline P {
 		t.Fatalf("branch Build Timeout = %q, want empty", g.Steps[1].Timeout)
 	}
 }
+
+// A group may end with one `merge (param) { ... }`; it must come last and
+// name its param, and `merge` stays an ordinary identifier elsewhere.
+func TestParallelMergeParses(t *testing.T) {
+	prog, err := Parse(`
+workflow W {
+    var merge = []
+    parallel Fan {
+        step L { merge = ["a"] }
+        step R { log("r") }
+        merge (branches) {
+            self.merge = branches.L.merge
+        }
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	g := prog.Decls[0].Pipeline.Body[1].Parallel
+	if g.Merge == nil || g.Merge.Param != "branches" || len(g.Merge.Body) != 1 {
+		t.Fatalf("merge = %+v", g.Merge)
+	}
+	if ms := g.MergeStep(); ms == nil || ms.Name != "Fan.merge" || len(ms.Body) != 1 {
+		t.Fatalf("MergeStep = %+v", ms)
+	}
+	for name, src := range map[string]string{
+		"merge not last": `workflow W { parallel Fan { merge (b) { log("m") } step L { log("l") } } }`,
+		"no param":       `workflow W { parallel Fan { step L { log("l") } merge () { log("m") } } }`,
+		"two merges":     `workflow W { parallel Fan { step L { log("l") } merge (b) { log("m") } merge (c) { log("n") } } }`,
+	} {
+		if _, err := Parse(src); err == nil {
+			t.Errorf("%s: want a parse error", name)
+		}
+	}
+}

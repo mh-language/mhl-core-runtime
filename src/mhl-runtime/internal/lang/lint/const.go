@@ -2,6 +2,7 @@ package lint
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
@@ -96,17 +97,14 @@ func checkConstReassign(file string, prog *ast.Program) []Finding {
 				pipelineConsts[param] = true
 			}
 			for _, m := range decl.Pipeline.Body {
-				var steps []*ast.Step
-				switch {
-				case m.Step != nil:
-					steps = []*ast.Step{m.Step}
-				case m.Parallel != nil:
-					steps = m.Parallel.Steps
-				default:
-					continue
-				}
-				for _, step := range steps {
-					check(step.Body, pipelineConsts)
+				for _, step := range pipelineMemberSteps(m) {
+					consts := pipelineConsts
+					if mp := mergeParam(m, step); mp != "" {
+						// A merge's branches object is a read-only snapshot.
+						consts = maps.Clone(pipelineConsts)
+						consts[mp] = true
+					}
+					check(step.Body, consts)
 				}
 			}
 		case decl.Tool != nil:

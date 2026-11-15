@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer"
 
@@ -46,7 +48,16 @@ func RunStep(goctx context.Context, prog *ast.Program, pipelineName, stepName, f
 		return fmt.Errorf("pipeline step %q not found", stepName)
 	}
 
-	ctx := &evalCtx{prog: prog, pipelineName: owner, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, owner)}
+	consts := pipelineConstNames(prog, owner)
+	if param := mergeParamOf(prog, owner, stepName); param != "" {
+		// A merge's branches object is a snapshot: read-only, like an input.
+		consts = maps.Clone(consts)
+		if consts == nil {
+			consts = map[string]bool{}
+		}
+		consts[param] = true
+	}
+	ctx := &evalCtx{prog: prog, pipelineName: owner, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: consts}
 	// A non-nil spawnSem enables `spawn`/`wait` for this step and confines
 	// them to it: drainAtStepEnd joins whatever the step body left running,
 	// so no spawned goroutine ever outlives the step (and no handle is live
@@ -88,10 +99,34 @@ func findStep(prog *ast.Program, pipelineName, stepName string) (*ast.Step, stri
 						return s, decl.Pipeline.Name
 					}
 				}
+				// A group's merge runs as the step "<group>.merge".
+				if m := member.Parallel.MergeStep(); m != nil && m.Name == stepName {
+					return m, decl.Pipeline.Name
+				}
 			}
 		}
 	}
 	return nil, ""
+}
+
+// mergeParamOf is the branches parameter of the merge stepName runs (a
+// "<group>.merge" step of pipelineName), "" when stepName is not a merge.
+func mergeParamOf(prog *ast.Program, pipelineName, stepName string) string {
+	group, ok := strings.CutSuffix(stepName, ast.MergeStepSuffix)
+	if !ok {
+		return ""
+	}
+	for _, decl := range prog.Decls {
+		if decl.Pipeline == nil || decl.Pipeline.Name != pipelineName {
+			continue
+		}
+		for _, m := range decl.Pipeline.Body {
+			if m.Parallel != nil && m.Parallel.Name == group && m.Parallel.Merge != nil {
+				return m.Parallel.Merge.Param
+			}
+		}
+	}
+	return ""
 }
 
 // EvalPipelineVars evaluates pipelineName's top-level `var` declarations

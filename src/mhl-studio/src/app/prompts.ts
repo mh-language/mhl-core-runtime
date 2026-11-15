@@ -1,7 +1,7 @@
-// Dropping a prompt on the diagram (from the toolbox, or a Markdown file
-// from the explorer): picks the agent that runs it, imports what lives in
-// another file, and applies the whole change as one edit — see
-// sync/prompts.ts for the text it writes.
+// Dropping a prompt on the diagram (a Markdown file from the explorer):
+// picks the agent that runs it, imports what lives in another file, and
+// applies the whole change as one edit — see sync/prompts.ts for the text
+// it writes.
 import { addToStep, insertState, takenNames, type Doc, type EditResult, type Placement } from "../sync/edits";
 import { addImport, importSpec, isImported, resolveImport } from "../sync/imports";
 import { agentRunWithPrompt, declarePrompt, promptCall, promptNameFor, promptParams, setPromptArg } from "../sync/prompts";
