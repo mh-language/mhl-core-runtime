@@ -20,8 +20,12 @@ prompts, and the pipelines that wire them together. It has five tracked parts:
   diagram edits become span-based text edits (`src/sync/edits.ts`), so a change to `mhl
   graph`'s JSON (`internal/lang/flow`) must be mirrored in `src/lib/types.ts`. Checks: `npm
   run sidecar && npm run typecheck && npm test && npx vite build`, then `cargo clippy
-  --all-targets -- -D warnings && cargo test` in `src-tauri` (`.github/workflows/studio.yml`, deliberately outside the release gate: the language must release independently of the studio). See its
-  README.
+  --all-targets -- -D warnings && cargo test` in `src-tauri` (`.github/workflows/studio.yml`, deliberately outside the release gate: the language must release independently of the studio). Released on its own
+  `studio-vX.Y.Z` tags (`src/mhl-studio/release.sh` → `.github/workflows/studio-release.yml`:
+  studio.yml's checks via `workflow_call`, a tauri-action build per target, draft release
+  published once all uploaded, never "Latest"; unsigned for now). The version lives in
+  `tauri.conf.json`, `package.json`, `package-lock.json` and `Cargo.toml` — `release.sh --bump`
+  sets all four. `release.yml` drops `studio-v*` refs before GoReleaser. See its README.
 - **`docs/site/`** — `reference.html` (and `index.html`) is the single, canonical language
   reference, deployed as-is to GitHub Pages by `.github/workflows/page.yml`. There is no
   separate wiki; some example fields may still be aspirational, not yet implemented — see

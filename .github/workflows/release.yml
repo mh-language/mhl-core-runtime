@@ -28,8 +28,9 @@ jobs:
       - name: Limit GoReleaser tag discovery to runtime releases
         # Only removes refs in this disposable checkout, never remote tags.
         # GoReleaser OSS cannot filter tag prefixes in its configuration.
+        # The studio's studio-v* tags (studio-release.yml) are not runtime releases either.
         run: |
-          git for-each-ref --format='%(refname)' 'refs/tags/extensions-v*' |
+          git for-each-ref --format='%(refname)' 'refs/tags/extensions-v*' 'refs/tags/studio-v*' |
             while IFS= read -r ref; do git update-ref -d "$ref"; done
 
       - name: Setup Go

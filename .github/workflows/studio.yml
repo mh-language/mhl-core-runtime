@@ -26,6 +26,8 @@ on:
       - "vscode-mhl/language-configuration.json"
       - ".github/workflows/studio.yml"
   workflow_dispatch:
+  # studio-release.yml runs these checks before building any installer.
+  workflow_call:
 
 permissions:
   contents: read

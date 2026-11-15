@@ -120,6 +120,35 @@ npm run sidecar && npm run typecheck && npm test && npx vite build
 `npm run sidecar` first. Each edit test applies the edit, graphs the result again, and checks
 that the program still parses and has the expected shape.
 
+## Releasing
+
+The studio is versioned and released on its own `studio-vX.Y.Z` tags, independent of the
+language (`vX.Y.Z`) and the VS Code extension (`extensions-vX.Y.Z`).
+
+```sh
+./release.sh --bump 0.2.0   # sets the version in tauri.conf.json, package.json,
+                            # package-lock.json and Cargo.toml — then commit and push main
+./release.sh --dry-run      # every check, no tag
+./release.sh                # tags studio-v0.2.0 and pushes it
+```
+
+The tag runs `.github/workflows/studio-release.yml`. It reruns `studio.yml`'s checks, checks
+that the four versions match the tag, and opens a draft GitHub Release. It then builds the
+installers on one runner per target, because Tauri does not cross-compile: macOS
+aarch64 and x86_64 (`.dmg`), Windows x86_64 (`.msi`, `-setup.exe`) and Linux x86_64
+(`.deb`, `.rpm`, `.AppImage`). Each installer bundles the `mhl` sidecar for its target. The
+release is published only after every target uploaded. It is never marked "Latest", which
+stays the language's release.
+
+Running the workflow by hand (`workflow_dispatch`) builds every installer as workflow
+artifacts and publishes nothing — a way to try a build before tagging.
+
+The installers are **not code-signed yet**. On macOS, Gatekeeper may say the app "is damaged":
+run `xattr -dr com.apple.quarantine "/Applications/mhl studio.app"` once. On Windows,
+SmartScreen asks for **More info → Run anyway**. The release notes repeat this. Signing
+(Apple Developer ID with notarization, a Windows certificate) is a later step: it is a matter
+of adding the secrets `tauri-action` reads.
+
 ## Layout
 
 ```
@@ -140,7 +169,7 @@ src/inspector/, src/palette/, src/run/, src/app/ (store, controller, shell)
 - Windows has no graceful cancel. A console-less child cannot receive CTRL_BREAK, so cancel
   terminates the process tree, and a resume re-runs the step that was interrupted.
 - Some transitions cannot be removed from the diagram. Only the ones that map to a whole line
-  can be: a plain `goto X`, `if (…) goto X`, or a single `goto match` arm. The rest are
+  can be: a plain `goto X`, `if (…) goto X`, a single `goto match` arm or a `route` arm. The rest are
   edited in the code view.
-- Release packaging is not wired into CI yet. A `tauri-action` matrix on a dedicated
-  `studio-v*` tag is a follow-up. The studio does not cross-compile like the Go runtime.
+- Released installers are not code-signed yet (see Releasing), and there is no auto-update:
+  a new version is downloaded from the GitHub Release.
