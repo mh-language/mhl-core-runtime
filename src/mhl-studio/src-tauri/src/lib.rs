@@ -12,8 +12,9 @@ mod sidecar;
 mod workspace;
 
 pub fn run() {
-    // Before anything spawns: the agent CLIs live on the user's shell PATH.
-    shellenv::import_login_path();
+    // Before anything spawns: the agent CLIs live on the user's shell PATH,
+    // and their API keys are exported there (.zshrc), not in a Dock app's env.
+    shellenv::import_login_env();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(run::Runs::default())

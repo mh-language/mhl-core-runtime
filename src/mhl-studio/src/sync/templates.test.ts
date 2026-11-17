@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { promptParams } from "./prompts";
-import { declNameFor, NEW_FILE_ITEMS, newFilePath, newFileSource } from "./templates";
+import { declNameFor, isEnvName, NEW_FILE_ITEMS, newFilePath, newFileSource } from "./templates";
 import { graphOf, MHL } from "./testutil";
 
 describe("declNameFor", () => {
@@ -16,8 +16,20 @@ describe("declNameFor", () => {
   });
 });
 
+describe("env files", () => {
+  it("names", () => {
+    for (const yes of [".env", ".env.local", "conf/.env.example", "prod.env"]) expect(isEnvName(yes), yes).toBe(true);
+    for (const no of [".envrc", "env", ".env-old", "a/.environment", "x.mh"]) expect(isEnvName(no), no).toBe(false);
+  });
+  it("keeps an env name, else appends .env", () => {
+    expect(newFilePath(".env", "env")).toBe(".env");
+    expect(newFilePath(".env.local", "env")).toBe(".env.local");
+    expect(newFilePath("deploy/prod", "env")).toBe("deploy/prod.env");
+  });
+});
+
 describe.skipIf(!MHL)("new file templates", () => {
-  for (const item of NEW_FILE_ITEMS.filter((i) => i.kind !== "prompt-md" && i.kind !== "schema-json")) {
+  for (const item of NEW_FILE_ITEMS.filter((i) => i.kind !== "prompt-md" && i.kind !== "schema-json" && i.kind !== "env")) {
     it(`${item.label} parses and lints clean`, () => {
       const src = newFileSource(item.kind, "Sample");
       const g = graphOf(src);
@@ -28,6 +40,21 @@ describe.skipIf(!MHL)("new file templates", () => {
       expect(declared).toContain("Sample");
     });
   }
+
+  it("Environment (.env) is loaded by mhl from the workspace root", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mhl-env-"));
+    try {
+      writeFileSync(join(dir, ".env"), `${newFileSource("env", "Sample")}MHL_STUDIO_ENV_PROBE="from .env"\n`);
+      writeFileSync(
+        join(dir, "main.mh"),
+        `test t {\n    describe d {\n        are_equal(env("MHL_STUDIO_ENV_PROBE", "unset"), "from .env")\n    }\n}\n`,
+      );
+      const { MHL_STUDIO_ENV_PROBE: _, ...env } = process.env;
+      expect(execFileSync(MHL!, ["test", "main.mh"], { cwd: dir, env, encoding: "utf8" })).toContain("1 passed, 0 failed");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   it("JSON Schema loads with mhl as a strict object schema", () => {
     const text = newFileSource("schema-json", "Sample");

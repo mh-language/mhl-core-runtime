@@ -11,6 +11,7 @@ import grammar from "../../../vscode-mhl/syntaxes/mhl.tmLanguage.json";
 import langConf from "../../../vscode-mhl/language-configuration.json";
 import markdown from "shiki/langs/markdown.mjs";
 import json from "shiki/langs/json.mjs";
+import dotenv from "shiki/langs/dotenv.mjs";
 
 self.MonacoEnvironment = {
   getWorker: () =>
@@ -22,6 +23,8 @@ export const LANG = "mhl";
 export const MD_LANG = "markdown";
 /** JSON files: JSON Schemas (`schema X from "x.json"`), data. */
 export const JSON_LANG = "json";
+/** Env files (`.env`): KEY=VALUE lines `mhl run` loads. */
+export const DOTENV_LANG = "dotenv";
 export const THEME_DARK = "github-dark-default";
 export const THEME_LIGHT = "github-light-default";
 
@@ -34,6 +37,8 @@ export function setupMonaco(): Promise<typeof monaco> {
     monaco.languages.register({ id: LANG, extensions: [".mh"], aliases: ["MHL", "mhl"] });
     monaco.languages.register({ id: MD_LANG, extensions: [".md"], aliases: ["Markdown"] });
     monaco.languages.register({ id: JSON_LANG, extensions: [".json"], aliases: ["JSON"] });
+    monaco.languages.register({ id: DOTENV_LANG, filenames: [".env"], aliases: ["dotenv"] });
+    monaco.languages.setLanguageConfiguration(DOTENV_LANG, { comments: { lineComment: "#" } });
     monaco.languages.setLanguageConfiguration(JSON_LANG, {
       brackets: [["{", "}"], ["[", "]"]],
       autoClosingPairs: [{ open: "{", close: "}" }, { open: "[", close: "]" }, { open: '"', close: '"', notIn: ["string"] }],
@@ -51,7 +56,7 @@ export function setupMonaco(): Promise<typeof monaco> {
     });
     const highlighter = await createHighlighterCore({
       themes: [githubDark, githubLight],
-      langs: [{ ...(grammar as object), name: LANG } as never, ...markdown, ...json],
+      langs: [{ ...(grammar as object), name: LANG } as never, ...markdown, ...json, ...dotenv],
       engine: createJavaScriptRegexEngine({ forgiving: true }),
     });
     shikiToMonaco(highlighter, monaco);

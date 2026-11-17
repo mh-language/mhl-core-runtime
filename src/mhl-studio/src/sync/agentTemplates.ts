@@ -487,6 +487,19 @@ const API_RETRY = { max: 3, delay: "2s", on: ["[retry]", "timeout"] };
 /** Two 0600 temp files, removed on exit: the request's headers (with the key) and the response's. */
 const HEADER_FILE = [String.raw`hdr=$(mktemp) && rh=$(mktemp) || exit 2`, String.raw`trap 'rm -f "$hdr" "$rh"' EXIT`];
 
+/**
+ * `${schema}` arriving as positional `$n`, into $schema: the schema's JSON text
+ * (X.content) or its file (X.path, read here — the CLI templates differ on
+ * which they take, so both work); anything else fails with a clear message
+ * instead of jq's "Invalid numeric literal".
+ */
+function schemaArg(n: number): string[] {
+  return [
+    String.raw`schema=$${n}; [ -z "$schema" ] || [ ! -f "$schema" ] || schema=$(cat "$schema") || exit 2`,
+    String.raw`[ -z "$schema" ] || printf '%s' "$schema" | jq -e 'type == "object"' >/dev/null 2>&1 || { echo "schema: expected a JSON Schema object: pass schema: X.content (its JSON text) or X.path (its file)" >&2; exit 2; }`,
+  ];
+}
+
 function script(lines: string[]): Arg {
   const I = "            ";
   return [`"""\n${lines.map((l) => I + l).join("\n")}\n        """`, "the request; inputs arrive as $1, $2, ... and the prompt on stdin"];
@@ -499,8 +512,8 @@ function claudeApi(role: Role): Spec {
       ? "Answers in JSON shaped by the call's schema, through the Claude API (Messages API) with curl."
       : "Answers in plain text through the Claude API (Messages API) with curl.",
     notes: [
-      ...(structured ? ["Call it with schema: X.content (the schema's JSON text); the answer is that JSON, ready for json.parse."] : []),
-      "Needs ANTHROPIC_API_KEY in the environment, and curl and jq on PATH, under a POSIX sh (macOS, Linux, WSL).",
+      ...(structured ? ["Call it with schema: X.content (the schema's JSON text) or X.path (its file); the answer is that JSON, ready for json.parse."] : []),
+      "Needs ANTHROPIC_API_KEY in the environment (or the workspace's .env), and curl and jq on PATH, under a POSIX sh (macOS, Linux, WSL).",
       "effort: low | medium | high | xhigh | max (empty: the model's default). Fails on stop_reason max_tokens or refusal.",
       "fallbacks: on a refusal the API re-runs the request on another model in the same call — \"default\" picks it by refusal",
       "category, a model id names it, \"\" turns it off (required for a model without server-side fallback, e.g. Haiku).",
@@ -519,7 +532,8 @@ function claudeApi(role: Role): Spec {
         ...HEADER_FILE,
         String.raw`printf 'x-api-key: %s\nanthropic-version: 2026-10-21\ncontent-type: application/json\n' "$ANTHROPIC_API_KEY" > "$hdr"`,
         String.raw`[ -z "$5" ] || printf 'anthropic-beta: server-side-fallback-2026-07-01\n' >> "$hdr"`,
-        String.raw`body=$(jq -Rs --arg model "$1" --arg effort "$2" --argjson max "$3" --arg fallbacks "$5" --arg schema "$6" '{model: $model, max_tokens: $max, messages: [{role: "user", content: .}]} + ({} | if $effort != "" then .effort = $effort else . end | if $schema != "" then .format = {type: "json_schema", schema: ($schema | fromjson)} else . end | if . == {} then {} else {output_config: .} end) + (if $fallbacks == "" then {} elif $fallbacks == "default" then {fallbacks: "default"} else {fallbacks: [{model: $fallbacks}]} end)') || exit 2`,
+        ...schemaArg(6),
+        String.raw`body=$(jq -Rs --arg model "$1" --arg effort "$2" --argjson max "$3" --arg fallbacks "$5" --arg schema "$schema" '{model: $model, max_tokens: $max, messages: [{role: "user", content: .}]} + ({} | if $effort != "" then .effort = $effort else . end | if $schema != "" then .format = {type: "json_schema", schema: ($schema | fromjson)} else . end | if . == {} then {} else {output_config: .} end) + (if $fallbacks == "" then {} elif $fallbacks == "default" then {fallbacks: "default"} else {fallbacks: [{model: $fallbacks}]} end)') || exit 2`,
         ...request("$4/messages"),
         String.raw`printf '%s' "$resp" | jq -je 'if .stop_reason == "end_turn" then [.content[] | select(.type == "text") | .text] | join("") else error("stop_reason \(.stop_reason)") end'`,
       ]),
@@ -539,10 +553,10 @@ function openaiApi(role: Role): Spec {
       ? "Answers in JSON shaped by the call's schema, through an OpenAI-compatible Chat Completions API with curl."
       : "Answers in plain text through an OpenAI-compatible Chat Completions API with curl.",
     notes: [
-      ...(structured ? ["Call it with schema: X.content (the schema's JSON text); the answer is that JSON, ready for json.parse."] : []),
+      ...(structured ? ["Call it with schema: X.content (the schema's JSON text) or X.path (its file); the answer is that JSON, ready for json.parse."] : []),
       "Any OpenAI-compatible server: set base_url (and key_env, the variable holding its key) per call or as defaults.",
       "On api.openai.com it sends store: false — OpenAI's docs disagree on whether chat completions are stored by default.",
-      "Needs that key in the environment, and curl and jq on PATH, under a POSIX sh (macOS, Linux, WSL).",
+      "Needs that key in the environment (or the workspace's .env), and curl and jq on PATH, under a POSIX sh (macOS, Linux, WSL).",
       "effort is sent as reasoning_effort (empty: not sent; gpt-6-astra takes low and up, not none). Fails on a refusal or a finish_reason other than stop.",
       ...(structured
         ? [
@@ -564,7 +578,8 @@ function openaiApi(role: Role): Spec {
         String.raw`[ -n "$4" ] && key=$(printenv "$4") && [ -n "$key" ] || { echo "$4 is not set" >&2; exit 2; }`,
         ...HEADER_FILE,
         String.raw`printf 'authorization: Bearer %s\ncontent-type: application/json\n' "$key" > "$hdr"`,
-        String.raw`body=$(jq -Rs --arg model "$1" --arg effort "$2" --arg base "$3" --arg strict "$5" --arg schema "$6" '{model: $model, messages: [{role: "user", content: .}]} + (if ($base | test("^https://api[.]openai[.]com(/|$)")) then {store: false} else {} end) + (if $effort != "" then {reasoning_effort: $effort} else {} end) + (if $schema != "" then {response_format: {type: "json_schema", json_schema: {name: "answer", strict: ($strict == "true"), schema: ($schema | fromjson)}}} else {} end)') || exit 2`,
+        ...schemaArg(6),
+        String.raw`body=$(jq -Rs --arg model "$1" --arg effort "$2" --arg base "$3" --arg strict "$5" --arg schema "$schema" '{model: $model, messages: [{role: "user", content: .}]} + (if ($base | test("^https://api[.]openai[.]com(/|$)")) then {store: false} else {} end) + (if $effort != "" then {reasoning_effort: $effort} else {} end) + (if $schema != "" then {response_format: {type: "json_schema", json_schema: {name: "answer", strict: ($strict == "true"), schema: ($schema | fromjson)}}} else {} end)') || exit 2`,
         ...request("$3/chat/completions"),
         String.raw`printf '%s' "$resp" | jq -je '.choices[0] | if .message.refusal then error("refusal: \(.message.refusal)") elif .finish_reason == "stop" then .message.content else error("finish_reason \(.finish_reason)") end'`,
       ]),
@@ -586,11 +601,11 @@ function geminiApi(role: Role): Spec {
     notes: [
       ...(structured
         ? [
-            "Call it with schema: X.content (the schema's JSON text); the answer is that JSON, ready for json.parse.",
+            "Call it with schema: X.content (the schema's JSON text) or X.path (its file); the answer is that JSON, ready for json.parse.",
             "Gemini takes a subset of JSON Schema and guarantees valid JSON, not every rule: validate what matters.",
           ]
         : []),
-      "Needs GEMINI_API_KEY in the environment, and curl and jq on PATH, under a POSIX sh (macOS, Linux, WSL).",
+      "Needs GEMINI_API_KEY in the environment (or the workspace's .env), and curl and jq on PATH, under a POSIX sh (macOS, Linux, WSL).",
       "effort is sent as generation_config.thinking_level: minimal | low | medium | high | xhigh (empty: the model's default).",
       "store: false — one stateless call, nothing kept server-side. Fails unless status is completed (incomplete = token limit);",
       "a safety block is an HTTP 400 with code safety.",
@@ -602,7 +617,8 @@ function geminiApi(role: Role): Spec {
         String.raw`[ -n "$GEMINI_API_KEY" ] || { echo "GEMINI_API_KEY is not set" >&2; exit 2; }`,
         ...HEADER_FILE,
         String.raw`printf 'x-goog-api-key: %s\ncontent-type: application/json\n' "$GEMINI_API_KEY" > "$hdr"`,
-        String.raw`body=$(jq -Rs --arg model "$1" --arg effort "$2" --arg schema "$4" '{model: $model, input: ., store: false} + (if $effort != "" then {generation_config: {thinking_level: $effort}} else {} end) + (if $schema != "" then {response_format: {type: "text", mime_type: "application/json", schema: ($schema | fromjson)}} else {} end)') || exit 2`,
+        ...schemaArg(4),
+        String.raw`body=$(jq -Rs --arg model "$1" --arg effort "$2" --arg schema "$schema" '{model: $model, input: ., store: false} + (if $effort != "" then {generation_config: {thinking_level: $effort}} else {} end) + (if $schema != "" then {response_format: {type: "text", mime_type: "application/json", schema: ($schema | fromjson)}} else {} end)') || exit 2`,
         ...request("$3/interactions"),
         String.raw`printf '%s' "$resp" | jq -je 'if .status == "completed" then [.steps[]? | select(.type == "model_output") | .content[]? | select(.type == "text") | .text] | join("") else error("status \(.status)" + ([.errors[]?.message] | if length > 0 then ": " + join("; ") else "" end)) end'`,
       ]),

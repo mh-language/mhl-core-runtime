@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Declaration, Graph, Inspection, RunEvent, RunResult } from "../lib/types";
+import { isEnvName } from "../sync/templates";
 
 export type View = "split" | "design" | "code";
 
@@ -205,6 +206,11 @@ export function isMarkdown(path: string | null | undefined): boolean {
 /** A JSON file (a JSON Schema for `schema X from "x.json"`, or other data): edited as text. */
 export function isJson(path: string | null | undefined): boolean {
   return !!path && /\.json$/i.test(path);
+}
+
+/** An env file `mhl run` loads (`.env` at the workspace root by default; others via --env-file): edited as text. */
+export function isEnv(path: string | null | undefined): boolean {
+  return !!path && isEnvName(path);
 }
 
 /** An mhl source file. */

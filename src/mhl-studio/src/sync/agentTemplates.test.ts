@@ -195,6 +195,19 @@ describe.skipIf(!MHL || !has("curl") || !has("jq"))("API agent templates (curl)"
           },
         };
         checks.push(...shape[b][r]);
+        if (r === "generator") {
+          // The schema's file works as well as its text (X.path, as the Codex template takes it).
+          const schemaAt: Record<string, string> = {
+            "claude-api": "output_config.format.schema",
+            "openai-api": "response_format.json_schema.schema",
+            "gemini-api": "response_format.schema",
+          };
+          const at = schemaAt[b];
+          checks.push(
+            `var by_path = json.parse(${name}.run(prompt: "p", base_url: ${JSON.stringify(api.url)}, schema: Answer.path))`,
+            `is_true(by_path.request.${at}.required[0] == "echo")`,
+          );
+        }
         if (b === "claude-api") {
           // Refusal fallbacks: on by default, a model id names one, "" turns them off (no beta header either).
           const url = JSON.stringify(api.url);
@@ -230,7 +243,12 @@ describe.skipIf(!MHL || !has("curl") || !has("jq"))("API agent templates (curl)"
     try {
       const run = (agent: string, prompt: string, url = api.url) =>
         `workflow W${prompt} {\n    step S {\n        log(${agent}.run(prompt: "${prompt}", base_url: ${JSON.stringify(url)}))\n    }\n}`;
-      const sources = [renderAgent("claude-api", "text").source, renderAgent("openai-api", "text").source, renderAgent("gemini-api", "text").source];
+      const sources = [
+        renderAgent("claude-api", "text").source,
+        renderAgent("openai-api", "text").source,
+        renderAgent("gemini-api", "text").source,
+        renderAgent("gemini-api", "generator").source,
+      ];
       // A port nothing listens on: the server is closed before the run.
       const closed = await mockApi();
       closed.close();
@@ -241,6 +259,7 @@ describe.skipIf(!MHL || !has("curl") || !has("jq"))("API agent templates (curl)"
         run("ClaudeApiText", "NET", closed.url),
         run("GeminiApiText", "UNSAFE"),
         run("GeminiApiText", "LONG"),
+        `workflow WSCHEMA {\n    step S {\n        log(GeminiApiGenerator.run(prompt: "p", base_url: ${JSON.stringify(api.url)}, schema: "/no/such/answer.schema.json"))\n    }\n}`,
       ];
       writeFileSync(join(dir, "main.mh"), `${sources.join("\n\n")}\n\n${flows.join("\n\n")}\n`);
       const fail = async (wf: string) => {
@@ -272,6 +291,10 @@ describe.skipIf(!MHL || !has("curl") || !has("jq"))("API agent templates (curl)"
       expect(unsafe).toContain("HTTP 400 safety: Request blocked due to safety violations (harmful content).");
       expect(api.hits.get("UNSAFE")).toBe(1);
       expect(await fail("WLONG")).toContain("status incomplete");
+      // A schema that is neither JSON nor a file says what to pass, before any request.
+      const schema = await fail("WSCHEMA");
+      expect(schema).toContain("schema: expected a JSON Schema object: pass schema: X.content (its JSON text) or X.path (its file)");
+      expect(schema).not.toContain("Invalid numeric literal");
     } finally {
       api.close();
       rmSync(dir, { recursive: true, force: true });

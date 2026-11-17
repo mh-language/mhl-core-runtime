@@ -1,10 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { activeModel, registerEditor, save } from "../app/controller";
-import { useStore } from "../app/store";
+import { importFile } from "../app/library";
+import { get, set, useStore } from "../app/store";
+import { PATH_MIME } from "../canvas/mime";
 import { OffsetMap } from "../sync/offsets";
 import { monaco, prefersDark, THEME_DARK, THEME_LIGHT } from "./monaco";
 
-/** The Monaco editor showing the active file's model. */
+/**
+ * The Monaco editor showing the active file's model. A .mh file dragged from
+ * the explorer and dropped here is imported (app/library.ts's importFile, as
+ * on the diagram's Imports card) instead of Monaco inserting text at the drop.
+ */
 export function CodeEditor() {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -14,6 +20,8 @@ export function CodeEditor() {
   const workflow = useStore((s) => s.workflow);
   const graphSource = useStore((s) => s.graphSource);
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  const dragFile = useStore((s) => s.dragFile);
+  const [over, setOver] = useState(false);
 
   useEffect(() => {
     const e = monaco.editor.create(host.current!, {
@@ -31,11 +39,43 @@ export function CodeEditor() {
     editor.current = e;
     decorations.current = e.createDecorationsCollection();
     registerEditor(e);
+
+    // Capture phase on the host, so Monaco's own drop handling never sees
+    // the explorer's file drag (only dragFile: another .mh file).
+    const el = host.current!;
+    const ours = (ev: DragEvent) => !!get().dragFile && !!ev.dataTransfer?.types.includes(PATH_MIME);
+    const onOver = (ev: DragEvent) => {
+      if (!ours(ev)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.dataTransfer!.dropEffect = "copy";
+      setOver(true);
+    };
+    const onLeave = (ev: DragEvent) => {
+      if (!el.contains(ev.relatedTarget as Node | null)) setOver(false);
+    };
+    const onDrop = (ev: DragEvent) => {
+      setOver(false);
+      if (!ours(ev)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const path = get().dragFile;
+      set({ dragFile: null });
+      const file = get().library.find((l) => l.path === path);
+      if (file) void importFile(file);
+    };
+    el.addEventListener("dragover", onOver, true);
+    el.addEventListener("dragleave", onLeave, true);
+    el.addEventListener("drop", onDrop, true);
+
     const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
     const onScheme = () => monaco.editor.setTheme(mq.matches ? THEME_DARK : THEME_LIGHT);
     mq?.addEventListener("change", onScheme);
     return () => {
       mq?.removeEventListener("change", onScheme);
+      el.removeEventListener("dragover", onOver, true);
+      el.removeEventListener("dragleave", onLeave, true);
+      el.removeEventListener("drop", onDrop, true);
       registerEditor(null);
       e.dispose();
     };
@@ -68,5 +108,14 @@ export function CodeEditor() {
     e.revealRangeInCenterIfOutsideViewport(new monaco.Range(start.lineNumber, 1, end.lineNumber, 1));
   }, [selection, graph, workflow, graphSource]);
 
-  return <div className="code-editor" ref={host} />;
+  useEffect(() => {
+    if (!dragFile) setOver(false);
+  }, [dragFile]);
+
+  return (
+    <>
+      <div className="code-editor" ref={host} />
+      {over && dragFile && <div className="code-drop-hint">Drop to import {dragFile.split(/[\\/]/).pop()}</div>}
+    </>
+  );
 }

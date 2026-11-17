@@ -173,7 +173,7 @@ ${indent}}`;
 }
 
 /** What the explorer's "+" can create: a new file holding one declaration. */
-export type NewFileKind = "workflow" | "tool" | "agent" | "prompt" | "prompt-md" | "schema-json" | "memory" | "mcp" | "type" | "enum" | "test" | "empty";
+export type NewFileKind = "workflow" | "tool" | "agent" | "prompt" | "prompt-md" | "schema-json" | "env" | "memory" | "mcp" | "type" | "enum" | "test" | "empty";
 
 export interface NewFileItem {
   kind: NewFileKind;
@@ -191,6 +191,7 @@ export const NEW_FILE_ITEMS: NewFileItem[] = [
   { kind: "prompt", label: "Prompt", hint: "a reusable, parameterized prompt", icon: "❝", path: "prompts.mh" },
   { kind: "prompt-md", label: "Prompt (Markdown)", hint: "a prompt body in Markdown — drag it onto the diagram", icon: "M↓", path: "prompts/review.prompt.md" },
   { kind: "schema-json", label: "JSON Schema", hint: "the shape of an agent's answer — drag it onto a step", icon: "{ }", path: "schemas/answer.schema.json" },
+  { kind: "env", label: "Environment (.env)", hint: "API keys and settings every run loads — keep it out of git", icon: "$", path: ".env" },
   { kind: "memory", label: "Memory", hint: "state kept across steps and runs", icon: "▤", path: "memory.mh" },
   { kind: "mcp", label: "MCP server", hint: "extension mcp — call an MCP server's tools", icon: "⧉", path: "mcp.mh" },
   { kind: "type", label: "Type", hint: "an object shape for inputs and results", icon: "{}", path: "types.mh" },
@@ -274,6 +275,8 @@ test ${name} {
       return newMarkdownPromptSource();
     case "schema-json":
       return newJsonSchemaSource();
+    case "env":
+      return newEnvSource();
     case "empty":
       return "";
   }
@@ -317,9 +320,30 @@ export function newJsonSchemaSource(): string {
 }
 
 /** The file a new item of `kind` named `rel` is created as: its extension added when missing. */
+/** An env file name, by its last path segment: `.env`, `.env.local`, `prod.env` (not `.envrc`). */
+export function isEnvName(rel: string): boolean {
+  const base = rel.split(/[\\/]/).pop()!;
+  return base === ".env" || base.startsWith(".env.") || (base.endsWith(".env") && base.length > 4);
+}
+
+/** A new env file: commented-out keys the API agent templates read. */
+export function newEnvSource(): string {
+  return `# Environment variables for this workspace. mhl run / mhl test (and the
+# studio's Run) load the .env at the workspace root before anything runs;
+# another file needs --env-file. A variable already set in your shell wins.
+# KEY=value, "double quotes" (\\n escapes) or 'single quotes' (literal).
+# Keep this file out of version control: add .env to .gitignore.
+
+# ANTHROPIC_API_KEY=
+# OPENAI_API_KEY=
+# GEMINI_API_KEY=
+`;
+}
+
 export function newFilePath(rel: string, kind: NewFileKind): string {
   if (kind === "prompt-md") return /\.md$/i.test(rel) ? rel : `${rel.replace(/\.prompt$/, "")}.prompt.md`;
   if (kind === "schema-json") return /\.json$/i.test(rel) ? rel : `${rel.replace(/\.schema$/, "")}.schema.json`;
+  if (kind === "env") return isEnvName(rel) ? rel : `${rel}.env`;
   return rel.endsWith(".mh") ? rel : `${rel}.mh`;
 }
 

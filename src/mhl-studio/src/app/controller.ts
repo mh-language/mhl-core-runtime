@@ -12,10 +12,11 @@ import { applyEdits, Doc, type EditResult, type TextEdit } from "../sync/edits";
 import { exportDeclaration, resolveImport } from "../sync/imports";
 import { moverFor, relinkEdits } from "../sync/relink";
 import { declNameFor, newFilePath, newFileSource, type NewFileKind } from "../sync/templates";
+import { ignoreLine, withEnvIgnored } from "../sync/gitignore";
 import { BACKENDS, renderAgent, type Backend, type Companion, type Role } from "../sync/agentTemplates";
 import { LspClient } from "../editor/lsp";
-import { JSON_LANG, LANG, MD_LANG, monaco, setupMonaco } from "../editor/monaco";
-import { emptyRun, get, isJson, isMarkdown, isMh, selectTool, set, type LibraryFile, type NodeRunStatus, type Toast } from "./store";
+import { DOTENV_LANG, JSON_LANG, LANG, MD_LANG, monaco, setupMonaco } from "../editor/monaco";
+import { emptyRun, get, isEnv, isJson, isMarkdown, isMh, selectTool, set, type LibraryFile, type NodeRunStatus, type Toast } from "./store";
 import { installZoom } from "./zoom";
 import { installPanels } from "./panels";
 
@@ -204,7 +205,7 @@ export function activeModel(): monaco.editor.ITextModel | null {
 /** The editor buffer of `path`, holding `text`, registered with the language server. */
 function createModel(path: string, text: string): monaco.editor.ITextModel {
   const mh = isMh(path);
-  const lang = mh ? LANG : isMarkdown(path) ? MD_LANG : isJson(path) ? JSON_LANG : "plaintext";
+  const lang = mh ? LANG : isMarkdown(path) ? MD_LANG : isJson(path) ? JSON_LANG : isEnv(path) ? DOTENV_LANG : "plaintext";
   const model = monaco.editor.createModel(text, lang, monaco.Uri.parse(fileUri(path)));
   model.updateOptions(mh ? { tabSize: 4, insertSpaces: true } : { tabSize: 2, insertSpaces: true });
   models.set(path, model);
@@ -348,6 +349,30 @@ export async function save(path = get().activePath): Promise<void> {
  * appended when missing) holding a new declaration of `kind`, named after
  * the file, and opens it.
  */
+/**
+ * Adds a line ignoring env file `rel` to the workspace root's .gitignore
+ * (created if missing) unless one already covers it (sync/gitignore.ts).
+ * Returns what to tell the user, or null when nothing was added.
+ */
+async function ignoreEnvFile(root: string, rel: string): Promise<string | null> {
+  const path = joinPath(root, ".gitignore");
+  let existing: string | null = null;
+  try {
+    existing = await api.readFile(path);
+  } catch {
+    /* no .gitignore yet */
+  }
+  const next = withEnvIgnored(existing, rel);
+  if (next === null) return null;
+  try {
+    await api.writeFile(path, next);
+    return `Added ${ignoreLine(rel)} to .gitignore, keeping its keys out of git.`;
+  } catch (e) {
+    toast("error", `Could not add ${rel} to .gitignore: ${errorText(e)}`);
+    return null;
+  }
+}
+
 export async function newFile(relName: string, kind: NewFileKind = "workflow") {
   const { root } = get();
   if (!root) return;
@@ -365,6 +390,12 @@ export async function newFile(relName: string, kind: NewFileKind = "workflow") {
   await refreshFiles();
   await openFile(path);
   if (kind === "tool") selectTool(name);
+  if (kind === "env") {
+    const ignored = await ignoreEnvFile(root, rel);
+    const notLoaded = rel !== ".env" ? `Only the workspace root's .env is loaded automatically: ${rel} needs mhl run --env-file ${rel}.` : null;
+    const note = [ignored, notLoaded].filter(Boolean).join(" ");
+    if (note) toast("info", note);
+  }
 }
 
 /** Looks up which agent CLIs (and curl/jq, for the API templates) are on PATH (cached; `force` looks again). */
@@ -514,10 +545,11 @@ export async function movePath(fromRel: string, toRel: string): Promise<boolean>
   }
 
   await refreshFiles();
+  const ignored = isEnv(to) ? await ignoreEnvFile(root, to) : null;
   if (get().activePath) await refreshGraph();
   const updated = plans.length ? ` — updated paths in ${plans.length} file${plans.length > 1 ? "s" : ""}` : "";
   const warn = skipped.length ? `. Not checked (they have errors): ${skipped.join(", ")}` : "";
-  toast(skipped.length ? "error" : "info", `Moved ${fromRel} → ${to}${updated}${warn}`);
+  toast(skipped.length ? "error" : "info", `Moved ${fromRel} → ${to}${updated}${warn}${ignored ? `. ${ignored}` : ""}`);
   return true;
 }
 

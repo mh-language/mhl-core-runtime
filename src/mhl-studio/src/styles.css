@@ -501,6 +501,9 @@ select {
 .tree-icon.md {
   color: #519aba;
 }
+.tree-icon.env {
+  color: #e2a03f;
+}
 .tree-row.file .tree-main[draggable="true"] {
   cursor: grab;
 }
@@ -1994,6 +1997,21 @@ select {
 .imports-card.drop-over {
   border-style: solid;
   box-shadow: 0 0 0 2px var(--accent);
+}
+/* The code editor as a drop target for a .mh file from the explorer. */
+.code-drop-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 24px;
+  pointer-events: none;
+  border: 2px dashed var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  z-index: 10;
 }
 .imports-drop-hint {
   padding: 6px 10px;

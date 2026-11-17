@@ -116,7 +116,7 @@ func runLSP(out io.Writer) error {
 
 // runPipeline implements:
 //
-//	mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--session <id>] [--format text|json|jsonl] [--dry-run]
+//	mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--session <id>] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]
 //
 // It executes a pipeline from the start, or resumes it from the last saved
 // checkpoint when --resume is given (IF-1). --resume refuses a checkpoint
@@ -133,10 +133,19 @@ func runLSP(out io.Writer) error {
 // the file). --dry-run validates
 // the file (parse, imports, lint, input contract) and prints the static plan
 // — step order, parallel groups, checkpoint policy — without executing any
-// step or calling any agent.
+// step or calling any agent. Before anything runs, the working directory's
+// `.env` (or each --env-file instead) is loaded into the environment
+// (envfile.go); a variable already set wins.
 func runPipeline(args []string, out io.Writer) error {
+	args, envFiles, err := takeEnvFiles(args)
+	if err != nil {
+		return err
+	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run]")
+		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]")
+	}
+	if err := loadEnvFiles(envFiles); err != nil {
+		return err
 	}
 	defer loadSessionExtensions(out)()
 	file := args[0]
@@ -297,8 +306,11 @@ func printPauseReason(out io.Writer, name string, reason any) {
 
 // runTests implements:
 //
-//	mhl test <file.mh>
-//	mhl test <dir>
+//	mhl test <file.mh> [--env-file <path> ...]
+//	mhl test <dir> [--env-file <path> ...]
+//
+// Like `mhl run`, it first loads the working directory's `.env` (or each
+// --env-file instead) into the environment (envfile.go).
 //
 // Given a file, it runs every `test { ... }` block declared in it. Given a
 // directory, it recursively finds every .mh file under it (same traversal
@@ -317,8 +329,15 @@ func printPauseReason(out io.Writer, name string, reason any) {
 // any assertion failed, or when no test blocks were found at all; an
 // `incomplete(...)` assertion does not count as a failure.
 func runTests(args []string, out io.Writer) error {
+	args, envFiles, err := takeEnvFiles(args)
+	if err != nil {
+		return err
+	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl test <file.mh|dir>")
+		return fmt.Errorf("usage: mhl test <file.mh|dir> [--env-file <path> ...]")
+	}
+	if err := loadEnvFiles(envFiles); err != nil {
+		return err
 	}
 	defer loadSessionExtensions(out)()
 	target := args[0]

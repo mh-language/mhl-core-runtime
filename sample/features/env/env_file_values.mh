@@ -1,0 +1,29 @@
+// The values of sample.env, read with env() — what an agent's command:/args:
+// or a step sees once `mhl run`/`mhl test` loaded the file. Run with
+//   mhl test sample/features/env --env-file sample/features/env/sample.env
+// (`make functional-test` passes that flag; without it env() falls back to
+// the defaults below and the assertions fail).
+test env_file_values {
+    describe unquoted_value_drops_its_comment {
+        are_equal(env("MHL_SAMPLE_GREETING", "unset"), "hello from sample.env")
+    }
+    describe export_prefix_and_double_quotes {
+        are_equal(env("MHL_SAMPLE_MODEL", "unset"), "gemini-2.5-flash")
+        are_equal(env("MHL_SAMPLE_QUOTED", "unset"), "line one\nline two")
+    }
+    describe single_quotes_are_literal {
+        are_equal(env("MHL_SAMPLE_LITERAL", "unset"), "$HOME stays as written")
+    }
+    describe empty_value_is_set_but_empty {
+        // env(name, default) falls back on an empty value as well as a missing one.
+        are_equal(env("MHL_SAMPLE_EMPTY", "fallback"), "fallback")
+    }
+}
+
+// A workflow reading the same file: `mhl run` (and mhl studio's Run, whose
+// working directory is the workspace root) loads ./.env by default.
+workflow Greet {
+    step Say {
+        log("${env("MHL_SAMPLE_GREETING", "no .env loaded")} — model ${env("MHL_SAMPLE_MODEL", "unset")}")
+    }
+}

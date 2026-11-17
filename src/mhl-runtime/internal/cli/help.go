@@ -47,6 +47,7 @@ Flags for "run":
   --session <id>             Reuse a named session for durable state
   --format text|json|jsonl   Output format (default "text"); jsonl streams step events
   --dry-run                  Validate and print the static plan without executing
+  --env-file <path>          Load env vars from a file (repeatable; default ./.env)
 
 Examples:
   mhl init myproject
@@ -125,16 +126,20 @@ Flags:
                         (run_start, step_start, step_end, log, result)
   --dry-run             Validate (parse, imports, lint, input contract) and print
                         the static plan without executing any step
+  --env-file <path>     Load environment variables from this file before running
+                        (repeatable; a later file wins). Without it, ./.env is
+                        loaded when present. Variables already set always win.
 
   mhl run main.mh --input name=World
   mhl run pipe.mh --resume --force
   mhl run pipe.mh --dry-run --format json
 `,
-	"test": `mhl test <file.mh|dir>
+	"test": `mhl test <file.mh|dir> [--env-file <path> ...]
 
 Run every test { ... } block. Given a directory, recurse into every .mh
 file under it and aggregate one report. Exit non-zero if any assertion
-failed or no test blocks were found.
+failed or no test blocks were found. Like run, it first loads ./.env (or
+each --env-file instead); variables already set always win.
 
   mhl test main.mh
   mhl test ./sample/features

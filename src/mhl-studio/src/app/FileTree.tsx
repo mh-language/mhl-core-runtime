@@ -8,13 +8,16 @@
 //   selected row.
 // - Drag a row onto a folder (or the tree's empty space, for the root) to move
 //   it; references to moved files are rewritten (controller.movePath).
+// - Env files (.env, .env.local, prod.env) show although hidden: the workspace
+//   root's .env is what `mhl run` loads.
 // - A Markdown file also drags onto the diagram as a prompt (app/prompts.ts),
-//   a JSON file as an agent call's schema (app/schemas.ts).
+//   a JSON file as an agent call's schema (app/schemas.ts). Another .mh file
+//   dropped on the code editor or the diagram's Imports card is imported.
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { deletePath, movePath, newAgentFile, newFile, newFolder, openFile, refreshFiles } from "./controller";
 import { AgentPicker } from "../palette/AgentPicker";
 import { BACKENDS, ROLES, type Backend, type Role } from "../sync/agentTemplates";
-import { isJson, isMarkdown, isMh, set, useStore, type LibraryFile } from "./store";
+import { isEnv, isJson, isMarkdown, isMh, set, useStore, type LibraryFile } from "./store";
 import { AGENT_MIME, DRAG_MIME, PROMPT_MIME, SCHEMA_MIME } from "../canvas/WorkflowCanvas";
 import { PATH_MIME } from "../canvas/mime";
 import { ancestors, buildTree, type TreeNode } from "./tree";
@@ -142,6 +145,16 @@ function JsonIcon() {
   return (
     <svg className="tree-icon json" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M5.5 2.5C3.8 2.5 4 4 4 5.5S3.2 8 2 8c1.2 0 2 .9 2 2.5s-.2 3 1.5 3M10.5 2.5c1.7 0 1.5 1.5 1.5 3s.8 2.5 2 2.5c-1.2 0-2 .9-2 2.5s.2 3-1.5 3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** An env file's mark: a key. */
+function EnvIcon() {
+  return (
+    <svg className="tree-icon env" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="5" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M8 8h6.5M12 8v2.5M14.5 8v2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
     </svg>
   );
 }
@@ -451,6 +464,7 @@ export function FileTree() {
         const abs = joinPath(root, n.path);
         const md = isMarkdown(n.path);
         const json = isJson(n.path);
+        const env = isEnv(n.path);
         const agent = soleAgent(library, abs);
         rows.push(
           <div
@@ -473,15 +487,19 @@ export function FileTree() {
                   ? `${n.path}\nDrag onto the diagram to run it as a prompt, or onto a folder to move it.`
                   : json
                     ? `${n.path}\nDrag onto a step to shape its agent's answer (schema:), or onto a folder to move it.`
-                    : agent
-                      ? `${n.path}\nDrag onto a step to call ${agent} there, onto the diagram for a new step, or onto a folder to move it.`
-                      : n.path
+                    : env
+                      ? `${n.path}\n${n.path === ".env" ? "Loaded into every run (mhl run, mhl test) — your shell's variables win." : "Not loaded automatically: only the workspace root's .env is (or pass --env-file)."}`
+                      : agent
+                      ? `${n.path}\nDrag onto a step to call ${agent} there, onto the diagram for a new step, ${abs !== activePath ? "into the code to import it, " : ""}or onto a folder to move it.`
+                      : isMh(n.path) && abs !== activePath
+                        ? `${n.path}\nDrag into the code (or onto the diagram's Imports card) to import it, or onto a folder to move it.`
+                        : n.path
               }
               {...dragProps(entry, abs, md ? "prompt" : json ? "schema" : agent ? { agent } : null)}
             >
               {indent}
               <span className="tree-chevron" />
-              {md ? <MarkdownIcon /> : json ? <JsonIcon /> : <img className="tree-icon" src={fileIcon} alt="" />}
+              {md ? <MarkdownIcon /> : json ? <JsonIcon /> : env ? <EnvIcon /> : <img className="tree-icon" src={fileIcon} alt="" />}
               {label}
               {dirty[abs] && <span className="tree-dirty" title="unsaved changes">●</span>}
             </button>
