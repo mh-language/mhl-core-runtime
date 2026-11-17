@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.2
+
+### Added
+
+- Highlighting for the `merge` keyword, which ends a `parallel` group with an explicit
+  join (`merge (branches) { ... }`), new in mhl v1.11.0.
+
+Completion, diagnostics and running a `merge` block come from `mhl lsp` and the
+runtime, so they need mhl v1.11.0 or later rather than this extension version.
+
+### Changed
+
+- The extension's source moved to `src/vscode-mhl/` in the repository; the
+  `repository.directory` field and the README's development instructions point there.
+
 ## 0.7.1
 
 ### Added
