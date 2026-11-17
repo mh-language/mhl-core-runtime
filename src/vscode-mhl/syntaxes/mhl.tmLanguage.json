@@ -167,8 +167,8 @@
           }
         },
         {
-          "comment": "`entry` header clause on a step — entry step Name { ... } — matched only directly before `step` so it never lights up an ordinary identifier, a step literally named Entry, or an `entry:`/`entry(` property or call",
-          "match": "\\b(entry)(?=[ \\t]+step\\b)",
+          "comment": "`entry` header clause on a step or a workflow's starting route — entry step Name { ... }, entry route Choose(p: T) { ... } — matched only directly before `step`/`route` so it never lights up an ordinary identifier, a step literally named Entry, or an `entry:`/`entry(` property or call",
+          "match": "\\b(entry)(?=[ \\t]+(?:step|route)\\b)",
           "captures": {
             "1": {
               "name": "storage.type.declaration.mhl"

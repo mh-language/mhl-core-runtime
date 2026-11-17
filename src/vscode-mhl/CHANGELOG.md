@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `entry` is highlighted as a keyword in a workflow's starting route
+  (`entry route Choose(model: AgentModel) { ... }`), not only before `step`.
+
 ## 0.7.2
 
 ### Added
