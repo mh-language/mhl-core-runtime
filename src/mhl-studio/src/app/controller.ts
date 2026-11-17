@@ -367,12 +367,12 @@ export async function newFile(relName: string, kind: NewFileKind = "workflow") {
   if (kind === "tool") selectTool(name);
 }
 
-/** Looks up which agent CLIs are on PATH (cached; `force` looks again). */
+/** Looks up which agent CLIs (and curl/jq, for the API templates) are on PATH (cached; `force` looks again). */
 export async function loadClis(force = false): Promise<Record<string, string>> {
   const known = get().clis;
   if (known && !force) return known;
   try {
-    const clis = await api.findClis(BACKENDS.map((b) => b.command));
+    const clis = await api.findClis([...new Set(BACKENDS.flatMap((b) => b.requires))]);
     set({ clis });
     return clis;
   } catch {

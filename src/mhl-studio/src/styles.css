@@ -112,6 +112,10 @@ textarea {
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: 1px solid var(--border);
   background: var(--panel);
   border-radius: 6px;
@@ -172,9 +176,12 @@ textarea {
   gap: 6px;
   margin-right: 8px;
 }
+.run-controls .btn {
+  height: 30px;
+}
 .run-controls .btn.primary {
   font-weight: 600;
-  padding: 4px 14px;
+  padding: 4px 12px 4px 10px;
 }
 .split-btn {
   display: inline-flex;
@@ -250,21 +257,129 @@ textarea {
   font-weight: 600;
 }
 
-.layout-toggles {
-  display: inline-flex;
-  gap: 2px;
-}
-.panel-toggle {
+/* Toolbar: icon buttons in bordered groups; every button names itself in its tooltip. */
+.tb-group,
+.wf-picker {
   display: inline-flex;
   align-items: center;
-  padding: 3px 4px;
-  border-radius: 4px;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
 }
-.panel-toggle:hover {
+.tb-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tb-btn:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.tb-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tb-btn:focus-visible,
+.view-switch button:focus-visible,
+.state-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.tb-btn.panel-toggle.on {
+  color: var(--text);
+}
+.tb-dirty {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+.tb-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+}
+.wf-picker {
+  gap: 2px;
+}
+.wf-select-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.wf-select-wrap:hover {
   background: var(--panel-2);
 }
-.panel-toggle.on {
+.wf-select-wrap .wf-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: none;
+  padding: 0 20px 0 0;
+  margin-right: -20px;
   color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  outline-offset: 2px;
+}
+.wf-select-wrap svg:last-child {
+  pointer-events: none;
+}
+.wf-picker .wf-add {
+  border-left: 1px solid var(--border);
+  border-radius: 0 5px 5px 0;
+}
+.wf-picker > .wf-add:only-child {
+  border-left: none;
+  border-radius: 5px;
+}
+.view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.view-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.view-switch button:hover {
+  color: var(--text);
+}
+.view-switch button.active {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .wf-select,
@@ -625,38 +740,74 @@ select {
   flex-wrap: wrap;
   flex-shrink: 0;
 }
-.states-bar-title {
-  font-size: 11px;
-  font-weight: 700;
+.states-group-label {
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   color: var(--muted);
-  margin-right: 4px;
+  margin: 0 2px 0 4px;
+}
+/* A state's icon on a dark square, monochrome like the toolbar's icons. */
+.state-badge {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
 }
 .state-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 5px;
   white-space: nowrap;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 7px;
   background: var(--panel);
   color: var(--text);
-  padding: 3px 8px;
   font-size: 12px;
+  font-weight: 500;
   cursor: grab;
 }
 .state-chip:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--node-border);
+  background: var(--panel-2);
 }
-.state-chip:disabled {
+.state-chip:disabled,
+.state-chip[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }
-.state-chip-icon {
-  width: 14px;
-  text-align: center;
+.state-chip[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+.state-chip[aria-disabled="true"]:hover {
+  border-color: var(--border);
+  background: var(--panel);
+}
+.state-chip[aria-disabled="true"] .state-chip-grip {
+  display: none;
+}
+/* In the chip's right padding, so showing it on hover never shifts the label. */
+.state-chip-grip {
+  position: absolute;
+  right: 0;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.state-chip:hover:not(:disabled) .state-chip-grip {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .state-chip-grip {
+    transition: none;
+  }
 }
 .view-split .design-pane {
   flex: 1.2;
@@ -803,7 +954,7 @@ select {
 }
 .call-icon {
   flex-shrink: 0;
-  font-size: 11px;
+  color: var(--muted);
 }
 .call-target {
   font-weight: 600;
@@ -982,11 +1133,6 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.node-icon {
-  width: 16px;
-  text-align: center;
-  color: var(--muted);
-}
 .node-sub {
   display: flex;
   gap: 6px;
@@ -1013,6 +1159,12 @@ select {
   font-size: 10px;
   color: var(--muted);
   font-weight: 500;
+}
+.badge.icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 15px;
 }
 .badge.warn {
   color: var(--warn);
@@ -1126,9 +1278,6 @@ select {
   border: 1.5px solid var(--accent);
   border-radius: 8px;
   cursor: pointer;
-}
-.node.route .node-icon {
-  color: var(--accent);
 }
 .node.route .node-title .node-kind {
   color: var(--muted);
@@ -1770,6 +1919,8 @@ select {
   z-index: 41;
   width: 540px;
   max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   padding: 6px 8px 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1823,6 +1974,16 @@ select {
 }
 .agent-picker-foot {
   margin: 6px 4px 0;
+}
+.agent-picker table + table {
+  margin-top: 10px;
+}
+.agent-picker thead th.agent-picker-group {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
 }
 
 /* The Imports card as a drop target for a .mh file from the explorer. */

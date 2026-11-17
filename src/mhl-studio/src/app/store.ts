@@ -168,6 +168,18 @@ export function inputFields(s: State): InputField[] {
   return (wf?.inputs ?? []).map((i) => ({ name: i.name, type: i.type, def: i.default }));
 }
 
+/**
+ * The variants an input of `type` can take, when that type is an enum this
+ * file declares or imports (`decls`); null for any other type. An optional
+ * `T?` counts as `T`. The runtime takes the bare variant name (`All`, not
+ * `AgentModel.All`) as an `--input` value and refuses anything else.
+ */
+export function enumVariants(type: string, decls: Declaration[]): string[] | null {
+  const name = type.endsWith("?") ? type.slice(0, -1) : type;
+  const d = decls.find((x) => x.kind === "enum" && x.name === name);
+  return d?.variants?.length ? d.variants : null;
+}
+
 /** The filled-in inputs, as `--input` pairs (blank ones fall back to their defaults). */
 export function runInputPairs(s: State = useStore.getState()): [string, string][] {
   return inputFields(s)

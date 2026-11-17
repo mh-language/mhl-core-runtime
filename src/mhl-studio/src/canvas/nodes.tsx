@@ -1,13 +1,13 @@
 import { memo, useMemo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import { Merge, Timer } from "lucide-react";
 import { importedDeclarations, openFile, revealSpan } from "../app/controller";
 import { useStore } from "../app/store";
+import { CALL_ICON, CALL_ICON_FALLBACK, EXIT_BADGE, StateBadge, type BadgeKind } from "../lib/icons";
 import type { CallSite, Declaration } from "../lib/types";
 import type { ImportOrigin } from "../sync/imports";
 import { useImportOrigins } from "./ImportsCard";
 import { ARM_ROW_H, MAX_BOXES, MERGE_H, type ExternalNodeData, type RouteNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
-
-const CALL_ICON: Record<string, string> = { tool: "🛠", agent: "⚙", router: "⇄", extension: "⧉", memory: "▤", prompt: "❝" };
 
 /** Declaration kind by name — this file's and what it imports — to pick each call box's icon. */
 function useDeclKinds(): Record<string, Declaration["kind"]> {
@@ -25,6 +25,7 @@ function useDeclKinds(): Record<string, Declaration["kind"]> {
 function CallBox({ call, kind, origin }: { call: CallSite; kind?: Declaration["kind"]; origin?: ImportOrigin }) {
   const args = call.text.slice(call.receiver.length + 1 + call.method.length);
   const file = origin?.from.split("/").pop()?.replace(/\.mh$/, "");
+  const Icon = CALL_ICON[kind ?? ""] ?? CALL_ICON_FALLBACK;
   return (
     <div
       className={`call-box kind-${kind ?? "other"}`}
@@ -34,7 +35,7 @@ function CallBox({ call, kind, origin }: { call: CallSite; kind?: Declaration["k
         revealSpan(call.span);
       }}
     >
-      <span className="call-icon">{CALL_ICON[kind ?? ""] ?? "ƒ"}</span>
+      <Icon className="call-icon" size={12} strokeWidth={2} aria-hidden="true" />
       <span className="call-target">
         {call.receiver}.{call.method}
       </span>
@@ -55,21 +56,24 @@ function CallBox({ call, kind, origin }: { call: CallSite; kind?: Declaration["k
   );
 }
 
-const EXIT_BADGE: Record<string, { icon: string; title: string; cls: string }> = {
-  pause: { icon: "⏸", title: "pauses for approval", cls: "warn" },
-  fail: { icon: "✕", title: "can fail the run", cls: "bad" },
-  complete: { icon: "✓", title: "can complete the run", cls: "good" },
-  break: { icon: "⏹", title: "can stop the run (break)", cls: "good" },
-};
-
-function kindOf(data: StepNodeData): { icon: string; label: string } {
+function kindOf(data: StepNodeData): { kind: BadgeKind; label: string } {
   const n = data.node;
-  if (n.choice) return { icon: "◇", label: `Choice · ${n.choice.subject}` };
-  if (n.calls.length) return { icon: "⚙", label: "Task" };
-  if (n.exits.includes("pause")) return { icon: "👤", label: "Human approval" };
-  if (n.exits.includes("fail") && !n.fallsThrough && n.exits.length === 1) return { icon: "✕", label: "Fail" };
-  if ((n.exits.includes("complete") || n.exits.includes("break")) && !n.fallsThrough) return { icon: "✓", label: "Succeed" };
-  return { icon: "▭", label: "Step" };
+  if (n.choice) return { kind: "choice", label: `Choice · ${n.choice.subject}` };
+  if (n.calls.length) return { kind: "task", label: "Task" };
+  if (n.exits.includes("pause")) return { kind: "approval", label: "Human approval" };
+  if (n.exits.includes("fail") && !n.fallsThrough && n.exits.length === 1) return { kind: "fail", label: "Fail" };
+  if ((n.exits.includes("complete") || n.exits.includes("break")) && !n.fallsThrough) return { kind: "succeed", label: "Succeed" };
+  return { kind: "pass", label: "Step" };
+}
+
+/** A step's `timeout <dur>` badge. */
+function TimeoutBadge({ timeout }: { timeout: string }) {
+  return (
+    <span className="badge icon" title={`timeout ${timeout}`}>
+      <Timer size={10} strokeWidth={2} aria-hidden="true" />
+      {timeout}
+    </span>
+  );
 }
 
 function useStatus(id: string) {
@@ -89,19 +93,22 @@ export const StepNode = memo(function StepNode({ id, data, selected }: NodeProps
   const focusCls = !focus ? "" : sites.some((c) => focus.includes(c.receiver)) ? "import-hit" : "import-dim";
   const badges = (
     <span className="node-badges">
-      {n.timeout && <span className="badge" title={`timeout ${n.timeout}`}>⏱ {n.timeout}</span>}
-      {n.exits.map((x) => (
-        <span key={x} className={`badge ${EXIT_BADGE[x]?.cls ?? ""}`} title={EXIT_BADGE[x]?.title}>
-          {EXIT_BADGE[x]?.icon ?? x}
-        </span>
-      ))}
+      {n.timeout && <TimeoutBadge timeout={n.timeout} />}
+      {n.exits.map((x) => {
+        const b = EXIT_BADGE[x];
+        return (
+          <span key={x} className={`badge icon ${b?.cls ?? ""}`} title={b?.title}>
+            {b ? <b.Icon size={10} strokeWidth={2.25} aria-label={x} /> : x}
+          </span>
+        );
+      })}
     </span>
   );
   return (
     <div className={`node step ${sites.length ? "has-calls" : ""} ${selected ? "selected" : ""} ${status ? `run-${status}` : ""} ${dropping ? "drop-target" : ""} ${focusCls}`}>
       <Handle type="target" position={Position.Top} />
       <div className="node-title">
-        <span className="node-icon">{k.icon}</span>
+        <StateBadge kind={k.kind} size={18} />
         <span className="node-name">{n.name}</span>
         {n.entry && <span className="badge" title="entry step">entry</span>}
         {sites.length > 0 && badges}
@@ -144,10 +151,10 @@ export const ParallelNode = memo(function ParallelNode({ id, data, selected }: N
     <div className={`node parallel ${selected ? "selected" : ""} ${status ? `run-${status}` : ""}`}>
       <Handle type="target" position={Position.Top} />
       <div className="node-title">
-        <span className="node-icon">⫴</span>
+        <StateBadge kind="parallel" size={18} />
         <span className="node-name">{data.node.name}</span>
         <span className="node-kind">Parallel</span>
-        {data.node.timeout && <span className="badge">⏱ {data.node.timeout}</span>}
+        {data.node.timeout && <TimeoutBadge timeout={data.node.timeout} />}
         {!!data.node.vars?.length && (
           <span className="badge mono" title={`the group's own vars, alive only while it runs:\n${data.node.vars.map((v) => v.name).join(", ")}`}>
             var {data.node.vars.map((v) => v.name).join(", ")}
@@ -168,7 +175,7 @@ export const ParallelNode = memo(function ParallelNode({ id, data, selected }: N
             revealSpan(merge.span);
           }}
         >
-          <span className="merge-icon">⤓</span>
+          <Merge className="merge-icon" size={13} strokeWidth={2} aria-hidden="true" />
           <span className="mono">{merge.param ? `merge (${merge.param})` : "merge"}</span>
           {merge.calls.length > 0 && <span className="merge-calls mono">{merge.calls.join(", ")}</span>}
         </div>
@@ -218,7 +225,7 @@ export const RouteNode = memo(function RouteNode({ data }: NodeProps<Node<RouteN
     >
       {used && <Handle type="target" position={Position.Top} isConnectable={false} />}
       <div className="node-title">
-        <span className="node-icon">◇</span>
+        <StateBadge kind="choice" size={18} />
         <span className="node-name">{r.name}</span>
         <span className="node-kind mono">({r.params.join(", ")})</span>
         {r.entry && <span className="badge" title="entry route: the run starts here">entry</span>}

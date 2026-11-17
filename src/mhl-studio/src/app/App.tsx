@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ChevronDown, Code, Columns2, FolderOpen, Plus, Redo2, Save, Undo2, Workflow, type LucideIcon } from "lucide-react";
 import { edit, openFolder, redo, save, undo } from "./controller";
 import { hasNoWorkflow, isMh, set, useStore, type View } from "./store";
 import { addWorkflow } from "../sync/edits";
@@ -11,6 +12,7 @@ import { RunPanel } from "../run/RunPanel";
 import { RunControls } from "../run/RunControls";
 import { togglePanel, type Panel } from "./panels";
 import { FileTree } from "./FileTree";
+import { ICON } from "../lib/icons";
 import logo from "../assets/mhl-logo.png";
 
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "⌘" : "Ctrl+";
@@ -30,7 +32,7 @@ function PanelIcon({ panel, open }: { panel: Panel; open: boolean }) {
 function PanelToggle({ panel, open, label, keys }: { panel: Panel; open: boolean; label: string; keys: string }) {
   return (
     <button
-      className={`icon-btn panel-toggle ${open ? "on" : ""}`}
+      className={`tb-btn panel-toggle ${open ? "on" : ""}`}
       title={`${open ? "Hide" : "Show"} ${label} (${keys})`}
       aria-pressed={open}
       onClick={() => togglePanel(panel)}
@@ -50,7 +52,7 @@ function LayoutToggles() {
   const bottomOpen = useStore((s) => s.bottomOpen);
   if (!root) return null;
   return (
-    <span className="layout-toggles">
+    <span className="tb-group">
       <PanelToggle panel="left" open={leftOpen} label="files" keys={`${MOD}B`} />
       {activePath && !noFlow && <PanelToggle panel="bottom" open={bottomOpen} label="run panel" keys={`${MOD}J`} />}
       {isMh(activePath) && view !== "code" && <PanelToggle panel="right" open={rightOpen} label="inspector" keys={`${ALT}${MOD}B`} />}
@@ -67,62 +69,77 @@ function Toolbar() {
   const activePath = useStore((s) => s.activePath);
   const dirty = useStore((s) => (s.activePath ? s.dirty[s.activePath] : false));
   const mhlVersion = useStore((s) => s.mhlVersion);
-  const views: [View, string][] = [
-    ["design", "Design"],
-    ["split", "Split"],
-    ["code", "Code"],
+  const views: [View, string, LucideIcon][] = [
+    ["design", "Design", Workflow],
+    ["split", "Split", Columns2],
+    ["code", "Code", Code],
   ];
+  const hasWorkflows = !!graph && graph.workflows.length > 0;
   return (
     <header className="toolbar">
       <img className="brand" src={logo} alt="mhl studio" title="mhl studio" />
-      <button className="btn" onClick={() => void openFolder()}>
-        Open folder…
-      </button>
-      {activePath && (
-        <>
-          <button className="btn" disabled={!dirty} onClick={() => void save()} title="Save (⌘S)">
-            Save
-          </button>
-          <button className="btn" onClick={undo} title="Undo (⌘Z)">
-            ↶
-          </button>
-          <button className="btn" onClick={redo} title="Redo (⇧⌘Z)">
-            ↷
-          </button>
-        </>
-      )}
-      {graph && graph.workflows.length > 0 && (
-        <select className="wf-select" value={workflow ?? ""} onChange={(e) => set({ workflow: e.target.value, selection: null })}>
-          {graph.workflows.map((w) => (
-            <option key={w.name} value={w.name}>
-              {w.kind} {w.name}
-            </option>
-          ))}
-        </select>
-      )}
-      {isMh(activePath) && (
-        <button
-          className="btn"
-          title="Add a new workflow to this file"
-          onClick={() => {
-            let added = "";
-            void edit((doc) => {
-              const r = addWorkflow(doc, newWorkflowSource);
-              added = r.name;
-              return r;
-            }).then((ok) => ok && added && set({ workflow: added, selection: null }));
-          }}
-        >
-          + Workflow
+      <span className="tb-group">
+        <button className="tb-btn" onClick={() => void openFolder()} title={`Open folder… (${MOD}O)`} aria-label="Open folder">
+          <FolderOpen {...ICON} />
         </button>
+        {activePath && (
+          <button className="tb-btn" disabled={!dirty} onClick={() => void save()} title={`Save (${MOD}S)`} aria-label="Save">
+            <Save {...ICON} />
+            {dirty && <span className="tb-dirty" aria-label="unsaved changes" />}
+          </button>
+        )}
+      </span>
+      {activePath && (
+        <span className="tb-group">
+          <button className="tb-btn" onClick={undo} title={`Undo (${MOD}Z)`} aria-label="Undo">
+            <Undo2 {...ICON} />
+          </button>
+          <button className="tb-btn" onClick={redo} title={`Redo (⇧${MOD}Z)`} aria-label="Redo">
+            <Redo2 {...ICON} />
+          </button>
+        </span>
+      )}
+      {(hasWorkflows || isMh(activePath)) && (
+        <span className="wf-picker">
+          {hasWorkflows && graph && (
+            <label className="wf-select-wrap" title="The workflow the diagram shows and Run runs">
+              <Workflow {...ICON} />
+              <select className="wf-select" aria-label="Workflow" value={workflow ?? ""} onChange={(e) => set({ workflow: e.target.value, selection: null })}>
+                {graph.workflows.map((w) => (
+                  <option key={w.name} value={w.name}>
+                    {w.kind} {w.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown {...ICON} size={14} />
+            </label>
+          )}
+          {isMh(activePath) && (
+            <button
+              className="tb-btn wf-add"
+              title="New workflow in this file"
+              aria-label="New workflow"
+              onClick={() => {
+                let added = "";
+                void edit((doc) => {
+                  const r = addWorkflow(doc, newWorkflowSource);
+                  added = r.name;
+                  return r;
+                }).then((ok) => ok && added && set({ workflow: added, selection: null }));
+              }}
+            >
+              <Plus {...ICON} />
+            </button>
+          )}
+        </span>
       )}
       <span className="spacer" />
       {activePath && !noFlow && <RunControls />}
       {root && !noFlow && (
-        <div className="segmented">
-          {views.map(([v, label]) => (
-            <button key={v} className={view === v ? "active" : ""} onClick={() => set({ view: v })}>
-              {label}
+        <div className="view-switch" role="group" aria-label="View">
+          {views.map(([v, label, Icon]) => (
+            <button key={v} className={view === v ? "active" : ""} aria-pressed={view === v} aria-label={label} title={label} onClick={() => set({ view: v })}>
+              <Icon {...ICON} />
             </button>
           ))}
         </div>
@@ -173,6 +190,9 @@ export function App() {
       if (e.key === "s") {
         e.preventDefault();
         void save();
+      } else if (e.key === "o" && !e.shiftKey) {
+        e.preventDefault();
+        void openFolder();
       } else if (e.key.toLowerCase() === "z" && !inEditor) {
         e.preventDefault();
         if (e.shiftKey) redo();

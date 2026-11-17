@@ -15,6 +15,7 @@ import { currentWorkflow, get, set, useStore } from "../app/store";
 import { addAgentCallToStep, addAgentStep, addToolCallStep, addToolCallToStep, hintSchema } from "../app/library";
 import { edit } from "../app/controller";
 import { connect, deleteNode, insertState, removeEdge, type Placement } from "../sync/edits";
+import { transitionAllowed } from "../sync/kinds";
 import { END, FAIL, START } from "../lib/types";
 import type { StateKind } from "../sync/templates";
 import { layoutWorkflow, ROUTE_PREFIX, takenEdges, type FlowEdgeData, type Layout } from "./layout";
@@ -324,6 +325,8 @@ function Canvas() {
           set({ selection: null });
         }}
         onConnect={stale ? undefined : onConnect}
+        // A pipeline has no goto: a handle only snaps to End or Fail.
+        isValidConnection={(c) => !wf || !c.target || transitionAllowed(wf, c.target.startsWith("ext:") ? c.target.slice(4) : c.target)}
         onDragOver={(ev) => {
           ev.preventDefault();
           ev.dataTransfer.dropEffect = "copy";

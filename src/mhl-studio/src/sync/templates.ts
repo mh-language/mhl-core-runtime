@@ -127,8 +127,12 @@ export function renderState(kind: StateKind, ctx: TemplateContext): string {
       const arms: ChoiceTemplate["arms"] = [['"a"', a ?? null], ...(b ? [['"b"', b] as [string, string]] : [])];
       return block(`step ${name}`, choiceLines(ctx.choice ?? { subject: '"a"', arms }), indent);
     }
-    case "parallel":
-      return `${indent}parallel ${name} {\n${block(`step ${name}Left`, [], indent + IND)}\n${block(`step ${name}Right`, [], indent + IND)}\n${indent}}`;
+    case "parallel": {
+      // The merge runs once after every branch, so the group starts with the
+      // place to combine what its branches wrote (sync/merge.ts edits it later).
+      const merge = block("merge (branches)", [`// runs once after every branch; read their vars as branches.${name}Left.<var>`], indent + IND);
+      return `${indent}parallel ${name} {\n${block(`step ${name}Left`, [], indent + IND)}\n${block(`step ${name}Right`, [], indent + IND)}\n${merge}\n${indent}}`;
+    }
     case "approval":
       return block(`step ${name}`, [`pause("waiting for approval")`], indent);
     case "succeed":

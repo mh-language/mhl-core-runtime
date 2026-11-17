@@ -8,7 +8,8 @@
 import type { Declaration, Graph, GraphEdge, GraphNode, Span, Workflow } from "../lib/types";
 import { END, FAIL } from "../lib/types";
 import { OffsetMap } from "./offsets";
-import { renderState, uniqueName, STATE_PREFIX, type StateKind, type TemplateContext } from "./templates";
+import { PALETTE, renderState, uniqueName, STATE_PREFIX, type StateKind, type TemplateContext } from "./templates";
+import { stateAllowed, transitionAllowed, workflowOnlyReason } from "./kinds";
 import { addArm, choiceTemplate, nextPattern, type ChoiceTemplate } from "./choice";
 import { addMerge } from "./merge";
 
@@ -151,6 +152,7 @@ export function insertState(
   schema?: string,
 ): EditResult {
   const wf = doc.workflow(wfName);
+  if (!stateAllowed(wf, kind)) throw new EditError(workflowOnlyReason(wf, PALETTE.find((p) => p.kind === kind)?.label ?? kind));
   const taken = [...wf.nodes.map((n) => n.id), ...wf.routes.map((r) => r.name), ...wf.externals];
   const name = uniqueName(STATE_PREFIX[kind], taken);
   const tops = topLevel(wf);
@@ -351,7 +353,7 @@ export function connect(doc: Doc, wfName: string, from: string, to: string): Edi
     const target = doc.node(wf, to);
     if (target.parent) throw new EditError(`${to} is inside a parallel group; a goto must target a top-level step`);
   }
-  if (wf.kind !== "workflow" && to !== END && to !== FAIL) {
+  if (!transitionAllowed(wf, to)) {
     throw new EditError(`goto is only allowed in a workflow; ${wf.name} is a pipeline`);
   }
   const tops = topLevel(wf);

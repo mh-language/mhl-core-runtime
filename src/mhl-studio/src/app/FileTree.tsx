@@ -524,7 +524,7 @@ export function FileTree() {
       {agentPick && (
         <AgentPicker
           at={agentPick.at}
-          title={agentPick.dir ? `New agent in ${agentPick.dir}/` : "New agent — pick a CLI and a role"}
+          title={agentPick.dir ? `New agent in ${agentPick.dir}/` : "New agent — pick a CLI or an API, and a role"}
           onClose={() => setAgentPick(null)}
           onPick={(backend, role) => {
             const dir = agentPick.dir;
