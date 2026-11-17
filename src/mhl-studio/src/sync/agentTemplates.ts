@@ -1,5 +1,5 @@
 // Ready-to-use agent templates: five agent CLIs × three roles, each with the
-// flags that make that role safe and predictable on that CLI, plus two HTTP
+// flags that make that role safe and predictable on that CLI, plus three HTTP
 // APIs called with curl (see the API section below). Distilled from
 // agents running in production (every flag below was kept for a measured
 // reason, noted next to it); flags drift between CLI versions, so every
@@ -13,7 +13,7 @@
 //   builds/tests inside its repository only; a *reader* only reads it.
 // - Model and effort are per-call inputs; empty means the CLI's default.
 
-export type Backend = "claude" | "codex" | "copilot" | "antigravity" | "devin" | "claude-api" | "openai-api";
+export type Backend = "claude" | "codex" | "copilot" | "antigravity" | "devin" | "claude-api" | "openai-api" | "gemini-api";
 export type Role = "generator" | "coder" | "reader" | "text";
 
 export interface BackendInfo {
@@ -64,6 +64,7 @@ export const BACKENDS: BackendInfo[] = [
   cli("devin", "Devin CLI", "devin", "Devin", "devin 3000.12.43"),
   api("claude-api", "Claude API", "ClaudeApi", "the Messages API, anthropic-version 2026-10-21"),
   api("openai-api", "OpenAI-compatible API", "OpenAi", "the Chat Completions API"),
+  api("gemini-api", "Gemini API", "GeminiApi", "the Interactions API, v1 (stable)"),
 ];
 
 export const ROLES: { id: Role; label: string; hint: string; suffix: string }[] = [
@@ -452,7 +453,9 @@ function devin(role: Role, dir: string): Spec {
 //   from its request-id / x-request-id response header. The script, not retry_on, decides what is transient: "[retry]"
 //   is added only for a network failure, 408, 409, 5xx, or a 429 that is a
 //   rate limit — never a 429 for exhausted credit, quota or a spend limit,
-//   which no retry fixes. So retry_on is ["[retry]", "timeout"], no status
+//   which no retry fixes. That is read from the error's type/code/status
+//   only, never its message: Gemini's plain rate limit says "check your plan
+//   and billing details". So retry_on is ["[retry]", "timeout"], no status
 //   numbers (a number in an error message would match one).
 // - stdout is the answer alone (the JSON text for a structured answer);
 //   a truncated or refused answer fails instead of returning half a JSON.
@@ -467,8 +470,10 @@ function request(url: string): string[] {
     String.raw`if [ $rc -ne 0 ]; then case $rc in 7|28|52|55|56) echo "[retry] network failure (curl exit $rc)" >&2;; esac; exit 1; fi`,
     String.raw`status=$(printf '%s' "$out" | tail -n 1); resp=$(printf '%s' "$out" | sed '$d')`,
     String.raw`case $status in 2??) ;; *)`,
-    String.raw`    err=$(printf '%s' "$resp" | jq -r '(if type == "array" then .[0] else . end) | .error | ([.type, .code] | map(select(. != null) | tostring) | join(" ")) + ": " + (.message // "")' 2>/dev/null) || err=$resp`,
-    String.raw`    case $status in 408|409|5??) retry="[retry] " ;; 429) case $err in *insufficient_quota*|*credit_balance*|*spend_limit*|*usage_limit*|*billing*) retry="" ;; *) retry="[retry] " ;; esac ;; *) retry="" ;; esac`,
+    String.raw`    kind=$(printf '%s' "$resp" | jq -r '(if type == "array" then .[0] else . end) | .error | [.type, .code, .status] | map(select(. != null) | tostring) | join(" ")' 2>/dev/null)`,
+    String.raw`    msg=$(printf '%s' "$resp" | jq -r '(if type == "array" then .[0] else . end) | .error.message // empty' 2>/dev/null)`,
+    String.raw`    if [ -n "$kind$msg" ]; then err="$kind: $msg"; else err=$resp; fi`,
+    String.raw`    case $status in 408|409|5??) retry="[retry] " ;; 429) case $kind in *insufficient_quota*|*credit_balance*|*spend_limit*|*usage_limit*|*billing*) retry="" ;; *) retry="[retry] " ;; esac ;; *) retry="" ;; esac`,
     String.raw`    rid=$(tr -d '\r' < "$rh" | awk -F': *' 'tolower($1) == "request-id" || tolower($1) == "x-request-id" { id = $2 } END { print id }')`,
     String.raw`    [ -z "$rid" ] || err="$err (request id $rid)"`,
     String.raw`    printf 'HTTP %s %s%s\n' "$status" "$retry" "$err" >&2; exit 1 ;;`,
@@ -572,6 +577,44 @@ function openaiApi(role: Role): Spec {
   };
 }
 
+function geminiApi(role: Role): Spec {
+  const structured = role === "generator";
+  return {
+    description: structured
+      ? "Answers in JSON shaped by the call's schema, through the Gemini Interactions API with curl."
+      : "Answers in plain text through the Gemini Interactions API with curl.",
+    notes: [
+      ...(structured
+        ? [
+            "Call it with schema: X.content (the schema's JSON text); the answer is that JSON, ready for json.parse.",
+            "Gemini takes a subset of JSON Schema and guarantees valid JSON, not every rule: validate what matters.",
+          ]
+        : []),
+      "Needs GEMINI_API_KEY in the environment, and curl and jq on PATH, under a POSIX sh (macOS, Linux, WSL).",
+      "effort is sent as generation_config.thinking_level: minimal | low | medium | high | xhigh (empty: the model's default).",
+      "store: false — one stateless call, nothing kept server-side. Fails unless status is completed (incomplete = token limit);",
+      "a safety block is an HTTP 400 with code safety.",
+    ],
+    inputs: [`input model: string = "gemini-3.8-flash"`, `input effort: string = ""`, `input base_url: string = "https://generativelanguage.googleapis.com/v1"`],
+    args: [
+      ['"-c"'],
+      script([
+        String.raw`[ -n "$GEMINI_API_KEY" ] || { echo "GEMINI_API_KEY is not set" >&2; exit 2; }`,
+        ...HEADER_FILE,
+        String.raw`printf 'x-goog-api-key: %s\ncontent-type: application/json\n' "$GEMINI_API_KEY" > "$hdr"`,
+        String.raw`body=$(jq -Rs --arg model "$1" --arg effort "$2" --arg schema "$4" '{model: $model, input: ., store: false} + (if $effort != "" then {generation_config: {thinking_level: $effort}} else {} end) + (if $schema != "" then {response_format: {type: "text", mime_type: "application/json", schema: ($schema | fromjson)}} else {} end)') || exit 2`,
+        ...request("$3/interactions"),
+        String.raw`printf '%s' "$resp" | jq -je 'if .status == "completed" then [.steps[]? | select(.type == "model_output") | .content[]? | select(.type == "text") | .text] | join("") else error("status \(.status)" + ([.errors[]?.message] | if length > 0 then ": " + join("; ") else "" end)) end'`,
+      ]),
+      ['"gemini-api"', "$0: the name in sh's own error messages"],
+      ['"${model}", "${effort}", "${base_url}"', "$1 to $3"],
+      ...(structured ? ([['"${schema}"', "$4: response_format, the JSON Schema the answer must match"]] as Arg[]) : []),
+    ],
+    stdin: "${prompt}",
+    retry: API_RETRY,
+  };
+}
+
 function spec(backend: Backend, role: Role, dir: string): Spec {
   switch (backend) {
     case "claude":
@@ -588,6 +631,8 @@ function spec(backend: Backend, role: Role, dir: string): Spec {
       return claudeApi(role);
     case "openai-api":
       return openaiApi(role);
+    case "gemini-api":
+      return geminiApi(role);
   }
 }
 

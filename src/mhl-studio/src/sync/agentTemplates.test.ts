@@ -93,15 +93,20 @@ function mockApi(): Promise<{ url: string; close: () => void; hits: Map<string, 
     req.on("end", () => {
       const send = (code: number, body: unknown) => {
         // Each provider's request id header: request-id (Anthropic), x-request-id (OpenAI).
-        const id = req.url === "/v1/messages" ? { "request-id": "req-claude" } : { "x-request-id": "req-openai" };
+        const id = req.url === "/v1/messages" ? { "request-id": "req-claude" } : req.url === "/v1/interactions" ? {} : { "x-request-id": "req-openai" };
         res.writeHead(code, { "content-type": "application/json", ...id });
         res.end(JSON.stringify(body));
       };
       const body = JSON.parse(raw);
       const claude = req.url === "/v1/messages";
-      const authed = claude ? req.headers["x-api-key"] === "test-key" && req.headers["anthropic-version"] === "2026-10-21" : req.headers.authorization === "Bearer test-key";
+      const gemini = req.url === "/v1/interactions";
+      const authed = claude
+        ? req.headers["x-api-key"] === "test-key" && req.headers["anthropic-version"] === "2026-10-21"
+        : gemini
+          ? req.headers["x-goog-api-key"] === "test-key"
+          : req.headers.authorization === "Bearer test-key";
       if (!authed) return send(401, { type: "error", error: { type: "authentication_error", message: "bad key" } });
-      const prompt: string = body.messages[0].content;
+      const prompt: string = gemini ? body.input : body.messages[0].content;
       hits.set(prompt, (hits.get(prompt) ?? 0) + 1);
       if (prompt.startsWith("RATE")) {
         const n = (attempts.get(prompt) ?? 0) + 1;
@@ -109,13 +114,18 @@ function mockApi(): Promise<{ url: string; close: () => void; hits: Map<string, 
         if (n < 3)
           return claude
             ? send(529, { type: "error", error: { type: "overloaded_error", message: `attempt ${n}` } })
-            : send(429, { error: { type: "requests", code: "rate_limit_exceeded", message: `Rate limit reached (attempt ${n})` } });
+            : gemini
+              ? // Gemini's plain per-minute rate limit: its message talks about billing, and it must still be retried.
+                send(429, { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "You exceeded your current quota, please check your plan and billing details." } })
+              : send(429, { error: { type: "requests", code: "rate_limit_exceeded", message: `Rate limit reached (attempt ${n})` } });
       }
       // Failures no retry may repeat, and one that every retry must.
       if (prompt === "QUOTA") return send(429, { error: { type: "insufficient_quota", code: "insufficient_quota", message: "You exceeded your current quota" } });
       if (prompt === "BAD") return send(400, { type: "error", error: { type: "invalid_request_error", message: "max_tokens: 500 is too large" } });
       if (prompt === "DOWN") return send(529, { type: "error", error: { type: "overloaded_error", message: "Overloaded" } });
-      const { messages: _, ...request } = body;
+      if (prompt === "UNSAFE") return send(400, { error: { code: "safety", message: "Request blocked due to safety violations (harmful content)." } });
+      if (prompt === "LONG") return send(200, { object: "interaction", status: "incomplete", steps: [] });
+      const { messages: _m, input: _i, ...request } = body;
       const text = JSON.stringify({ echo: prompt, request, beta: req.headers["anthropic-beta"] ?? "" });
       if (claude && prompt.startsWith("REFUSE")) {
         if (!body.fallbacks) return send(200, { type: "message", stop_reason: "refusal", content: [] });
@@ -123,6 +133,15 @@ function mockApi(): Promise<{ url: string; close: () => void; hits: Map<string, 
         return send(200, { type: "message", stop_reason: "end_turn", content: [fallback, { type: "thinking", thinking: "" }, { type: "text", text }] });
       }
       if (claude) send(200, { type: "message", stop_reason: "end_turn", content: [{ type: "thinking", thinking: "" }, { type: "text", text }] });
+      else if (gemini)
+        send(200, {
+          object: "interaction",
+          status: "completed",
+          steps: [
+            { type: "thought", summary: [] },
+            { type: "model_output", content: [{ type: "text", text }] },
+          ],
+        });
       else send(200, { choices: [{ finish_reason: "stop", message: { role: "assistant", content: text, refusal: null } }] });
     });
   });
@@ -152,13 +171,30 @@ describe.skipIf(!MHL || !has("curl") || !has("jq"))("API agent templates (curl)"
       const tests = APIS.map(([b, r]) => {
         const name = agentName(b, r);
         const checks = ["is_true(a.echo == tricky)", `is_true(json.parse(${call(b, r, `"RATE ${name}"`)}).echo == "RATE ${name}")`];
-        if (r === "generator")
-          checks.push(
-            b === "claude-api"
-              ? 'is_true(a.request.output_config.format.type == "json_schema")\n        is_true(a.request.output_config.effort == "low")'
-              : 'is_true(a.request.response_format.json_schema.schema.required[0] == "echo")\n        is_true(a.request.response_format.json_schema.strict == true)\n        is_true(a.request.reasoning_effort == "low")',
-          );
-        else checks.push(b === "claude-api" ? 'is_true(a.request.model == "claude-opus-5-5")' : 'is_true(a.request.keys() == ["model"])\n        is_true(a.request.model == "gpt-6-astra")');
+        const shape: Record<string, Record<string, string[]>> = {
+          "claude-api": {
+            generator: ['is_true(a.request.output_config.format.type == "json_schema")', 'is_true(a.request.output_config.effort == "low")'],
+            text: ['is_true(a.request.model == "claude-opus-5-5")'],
+          },
+          "openai-api": {
+            generator: [
+              'is_true(a.request.response_format.json_schema.schema.required[0] == "echo")',
+              "is_true(a.request.response_format.json_schema.strict == true)",
+              'is_true(a.request.reasoning_effort == "low")',
+            ],
+            text: ['is_true(a.request.keys() == ["model"])', 'is_true(a.request.model == "gpt-6-astra")'],
+          },
+          "gemini-api": {
+            generator: [
+              'is_true(a.request.response_format.mime_type == "application/json")',
+              'is_true(a.request.response_format.schema.required[0] == "echo")',
+              'is_true(a.request.generation_config.thinking_level == "low")',
+              "is_true(a.request.store == false)",
+            ],
+            text: ['is_true(a.request.keys() == ["model", "store"])', 'is_true(a.request.model == "gemini-3.8-flash")', "is_true(a.request.store == false)"],
+          },
+        };
+        checks.push(...shape[b][r]);
         if (b === "claude-api") {
           // Refusal fallbacks: on by default, a model id names one, "" turns them off (no beta header either).
           const url = JSON.stringify(api.url);
@@ -179,7 +215,7 @@ describe.skipIf(!MHL || !has("curl") || !has("jq"))("API agent templates (curl)"
       const { stdout } = await promisify(execFile)(MHL!, ["test", "main.mh"], {
         cwd: dir,
         encoding: "utf8",
-        env: { ...process.env, ANTHROPIC_API_KEY: "test-key", OPENAI_API_KEY: "test-key" },
+        env: { ...process.env, ANTHROPIC_API_KEY: "test-key", OPENAI_API_KEY: "test-key", GEMINI_API_KEY: "test-key" },
       });
       expect(stdout).toMatch(/ 0 failed, 0 incomplete — PASSED/);
     } finally {
@@ -194,15 +230,26 @@ describe.skipIf(!MHL || !has("curl") || !has("jq"))("API agent templates (curl)"
     try {
       const run = (agent: string, prompt: string, url = api.url) =>
         `workflow W${prompt} {\n    step S {\n        log(${agent}.run(prompt: "${prompt}", base_url: ${JSON.stringify(url)}))\n    }\n}`;
-      const sources = [renderAgent("claude-api", "text").source, renderAgent("openai-api", "text").source];
+      const sources = [renderAgent("claude-api", "text").source, renderAgent("openai-api", "text").source, renderAgent("gemini-api", "text").source];
       // A port nothing listens on: the server is closed before the run.
       const closed = await mockApi();
       closed.close();
-      const flows = [run("OpenAiText", "QUOTA"), run("ClaudeApiText", "BAD"), run("ClaudeApiText", "DOWN"), run("ClaudeApiText", "NET", closed.url)];
+      const flows = [
+        run("OpenAiText", "QUOTA"),
+        run("ClaudeApiText", "BAD"),
+        run("ClaudeApiText", "DOWN"),
+        run("ClaudeApiText", "NET", closed.url),
+        run("GeminiApiText", "UNSAFE"),
+        run("GeminiApiText", "LONG"),
+      ];
       writeFileSync(join(dir, "main.mh"), `${sources.join("\n\n")}\n\n${flows.join("\n\n")}\n`);
       const fail = async (wf: string) => {
         try {
-          await promisify(execFile)(MHL!, ["run", "main.mh", "--workflow", wf], { cwd: dir, encoding: "utf8", env: { ...process.env, ANTHROPIC_API_KEY: "test-key", OPENAI_API_KEY: "test-key" } });
+          await promisify(execFile)(MHL!, ["run", "main.mh", "--workflow", wf], {
+            cwd: dir,
+            encoding: "utf8",
+            env: { ...process.env, ANTHROPIC_API_KEY: "test-key", OPENAI_API_KEY: "test-key", GEMINI_API_KEY: "test-key" },
+          });
         } catch (e) {
           const { stdout, stderr } = e as { stdout: string; stderr: string };
           return stdout + stderr;
@@ -220,6 +267,11 @@ describe.skipIf(!MHL || !has("curl") || !has("jq"))("API agent templates (curl)"
       expect(down).toContain("HTTP 529 [retry] overloaded_error: Overloaded (request id req-claude)");
       expect(api.hits.get("DOWN")).toBe(3);
       expect(await fail("WNET")).toContain("[retry] network failure (curl exit 7)");
+      // Gemini: a safety block is a 400 (never retried); a truncated answer is status incomplete.
+      const unsafe = await fail("WUNSAFE");
+      expect(unsafe).toContain("HTTP 400 safety: Request blocked due to safety violations (harmful content).");
+      expect(api.hits.get("UNSAFE")).toBe(1);
+      expect(await fail("WLONG")).toContain("status incomplete");
     } finally {
       api.close();
       rmSync(dir, { recursive: true, force: true });
