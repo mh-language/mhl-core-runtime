@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Download — Meta-Harness Language</title>
+  <meta name="description" content="Download MHL: mhl studio for macOS, Windows and Linux, the mhl CLI in one command, and the VS Code extension.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Meta-Harness Language">
+  <meta property="og:title" content="Download MHL">
+  <meta property="og:description" content="mhl studio, the mhl CLI and the VS Code extension — the right file for your system, in one click.">
+  <meta property="og:url" content="https://mh-language.github.io/mhl-core-runtime/download.html">
+  <meta property="og:image" content="https://mh-language.github.io/mhl-core-runtime/assets/mhl-studio.png">
+  <meta property="og:image:alt" content="mhl studio: a workflow diagram next to its .mh code.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Download MHL">
+  <meta name="twitter:description" content="mhl studio, the mhl CLI and the VS Code extension — the right file for your system, in one click.">
+  <meta name="twitter:image" content="https://mh-language.github.io/mhl-core-runtime/assets/mhl-studio.png">
+  <link rel="icon" href="assets/mhl-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="home.css">
+  <link rel="stylesheet" href="download.css">
+  <script src="download.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-pt="Ir para o conteúdo">Skip to content</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="index.html" aria-label="MHL — Meta-Harness Language">
+        <img src="assets/mhl-logo.png" alt="" width="36" height="36">
+        <span>MHL<small>Meta-Harness Language</small></span>
+      </a>
+      <nav aria-label="Main navigation" data-pt-aria-label="Navegação principal">
+        <a href="index.html#examples" data-pt="A linguagem">The language</a>
+        <a href="index.html#docs" data-pt="Documentação">Documentation</a>
+        <a href="download.html" aria-current="page" data-pt="Download">Download</a>
+      </nav>
+      <div class="header-actions">
+        <button id="lang-toggle" class="icon-button" type="button" aria-label="Mudar para português">PT</button>
+        <button id="theme-toggle" class="icon-button theme-toggle" type="button" aria-label="Switch to dark theme">◐</button>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="container dl-hero">
+      <div class="dl-hero-grid">
+        <div>
+          <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span><span data-pt="DOWNLOAD">DOWNLOAD</span></p>
+          <h1><span data-pt="Instale o MHL.">Get MHL.</span> <em data-pt="Comece em um minuto.">Start in a minute.</em></h1>
+          <p class="hero-description" data-pt="Escolha como quer trabalhar: desenhe workflows no studio, rode-os pelo terminal ou escreva-os no VS Code. Os três usam os mesmos arquivos .mh e o mesmo runtime.">Pick how you want to work: draw workflows in the desktop studio, run them from the terminal, or write them in VS Code. All three use the same .mh files and the same runtime.</p>
+        </div>
+        <aside class="dl-quick" aria-labelledby="quick-title">
+          <p class="dl-quick-label" id="quick-title" data-pt="INSTALAÇÃO RÁPIDA">QUICK INSTALL</p>
+          <a class="button primary dl-main" id="quick-studio" href="#studio"><span id="quick-studio-label">Download mhl studio</span><span aria-hidden="true">↓</span></a>
+          <p class="dl-meta" id="quick-studio-meta"></p>
+          <p class="dl-quick-or" id="quick-or" data-pt="ou instale a CLI pelo terminal:">or install the CLI from the terminal:</p>
+          <div class="install-command dl-code" id="quick-cli-box"><button class="copy-button" data-copy="quick-cli" type="button" data-pt="Copiar">Copy</button><pre><code id="quick-cli">curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | sh</code></pre></div>
+          <p class="dl-meta" id="quick-cli-meta">Installs mhl — and the VS Code extension, if VS Code is installed.</p>
+        </aside>
+      </div>
+
+      <div class="dl-os">
+        <p class="dl-os-label" id="os-label" data-pt="Seu sistema">Your system</p>
+        <div class="dl-os-options" role="radiogroup" aria-labelledby="os-label">
+          <button type="button" role="radio" aria-checked="false" data-os="mac-arm64">macOS <span data-pt="Apple Silicon">Apple Silicon</span></button>
+          <button type="button" role="radio" aria-checked="false" data-os="mac-x64">macOS <span>Intel</span></button>
+          <button type="button" role="radio" aria-checked="false" data-os="win-x64">Windows <span>x64</span></button>
+          <button type="button" role="radio" aria-checked="false" data-os="win-arm64">Windows <span>ARM</span></button>
+          <button type="button" role="radio" aria-checked="false" data-os="linux-x64">Linux <span>x64</span></button>
+          <button type="button" role="radio" aria-checked="false" data-os="linux-arm64">Linux <span>ARM</span></button>
+        </div>
+        <p class="dl-os-note" id="os-note" data-pt="Escolha o seu sistema para ver os arquivos certos.">Pick your system to see the right files.</p>
+      </div>
+
+      <nav class="dl-jump" aria-label="Products" data-pt-aria-label="Produtos">
+        <a href="#studio"><span class="dl-jump-num">01</span><strong>mhl studio</strong><span data-pt="App desktop: diagrama, código e execução ao vivo">Desktop app: diagram, code and live runs</span></a>
+        <a href="#cli"><span class="dl-jump-num">02</span><strong data-pt="CLI mhl">mhl CLI</strong><span data-pt="Rode, teste e sirva workflows pelo terminal">Run, test and serve workflows from the terminal</span></a>
+        <a href="#vscode"><span class="dl-jump-num">03</span><strong data-pt="Extensão VS Code">VS Code extension</strong><span data-pt="Destaque, diagnósticos e completion para .mh">Highlighting, diagnostics and completion for .mh</span></a>
+      </nav>
+    </section>
+
+    <section id="studio" class="container dl-product">
+      <div class="dl-product-copy">
+        <p class="eyebrow" data-pt="01 / DESKTOP">01 / DESKTOP</p>
+        <h2>mhl studio</h2>
+        <p class="dl-lede" data-pt="Desenhe workflows como diagrama, sincronizado com o código, rode-os ao vivo e teste a pasta como servidor MCP. O runtime vem junto — não há mais nada para instalar.">Design workflows as a diagram kept in sync with the code, run them live, and test the folder as an MCP server. The runtime comes bundled — nothing else to install.</p>
+
+        <div class="dl-actions">
+          <a class="button primary dl-main" id="studio-main" href="https://github.com/mh-language/mhl-core-runtime/releases?q=studio-v&amp;expanded=true"><span id="studio-main-label" data-pt="Baixar mhl studio">Download mhl studio</span><span aria-hidden="true">↓</span></a>
+          <p class="dl-meta" id="studio-meta" data-pt="Instaladores para macOS, Windows e Linux nas releases studio-v do GitHub.">Installers for macOS, Windows and Linux on the GitHub studio-v releases.</p>
+        </div>
+        <ul class="dl-alt" id="studio-alt" hidden></ul>
+
+        <div class="dl-pending" id="studio-pending" hidden>
+          <p><strong data-pt="A primeira versão do mhl studio está a caminho.">The first release of mhl studio is on its way.</strong> <span data-pt="Enquanto isso, compile a partir do código (Go, Node 22 e Rust) ou instale a CLI abaixo.">Meanwhile, build it from source (Go, Node 22 and Rust) or install the CLI below.</span></p>
+          <div class="install-command dl-code">
+            <button class="copy-button" data-copy="studio-build" type="button" data-pt="Copiar">Copy</button>
+            <pre><code id="studio-build">git clone https://github.com/mh-language/mhl-core-runtime
+cd mhl-core-runtime/src/mhl-studio
+npm install
+npm run tauri build   # an installer for this machine</code></pre>
+          </div>
+        </div>
+
+        <details class="dl-firstrun" id="studio-firstrun">
+          <summary data-pt="Primeira abertura: os instaladores ainda não são assinados">First launch: the installers are not code-signed yet</summary>
+          <dl>
+            <dt data-os-only="mac">macOS</dt>
+            <dd data-os-only="mac"><span data-pt="Arraste o mhl studio para Aplicativos. Se disser que o app “está danificado” ou “não pode ser aberto”, rode uma vez:">Drag mhl studio to Applications. If it says the app “is damaged” or “can't be opened”, run once:</span> <code>xattr -dr com.apple.quarantine "/Applications/mhl studio.app"</code> <span data-pt="(ou clique com o botão direito no app → Abrir).">(or right-click the app → Open).</span></dd>
+            <dt data-os-only="win">Windows</dt>
+            <dd data-os-only="win" data-pt="O SmartScreen mostra “O Windows protegeu o computador”: clique em Mais informações → Executar assim mesmo.">SmartScreen shows “Windows protected your PC”: click More info → Run anyway.</dd>
+            <dt data-os-only="linux">Linux</dt>
+            <dd data-os-only="linux"><span data-pt="Torne o AppImage executável:">Make the AppImage executable:</span> <code>chmod +x mhl.studio_*.AppImage</code><span data-pt=". O .deb e o .rpm instalam pelo gerenciador de pacotes.">. The .deb and .rpm install through your package manager.</span></dd>
+          </dl>
+        </details>
+        <a class="text-link dl-guide" href="Docs-Studio.dc.html"><span data-pt="Ler o guia do studio">Read the studio guide</span><span aria-hidden="true">→</span></a>
+      </div>
+      <a class="dl-shot" href="Docs-Studio.dc.html" aria-label="mhl studio guide" data-pt-aria-label="Guia do mhl studio">
+        <img src="assets/mhl-studio.png" width="3200" height="2000" alt="mhl studio: the files, a workflow diagram, its .mh code and the inspector side by side." loading="lazy">
+      </a>
+    </section>
+
+    <section id="cli" class="start-section dl-cli">
+      <div class="container dl-cli-layout">
+        <div class="start-copy">
+          <p class="eyebrow" data-pt="02 / TERMINAL">02 / TERMINAL</p>
+          <h2 data-pt="A CLI mhl">The mhl CLI</h2>
+          <p data-pt="Roda, valida, testa e serve workflows (MCP e A2A). Um comando instala a CLI — e também a extensão do VS Code, se o VS Code estiver instalado.">Runs, lints, tests and serves workflows (MCP and A2A). One command installs it — and the VS Code extension too, if VS Code is installed.</p>
+          <p class="dl-meta dl-meta-dark" id="cli-meta"></p>
+        </div>
+        <div class="start-steps">
+          <div class="install-step">
+            <h3><span>1</span><span data-pt="Instale">Install</span></h3>
+            <div class="install-options">
+              <details open id="cli-unix"><summary>macOS / Linux</summary><div class="install-command"><button class="copy-button" data-copy="install-unix" type="button" data-pt="Copiar">Copy</button><pre><code id="install-unix">curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | sh</code></pre></div></details>
+              <details id="cli-windows"><summary>Windows / PowerShell</summary><div class="install-command"><button class="copy-button" data-copy="install-windows" type="button" data-pt="Copiar">Copy</button><pre><code id="install-windows">irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.ps1 | iex</code></pre></div></details>
+            </div>
+            <p class="dl-cli-note" id="cli-intel" hidden data-pt="Não há binário publicado da CLI para Macs Intel. Use o mhl studio (que traz o runtime) ou compile: cd src/mhl-runtime && make build.">There is no published CLI binary for Intel Macs. Use mhl studio (it bundles the runtime) or build it: cd src/mhl-runtime &amp;&amp; make build.</p>
+            <p class="dl-archive" id="cli-archive-row"><span data-pt="Prefere baixar o arquivo?">Rather download the archive?</span> <a id="cli-archive" href="https://github.com/mh-language/mhl-core-runtime/releases/latest" data-pt="Página da última versão ↗">Latest release page ↗</a> <a id="cli-checksums" href="https://github.com/mh-language/mhl-core-runtime/releases/latest" hidden>checksums.txt</a></p>
+          </div>
+          <div class="install-step">
+            <h3><span>2</span><span data-pt="Confira">Check it</span></h3>
+            <div class="install-command"><button class="copy-button" data-copy="cli-check" type="button" data-pt="Copiar">Copy</button><pre><code id="cli-check">mhl version</code></pre></div>
+            <p class="dl-cli-note" data-pt="Abra um novo terminal antes: o instalador põe o mhl em ~/.mhl/bin (%LOCALAPPDATA%\mhl\bin no Windows) e no PATH.">Open a new terminal first: the installer puts mhl in ~/.mhl/bin (%LOCALAPPDATA%\mhl\bin on Windows) and on your PATH.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="vscode" class="container dl-product dl-vscode">
+      <div class="dl-product-copy">
+        <p class="eyebrow" data-pt="03 / EDITOR">03 / EDITOR</p>
+        <h2 data-pt="Extensão para VS Code">VS Code extension</h2>
+        <p class="dl-lede" data-pt="Destaque de sintaxe, diagnósticos, completion, hover e assinaturas para arquivos .mh, com o mhl lsp. Precisa da CLI mhl no PATH.">Syntax highlighting, diagnostics, completion, hover and signature help for .mh files, powered by mhl lsp. It needs the mhl CLI on your PATH.</p>
+        <div class="dl-actions">
+          <a class="button primary" href="https://marketplace.visualstudio.com/items?itemName=mhl-language.mhl-language" target="_blank" rel="noreferrer"><span data-pt="Abrir no Marketplace">Open in the Marketplace</span><span aria-hidden="true">↗</span></a>
+          <a class="button dl-secondary" href="https://open-vsx.org/extension/mhl-language/mhl-language" target="_blank" rel="noreferrer"><span data-pt="Open VSX (VSCodium, Cursor…)">Open VSX (VSCodium, Cursor…)</span><span aria-hidden="true">↗</span></a>
+        </div>
+        <p class="dl-meta" id="vsix-row"><span data-pt="Ou instale pelo terminal:">Or install from the terminal:</span></p>
+        <div class="install-command dl-code">
+          <button class="copy-button" data-copy="vscode-install" type="button" data-pt="Copiar">Copy</button>
+          <pre><code id="vscode-install">code --install-extension mhl-language.mhl-language</code></pre>
+        </div>
+        <p class="dl-meta"><span data-pt="Offline? Baixe o">Offline? Download the</span> <a id="vsix-link" href="https://github.com/mh-language/mhl-core-runtime/releases/latest">.vsix</a> <span data-pt="e use Extensões → ⋯ → Install from VSIX…">and use Extensions → ⋯ → Install from VSIX…</span></p>
+      </div>
+    </section>
+
+    <section class="container dl-next">
+      <div class="section-heading">
+        <p class="eyebrow" data-pt="04 / PRÓXIMO PASSO">04 / NEXT</p>
+        <h2 data-pt="Depois, escreva seu primeiro workflow.">Then write your first workflow.</h2>
+      </div>
+      <div class="docs-grid dl-next-grid">
+        <a href="index.html#start"><span class="doc-number">01 <span aria-hidden="true">↗</span></span><h3 data-pt="Primeira execução">Your first run</h3><p data-pt="Salve hello.mh e rode com mhl run — três passos.">Save hello.mh and run it with mhl run — three steps.</p></a>
+        <a data-playground href="playground-en.html"><span class="doc-number">02 <span aria-hidden="true">↗</span></span><h3>Playground</h3><p data-pt="Lições editáveis, do básico a MCP e A2A.">Editable lessons, from the basics to MCP and A2A.</p></a>
+        <a href="Docs-Studio.dc.html"><span class="doc-number">03 <span aria-hidden="true">↗</span></span><h3 data-pt="Guia do studio">Studio guide</h3><p data-pt="Um tour do studio, com o exemplo completo.">A tour of the studio, with a complete example.</p></a>
+        <a href="Docs-Reference.dc.html"><span class="doc-number">04 <span aria-hidden="true">↗</span></span><h3 data-pt="Referência">Reference</h3><p data-pt="Sintaxe, agentes, ferramentas e comandos da CLI.">Syntax, agents, tools and CLI commands.</p></a>
+      </div>
+      <p class="dl-all"><span data-pt="Versões anteriores e notas de release:">Older versions and release notes:</span> <a href="https://github.com/mh-language/mhl-core-runtime/releases?q=studio-v&amp;expanded=true" data-pt="releases do studio ↗">studio releases ↗</a> · <a href="https://github.com/mh-language/mhl-core-runtime/releases" data-pt="todas as releases ↗">all releases ↗</a> · <a href="https://github.com/mh-language/mhl-core-runtime/blob/main/CHANGELOG.md" data-pt="changelog ↗">changelog ↗</a></p>
+    </section>
+  </main>
+  <footer class="container site-footer"><a class="footer-brand" href="index.html">MHL <span>Meta-Harness Language</span></a><p data-pt="O fluxo no código. A IA na execução.">The flow in code. AI in execution.</p><a href="https://github.com/mh-language/mhl-core-runtime">GitHub ↗</a></footer>
+  <div id="copy-status" class="visually-hidden" role="status" aria-live="polite"></div>
+</body>
+</html>
