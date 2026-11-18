@@ -189,25 +189,33 @@ as one object by `Pipeline.BindInputs`; `Out` requires an explicit `output:` (li
 `types.Type.Optional`). New AST fields are tagged `digest:"omitzero"` so unused ones don't change
 `DefinitionDigest` (pinned by `TestDefinitionDigestUnchangedByOmitzeroFields`).
 
-VS Code extension, from `src/vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
-`mhl` on `PATH`):
+VS Code extension, from `src/vscode-mhl`. Like the studio's sidecar, it vendors the runtime:
+`scripts/vendor-runtime.mjs --target <vscode-target>` builds package.json's `"mhlRuntime"` tag
+(a released `vX.Y.Z`, via `git archive`; `--source` builds the working tree instead) into `bin/`
+(`mhl[.exe]`, `mhl.json` {target, version}, LICENSE/THIRD_PARTY_NOTICES), and `vsce package
+--target` carries it. The extension (`serverPath.ts`) starts `mhl.serverPath` if set, else
+`bin/mhl` when `mhl.json`'s target matches the host, else `mhl` on `PATH`:
 
 ```sh
 npm install
 npm run compile   # esbuild bundle to out/extension.js
+npm test          # node --test test/*.test.mjs (serverPath.ts, vendor-runtime.mjs)
 npm run watch
-npx @vscode/vsce package   # .vsix
+npm run vendor -- [--target darwin-arm64] [--source]   # needs go
+npx @vscode/vsce package [--target darwin-arm64]       # .vsix (universal = no bin/)
 ```
 Open `src/vscode-mhl/` in VS Code and press F5 for an Extension Development Host.
 
 The extension ships on its own version and tag, not the runtime's: pushing
 `extensions-v<version>` (must equal `package.json`'s version) runs
-`.github/workflows/publish-extension.yml`, which publishes one VSIX to the VS Marketplace via
-Trusted Publishing (OIDC, no stored PAT) and to Open VSX (`OPEN_VSX` secret). The Marketplace
+`.github/workflows/publish-extension.yml`, which builds one VSIX per platform target (matrix ↔
+`goTarget`, checked by `test/vendor-runtime.test.mjs`) plus a universal one without `bin/`, and
+publishes them all to the VS Marketplace via Trusted Publishing (OIDC, no stored PAT) and to Open
+VSX (`OPEN_VSX` secret). `release.yml`'s VSIX (for install.sh) stays universal. The Marketplace
 policy names that workflow file, so renaming it means updating the policy.
 `src/vscode-mhl/release.sh [X.Y.Z] [--dry-run]` cuts that tag: it checks package.json/lock/CHANGELOG
-agree, the tree is clean and in sync with `origin/main`, packages with the workflow's pinned
-`vsce`, then pushes the tag — it publishes nothing itself.
+agree, the tree is clean and in sync with `origin/main`, `mhlRuntime` is a tag on `origin`,
+packages (universal + host target) with the workflow's pinned `vsce`, then pushes the tag — it publishes nothing itself.
 
 ## Architecture — `src/mhl-runtime`
 

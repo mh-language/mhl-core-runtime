@@ -1,4 +1,6 @@
+import * as fs from "fs";
 import * as os from "os";
+import * as path from "path";
 import * as vscode from "vscode";
 import {
   LanguageClient,
@@ -6,13 +8,31 @@ import {
   ServerOptions,
   TransportKind,
 } from "vscode-languageclient/node";
-import { DEFAULT_SERVER_PATH, resolveServerPath } from "./serverPath";
+import {
+  BundledManifest,
+  bundledMatchesHost,
+  resolveServerPath,
+} from "./serverPath";
 
 const INSTALL_URL = "https://github.com/mh-language/mhl-core-runtime#install";
 
 let client: LanguageClient | undefined;
+// The runtime vendored into a platform-specific VSIX (bin/mhl), if this
+// install carries one built for this host.
+let bundled: string | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
+  bundled = findBundledServer(context.extensionPath);
+  // Integrated terminals get the bundled `mhl` too. Appended, so an mhl the
+  // user installed on PATH still wins there. The collection persists across
+  // sessions, so it is rebuilt every activation (an update may drop bin/).
+  const env = context.environmentVariableCollection;
+  env.clear();
+  if (bundled !== undefined) {
+    env.description = "Makes the mhl CLI bundled with the MHL extension available as a fallback on PATH.";
+    env.append("PATH", path.delimiter + path.dirname(bundled));
+  }
+
   context.subscriptions.push(
     vscode.commands.registerCommand("mhl.restartLanguageServer", restart),
     vscode.commands.registerCommand(
@@ -95,9 +115,38 @@ async function restart() {
 }
 
 function configuredServerPath(): string {
-  const configured = vscode.workspace
-    .getConfiguration("mhl")
-    .get<string>("serverPath", DEFAULT_SERVER_PATH);
+  const configured = vscode.workspace.getConfiguration("mhl").get<string>("serverPath", "");
   const folder = vscode.workspace.workspaceFolders?.[0];
-  return resolveServerPath(configured, folder?.uri.fsPath, vscode.workspace.isTrusted);
+  return resolveServerPath(configured, folder?.uri.fsPath, vscode.workspace.isTrusted, bundled);
+}
+
+// findBundledServer returns bin/mhl[.exe] when bin/mhl.json says it was built
+// for this host, else undefined (a universal VSIX has no bin/ at all).
+function findBundledServer(extensionPath: string): string | undefined {
+  const binDir = path.join(extensionPath, "bin");
+  let manifest: BundledManifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(binDir, "mhl.json"), "utf8"));
+  } catch {
+    return undefined;
+  }
+  if (!bundledMatchesHost(String(manifest.target), process.platform, process.arch)) {
+    return undefined;
+  }
+  const binary = path.join(binDir, process.platform === "win32" ? "mhl.exe" : "mhl");
+  if (!fs.existsSync(binary)) {
+    return undefined;
+  }
+  if (process.platform !== "win32") {
+    // Defensive: should the VSIX extraction drop the executable bit, restore
+    // it. The extension directory may be read-only; then the spawn error says why.
+    try {
+      if ((fs.statSync(binary).mode & 0o111) === 0) {
+        fs.chmodSync(binary, 0o755);
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return binary;
 }

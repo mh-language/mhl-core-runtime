@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
+
+### Added
+
+- The extension bundles the `mhl` CLI (v1.11.1) on `linux-x64`, `linux-arm64`,
+  `alpine-x64`, `alpine-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64` and
+  `win32-arm64`, so diagnostics, completion and navigation work without installing
+  it. It is also appended to `PATH` in integrated terminals. Other platforms get a
+  universal package that uses `mhl` on `PATH`, as before.
+
+### Changed
+
+- `mhl.serverPath` defaults to empty, meaning the bundled CLI, else `mhl` on `PATH`.
+  Set it to `mhl` to keep using an installed CLI instead of the bundled one.
 
 ### Fixed
 

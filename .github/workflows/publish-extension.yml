@@ -15,14 +15,38 @@ permissions:
   contents: read
 
 jobs:
+  # One VSIX per VS Code platform target, each carrying the runtime pinned in
+  # package.json's "mhlRuntime" (scripts/vendor-runtime.mjs builds it from that
+  # tag), plus a universal VSIX without one: the registries serve each user the
+  # package for their platform and fall back to the universal one, which uses
+  # `mhl` on PATH. Keep the matrix in sync with scripts/vendor-runtime.mjs's
+  # goTarget (test/vendor-runtime.test.mjs checks it).
   package:
+    name: package (${{ matrix.target }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: linux-x64
+          - target: linux-arm64
+          - target: alpine-x64
+          - target: alpine-arm64
+          - target: darwin-x64
+          - target: darwin-arm64
+          - target: win32-x64
+          - target: win32-arm64
+          - target: universal
     defaults:
       run:
         working-directory: src/vscode-mhl
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The runtime is built from its release tag, so the tags (and the
+          # commits they point at) must be in the clone.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -30,6 +54,13 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: src/vscode-mhl/package-lock.json
+
+      - name: Setup Go
+        if: matrix.target != 'universal'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/mhl-runtime/go.mod
+          cache: false
 
       - name: Check the tag matches package.json
         run: |
@@ -42,14 +73,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test
+        run: npm test
+
+      - name: Vendor the runtime
+        if: matrix.target != 'universal'
+        run: node scripts/vendor-runtime.mjs --target "${{ matrix.target }}"
+
+      - name: Smoke-test the vendored runtime
+        if: matrix.target == 'linux-x64'
+        run: |
+          expected="$(node -p "require('./package.json').mhlRuntime")"
+          ./bin/mhl version | tee /dev/stderr | grep -F "$expected"
+
       - name: Package
-        run: npx --yes @vscode/vsce@4.1.0 package --out mhl-language.vsix
+        run: |
+          if [ "${{ matrix.target }}" = universal ]; then
+            npx --yes @vscode/vsce@4.1.0 package --out "mhl-language-universal.vsix"
+          else
+            npx --yes @vscode/vsce@4.1.0 package --target "${{ matrix.target }}" --out "mhl-language-${{ matrix.target }}.vsix"
+          fi
 
       - name: Upload VSIX
         uses: actions/upload-artifact@v4
         with:
-          name: vsix
-          path: src/vscode-mhl/mhl-language.vsix
+          name: vsix-${{ matrix.target }}
+          path: src/vscode-mhl/mhl-language-${{ matrix.target }}.vsix
           if-no-files-found: error
 
   # Only this job can mint an OIDC token, and it installs nothing from the repo.
@@ -65,17 +114,24 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Download VSIX
+      - name: Download VSIXs
         uses: actions/download-artifact@v4
         with:
-          name: vsix
+          pattern: vsix-*
+          merge-multiple: true
 
       # --skip-duplicate lets a failed run be re-run without failing on the
-      # registry that already accepted this version.
+      # registry that already accepted this version (or one of its targets).
       - name: Publish to the Visual Studio Marketplace
-        run: npx --yes @vscode/vsce@4.1.0 publish --packagePath mhl-language.vsix --oidc --skip-duplicate
+        run: |
+          for vsix in mhl-language-*.vsix; do
+            npx --yes @vscode/vsce@4.1.0 publish --packagePath "$vsix" --oidc --skip-duplicate
+          done
 
       - name: Publish to Open VSX
         env:
           OVSX_PAT: ${{ secrets.OPEN_VSX }}
-        run: npx --yes ovsx@1.3.0 publish --packagePath mhl-language.vsix --skip-duplicate
+        run: |
+          for vsix in mhl-language-*.vsix; do
+            npx --yes ovsx@1.3.0 publish --packagePath "$vsix" --skip-duplicate
+          done

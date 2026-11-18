@@ -7,3 +7,6 @@ package-lock.json
 .vscodeignore
 install.sh
 release.sh
+scripts/**
+test/**
+out/test/**

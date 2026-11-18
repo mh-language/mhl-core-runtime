@@ -11,7 +11,8 @@
   "bugs": {
     "url": "https://github.com/mh-language/mhl-core-runtime/issues"
   },
-  "version": "0.7.3",
+  "version": "0.8.0",
+  "mhlRuntime": "v1.11.1",
   "publisher": "mhl-language",
   "icon": "assets/mhl-logo-rebrand.png",
   "license": "MIT",
@@ -94,8 +95,8 @@
       "properties": {
         "mhl.serverPath": {
           "type": "string",
-          "default": "mhl",
-          "description": "Path to the mhl binary used to run the language server (`mhl lsp`). Defaults to `mhl` on PATH; supports ${workspaceFolder}. In Restricted Mode, workspace values and ${workspaceFolder} are ignored."
+          "default": "",
+          "markdownDescription": "Path to the `mhl` binary used to run the language server (`mhl lsp`). Leave empty to use the runtime bundled with the extension, or `mhl` on PATH when this platform has none. Supports `${workspaceFolder}`. In Restricted Mode, workspace values and `${workspaceFolder}` are ignored."
         }
       }
     }
@@ -103,7 +104,9 @@
   "scripts": {
     "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node18",
     "watch": "npm run compile -- --watch",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "vendor": "node scripts/vendor-runtime.mjs",
+    "test": "esbuild src/serverPath.ts --bundle --format=esm --platform=node --outfile=out/test/serverPath.mjs && node --test test/*.test.mjs"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
