@@ -4,6 +4,15 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
+## 0.2.0
+
+### Added
+
+- **Native ARM builds.** Windows on ARM gets its own installer
+  (`mhl.studio_X.Y.Z_arm64-setup.exe`) instead of the x64 one under emulation. There
+  is no ARM64 `.msi`, because WiX does not support it. Linux on ARM gets an
+  `.AppImage`, a `.deb` and an `.rpm`. Each bundles the `mhl` runtime built for ARM64.
+
 ## 0.1.0
 
 First public preview. The installers are not code-signed yet.
