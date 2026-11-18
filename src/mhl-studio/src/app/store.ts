@@ -4,6 +4,9 @@ import { isEnvName } from "../sync/templates";
 
 export type View = "split" | "design" | "code";
 
+/** The main area: the workflow editor, or the MCP test bench (src/mcp). */
+export type Mode = "editor" | "mcp";
+
 /** A step's state in the execution view. */
 export type NodeRunStatus = "running" | "succeeded" | "failed" | "paused" | "skipped";
 
@@ -83,6 +86,7 @@ export interface State {
   /** The tool (and method) open in the inspector; exclusive with `selection`. */
   tool: { name: string; method: string | null } | null;
   view: View;
+  mode: Mode;
   toast: Toast | null;
   mhlVersion: string;
   inspection: Inspection | null;
@@ -120,6 +124,7 @@ export const useStore = create<State>(() => ({
   importFocus: null,
   tool: null,
   view: "split",
+  mode: "editor",
   toast: null,
   mhlVersion: "",
   inspection: null,

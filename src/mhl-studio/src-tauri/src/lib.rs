@@ -1,10 +1,11 @@
 //! mhl studio backend: a thin layer between the webview and the vendored `mhl`
 //! binary. Every language decision — parsing, linting, the workflow graph,
 //! execution — is made by `mhl` itself (`graph`, `run --format jsonl`,
-//! `run --dry-run`, `lsp`); this crate only spawns it, pipes data and
+//! `run --dry-run`, `lsp`, `serve mcp`); this crate only spawns it, pipes data and
 //! streams events back to the UI.
 
 mod lsp;
+mod mcp;
 mod mhl;
 mod run;
 mod shellenv;
@@ -19,6 +20,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(run::Runs::default())
         .manage(lsp::Lsp::default())
+        .manage(mcp::Mcp::default())
         .invoke_handler(tauri::generate_handler![
             workspace::list_files,
             workspace::read_file,
@@ -36,6 +38,10 @@ pub fn run() {
             lsp::lsp_start,
             lsp::lsp_send,
             lsp::lsp_stop,
+            mcp::mcp_start,
+            mcp::mcp_send,
+            mcp::mcp_http,
+            mcp::mcp_stop,
             shellenv::find_clis,
         ])
         .run(tauri::generate_context!())

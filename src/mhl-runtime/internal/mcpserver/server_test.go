@@ -174,6 +174,68 @@ pipeline Flow {
 	}
 }
 
+// A tools/call whose run stops at pause() must not read as a completed run:
+// the reply says paused (in _meta and in a second text block), keeps the
+// partial vars where they were, and is not resumable.
+func TestServeToolCallMarksPausedRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(`
+workflow Gate {
+    input approved: bool = false
+    var ok = false
+    step Prepare { ok = false }
+    step Ask {
+        if (!approved) { pause("awaiting approval") }
+        ok = true
+    }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	in := strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Gate","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"Gate","arguments":{"approved":true}}}`,
+	}, "\n") + "\n")
+
+	var out bytes.Buffer
+	if err := mcpserver.Serve(context.Background(), dir, in, &out, io.Discard); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	msgs := decodeLines(t, out.String())
+	paused := msgs[len(msgs)-2]["result"].(map[string]any)
+	if paused["isError"] != false {
+		t.Fatalf("isError = %v, want false (a pause is not a failure)", paused["isError"])
+	}
+	if sc := paused["structuredContent"].(map[string]any); sc["ok"] != false {
+		t.Fatalf("structuredContent = %v, want the partial vars", sc)
+	}
+	meta, _ := paused["_meta"].(map[string]any)
+	run, _ := meta["mhl.run"].(map[string]any)
+	if run["state"] != "paused" || run["reason"] != "awaiting approval" || run["step"] != "Ask" || run["resumable"] != false {
+		t.Fatalf(`_meta["mhl.run"] = %v, want state=paused reason="awaiting approval" step=Ask resumable=false`, run)
+	}
+	if hint, _ := run["hint"].(string); !strings.Contains(hint, "serve over HTTP") {
+		t.Errorf("stdio hint = %q, want it to point at the HTTP transport", hint)
+	}
+	content := paused["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("content has %d blocks, want the vars and a pause note", len(content))
+	}
+	if note := content[1].(map[string]any)["text"].(string); !strings.Contains(note, `paused at step "Ask": awaiting approval`) {
+		t.Errorf("pause note = %q", note)
+	}
+
+	done := msgs[len(msgs)-1]["result"].(map[string]any)
+	if _, ok := done["_meta"]; ok {
+		t.Errorf("a completed run's reply carries _meta: %v", done["_meta"])
+	}
+	if n := len(done["content"].([]any)); n != 1 {
+		t.Errorf("a completed run's reply has %d content blocks, want 1", n)
+	}
+}
+
 func TestServeUnknownMethodAndTool(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(

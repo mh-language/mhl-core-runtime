@@ -1,0 +1,30 @@
+// `mhl serve mcp` (stdio) answering a tools/call whose workflow stops at
+// pause(): the reply is not a failure (isError false) and keeps the partial
+// vars in structuredContent, but it says the run paused — in
+// _meta["mhl.run"] (state, reason, step, resumable: false, a hint) and in a
+// second text block for a client that only reads `content`. A synchronous
+// call keeps no run state, so it can't be resumed; the hint points at
+// run/start. The server is this very binary (os.executable()), run in a
+// throwaway directory holding GATE and fed two JSON-RPC lines on stdin.
+
+test serve_mcp_marks_a_paused_tools_call {
+    describe serve_mcp_marks_a_paused_tools_call {
+        var GATE = "workflow Gate {\n    input approved: bool = false\n    var ok = false\n    step Ask {\n        if (!approved) { pause(\"awaiting approval\") }\n        ok = true\n    }\n}\n"
+        var INIT = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{}}}"
+        var CALL = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"Gate\",\"arguments\":{}}}"
+        var SERVE = "d=$(mktemp -d) && printf '%s' \"$2\" > \"$d/gate.mh\" && printf '%s\\n' \"$3\" \"$4\" | (cd \"$d\" && \"$1\" serve mcp .) 2>/dev/null; rm -rf \"$d\""
+        var out = cmd.exec(["sh", "-c", SERVE, "sh", os.executable(), GATE, INIT, CALL])
+        are_equal(out.exit_code, 0)
+        var lines = out.stdout.trim().split("\n")
+        var reply = json.parse(lines[lines.size() - 1]).result
+        are_equal(reply.isError, false)
+        are_equal(reply.structuredContent.ok, false)
+        var run = reply._meta["mhl.run"]
+        are_equal(run.state, "paused")
+        are_equal(run.reason, "awaiting approval")
+        are_equal(run.step, "Ask")
+        are_equal(run.resumable, false)
+        are_equal(reply.content.size(), 2)
+        is_true(reply.content[1].text.contains("paused at step"))
+    }
+}

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import { ChevronDown, Code, Columns2, FolderOpen, Plus, Redo2, Save, Undo2, Workflow, type LucideIcon } from "lucide-react";
+import { ChevronDown, Code, Columns2, FolderOpen, PenLine, Plug, Plus, Redo2, Save, Undo2, Workflow, type LucideIcon } from "lucide-react";
 import { edit, openFolder, redo, save, undo } from "./controller";
-import { hasNoWorkflow, isMh, set, useStore, type View } from "./store";
+import { hasNoWorkflow, isMh, set, useStore, type Mode, type View } from "./store";
 import { addWorkflow } from "../sync/edits";
 import { newWorkflowSource } from "../sync/templates";
 import { WorkflowCanvas } from "../canvas/WorkflowCanvas";
@@ -10,6 +10,8 @@ import { StatesBar } from "../palette/StatesBar";
 import { Inspector } from "../inspector/Inspector";
 import { RunPanel } from "../run/RunPanel";
 import { RunControls } from "../run/RunControls";
+import { McpPanel } from "../mcp/McpPanel";
+import { useMcp } from "../mcp/store";
 import { togglePanel, type Panel } from "./panels";
 import { FileTree } from "./FileTree";
 import { ICON } from "../lib/icons";
@@ -50,12 +52,13 @@ function LayoutToggles() {
   const leftOpen = useStore((s) => s.leftOpen);
   const rightOpen = useStore((s) => s.rightOpen);
   const bottomOpen = useStore((s) => s.bottomOpen);
+  const editor = useStore((s) => s.mode === "editor");
   if (!root) return null;
   return (
     <span className="tb-group">
       <PanelToggle panel="left" open={leftOpen} label="files" keys={`${MOD}B`} />
-      {activePath && !noFlow && <PanelToggle panel="bottom" open={bottomOpen} label="run panel" keys={`${MOD}J`} />}
-      {isMh(activePath) && view !== "code" && <PanelToggle panel="right" open={rightOpen} label="inspector" keys={`${ALT}${MOD}B`} />}
+      {editor && activePath && !noFlow && <PanelToggle panel="bottom" open={bottomOpen} label="run panel" keys={`${MOD}J`} />}
+      {editor && isMh(activePath) && view !== "code" && <PanelToggle panel="right" open={rightOpen} label="inspector" keys={`${ALT}${MOD}B`} />}
     </span>
   );
 }
@@ -69,6 +72,7 @@ function Toolbar() {
   const activePath = useStore((s) => s.activePath);
   const dirty = useStore((s) => (s.activePath ? s.dirty[s.activePath] : false));
   const mhlVersion = useStore((s) => s.mhlVersion);
+  const editor = useStore((s) => s.mode === "editor");
   const views: [View, string, LucideIcon][] = [
     ["design", "Design", Workflow],
     ["split", "Split", Columns2],
@@ -89,7 +93,8 @@ function Toolbar() {
           </button>
         )}
       </span>
-      {activePath && (
+      {root && <ModeSwitch />}
+      {editor && activePath && (
         <span className="tb-group">
           <button className="tb-btn" onClick={undo} title={`Undo (${MOD}Z)`} aria-label="Undo">
             <Undo2 {...ICON} />
@@ -99,7 +104,7 @@ function Toolbar() {
           </button>
         </span>
       )}
-      {(hasWorkflows || isMh(activePath)) && (
+      {editor && (hasWorkflows || isMh(activePath)) && (
         <span className="wf-picker">
           {hasWorkflows && graph && (
             <label className="wf-select-wrap" title="The workflow the diagram shows and Run runs">
@@ -134,8 +139,8 @@ function Toolbar() {
         </span>
       )}
       <span className="spacer" />
-      {activePath && !noFlow && <RunControls />}
-      {root && !noFlow && (
+      {editor && activePath && !noFlow && <RunControls />}
+      {editor && root && !noFlow && (
         <div className="view-switch" role="group" aria-label="View">
           {views.map(([v, label, Icon]) => (
             <button key={v} className={view === v ? "active" : ""} aria-pressed={view === v} aria-label={label} title={label} onClick={() => set({ view: v })}>
@@ -149,6 +154,30 @@ function Toolbar() {
         {mhlVersion}
       </span>
     </header>
+  );
+}
+
+/**
+ * Switches the main area between the workflow editor and the MCP test bench:
+ * both modes always shown, so the way back is as visible as the way in.
+ */
+function ModeSwitch() {
+  const mode = useStore((s) => s.mode);
+  const serving = useMcp((s) => s.status === "ready");
+  const modes: [Mode, string, string, LucideIcon][] = [
+    ["editor", "Editor", "Edit the workflows (diagram and code)", PenLine],
+    ["mcp", "MCP", "Test this folder as an MCP server (mhl serve mcp)", Plug],
+  ];
+  return (
+    <div className="mode-switch" role="group" aria-label="Mode">
+      {modes.map(([m, label, title, Icon]) => (
+        <button key={m} className={mode === m ? "active" : ""} aria-pressed={mode === m} title={title} onClick={() => set({ mode: m })}>
+          <Icon {...ICON} size={15} />
+          <span>{label}</span>
+          {m === "mcp" && serving && <span className="tb-live" aria-label="server running" />}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -181,6 +210,7 @@ export function App() {
   const activePath = useStore((s) => s.activePath);
   const leftOpen = useStore((s) => s.leftOpen);
   const rightOpen = useStore((s) => s.rightOpen);
+  const mcp = useStore((s) => s.mode === "mcp");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -216,7 +246,8 @@ export function App() {
             </aside>
           )}
           <main className="main-area">
-            <div className={`views view-${noFlow ? "code" : view}`}>
+            {mcp && <McpPanel />}
+            <div className={`views view-${noFlow ? "code" : view} ${mcp ? "hidden" : ""}`}>
               <div className="design-pane">
                 <StatesBar />
                 <div className="canvas-host">
@@ -227,9 +258,9 @@ export function App() {
                 <CodeEditor />
               </div>
             </div>
-            {!noFlow && <RunPanel />}
+            {!noFlow && !mcp && <RunPanel />}
           </main>
-          {rightOpen && view !== "code" && isMh(activePath) && (
+          {!mcp && rightOpen && view !== "code" && isMh(activePath) && (
             <aside className="sidebar-right">
               <div className="panel-head">Inspector</div>
               <Inspector />

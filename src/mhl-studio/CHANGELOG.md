@@ -28,6 +28,13 @@ First public preview. The installers are not code-signed yet.
 - **Code editor** with MHL highlighting and the `mhl lsp` language server.
 - **Live runs:** an inputs form, each step's status and the path taken on the
   diagram, event history, logs and final variables. Pause, resume and cancel.
+- **MCP test bench** (the toolbar's **Editor | MCP** switch): serves the open folder with
+  `mhl serve mcp`, over stdio or HTTP, and calls it like an API client would. You pick a
+  tool, fill in a form generated from its `inputSchema`, and **Send**. The response comes
+  back as highlighted, foldable JSON, with JSON held in strings shown decoded, or as raw
+  text or a table. It also covers the workflow manifests, async runs over HTTP (start,
+  follow, resume a paused run, cancel) and raw requests. A console logs every JSON-RPC
+  message.
 - **New files from templates** that already lint clean: workflow, tool, agent,
   prompt, memory, MCP server, type, enum and test.
 - Installers for macOS (Apple Silicon and Intel), Windows and Linux, each bundling

@@ -42,6 +42,11 @@ input) is rejected with a clear error, since this client can't gather and resubm
 - [github_mcp_calls_the_real_api.mh](github_mcp_calls_the_real_api.mh) — the real GitHub remote
   MCP server (`https://api.githubcopilot.com/mcp/`) over `http`, gated behind `GITHUB_TOKEN`
   being set to a real personal access token
+- [serve_mcp_marks_a_paused_tools_call.mh](serve_mcp_marks_a_paused_tools_call.mh) — the other
+  side: this binary *serving* a folder (`mhl serve mcp`, stdio). A `tools/call` whose workflow
+  stops at `pause()` says so: `_meta["mhl.run"]` holds `state: "paused"`, `reason`, `step`,
+  `resumable: false` and a hint, and a second `content` text block says the same; the partial
+  vars stay in `structuredContent`. A synchronous call can't be resumed: use `run/start` instead.
 
 **`x-mcp-header` has no sample here.** It's scoped to the `http` transport only (per spec, `stdio`
 clients may ignore it), and demonstrating it needs a controllable HTTP server that can return a
