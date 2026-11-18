@@ -78,6 +78,19 @@ test('each system gets its studio installer, the alternatives beside it', () => 
   assert.equal(studioFiles(r, null).primary, null);
 });
 
+test('ARM systems get native installers once a release has them', () => {
+  // The names tauri-action gives the aarch64-pc-windows-msvc (NSIS only) and aarch64-unknown-linux-gnu builds.
+  const r = studio('studio-v0.2.0');
+  r.assets.push(...['mhl.studio_0.1.0_arm64-setup.exe', 'mhl.studio_0.1.0_aarch64.AppImage', 'mhl.studio_0.1.0_arm64.deb',
+    'mhl.studio-0.1.0-1.aarch64.rpm'].map(asset));
+  const names = p => { const f = studioFiles(r, p); return [f.primary && f.primary.name, f.alts.map(a => a.name), f.emulated]; };
+  assert.deepEqual(names('win-arm64'), ['mhl.studio_0.1.0_arm64-setup.exe', [], false]);
+  assert.deepEqual(names('linux-arm64'), ['mhl.studio_0.1.0_aarch64.AppImage', ['mhl.studio_0.1.0_arm64.deb', 'mhl.studio-0.1.0-1.aarch64.rpm'], false]);
+  assert.deepEqual(names('win-x64'), ['mhl.studio_0.1.0_x64-setup.exe', ['mhl.studio_0.1.0_x64_en-US.msi'], false]);
+  assert.deepEqual(names('linux-x64'), ['mhl.studio_0.1.0_amd64.AppImage', ['mhl.studio_0.1.0_amd64.deb', 'mhl.studio-0.1.0-1.x86_64.rpm'], false]);
+  assert.deepEqual(names('mac-arm64'), ['mhl.studio_0.1.0_aarch64.dmg', [], false]);
+});
+
 test('each system gets its CLI archive; Intel Macs have none', () => {
   assert.equal(cliFiles(language, 'mac-arm64').archive.name, 'mhl-1.11.1-darwin-arm64.tar.gz');
   assert.equal(cliFiles(language, 'win-arm64').archive.name, 'mhl-1.11.1-windows-arm64.zip');

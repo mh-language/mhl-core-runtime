@@ -46,39 +46,45 @@
   }
 
   const STUDIO_FILES = {
-    mac: [{ re: /(aarch64|arm64)\.dmg$/i, label: '.dmg', arch: 'arm64' },
-      { re: /(x64|x86_64)\.dmg$/i, label: '.dmg', arch: 'x64' }],
+    mac: [{ re: /\.dmg$/i, label: '.dmg' }],
     win: [{ re: /-setup\.exe$/i, label: 'Installer (.exe)', pt: 'Instalador (.exe)' },
       { re: /\.msi$/i, label: 'MSI package', pt: 'Pacote MSI' }],
     linux: [{ re: /\.AppImage$/i, label: 'AppImage' },
       { re: /\.deb$/i, label: '.deb — Debian, Ubuntu' },
       { re: /\.rpm$/i, label: '.rpm — Fedora, RHEL' }],
   };
+  // tauri-action names ARM builds aarch64 (.dmg, .AppImage, .rpm) or arm64 (.deb, -setup.exe).
+  const ARM = /(aarch64|arm64)/i;
 
   const safe = url => typeof url === 'string' && url.startsWith('https://github.com/');
   const fileOf = (asset, entry) => ({ name: asset.name, url: asset.browser_download_url, size: asset.size, label: entry.label, pt: entry.pt || entry.label });
 
   /**
    * The studio installers for a platform: `primary` (the one-click download, or null) and
-   * `alts` (other formats for the same system). Windows on ARM gets the x64 installer
-   * (it runs under emulation); Linux on ARM has none.
+   * `alts` (other formats for the same system), always of the platform's architecture.
+   * Windows on ARM falls back to the x64 installer (`emulated`) when a release has no ARM
+   * build; Linux on ARM has no such fallback.
    */
   function studioFiles(release, platform) {
     const out = { primary: null, alts: [], emulated: false };
     if (!release || !platform) return out;
     const assets = (release.assets || []).filter(a => safe(a.browser_download_url) && !/\.sig$|\.tar\.gz$|\.json$/i.test(a.name));
     const family = platform.split('-')[0];
-    if (platform === 'linux-arm64') return out;
-    let entries = STUDIO_FILES[family];
-    if (family === 'mac') entries = entries.filter(e => e.arch === (platform === 'mac-arm64' ? 'arm64' : 'x64'));
-    const found = [];
-    for (const entry of entries) {
-      const asset = assets.find(a => entry.re.test(a.name));
-      if (asset) found.push(fileOf(asset, entry));
+    const pick = arm => {
+      const found = [];
+      for (const entry of STUDIO_FILES[family] || []) {
+        const asset = assets.find(a => entry.re.test(a.name) && ARM.test(a.name) === arm);
+        if (asset) found.push(fileOf(asset, entry));
+      }
+      return found;
+    };
+    let found = pick(platform.endsWith('arm64'));
+    if (!found.length && platform === 'win-arm64') {
+      found = pick(false);
+      out.emulated = found.length > 0;
     }
     out.primary = found[0] || null;
     out.alts = found.slice(1);
-    out.emulated = platform === 'win-arm64' && !!out.primary;
     return out;
   }
 
@@ -213,7 +219,7 @@
           main.href = studio.html_url;
           $('studio-main-label').textContent = t('See all installers', 'Ver todos os instaladores');
           fill(meta, 'mhl studio ' + version + ' · ' + (p === 'linux-arm64'
-            ? t('built for x64 Linux only for now', 'por enquanto só para Linux x64')
+            ? t('this release has no Linux ARM build', 'esta versão não tem build para Linux ARM')
             : t('pick your system above', 'escolha seu sistema acima')) + ' · ', notes);
         }
       }

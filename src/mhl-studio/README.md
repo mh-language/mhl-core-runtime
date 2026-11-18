@@ -163,9 +163,10 @@ language (`vX.Y.Z`) and the VS Code extension (`extensions-vX.Y.Z`).
 
 The tag runs `.github/workflows/studio-release.yml`. It reruns `studio.yml`'s checks, checks
 that the four versions match the tag, and opens a draft GitHub Release. It then builds the
-installers on one runner per target, because Tauri does not cross-compile: macOS
-aarch64 and x86_64 (`.dmg`), Windows x86_64 (`.msi`, `-setup.exe`) and Linux x86_64
-(`.deb`, `.rpm`, `.AppImage`). Each installer bundles the `mhl` sidecar for its target. The
+installers on one runner per target, because Tauri does not cross-compile between
+OSes: macOS aarch64 and x86_64 (`.dmg`), Windows x86_64 (`.msi`, `-setup.exe`), Windows
+aarch64 (`-setup.exe` only: WiX/MSI has no ARM64 support; built on the x64 runner), and
+Linux x86_64 and aarch64 (`.deb`, `.rpm`, `.AppImage`; aarch64 on `ubuntu-22.04-arm`). Each installer bundles the `mhl` sidecar for its target. The
 release is published only after every target uploaded. It is never marked "Latest", which
 stays the language's release.
 

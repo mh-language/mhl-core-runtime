@@ -170,7 +170,8 @@ html { scroll-behavior:smooth; }
             <div class="table-row"><span>macOS · Apple Silicon</span><span><code>…_aarch64.dmg</code></span><span>drag <strong>mhl studio</strong> to Applications</span></div>
             <div class="table-row"><span>macOS · Intel</span><span><code>…_x64.dmg</code></span><span>same</span></div>
             <div class="table-row"><span>Windows · x64</span><span><code>…_x64-setup.exe</code> or <code>.msi</code></span><span>the installer, or the MSI package</span></div>
-            <div class="table-row"><span>Linux · x64</span><span><code>.AppImage</code>, <code>.deb</code>, <code>.rpm</code></span><span>the AppImage runs without installing</span></div>
+            <div class="table-row"><span>Windows · ARM</span><span><code>…_arm64-setup.exe</code></span><span>the installer (there is no ARM64 MSI)</span></div>
+            <div class="table-row"><span>Linux · x64 / ARM</span><span><code>.AppImage</code>, <code>.deb</code>, <code>.rpm</code></span><span>the AppImage runs without installing</span></div>
           </div>
           <div class="security-banner"><span>!</span><div><strong>The installers are not code-signed yet</strong><p>On <strong>macOS</strong>, if it says the app "is damaged" or "can't be opened", run <code>xattr -dr com.apple.quarantine "/Applications/mhl studio.app"</code> once, or right-click the app → Open. On <strong>Windows</strong>, SmartScreen shows "Windows protected your PC": choose <strong>More info → Run anyway</strong>. On <strong>Linux</strong>, make the AppImage executable with <code>chmod +x</code>.</p></div></div>
           <p class="block-label">Build from source</p>
