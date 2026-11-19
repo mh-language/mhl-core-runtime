@@ -4,6 +4,16 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
+## 0.3.0
+
+### Added
+
+- **Light/dark theme switch.** A toolbar button next to the runtime version cycles
+  the theme through System → Light → Dark. System, the default, follows the OS as
+  before and still switches live when the OS does. The choice is remembered across
+  launches and applies to the whole window: panels, diagram, code editor and the
+  native title bar.
+
 ## 0.2.0
 
 ### Added
