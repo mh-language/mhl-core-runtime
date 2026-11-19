@@ -58,6 +58,7 @@ function Canvas() {
   const graphSource = useStore((s) => s.graphSource);
   const wf = useStore(currentWorkflow);
   const stale = useStore((s) => s.stale);
+  const scheme = useStore((s) => s.scheme);
   const selection = useStore((s) => s.selection);
   const visits = useStore((s) => s.run.visits);
   const result = useStore((s) => s.run.result);
@@ -345,7 +346,7 @@ function Canvas() {
         deleteKeyCode={null}
         selectionKeyCode={null}
         multiSelectionKeyCode={null}
-        colorMode="system"
+        colorMode={scheme}
         minZoom={0.2}
         maxZoom={2}
       >

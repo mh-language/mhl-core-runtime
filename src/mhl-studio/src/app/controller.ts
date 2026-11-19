@@ -19,6 +19,7 @@ import { DOTENV_LANG, JSON_LANG, LANG, MD_LANG, monaco, setupMonaco } from "../e
 import { emptyRun, get, isEnv, isJson, isMarkdown, isMh, selectTool, set, type LibraryFile, type NodeRunStatus, type Toast } from "./store";
 import { installZoom } from "./zoom";
 import { installPanels } from "./panels";
+import { installTheme } from "./theme";
 
 const models = new Map<string, monaco.editor.ITextModel>();
 let lsp: LspClient | null = null;
@@ -40,6 +41,7 @@ export function toast(kind: Toast["kind"], text: string) {
 }
 
 export async function init() {
+  installTheme();
   await setupMonaco();
   installPanels();
   installZoom((z) => toast("info", `Zoom ${Math.round(z * 100)}%`));

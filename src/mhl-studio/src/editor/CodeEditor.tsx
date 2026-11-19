@@ -4,7 +4,7 @@ import { importFile } from "../app/library";
 import { get, set, useStore } from "../app/store";
 import { PATH_MIME } from "../canvas/mime";
 import { OffsetMap } from "../sync/offsets";
-import { monaco, prefersDark, THEME_DARK, THEME_LIGHT } from "./monaco";
+import { monaco, THEME_DARK, THEME_LIGHT } from "./monaco";
 
 /**
  * The Monaco editor showing the active file's model. A .mh file dragged from
@@ -27,7 +27,7 @@ export function CodeEditor() {
     const e = monaco.editor.create(host.current!, {
       model: null,
       automaticLayout: true,
-      theme: prefersDark() ? THEME_DARK : THEME_LIGHT,
+      theme: get().scheme === "dark" ? THEME_DARK : THEME_LIGHT,
       fontSize: 13,
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
@@ -68,11 +68,12 @@ export function CodeEditor() {
     el.addEventListener("dragleave", onLeave, true);
     el.addEventListener("drop", onDrop, true);
 
-    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
-    const onScheme = () => monaco.editor.setTheme(mq.matches ? THEME_DARK : THEME_LIGHT);
-    mq?.addEventListener("change", onScheme);
+    // The theme button (app/theme.ts) or the OS changed the scheme.
+    const offScheme = useStore.subscribe((s, prev) => {
+      if (s.scheme !== prev.scheme) monaco.editor.setTheme(s.scheme === "dark" ? THEME_DARK : THEME_LIGHT);
+    });
     return () => {
-      mq?.removeEventListener("change", onScheme);
+      offScheme();
       el.removeEventListener("dragover", onOver, true);
       el.removeEventListener("dragleave", onLeave, true);
       el.removeEventListener("drop", onDrop, true);

@@ -1,7 +1,8 @@
 import { useEffect } from "react";
-import { ChevronDown, Code, Columns2, FolderOpen, PenLine, Plug, Plus, Redo2, Save, Undo2, Workflow, type LucideIcon } from "lucide-react";
+import { ChevronDown, Code, Columns2, FolderOpen, Monitor, Moon, PenLine, Plug, Plus, Redo2, Save, Sun, Undo2, Workflow, type LucideIcon } from "lucide-react";
 import { edit, openFolder, redo, save, undo } from "./controller";
-import { hasNoWorkflow, isMh, set, useStore, type Mode, type View } from "./store";
+import { hasNoWorkflow, isMh, set, useStore, type Mode, type ThemePref, type View } from "./store";
+import { cycleTheme, nextTheme } from "./theme";
 import { addWorkflow } from "../sync/edits";
 import { newWorkflowSource } from "../sync/templates";
 import { WorkflowCanvas } from "../canvas/WorkflowCanvas";
@@ -60,6 +61,24 @@ function LayoutToggles() {
       {editor && activePath && !noFlow && <PanelToggle panel="bottom" open={bottomOpen} label="run panel" keys={`${MOD}J`} />}
       {editor && isMh(activePath) && view !== "code" && <PanelToggle panel="right" open={rightOpen} label="inspector" keys={`${ALT}${MOD}B`} />}
     </span>
+  );
+}
+
+const THEME_UI: Record<ThemePref, [string, LucideIcon]> = {
+  system: ["System", Monitor],
+  light: ["Light", Sun],
+  dark: ["Dark", Moon],
+};
+
+/** Cycles the color theme: follow the system → light → dark. */
+function ThemeToggle() {
+  const theme = useStore((s) => s.theme);
+  const [label, Icon] = THEME_UI[theme];
+  const next = THEME_UI[nextTheme(theme)][0];
+  return (
+    <button className="tb-btn" onClick={cycleTheme} title={`Theme: ${label} (click for ${next})`} aria-label={`Theme: ${label}`}>
+      <Icon {...ICON} />
+    </button>
   );
 }
 
@@ -150,6 +169,7 @@ function Toolbar() {
         </div>
       )}
       <LayoutToggles />
+      <ThemeToggle />
       <span className="muted small" title="the bundled mhl runtime">
         {mhlVersion}
       </span>

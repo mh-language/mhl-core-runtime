@@ -65,8 +65,4 @@ export function setupMonaco(): Promise<typeof monaco> {
   return ready;
 }
 
-export function prefersDark(): boolean {
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
-}
-
 export { monaco };

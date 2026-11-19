@@ -7,6 +7,11 @@ export type View = "split" | "design" | "code";
 /** The main area: the workflow editor, or the MCP test bench (src/mcp). */
 export type Mode = "editor" | "mcp";
 
+/** The color theme the user picked (app/theme.ts): follow the OS, or force one. */
+export type ThemePref = "system" | "light" | "dark";
+/** The scheme actually shown. */
+export type Scheme = "light" | "dark";
+
 /** A step's state in the execution view. */
 export type NodeRunStatus = "running" | "succeeded" | "failed" | "paused" | "skipped";
 
@@ -103,6 +108,9 @@ export interface State {
   clis: Record<string, string> | null;
   /** The run inputs popover (under the Run button's ▾) is open. */
   inputsOpen: boolean;
+  theme: ThemePref;
+  /** `theme` resolved against the OS. */
+  scheme: Scheme;
 }
 
 export const useStore = create<State>(() => ({
@@ -136,6 +144,8 @@ export const useStore = create<State>(() => ({
   rightOpen: true,
   inputsOpen: false,
   clis: null,
+  theme: "system",
+  scheme: "light",
 }));
 
 export const set = useStore.setState;
