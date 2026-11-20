@@ -25,8 +25,18 @@ type GateAnswer struct {
 	Step  string
 	Index int
 	Value any
+	// Replay holds the answers of the step's earlier gates (Index 0 to
+	// Index-1) in the execution that paused, checked against their types
+	// again: re-entering the step, each returns its own instead of pausing.
+	Replay []GateReplay
 	// Used is set once the gate has returned Value.
 	Used bool
+}
+
+// GateReplay is one earlier gate's answer, replayed on re-entry.
+type GateReplay struct {
+	Type  string
+	Value any
 }
 
 type gateAnswerKey struct{}
@@ -57,6 +67,9 @@ type gateState struct {
 	step   string
 	next   int
 	answer *GateAnswer
+	// answered are this execution's gate answers so far, in order — carried
+	// on a later gate's pause (runtime.Gate.Answered) to be replayed.
+	answered []runtime.GateReply
 }
 
 // PauseGate reports the gate a pause signal (as returned by RunStep) came
@@ -116,11 +129,21 @@ func evalGate(ctx *evalCtx, reasonArgs []*ast.Argument, typeName string, depth i
 	}
 	index := g.next
 	g.next++
-	if a := g.answer; a != nil && !a.Used && a.Index == index {
-		a.Used = true
-		return a.Value, nil
+	if a := g.answer; a != nil && !a.Used {
+		switch {
+		case index < a.Index && index < len(a.Replay):
+			// An earlier gate of this step, answered before the pause the
+			// run is resuming from: it returns that answer again.
+			r := a.Replay[index]
+			g.answered = append(g.answered, runtime.GateReply{Type: r.Type, Decision: r.Value})
+			return r.Value, nil
+		case index == a.Index:
+			a.Used = true
+			g.answered = append(g.answered, runtime.GateReply{Type: typeName, Decision: a.Value})
+			return a.Value, nil
+		}
 	}
-	sig := &pauseSignal{gate: &runtime.Gate{Step: g.step, Index: index, Type: typeName}}
+	sig := &pauseSignal{gate: &runtime.Gate{Step: g.step, Index: index, Type: typeName, Answered: append([]runtime.GateReply(nil), g.answered...)}}
 	switch values, err := evalLogArgs(ctx, reasonArgs, depth); {
 	case err != nil:
 		return nil, err

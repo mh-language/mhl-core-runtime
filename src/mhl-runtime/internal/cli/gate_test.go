@@ -128,3 +128,32 @@ workflow Confirm {
 		t.Fatalf("scalar decision = %v", done)
 	}
 }
+
+// Re-entering a step on resume replays the answers its earlier gates already
+// returned — through the on-disk checkpoint, an enum included — so a step
+// with several gates moves forward instead of asking the first one again.
+func TestSeveralGatesInOneStepReplayEarlierAnswers(t *testing.T) {
+	run := runInDir(t, t.TempDir(), `
+enum Size { Small, Large }
+workflow Two {
+    var picked = ""
+    var sure = false
+    step Ask {
+        var size = pause("which size?", decision: Size)
+        self.picked = "${size}"
+        self.sure = pause("sure about ${size}?", decision: bool)
+    }
+    step Done { log("done") }
+}
+`)
+	gateRun(t, run, "--session", "g")
+	second := gateRun(t, run, "--session", "g", "--resume", "--decision", "Large")
+	if second["paused"] != true || second["pause_reason"] != "sure about Large?" || second["awaiting"].(map[string]any)["index"] != 1.0 {
+		t.Fatalf("after the first answer = %v", second)
+	}
+	done := gateRun(t, run, "--session", "g", "--resume", "--decision", "true")
+	vars, _ := done["vars"].(map[string]any)
+	if done["ok"] != true || done["paused"] == true || vars["picked"] != "Large" || vars["sure"] != true {
+		t.Fatalf("after the second answer = %v", done)
+	}
+}

@@ -133,7 +133,10 @@ the decision a resume passes instead: the pause signal carries a `runtime.Gate{S
 `execsvc.Request.Decision` (`mhl run --resume --decision`, `run/resume {decision}` —
 prevalidated by `execsvc.CheckDecision` so the run stays paused) is checked against the
 checkpoint's gate before any hook runs (`*execsvc.DecisionError`) and handed to that one gate
-via `interpreter.WithGateAnswer` — consumed once, so a later gate pauses again. Test mode:
+via `interpreter.WithGateAnswer` — consumed once, so a later gate pauses again. Re-entry replays
+the step's earlier gates: a pause carries the answers that execution already returned
+(`runtime.Gate.Answered`), and `GateAnswer.Replay` (re-coerced by `execsvc.replayOf`) hands
+each back to its index. Test mode:
 `Name.run(decisions: [...])`. `lint/gate.go` checks T and refuses a gate in a `loop`; flow
 lists a step's gate types in `Node.Decisions`. Signal path: `interpreter.pauseSignal`
 → `IsPause` → `runtime.PauseSignal` → `RunResult.Paused` / `LoopResult.TerminalReason

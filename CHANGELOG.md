@@ -51,7 +51,8 @@ Per-tag release notes are also generated automatically on the
   never answers a later round. In a test, `Name.run(decisions: [...])` answers each gate in
   turn. `mhl lint` checks `T`, and rejects a gate in a `loop` workflow (not supported yet).
   A plain `pause(reason)` is unchanged. `mhl graph` lists a step's gate types in
-  `decisions`.
+  `decisions`. A step may hold several gates: re-entered on resume, the gates it already
+  passed return their answers again (`Checkpoint.Gate.answered`) instead of pausing.
 
 ### Fixed
 

@@ -241,7 +241,12 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, decisi
 			return nil, fmt.Errorf("%s.run: %w", name, err)
 		}
 		decisions = decisions[1:]
-		answer = &GateAnswer{Step: gate.Step, Index: gate.Index, Value: v}
+		replay := make([]GateReplay, 0, len(gate.Answered))
+		for _, r := range gate.Answered {
+			// Answered on an earlier leg, already checked: replayed as given.
+			replay = append(replay, GateReplay{Type: r.Type, Value: r.Decision})
+		}
+		answer = &GateAnswer{Step: gate.Step, Index: gate.Index, Value: v, Replay: replay}
 		res, runErr = runner.Run(goctxOf(ctx), pipeline, init, exec, true)
 		executed = append(executed, res.Executed...)
 	}

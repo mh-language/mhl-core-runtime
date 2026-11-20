@@ -250,7 +250,30 @@ func gateAnswer(prog *ast.Program, pipeline runtime.Pipeline, cp *runtime.Checkp
 	if err != nil {
 		return nil, &DecisionError{Msg: err.Error()}
 	}
-	return &interpreter.GateAnswer{Step: cp.Gate.Step, Index: cp.Gate.Index, Value: v}, nil
+	replay, err := replayOf(prog, pipeline, cp.Gate)
+	if err != nil {
+		return nil, err
+	}
+	return &interpreter.GateAnswer{Step: cp.Gate.Step, Index: cp.Gate.Index, Value: v, Replay: replay}, nil
+}
+
+// replayOf checks the answers gate's step gave its earlier gates, as stored
+// in the checkpoint, against their types again — so re-entering the step
+// they are returned exactly as the first time.
+func replayOf(prog *ast.Program, pipeline runtime.Pipeline, gate *runtime.Gate) ([]interpreter.GateReplay, error) {
+	out := make([]interpreter.GateReplay, 0, len(gate.Answered))
+	for i, r := range gate.Answered {
+		t, ok := interpreter.ResolveDecisionType(prog, r.Type)
+		if !ok {
+			return nil, &DecisionError{Msg: fmt.Sprintf("gate %d of %q waited for an unknown type %q", i, gate.Step, r.Type)}
+		}
+		v, err := coerceOne(r.Type, t, r.Decision, pipeline.Enums)
+		if err != nil {
+			return nil, &DecisionError{Msg: fmt.Sprintf("gate %d of %q: %v", i, gate.Step, err)}
+		}
+		out = append(out, interpreter.GateReplay{Type: r.Type, Value: v})
+	}
+	return out, nil
 }
 
 // Run executes the pipeline described by req.
