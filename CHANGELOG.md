@@ -10,6 +10,8 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+## 1.12.0 — 2026-11-20
+
 ### Added
 
 - **`cmd.exec(..., cwd: dir)` — run a command in another directory.** `cmd.exec` and
