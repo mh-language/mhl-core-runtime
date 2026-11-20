@@ -1,6 +1,6 @@
 // The second fragment of ReviewFlow (see ../review_flow.mh). Graphed alone
 // it has no start edge — a run never starts here: Draft, in the entry
-// fragment, falls through into Review.
+// fragment, goes to Review.
 partial workflow ReviewFlow {
     step Review {
         if (!approved) {

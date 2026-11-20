@@ -44,6 +44,8 @@ Per-tag release notes are also generated automatically on the
 
 ### Fixed
 
+- **`make functional-test` lints `sample/` too**, which caught a sample whose fragment fell
+  through into another file.
 - **`mhl graph` no longer draws a start edge into a `partial` fragment without the `entry`
   step.** A run never starts there; the edge pointed at whichever step came first.
 
