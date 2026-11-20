@@ -48,7 +48,8 @@ make functional-test  # runs `mhl test` against sample/syntax and sample/feature
 go vet ./...
 make release          # cross-compiles linux-amd64, darwin-arm64, windows-amd64
 make verify-release   # release + asserts each binary is non-empty
-./release.sh vX.Y.Z [--dry-run] [--no-verify-release]  # cut a language release: ci.yml's checks, then push the v* tag (→ release.yml)
+./release.sh --bump vX.Y.Z  # repo-root CHANGELOG.md: "## Unreleased" → "## X.Y.Z — <today>" under a fresh empty "## Unreleased"; no commit/tag (the version is only the tag — Makefile's `git describe` — so no source file holds it)
+./release.sh vX.Y.Z [--dry-run] [--no-verify-release]  # cut a language release: refuses without a "## X.Y.Z" CHANGELOG section, runs ci.yml's checks, then pushes the v* tag (→ release.yml)
 ```
 
 Each product has its own `release.sh` next to it and its own tag: the language here

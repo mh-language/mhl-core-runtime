@@ -19,6 +19,24 @@ Per-tag release notes are also generated automatically on the
   non-string one) raises before any process starts; `""` or `null` inherits mhl's working
   directory. Previously `cwd:` was silently ignored, so a harness running a project's tests
   in another checkout needed a wrapper (`sh -c "cd ..."` or a Python `subprocess` adapter).
+
+### Repository
+
+- **`release.sh --bump vX.Y.Z`** turns `## Unreleased` into `## X.Y.Z — <date>` under a new,
+  empty `## Unreleased`, and `release.sh vX.Y.Z` refuses to tag a version without its
+  section. 1.11.0 and 1.11.1 had shipped with their notes still under `Unreleased`; they now
+  have their own sections.
+
+## 1.11.1 — 2026-11-17
+
+No changes to the language or the `mhl` CLI: the runtime is built from the same source as
+1.11.0. Only the VS Code extension shipped with the release changed (0.7.2, see
+[its changelog](src/vscode-mhl/CHANGELOG.md)).
+
+## 1.11.0 — 2026-11-15
+
+### Added
+
 - **`entry route` — a workflow can start with a dispatch.**
   `entry route Choose(model: AgentModel) { ... }` is evaluated before any step, its
   parameter bound to the workflow input of the same name, and the run continues at the
