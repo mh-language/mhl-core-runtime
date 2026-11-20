@@ -15,6 +15,11 @@ matches the task.
 | [mhl-testing](mhl-testing/SKILL.md) | Hermetic tests, agent mocks, workflow assertions, reading failures |
 | [mhl-serving](mhl-serving/SKILL.md) | `mhl serve`: workflows as MCP tools and A2A skills, hardening, `mhl pack` |
 
+The shared [code layout conventions](mhl-language/SKILL.md#code-layout) keep method
+signatures on one line, expand conditional and loop bodies, and separate logical
+phases with blank lines. Apply them when writing or editing `.mh` code with any
+of these skills.
+
 ## Install
 
 Copy the folders you want into your agent's skills directory. For Claude Code:

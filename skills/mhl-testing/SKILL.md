@@ -67,6 +67,7 @@ agent Resilient {
 
 workflow Triage {
     input title: string
+
     var label = ""
 
     step Classify {
@@ -85,11 +86,13 @@ test mocks {
 
     describe failure_raises_when_called_directly {
         var message = ""
+
         try {
             Broken.run(prompt: "x")
         } catch (e) {
             message = "${e}"
         }
+
         is_true(message.contains("overloaded"))
     }
 
@@ -99,6 +102,7 @@ test mocks {
 
     describe a_failed_step_is_reported_not_raised {
         var result = Triage.run(inputs: {title: "t"})
+
         are_equal(result.state, "failed")
         are_equal(result.step, "Review")
         is_true(result.error.contains("overloaded"))
@@ -142,12 +146,16 @@ enum Level { low, high }
 
 workflow Gate {
     input level: Level
+
     var note = ""
 
     output: { note }
 
     step Check {
-        if (level == Level.high) break "needs a human"
+        if (level == Level.high) {
+            break "needs a human"
+        }
+
         self.note = "auto"
     }
 }
@@ -155,12 +163,14 @@ workflow Gate {
 test gate {
     describe low_completes {
         var result = Gate.run(inputs: {level: "low"})
+
         are_equal(result.state, "completed")
         are_equal(result.output, {note: "auto"})
     }
 
     describe high_stops_cleanly {
         var result = Gate.run(inputs: {level: "high"})
+
         is_true(result.ok)
         are_equal(result.state, "broke")
         are_equal(result.break_reason, "needs a human")
@@ -168,11 +178,13 @@ test gate {
 
     describe a_bad_input_raises {
         var message = ""
+
         try {
             Gate.run(inputs: {level: "medium"})
         } catch (e) {
             message = "${e}"
         }
+
         is_true(message.contains("low"))
     }
 }

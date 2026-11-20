@@ -43,6 +43,7 @@ workflow TriageIssue(req: TriageInput): TriageOutput {
 test triage_issue {
     describe outage_is_urgent {
         var result = TriageIssue.run(inputs: {title: "api outage", body: "down"})
+
         are_equal(result.output.priority, "urgent")
     }
 }

@@ -59,7 +59,9 @@ tool Text {
 
 pipeline Main {
     description: "Writes a greeting and logs its slug."
+
     input name: string
+
     var reply = ""
 
     step Greet {
@@ -74,6 +76,7 @@ pipeline Main {
 test main {
     describe greets_by_name {
         var result = Main.run(inputs: {name: "Ada"})
+
         are_equal(result.state, "completed")
         are_equal(result.executed, ["Greet", "Report"])
         is_true(result.vars.reply.contains("Ada"))
@@ -86,6 +89,49 @@ to pick another. Keep one entry point per file.
 
 Naming convention: `PascalCase` for declarations, enum variants and steps; `snake_case`
 for inputs, vars, tool methods, tests and describes.
+
+## Code layout
+
+Use this layout when writing or editing `.mh` code with any of the `mhl-*` skills.
+These are readability conventions, not additional language syntax rules.
+
+- Keep method signatures on one line; do not put each parameter on its own line.
+- Indent block bodies with four spaces.
+- Separate logical phases with one blank line: preparation, validation, effects,
+  and the final return. Keep closely related declarations and calls together.
+- Write statement `if`/`else`, loops, steps, and block-bodied methods and lambdas
+  with braces and their bodies on separate lines, even for a single statement.
+  Keep short expression bodies (`-> expr`) and expression `if`/`else` compact.
+- Leave a blank line between independent conditional blocks and before the final
+  `return` after other work. Do not insert a blank line after every statement.
+- Apply the same spacing inside workflow and pipeline `step` bodies: separate
+  guards, context preparation, agent/tool calls, result validation, and artifact
+  writes when they form distinct phases. Separate a final `goto`, `break`, or
+  `complete()` from preceding work. Leave one blank line between sibling steps
+  and parallel branches, and before a `merge` block. A step with one action needs
+  no extra blank lines inside its braces.
+- Break long calls or expressions in the body at natural argument or operation
+  boundaries. Do not expand the method signature just to add visual spacing.
+- Use comments to explain constraints or intent; use spacing to separate phases
+  without adding comments that only repeat the code.
+
+```mh
+tool Documents {
+    required(ui_changes: bool, database_changes: bool): string[] {
+        var names = ["acceptance.md", "design.md"]
+
+        if (ui_changes) {
+            names = names.append("views.md")
+        }
+
+        if (database_changes) {
+            names = names.append("tables.md")
+        }
+
+        return names
+    }
+}
+```
 
 ## Scope and state
 
@@ -138,6 +184,7 @@ enum Status { Draft, Published }
 test expressions {
     describe optional_access_and_defaults {
         var config = {retries: 0}
+
         are_equal(config?.retries ?? 3, 0)              // ?? replaces only null
         are_equal(config?.missing?.deep ?? "none", "none")
         are_equal(config?.["dyn" + "amic"] ?? 1, 1)     // dynamic key
@@ -145,6 +192,7 @@ test expressions {
 
     describe interpolation_takes_any_expression {
         var items = ["a", "b"]
+
         are_equal("${items.size()} of ${items.join(", ")}", "2 of a, b")
     }
 
@@ -152,12 +200,14 @@ test expressions {
         var a = {x: 1}
         var b = a
         b["x"] = 2
+
         are_equal(a.x, 1)
     }
 
     describe with_copies_and_overrides {
         var draft = {title: "t", notes: []}
         var next = draft with { notes: ["n"] }
+
         are_equal(draft.notes, [])
         are_equal(next.title, "t")
     }
@@ -166,6 +216,7 @@ test expressions {
         var counter = ref { n: 0 }
         var alias = counter
         alias["n"] = 1
+
         are_equal(counter.n, 1)
     }
 
@@ -174,6 +225,7 @@ test expressions {
             Status.Draft     -> "hold"
             Status.Published -> "ship"
         }
+
         are_equal(label, "hold")
         are_equal(if (label == "hold") 1 else 2, 1)
     }
@@ -183,6 +235,7 @@ test expressions {
             .filter((item) -> item.ok)
             .sort_by((item) -> item.id)
             .map((item) -> item.id)
+
         are_equal(ready, [1, 2])
         are_equal([10, 20, 30, 40][1..^1], [20, 30])
         are_equal(["a", ...ready.map((n) -> "${n}"), "z"], ["a", "1", "2", "z"])
@@ -192,15 +245,21 @@ test expressions {
     describe destructuring_and_shorthand {
         var review = {data: 1, note: "n"}
         var {data, note: comment} = review
+
         are_equal({data, comment}, {data: 1, comment: "n"})
     }
 
     describe iterate_with_index_or_keys {
         var seen = []
+
         for (var pair in ["a", "b"].enumerate()) {
             seen += ["${pair.index}=${pair.value}"]
         }
-        for (var key in {z: 1}.keys()) { seen += [key] }
+
+        for (var key in {z: 1}.keys()) {
+            seen += [key]
+        }
+
         are_equal(seen, ["0=a", "1=b", "z"])
     }
 
@@ -227,7 +286,10 @@ tool Report {
 
 pipeline Audit {
     input findings: Findings = []
-    step Show { log(Report.count(findings)) }
+
+    step Show {
+        log(Report.count(findings))
+    }
 }
 ```
 
@@ -264,8 +326,13 @@ the run, not to a tool method.
 
 ```mh-fragment
 // shared.mh
-export agent Echo { command: "echo" }
-export prompt Hello(name: string) { "Hello ${name}" }
+export agent Echo {
+    command: "echo"
+}
+
+export prompt Hello(name: string) {
+    "Hello ${name}"
+}
 
 // main.mh
 import {Echo, Hello as Hi} from "shared.mh"
