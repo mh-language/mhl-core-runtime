@@ -3,7 +3,10 @@ package lint
 import (
 	"fmt"
 
+	"github.com/alecthomas/participle/v2/lexer"
+
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/flow"
 )
 
 // memberStage is the stage of the fragment a pipeline member was declared in
@@ -78,6 +81,75 @@ func checkStages(file string, prog *ast.Program) []Finding {
 				}
 			}
 			current = st
+		}
+	}
+	return findings
+}
+
+// checkStageEntries warns about a `goto` that enters another stage at a step
+// other than its first: from outside a stage, the stage's name is the way
+// in (`goto Specification`), so the stage keeps the say over where it starts
+// and other fragments don't depend on its steps' names. A warning, not an
+// error — entering mid-stage is valid (and a dispatching first step is the
+// alternative when a caller must skip ahead). The `goto` inside the stage,
+// and one to the stage's first step, are fine.
+func checkStageEntries(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		p := decl.Pipeline
+		if p == nil {
+			continue
+		}
+		stageOf, first := map[string]string{}, map[string]string{}
+		for _, m := range p.Body {
+			st := memberStage(m)
+			if st == "" {
+				continue
+			}
+			name := ""
+			switch {
+			case m.Step != nil:
+				name = m.Step.Name
+			case m.Parallel != nil:
+				name = m.Parallel.Name
+			}
+			stageOf[name] = st
+			if _, ok := first[st]; !ok {
+				first[st] = name
+			}
+		}
+		if len(first) == 0 {
+			continue
+		}
+		check := func(from, target string, pos lexer.Position) {
+			to := stageOf[target]
+			if to == "" || to == from || first[to] == target {
+				return
+			}
+			where := "outside any stage"
+			if from != "" {
+				where = fmt.Sprintf("stage %q", from)
+			}
+			findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Severity: SeverityWarning,
+				Message: fmt.Sprintf("`goto %s` from %s enters stage %q at %s, not at its start (%s) — prefer `goto %s`, and let the stage decide where it begins", target, where, to, target, first[to], to)})
+		}
+		routes := flow.Routes(p)
+		if r := p.EntryRoute(); r != nil {
+			for _, a := range r.Arms {
+				check("", a.Target, a.Pos)
+			}
+		}
+		for _, m := range p.Body {
+			from := memberStage(m)
+			for _, st := range pipelineMemberSteps(m) {
+				flow.WalkGotos(st.Body, routes, func(g flow.GotoRef) {
+					pos := g.Stmt.Pos
+					if g.Arm != nil && g.Route == nil {
+						pos = g.Arm.Pos
+					}
+					check(from, g.Target, pos)
+				})
+			}
 		}
 	}
 	return findings

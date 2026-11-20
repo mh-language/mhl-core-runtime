@@ -589,6 +589,28 @@ partial workflow Story stage Implementation {
 }
 ```
 
+From another stage, go to the stage, not to one of its steps: `goto Specification`, not
+`goto ApproveSpec`. The other fragment then depends only on the phase's name, and the
+stage decides where it begins. `mhl lint` warns (without failing) about a `goto` into the
+middle of another stage. When a caller must skip ahead, give the stage a first step that
+dispatches:
+
+```mh-fragment
+partial workflow Story stage Specification {
+    step Begin {
+        if (specs_exist) {
+            goto ApproveSpec
+        }
+    }
+
+    step DraftSpec { ... }
+
+    step ApproveSpec { ... }
+}
+```
+
+Resume is unaffected: it re-enters the step a run stopped at, never a stage's start.
+
 A stage needs `partial`. Its name must not repeat a step, group or route name, and fragments
 sharing a stage are imported one right after the other. A fragment without a stage is fine:
 its steps are outside any. See `sample/syntax/stages/` for complete multi-file examples.

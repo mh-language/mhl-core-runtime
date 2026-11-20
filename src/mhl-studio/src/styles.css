@@ -1762,6 +1762,10 @@ select {
   margin: 2px 0;
   font-family: var(--mono);
 }
+/* A lint warning: advice, not an error (graph diagnostics' severity). */
+.problem.warning {
+  color: var(--warn, #b8860b);
+}
 
 /* ------------------------------------------------------------ run panel */
 

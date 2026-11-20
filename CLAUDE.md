@@ -266,7 +266,11 @@ Key packages:
   full expression evaluator.
 - **`internal/lang/parser`** — lexer + compiled Participle parser (`Parse`/`ParseExpr`).
 - **`internal/lang/lint`** — static analysis (broken imports, undeclared agents, misconfigured
-  config) shared by `mhl lint` and diagnostics published by the LSP.
+  config) shared by `mhl lint` and diagnostics published by the LSP. A `Finding` is an error
+  unless `Severity: SeverityWarning`: a warning is listed by `mhl lint`/`--dry-run`, shown as
+  LSP severity 2 and `mhl graph`'s `"severity": "warning"`, but fails nothing (e.g.
+  `lint/stage.go` `checkStageEntries`: a `goto` into another stage past its first member).
+  `make functional-test` runs `mhl lint sample/` before the tests.
   Checks run on the entry file merged with its imports; `loadModule` stamps each module's AST
   positions with its file (`stampFile`), and every finding takes its file from the position
   (`fileAt(file, pos)` — use it for a new `Finding`, never a bare `File: file`), so a module's

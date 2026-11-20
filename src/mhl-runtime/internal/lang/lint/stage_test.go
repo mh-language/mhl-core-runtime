@@ -41,3 +41,46 @@ func TestStageChecks(t *testing.T) {
 		})
 	}
 }
+
+func TestStageEntryWarnings(t *testing.T) {
+	// Two fragments of one workflow in one source, each its own stage.
+	src := `partial workflow W {
+    input existing: bool = false
+    entry step Start {
+        if (existing) { goto Approve }
+        goto Spec
+    }
+}
+partial workflow W stage Spec {
+    step Draft { log("draft") }
+    step Approve { goto Build }
+}
+partial workflow W stage Build {
+    step Compile { log("c") }
+    step Check {
+        if (true) { goto Approve }
+        goto Compile
+    }
+}`
+	var warns, errs []string
+	for _, f := range lintSource(t, src) {
+		if f.IsWarning() {
+			warns = append(warns, f.Message)
+		} else {
+			errs = append(errs, f.Message)
+		}
+	}
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	// Start → Approve (outside any stage, mid-Spec) and Check → Approve
+	// (from Build, mid-Spec) warn; goto Spec, goto Build (a stage) and
+	// goto Compile (within Build) don't.
+	if len(warns) != 2 {
+		t.Fatalf("warnings = %q", warns)
+	}
+	if !strings.Contains(warns[0], "`goto Approve` from outside any stage enters stage \"Spec\" at Approve, not at its start (Draft) — prefer `goto Spec`") ||
+		!strings.Contains(warns[1], "from stage \"Build\"") {
+		t.Fatalf("warnings = %q", warns)
+	}
+}

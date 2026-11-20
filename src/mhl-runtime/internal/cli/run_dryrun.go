@@ -32,14 +32,21 @@ func dryRunPipeline(out io.Writer, file, workflow string, inputs map[string]any,
 	}
 
 	warnings := make([]string, 0, len(findings))
+	lintErrors := 0
 	for _, f := range findings {
-		if f.Line > 0 {
-			warnings = append(warnings, fmt.Sprintf("%s:%d:%d %s", f.File, f.Line, f.Column, f.Message))
+		msg := f.Message
+		if f.IsWarning() {
+			msg = "warning: " + msg // listed, but not a problem: it does not block
 		} else {
-			warnings = append(warnings, fmt.Sprintf("%s %s", f.File, f.Message))
+			lintErrors++
+		}
+		if f.Line > 0 {
+			warnings = append(warnings, fmt.Sprintf("%s:%d:%d %s", f.File, f.Line, f.Column, msg))
+		} else {
+			warnings = append(warnings, fmt.Sprintf("%s %s", f.File, msg))
 		}
 	}
-	problems := len(warnings) + len(ins.MissingInputs) + len(ins.UnknownInputs) + len(ins.InvalidInputs)
+	problems := lintErrors + len(ins.MissingInputs) + len(ins.UnknownInputs) + len(ins.InvalidInputs)
 	blocked := problems > 0
 
 	if format == "json" {

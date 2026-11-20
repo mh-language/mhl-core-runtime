@@ -18,7 +18,9 @@ with no block and no extra indentation. The steps run exactly as without it: sam
 same order, same checkpoints. A stage adds two things:
 
 - `goto Name` enters the stage at its first member (a step, or a whole parallel group),
-  from any fragment;
+  from any fragment. From outside a stage, that is the way in: `mhl lint` warns (without
+  failing) about a `goto` to one of its steps other than the first — the stage's name is its
+  interface, and it decides where it begins;
 - observers see it: `step.stage` in a `step_start`/`step_end` hook, `stage` on
   `mhl run --format jsonl` step events (and the stage list on `run_start`), `run/status`,
   the `--dry-run` plan, `mhl graph` (`stages`, `Node.stage`) and a box in mhl studio.

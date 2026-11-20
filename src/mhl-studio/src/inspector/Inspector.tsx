@@ -320,7 +320,8 @@ function WorkflowInspector({ wf }: { wf: Workflow }) {
           <p className="muted small">No problems.</p>
         ) : (
           diagnostics.map((d, i) => (
-            <p key={i} className="problem small">
+            <p key={i} className={`problem small ${d.severity === "warning" ? "warning" : ""}`}>
+              {d.severity === "warning" ? "warning · " : ""}
               {d.file ? `${d.file}:` : ""}
               {d.line}:{d.column} {d.message}
             </p>

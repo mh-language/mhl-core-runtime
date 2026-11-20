@@ -533,12 +533,27 @@ func runLint(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	errs, warns := 0, 0
 	for _, f := range findings {
 		fmt.Fprintln(out, f.String())
+		if f.IsWarning() {
+			warns++
+		} else {
+			errs++
+		}
 	}
-	if len(findings) > 0 {
-		fmt.Fprintf(out, "%d problem(s) found\n", len(findings))
-		return fmt.Errorf("%d problem(s) found", len(findings))
+	// Only errors fail the command; a warning is advice.
+	if errs > 0 {
+		msg := fmt.Sprintf("%d problem(s) found", errs)
+		if warns > 0 {
+			msg += fmt.Sprintf(" (and %d warning(s))", warns)
+		}
+		fmt.Fprintln(out, msg)
+		return fmt.Errorf("%s", msg)
+	}
+	if warns > 0 {
+		fmt.Fprintf(out, "No problems found; %d warning(s).\n", warns)
+		return nil
 	}
 	fmt.Fprintln(out, "No problems found.")
 	return nil

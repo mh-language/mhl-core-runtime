@@ -30,6 +30,11 @@ Per-tag release notes are also generated automatically on the
   `mhl lint` rejects a stage on a declaration that is not `partial`, a stage named like a
   step, group or route, and fragments sharing a stage that are not imported consecutively.
   Programs without a stage keep their `DefinitionDigest`.
+- **Lint warnings.** A finding may now be a `warning:` — advice that `mhl lint` and
+  `mhl run --dry-run` list without failing (the language server shows it as a warning,
+  `mhl graph` as `"severity": "warning"`). The first one: a `goto` from outside a stage to
+  one of its steps other than the first — prefer `goto <stage>`, so other fragments depend
+  on the phase's name and the stage decides where it begins.
 - **Typed gates: `pause(reason, decision: T)`.** A pause that returns the decision a resume
   passes. The run reports `awaiting` — the step and `T` (a declared `type`/`enum`, or
   `string`/`number`/`bool`) as JSON Schema — in `mhl run --format json|jsonl`, `run/status`

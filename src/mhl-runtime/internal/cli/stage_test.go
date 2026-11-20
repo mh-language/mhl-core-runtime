@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mh-language/mhl-core-runtime/internal/cli"
 )
 
 // A workflow split by phase: the entry fragment, then one fragment per stage,
@@ -109,5 +111,36 @@ func TestStageReachesStepHooks(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
+	}
+}
+
+// A goto into the middle of another stage is a lint warning: listed by
+// `mhl lint` and `--dry-run`, never a failure.
+func TestStageEntryWarningDoesNotFail(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "spec.mh"), []byte(`
+partial workflow W stage Spec {
+    step Draft { log("draft") }
+    step Approve { complete() }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run := runInDir(t, dir, `
+import "spec.mh"
+partial workflow W {
+    entry step Start { goto Approve }
+}
+`)
+	var buf strings.Builder
+	if err := cli.Run([]string{"lint", "."}, &buf); err != nil {
+		t.Fatalf("mhl lint failed on a warning: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "warning: `goto Approve` from outside any stage enters stage \"Spec\"") || !strings.Contains(buf.String(), "No problems found; 1 warning(s).") {
+		t.Fatalf("mhl lint output:\n%s", buf.String())
+	}
+	out, err := run("--dry-run")
+	if err != nil || !strings.Contains(out, "warning: `goto Approve`") {
+		t.Fatalf("dry-run: %v\n%s", err, out)
 	}
 }
