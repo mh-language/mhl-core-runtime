@@ -19,10 +19,25 @@ pub async fn mhl_version() -> Result<String, String> {
 }
 
 /// The control-flow graph of `source`, an editor buffer for the file at
-/// `path` (which need not be saved; imports resolve relative to it).
+/// `path` (which need not be saved; imports resolve relative to it). With
+/// `merged`, each `partial` workflow is shown whole (`mhl graph --merged`),
+/// its fragments taken from `root`'s import closure when given.
 #[tauri::command]
-pub async fn graph(path: String, source: String) -> Result<Value, String> {
-    let mut cmd = sidecar::command(["graph", path.as_str(), "--stdin"])?;
+pub async fn graph(
+    path: String,
+    source: String,
+    merged: Option<bool>,
+    root: Option<String>,
+) -> Result<Value, String> {
+    let mut args = vec!["graph".to_string(), path.clone(), "--stdin".to_string()];
+    if merged.unwrap_or(false) {
+        args.push("--merged".into());
+        if let Some(root) = root {
+            args.push("--root".into());
+            args.push(root);
+        }
+    }
+    let mut cmd = sidecar::command(args)?;
     if let Some(dir) = Path::new(&path).parent().filter(|d| d.is_dir()) {
         cmd.current_dir(dir);
     }

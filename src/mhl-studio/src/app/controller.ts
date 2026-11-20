@@ -20,6 +20,7 @@ import { emptyRun, get, isEnv, isJson, isMarkdown, isMh, selectTool, set, type L
 import { installZoom } from "./zoom";
 import { installPanels } from "./panels";
 import { installTheme } from "./theme";
+import { fragmentInfo, mergeRoot } from "./fragments";
 
 const models = new Map<string, monaco.editor.ITextModel>();
 let lsp: LspClient | null = null;
@@ -97,9 +98,12 @@ export async function refreshFiles() {
 
 let librarySeq = 0;
 
-function setLibraryFile(rel: string, path: string, g: { ok: boolean; declarations: Declaration[] }) {
+function setLibraryFile(rel: string, path: string, g: Graph) {
   set((s) => {
-    const entry: LibraryFile = { rel, path, ok: g.ok, declarations: g.ok ? g.declarations : (s.library.find((l) => l.path === path)?.declarations ?? []) };
+    const prev = s.library.find((l) => l.path === path);
+    const entry: LibraryFile = g.ok
+      ? { rel, path, ok: true, declarations: g.declarations, ...fragmentInfo(path, g) }
+      : { rel, path, ok: false, declarations: prev?.declarations ?? [], imports: prev?.imports ?? [], entries: prev?.entries ?? [] };
     const rest = s.library.filter((l) => l.path !== path);
     return { library: [...rest, entry].sort((a, b) => a.rel.localeCompare(b.rel)) };
   });
@@ -116,13 +120,16 @@ export async function refreshLibrary() {
     try {
       const src = models.get(path)?.getValue() ?? (await api.readFile(path));
       const g = await api.graph(path, src);
-      out.push({ rel, path, ok: g.ok, declarations: g.declarations });
+      out.push({ rel, path, ok: g.ok, declarations: g.declarations, ...(g.ok ? fragmentInfo(path, g) : { imports: [], entries: [] }) });
     } catch {
-      out.push({ rel, path, ok: false, declarations: [] });
+      out.push({ rel, path, ok: false, declarations: [], imports: [], entries: [] });
     }
     if (seq !== librarySeq) return;
   }
   set({ library: out });
+  // A partial workflow is merged from the file that starts it, which the
+  // library has only now found.
+  if (get().graph?.workflows.some((w) => w.partial)) void refreshGraph();
 }
 
 /** Declarations the open file imports from other workspace files. */
@@ -254,7 +261,9 @@ export async function refreshGraph(): Promise<void> {
   const text = model.getValue();
   const seq = ++graphSeq;
   try {
-    const g = await api.graph(path, text);
+    const plain = await api.graph(path, text);
+    if (seq !== graphSeq || get().activePath !== path) return;
+    const g = plain.ok ? await mergedGraph(path, text, plain) : plain;
     if (seq !== graphSeq || get().activePath !== path) return;
     if (g.ok) {
       const keep = g.workflows.some((w) => w.name === get().workflow);
@@ -265,12 +274,29 @@ export async function refreshGraph(): Promise<void> {
       const tool = t && g.declarations.some((d) => d.kind === "tool" && d.name === t.name) ? t : null;
       set({ graph: g, graphSource: text, stale: false, diagnostics: g.diagnostics, workflow, selection, tool });
       const root = get().root;
-      if (root) setLibraryFile(relPath(root, path), path, g);
+      if (root) setLibraryFile(relPath(root, path), path, plain);
     } else {
       set({ stale: true, diagnostics: g.diagnostics });
     }
   } catch (e) {
     if (seq === graphSeq) toast("error", errorText(e));
+  }
+}
+
+/**
+ * `plain`, with each partial workflow shown whole: merged from the file that
+ * starts it (app/fragments.ts), or from this file's own imports when no
+ * workspace file does. Falls back to `plain` when merging fails.
+ */
+async function mergedGraph(path: string, text: string, plain: Graph): Promise<Graph> {
+  const partial = plain.workflows.find((w) => w.name === get().workflow && w.partial) ?? plain.workflows.find((w) => w.partial);
+  if (!partial) return plain;
+  const root = mergeRoot(path, partial.name, get().library);
+  try {
+    const g = await api.graph(path, text, { merged: true, root: root && root !== path ? root : null });
+    return g.ok ? g : plain;
+  } catch {
+    return plain;
   }
 }
 
@@ -325,7 +351,9 @@ export function redo() {
 }
 
 /** Selects and shows a byte span of the active file in the code editor. */
-export function revealSpan(span: Span) {
+/** Selects `span` in the code view: of `file` when given (another fragment of a merged workflow), else of the open file. */
+export async function revealSpan(span: Span, file?: string) {
+  if (file && file !== get().activePath) await openFile(file);
   const model = activeModel();
   const { graphSource } = get();
   if (!model || !editorInstance) return;

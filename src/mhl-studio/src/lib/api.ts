@@ -14,7 +14,9 @@ export const api = {
   writeFile: (path: string, contents: string) => invoke<void>("write_file", { path, contents }),
   createFile: (path: string, contents: string) => invoke<void>("create_file", { path, contents }),
   mhlVersion: () => invoke<string>("mhl_version"),
-  graph: (path: string, source: string) => invoke<Graph>("graph", { path, source }),
+  /** `merged` shows each partial workflow whole (`mhl graph --merged`), from `root`'s fragments when given. */
+  graph: (path: string, source: string, opts?: { merged?: boolean; root?: string | null }) =>
+    invoke<Graph>("graph", { path, source, merged: opts?.merged ?? false, root: opts?.root ?? null }),
   inspect: (cwd: string, path: string, workflow: string | null, inputs: [string, string][]) =>
     invoke<Inspection>("inspect", { cwd, path, workflow, inputs }),
   /** Evaluates an expression against a saved file's declarations (src-tauri/src/mhl.rs `evaluate`). */

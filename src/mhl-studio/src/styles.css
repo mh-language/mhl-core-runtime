@@ -2945,3 +2945,12 @@ select {
   vertical-align: -1px;
   color: var(--warn);
 }
+
+/* A step another fragment of a merged partial workflow declares: read-only here. */
+.node.foreign {
+  border-style: dashed;
+  opacity: 0.86;
+}
+.node.foreign .fragment-chip {
+  margin-left: auto;
+}

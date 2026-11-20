@@ -4,6 +4,18 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
+## Unreleased
+
+### Added
+
+- **A split workflow is drawn whole.** A `partial` workflow is graphed with
+  `mhl graph --merged`, from the workspace file that declares its `entry` step, so
+  every fragment shows in one diagram. Steps from another file are dashed, carry
+  that file's name, and are read-only here: double-click one (or its file chip) to
+  open its file; the inspector shows it with **Open file** / **Show in code**.
+  Renaming or deleting a step that another fragment's `goto` targets is refused,
+  and a name another fragment declares counts as taken.
+
 ## 0.4.0
 
 ### Fixed

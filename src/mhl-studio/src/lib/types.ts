@@ -64,6 +64,8 @@ export interface WfInput {
   type: string;
   default?: string;
   span: Span;
+  /** Declared in another fragment of a merged workflow (absolute path); `span` indexes that file. */
+  file?: string;
 }
 
 export interface Arm {
@@ -115,6 +117,8 @@ export interface Route {
   params: string[];
   span: Span;
   arms: Arm[];
+  /** As WfInput.file. */
+  file?: string;
 }
 
 export interface GraphNode {
@@ -122,6 +126,8 @@ export interface GraphNode {
   kind: "step" | "parallel";
   name: string;
   parent?: string;
+  /** Declared in another fragment of a merged workflow (absolute path): its spans, and its edges', index that file. */
+  file?: string;
   children?: string[];
   entry?: boolean;
   timeout?: string;
@@ -171,6 +177,8 @@ export interface Workflow {
   kind: "workflow" | "pipeline";
   loop?: boolean;
   partial?: boolean;
+  /** Shown whole, from every fragment (`mhl graph --merged`): members with `file` come from another fragment. */
+  merged?: boolean;
   internal?: boolean;
   max?: string;
   description?: string;
@@ -182,8 +190,9 @@ export interface Workflow {
   bodyOpen: number;
   bodyClose: number;
   inputs: WfInput[];
-  vars: { name: string; kind: string; span: Span }[];
-  props: { name: string; span: Span }[];
+  /** `file`: declared in that other fragment (absolute path) — `span` indexes that file. */
+  vars: { name: string; kind: string; span: Span; file?: string }[];
+  props: { name: string; span: Span; file?: string }[];
   routes: Route[];
   nodes: GraphNode[];
   edges: GraphEdge[];

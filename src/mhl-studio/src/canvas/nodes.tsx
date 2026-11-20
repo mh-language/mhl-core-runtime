@@ -22,7 +22,7 @@ function useDeclKinds(): Record<string, Declaration["kind"]> {
 }
 
 /** One action box: the call a step makes, like a Step Functions task. Click shows it in the code. */
-function CallBox({ call, kind, origin }: { call: CallSite; kind?: Declaration["kind"]; origin?: ImportOrigin }) {
+function CallBox({ call, kind, origin, at }: { call: CallSite; kind?: Declaration["kind"]; origin?: ImportOrigin; at?: string }) {
   const args = call.text.slice(call.receiver.length + 1 + call.method.length);
   const file = origin?.from.split("/").pop()?.replace(/\.mh$/, "");
   const Icon = CALL_ICON[kind ?? ""] ?? CALL_ICON_FALLBACK;
@@ -32,7 +32,7 @@ function CallBox({ call, kind, origin }: { call: CallSite; kind?: Declaration["k
       title={`${kind ?? "call"}: ${call.text}\nClick to show it in the code`}
       onClick={(e) => {
         e.stopPropagation();
-        revealSpan(call.span);
+        void revealSpan(call.span, at);
       }}
     >
       <Icon className="call-icon" size={12} strokeWidth={2} aria-hidden="true" />
@@ -53,6 +53,23 @@ function CallBox({ call, kind, origin }: { call: CallSite; kind?: Declaration["k
         </button>
       )}
     </div>
+  );
+}
+
+/** The file chip of a node another fragment declares (a merged partial workflow): read-only here, click opens it. */
+export function FragmentChip({ file }: { file: string }) {
+  const base = file.split(/[\\/]/).pop() ?? file;
+  return (
+    <button
+      className="call-origin fragment-chip"
+      title={`declared in ${file}\nEdit it there — click to open it`}
+      onClick={(e) => {
+        e.stopPropagation();
+        void openFile(file);
+      }}
+    >
+      ↗{base.replace(/\.mh$/, "")}
+    </button>
   );
 }
 
@@ -105,18 +122,19 @@ export const StepNode = memo(function StepNode({ id, data, selected }: NodeProps
     </span>
   );
   return (
-    <div className={`node step ${sites.length ? "has-calls" : ""} ${selected ? "selected" : ""} ${status ? `run-${status}` : ""} ${dropping ? "drop-target" : ""} ${focusCls}`}>
+    <div className={`node step ${sites.length ? "has-calls" : ""} ${selected ? "selected" : ""} ${status ? `run-${status}` : ""} ${dropping ? "drop-target" : ""} ${focusCls} ${n.file ? "foreign" : ""}`}>
       <Handle type="target" position={Position.Top} />
       <div className="node-title">
         <StateBadge kind={k.kind} size={18} />
         <span className="node-name">{n.name}</span>
         {n.entry && <span className="badge" title="entry step">entry</span>}
+        {n.file && <FragmentChip file={n.file} />}
         {sites.length > 0 && badges}
       </div>
       {sites.length > 0 ? (
         <div className="call-boxes">
           {sites.slice(0, MAX_BOXES).map((c, i) => (
-            <CallBox key={i} call={c} kind={kinds[c.receiver]} origin={origins.get(c.receiver)} />
+            <CallBox key={i} call={c} kind={kinds[c.receiver]} origin={n.file ? undefined : origins.get(c.receiver)} at={n.file} />
           ))}
           {sites.length > MAX_BOXES && <div className="call-more">+{sites.length - MAX_BOXES} more</div>}
         </div>
@@ -148,12 +166,13 @@ export const ParallelNode = memo(function ParallelNode({ id, data, selected }: N
         : statuses[id];
   const mergeStatus = merge ? statuses[merge.stepName] : undefined;
   return (
-    <div className={`node parallel ${selected ? "selected" : ""} ${status ? `run-${status}` : ""}`}>
+    <div className={`node parallel ${selected ? "selected" : ""} ${status ? `run-${status}` : ""} ${data.node.file ? "foreign" : ""}`}>
       <Handle type="target" position={Position.Top} />
       <div className="node-title">
         <StateBadge kind="parallel" size={18} />
         <span className="node-name">{data.node.name}</span>
         <span className="node-kind">Parallel</span>
+        {data.node.file && <FragmentChip file={data.node.file} />}
         {data.node.timeout && <TimeoutBadge timeout={data.node.timeout} />}
         {!!data.node.vars?.length && (
           <span className="badge mono" title={`the group's own vars, alive only while it runs:\n${data.node.vars.map((v) => v.name).join(", ")}`}>
@@ -172,7 +191,7 @@ export const ParallelNode = memo(function ParallelNode({ id, data, selected }: N
           }
           onClick={(e) => {
             e.stopPropagation();
-            revealSpan(merge.span);
+            void revealSpan(merge.span, data.node.file);
           }}
         >
           <Merge className="merge-icon" size={13} strokeWidth={2} aria-hidden="true" />

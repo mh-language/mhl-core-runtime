@@ -147,12 +147,13 @@ html { scroll-behavior:smooth; }
           <ul class="studio-points">
             <li><strong>The diagram is a projection.</strong> It comes from <code>mhl graph &lt;file&gt; --stdin</code>, which reports every step, parallel group, route, transition and call with the byte span of the source it came from.</li>
             <li><strong>Edits are text edits.</strong> A diagram or inspector action rewrites only those spans, as one undoable step in the editor. Comments and formatting elsewhere are never touched.</li>
+            <li><strong>A split workflow is drawn whole.</strong> A <code>partial</code> workflow is graphed with <code>mhl graph --merged</code>, from the file that declares its <code>entry</code> step, so every fragment shows in one diagram. Steps from another file are dashed, carry that file's name and are read-only here: double-click one, or its file chip, to open the file and edit it there. Renaming or deleting a step another fragment's <code>goto</code> targets is refused.</li>
             <li><strong>Editing the code redraws the diagram.</strong> While the code does not parse, the diagram keeps the last version that did, read-only, until the code is fixed.</li>
             <li><strong>It ships its own runtime.</strong> Each installer bundles the <code>mhl</code> binary it was built with — its version is shown at the right of the toolbar — so the language it edits is the runtime it runs, never an <code>mhl</code> on your <code>PATH</code>.</li>
           </ul>
           <div class="reference-table">
             <div class="table-row table-head"><span>Feature</span><span><code>mhl</code> command</span><span>What it provides</span></div>
-            <div class="table-row"><span>Diagram</span><span><code>mhl graph --stdin</code></span><span>nodes, edges, call sites and spans</span></div>
+            <div class="table-row"><span>Diagram</span><span><code>mhl graph --stdin [--merged]</code></span><span>nodes, edges, call sites and spans; a partial workflow from all its fragments</span></div>
             <div class="table-row"><span>Inputs form</span><span><code>mhl run --dry-run --format json</code></span><span>the declared inputs and their types, validated before a run</span></div>
             <div class="table-row"><span>Execution</span><span><code>mhl run --format jsonl</code></span><span>streamed <code>step_start</code> / <code>step_end</code> / <code>log</code> / <code>result</code> events</span></div>
             <div class="table-row"><span>Run method</span><span><code>mhl run --format json</code></span><span>a throwaway one-step program that calls a tool method, written outside the workspace</span></div>

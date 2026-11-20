@@ -10,6 +10,19 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+### Added
+
+- **`mhl graph --merged` shows a `partial` workflow whole.** Every fragment in the file's
+  import closure (or in `--root <entry.mh>`'s) is joined in run order: one start edge to the
+  `entry` step, and a fragment's last step falling through into the next fragment's first.
+  A node, input, var, prop or route from another fragment carries that file's absolute path
+  in `"file"`, its spans indexing that file.
+
+### Fixed
+
+- **`mhl graph` no longer draws a start edge into a `partial` fragment without the `entry`
+  step.** A run never starts there; the edge pointed at whichever step came first.
+
 ## 1.12.0 — 2026-11-20
 
 ### Added

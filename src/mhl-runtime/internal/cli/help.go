@@ -32,7 +32,7 @@ Commands:
   run <file.mh> [flags]      Execute a pipeline or workflow
   test <file.mh|dir>         Run every test { ... } block in a file or directory
   lint [dir]                 Statically check .mh files (default ".")
-  graph <file.mh> [--stdin]  Print a file's workflow control-flow graph as JSON
+  graph <file.mh> [--stdin] [--merged]  Print a file's workflow control-flow graph as JSON
   lsp                        Start the language server over stdio (used by vscode-mhl)
   serve <mcp|a2a> [flags]    Expose workflows as MCP tools or A2A skills
   pack <dir> -o <file>       Seal a workflow directory into an encrypted pack
@@ -167,7 +167,7 @@ or misconfigured agents, syntax errors — each with a file and line.
   mhl lint
   mhl lint ./workflows
 `,
-	"graph": `mhl graph <file.mh> [--stdin]
+	"graph": `mhl graph <file.mh> [--stdin] [--merged [--root <entry.mh>]]
 
 Print the control-flow graph of every workflow/pipeline in file.mh as one
 JSON object: steps and parallel groups (nodes), fall-through, goto, goto
@@ -179,8 +179,14 @@ With --stdin the source is read from stdin and file.mh only names it
 "ok": false with its diagnostics and still exits 0. Meant for editors
 and visual workflow tools.
 
+--merged shows each partial workflow whole: the fragments in file.mh's
+import closure (or entry.mh's, with --root) are joined in run order, and a
+node, input, var, prop or route from another fragment carries that file's
+absolute path in "file" (its spans index that file).
+
   mhl graph main.mh
   cat main.mh | mhl graph main.mh --stdin
+  mhl graph story/review.mh --merged --root story.mh
 `,
 	"lsp": `mhl lsp
 

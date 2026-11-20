@@ -1,0 +1,40 @@
+// A `partial` workflow split across files: this file declares its entry
+// fragment and imports the other. `mhl graph` draws one file's fragment;
+//
+//     mhl graph sample/features/graph_and_events/review_flow.mh --merged
+//
+// draws the whole workflow, in run order: Draft falls through into the next
+// fragment's Review, and each node from review/gate.mh carries that file's
+// absolute path in "file". Graphing the other fragment from here shows the
+// same whole workflow, its own nodes unmarked:
+//
+//     mhl graph sample/features/graph_and_events/review/gate.mh --merged \
+//         --root sample/features/graph_and_events/review_flow.mh
+import "review/gate.mh"
+
+partial workflow ReviewFlow {
+    input text: string = "draft"
+    input approved: bool = false
+
+    var status = "drafting"
+
+    output: { status }
+
+    entry step Draft {
+        self.status = "drafted"
+    }
+}
+
+test review_flow {
+    describe pauses_at_the_gate_of_the_other_fragment {
+        var r = ReviewFlow.run(inputs: {text: "hello"})
+        are_equal(r.state, "paused")
+        are_equal(r.executed, ["Draft", "Review"])
+    }
+
+    describe approval_reaches_publish {
+        var r = ReviewFlow.run(inputs: {text: "hello", approved: true})
+        are_equal(r.state, "completed")
+        are_equal(r.output.status, "published")
+    }
+}
