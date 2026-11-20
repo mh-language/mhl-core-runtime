@@ -21,11 +21,33 @@ type Finding struct {
 	Line    int
 	Column  int
 	Message string
+	// Severity is SeverityError (the zero value) or SeverityWarning: a
+	// warning is reported everywhere a finding is, but never fails
+	// `mhl lint` or `mhl run --dry-run`.
+	Severity Severity
 }
 
-// String formats the finding as "<file>:<line>: error: <message>".
+// Severity grades a Finding.
+type Severity string
+
+const (
+	// SeverityError is a program the runtime would reject or misrun.
+	SeverityError Severity = ""
+	// SeverityWarning is valid but discouraged: a style or design advice.
+	SeverityWarning Severity = "warning"
+)
+
+// IsWarning reports whether f is only a warning.
+func (f Finding) IsWarning() bool { return f.Severity == SeverityWarning }
+
+// String formats the finding as "<file>:<line>: error: <message>" (or
+// "warning:" for a warning).
 func (f Finding) String() string {
-	return fmt.Sprintf("%s:%d: error: %s", f.File, f.Line, f.Message)
+	label := "error"
+	if f.IsWarning() {
+		label = "warning"
+	}
+	return fmt.Sprintf("%s:%d: %s: %s", f.File, f.Line, label, f.Message)
 }
 
 // File reads, parses and statically checks the .mh file at path. A read or
@@ -75,6 +97,7 @@ func source(path, src string, cache *importCache) []Finding {
 	findings = append(findings, checkParallelMerges(path, merged)...)
 	findings = append(findings, checkGates(path, merged)...)
 	findings = append(findings, checkStages(path, merged)...)
+	findings = append(findings, checkStageEntries(path, merged)...)
 	findings = append(findings, checkDiscardedResults(path, merged)...)
 	findings = append(findings, checkPipelineGoto(path, merged)...)
 	findings = append(findings, checkEntryRoutes(path, merged, aliases)...)

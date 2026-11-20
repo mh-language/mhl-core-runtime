@@ -10,6 +10,8 @@ export interface Diagnostic {
   line: number;
   column: number;
   message: string;
+  /** "warning" for a lint warning (advice, never blocking); absent for an error. */
+  severity?: "warning";
 }
 
 export interface Declaration {

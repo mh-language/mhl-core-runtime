@@ -38,17 +38,18 @@ export const ElkEdge = memo(function ElkEdge(props: EdgeProps<ElkEdgeType>) {
     [path, lx, ly] = getSmoothStepPath(props);
   }
   const cls = `edge kind-${e.kind} ${selected ? "selected" : ""} ${data!.taken ? "taken" : ""}`;
+  const text = data!.text ?? edgeLabel(e);
   return (
     <>
       <BaseEdge path={path} markerEnd={markerEnd} className={cls} interactionWidth={14} />
-      {e.label && (
+      {text && (
         <EdgeLabelRenderer>
           <div
             className={`edge-label kind-${e.kind} ${data!.taken ? "taken" : ""}`}
             style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)` }}
-            title={e.via ? `via route ${e.via}` : undefined}
+            title={[data!.title, e.via ? `via route ${e.via}` : ""].filter(Boolean).join("\n") || undefined}
           >
-            {edgeLabel(e)}
+            {text}
           </div>
         </EdgeLabelRenderer>
       )}

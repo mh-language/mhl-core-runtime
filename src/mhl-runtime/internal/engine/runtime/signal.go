@@ -51,6 +51,18 @@ type Gate struct {
 	Step  string `json:"step"`
 	Index int    `json:"index"`
 	Type  string `json:"type"`
+	// Answered are the decisions the step's earlier gates (Index 0 to
+	// Index-1) returned in the execution that paused here. A resume re-enters
+	// the step from its start, so it replays them: each earlier gate returns
+	// its answer again instead of pausing, and the run reaches this gate.
+	Answered []GateReply `json:"answered,omitempty"`
+}
+
+// GateReply is one earlier gate's answer (Gate.Answered): its decision
+// type and the decision, as given.
+type GateReply struct {
+	Type     string `json:"type"`
+	Decision any    `json:"decision"`
 }
 
 func (p *PauseSignal) Error() string { return "pause" }

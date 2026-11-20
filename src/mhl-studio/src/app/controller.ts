@@ -700,7 +700,7 @@ function onRunEvent(ev: RunEvent) {
   });
 }
 
-export async function startRun(inputs: [string, string][], opts: { resume?: boolean; force?: boolean; decision?: unknown } = {}) {
+export async function startRun(inputs: [string, string][], opts: { resume?: boolean; force?: boolean; decision?: unknown; from?: string } = {}) {
   const { root, activePath, workflow, run: prev } = get();
   if (!root || !activePath || prev.running) return;
   await save();
@@ -723,6 +723,7 @@ export async function startRun(inputs: [string, string][], opts: { resume?: bool
         force: !!opts.force,
         session,
         ...(opts.resume && opts.decision !== undefined ? { decision: JSON.stringify(opts.decision) } : {}),
+        ...(opts.resume && opts.from ? { from: opts.from } : {}),
       },
       onRunEvent,
     );

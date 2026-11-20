@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,9 +79,12 @@ type asyncRun struct {
 	// next leg (consumed when it launches).
 	awaiting *execsvc.Awaiting
 	decision any
-	vars     map[string]any
-	errMsg   string
-	updated  time.Time
+	// from is the stage run/resume asked the next leg to redo (consumed
+	// when it launches).
+	from    string
+	vars    map[string]any
+	errMsg  string
+	updated time.Time
 }
 
 // --- concurrency slots -------------------------------------------------
@@ -526,6 +530,9 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 		// Decision answers the gate a paused run waits at (its status's
 		// `awaiting`): a value of the gate's type.
 		Decision any `json:"decision"`
+		// From redoes a stage of the stopped run: the leg re-enters it at
+		// its first step, with the variables as of the stop.
+		From string `json:"from"`
 	}
 	if len(msg.Params) > 0 {
 		if err := json.Unmarshal(msg.Params, &p); err != nil {
@@ -552,6 +559,18 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	rn.mu.Unlock()
 	// A decision answers a gate: refused here, the run left paused, when the
 	// run is not waiting at one or the value is not of its type.
+	if p.From != "" {
+		if p.Decision != nil {
+			return errMsg(msg.ID, -32602, "from: a decision answers the gate the run waits at, while redoing a stage drops that gate — pass one or the other")
+		}
+		if _, ok := rn.tool.Pipeline.StageEntry[p.From]; !ok {
+			names := make([]string, 0)
+			for _, st := range rn.tool.Pipeline.NamedStages() {
+				names = append(names, st.Name)
+			}
+			return errMsg(msg.ID, -32602, fmt.Sprintf("from: %q has no stage %q (its stages: %s)", rn.tool.Name, p.From, strings.Join(names, ", ")))
+		}
+	}
 	if p.Decision != nil {
 		if !paused || awaiting == nil {
 			return errMsg(msg.ID, -32602, fmt.Sprintf("decision: run %q is not waiting for a decision — resume it without one", p.RunID))
@@ -600,7 +619,7 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 			rn.args[k] = v
 		}
 	}
-	rn.decision = p.Decision
+	rn.decision, rn.from = p.Decision, p.From
 	ctx, cancel := context.WithCancel(h.runsCtx)
 	rn.errMsg, rn.updated = "", time.Now()
 	rn.principal = sess.getPrincipal() // context.principal for this leg = the resumer
@@ -713,8 +732,8 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	}
 	// The decision run/resume handed this leg answers the gate once.
 	rn.mu.Lock()
-	decision := rn.decision
-	rn.decision, rn.awaiting = nil, nil
+	decision, from := rn.decision, rn.from
+	rn.decision, rn.from, rn.awaiting = nil, "", nil
 	rn.mu.Unlock()
 	res, runErr := execsvc.Run(execsvc.Request{
 		Context:    ctx,
@@ -726,6 +745,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		Session:    rn.id,
 		Resume:     resume,
 		Decision:   decision,
+		From:       from,
 		Principal:  rn.principal,
 		StateStore: stateStore,
 		// Tee step/log() output to this run's own bounded buffer (for

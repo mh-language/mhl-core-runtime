@@ -74,7 +74,7 @@ The built CLI itself:
 
 ```sh
 mhl init [dir]  # scaffolds an immediately-runnable main.mh; never overwrites
-mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]  # --workflow picks the declared pipeline/workflow (default: first entry point; execsvc.Request.Workflow); --format jsonl streams events (cli/run_events.go: run_start, step_start/step_end ← execsvc.Request.OnStart/OnStep/OnStepEnd, log, result); SIGINT/SIGTERM cancel at the step boundary (checkpoint saved), a second one kills; --resume refuses a checkpoint whose pipeline definition changed shape (digest), --force downgrades to warning; --format json emits one typed result/error object (runtime.StepError / InvalidInputsError feed its kind/step/hint), run output → its `log` field; --dry-run = validate (parse/imports/lint/input contract — presence *and* declared value types, via the shared `execsvc.coerceInputs`) + print static plan via execsvc.Inspect, executes nothing
+mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force] [--decision <json> | --from <stage>]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]  # --workflow picks the declared pipeline/workflow (default: first entry point; execsvc.Request.Workflow); --format jsonl streams events (cli/run_events.go: run_start, step_start/step_end ← execsvc.Request.OnStart/OnStep/OnStepEnd, log, result); SIGINT/SIGTERM cancel at the step boundary (checkpoint saved), a second one kills; --resume refuses a checkpoint whose pipeline definition changed shape (digest), --force downgrades to warning; --format json emits one typed result/error object (runtime.StepError / InvalidInputsError feed its kind/step/hint), run output → its `log` field; --dry-run = validate (parse/imports/lint/input contract — presence *and* declared value types, via the shared `execsvc.coerceInputs`) + print static plan via execsvc.Inspect, executes nothing
 mhl test <file.mh|dir> [--env-file <path> ...]  # run and test first load ./.env, or each --env-file instead (internal/features/dotenv via cli/envfile.go, before extensions load); an already-set variable always wins
 mhl lint [dir]
 mhl graph <file.mh> [--stdin] [--merged [--root <entry.mh>]]  # --merged: each partial workflow from all its fragments in run order (flow.BuildMerged; members from another fragment carry `file` = its abs path, spans index that file — the studio's sync/edits.ts `localGraph` drops them so edits stay single-file); JSON control-flow graph for editors/visual tools, e.g. src/mhl-studio (internal/lang/flow): nodes (with each step's `callSites`)/edges — plus each `tool`'s methods (args, returns, header/body spans) and `Name.` call sites — with byte spans from the AST's parser-set Pos/EndPos (`parser:"" digest:"-"`, so DefinitionDigest is unchanged); flow.GotoTargets/AlwaysDiverts are the one copy execsvc.Inspect and lint use
@@ -133,7 +133,10 @@ the decision a resume passes instead: the pause signal carries a `runtime.Gate{S
 `execsvc.Request.Decision` (`mhl run --resume --decision`, `run/resume {decision}` —
 prevalidated by `execsvc.CheckDecision` so the run stays paused) is checked against the
 checkpoint's gate before any hook runs (`*execsvc.DecisionError`) and handed to that one gate
-via `interpreter.WithGateAnswer` — consumed once, so a later gate pauses again. Test mode:
+via `interpreter.WithGateAnswer` — consumed once, so a later gate pauses again. Re-entry replays
+the step's earlier gates: a pause carries the answers that execution already returned
+(`runtime.Gate.Answered`), and `GateAnswer.Replay` (re-coerced by `execsvc.replayOf`) hands
+each back to its index. Test mode:
 `Name.run(decisions: [...])`. `lint/gate.go` checks T and refuses a gate in a `loop`; flow
 lists a step's gate types in `Node.Decisions`. Signal path: `interpreter.pauseSignal`
 → `IsPause` → `runtime.PauseSignal` → `RunResult.Paused` / `LoopResult.TerminalReason
@@ -192,7 +195,10 @@ fragments). `parser.expandStages` tags every member of that body (`Step.Stage` /
 member order; `digest:"-"`) — so everything that walks `Body` (runtime, lint, interpreter,
 checkpoints) sees plain members. The runtime calls it a *named stage* (`Pipeline.StageOf`/
 `StageEntry`/`NamedStages()`) since `runtime.Stage` already means a unit of execution;
-`Runner` maps `goto <stage>` to its first member (`StageTarget`); `execsvc` emits `stage` in
+`Runner` maps `goto <stage>` to its first member (`StageTarget`), and `Runner.WithResumeFrom`
+(`execsvc.Request.From`, `mhl run --resume --from`, MCP `run/resume {from}`; refused up front as
+`*execsvc.ResumeFromError`) re-enters a stage at `StageEntry` with the checkpoint's vars, dropping
+a pending gate; `execsvc` emits `stage` in
 `StepContext` and `Request.OnStages` feeds jsonl/`run/status`; flow projects
 `Workflow.Stages` + `Node.Stage` (studio draws ELK compound boxes, `elk.json.edgeCoords:
 ROOT`).
@@ -266,7 +272,11 @@ Key packages:
   full expression evaluator.
 - **`internal/lang/parser`** — lexer + compiled Participle parser (`Parse`/`ParseExpr`).
 - **`internal/lang/lint`** — static analysis (broken imports, undeclared agents, misconfigured
-  config) shared by `mhl lint` and diagnostics published by the LSP.
+  config) shared by `mhl lint` and diagnostics published by the LSP. A `Finding` is an error
+  unless `Severity: SeverityWarning`: a warning is listed by `mhl lint`/`--dry-run`, shown as
+  LSP severity 2 and `mhl graph`'s `"severity": "warning"`, but fails nothing (e.g.
+  `lint/stage.go` `checkStageEntries`: a `goto` into another stage past its first member).
+  `make functional-test` runs `mhl lint sample/` before the tests.
   Checks run on the entry file merged with its imports; `loadModule` stamps each module's AST
   positions with its file (`stampFile`), and every finding takes its file from the position
   (`fileAt(file, pos)` — use it for a new `Finding`, never a bare `File: file`), so a module's

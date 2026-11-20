@@ -23,11 +23,28 @@ section here, and the release workflow uses that section as the release notes.
 - **`stage` is highlighted** in the code editor (the shared TextMate grammar of
   the VS Code extension): the keyword and the stage's name, only in a header's
   `stage Name {`.
+- **Redo a stage.** When a run has stopped (paused or failed), each stage box
+  shows **↻ redo**: it resumes the run at that stage's first step
+  (`mhl run --resume --from`), with the variables as of the stop.
+- **Lint warnings look like warnings** in the inspector's Problems list (`warning ·`,
+  amber) — such as a `goto` into the middle of another stage.
 - **Resume a gate with a form.** A run paused at a typed gate
   (`pause(reason, decision: T)`) shows a decision form built from `T` — a select
   per enum, a checkbox per bool, a field per string/number — and **Resume with
   decision** passes it (`mhl run --resume --decision`). A gate step is labelled
   `Gate · T` on the diagram.
+
+### Changed
+
+- **Big diagrams read better.** Steps are laid out in the order a run reaches
+  them, so a shared step declared early (a revision step in the entry fragment)
+  sits after its callers instead of above the whole diagram, and a stage keeps
+  its steps in the order they are written. A step's guard `fail(...)` no longer
+  draws an edge to Fail: its ✕ badge lists the conditions on hover (a
+  `goto match`/route arm to `fail` still goes to the Fail terminal). A step that
+  asks again (`goto` itself) gets a short `↻` loop on its side, its conditions on
+  hover, and a long condition label is cut with the full text in its tooltip. On
+  the AgileSpec story workflow: 2386 → 775 px wide, 79 → 42 bends.
 
 ## 0.4.0
 

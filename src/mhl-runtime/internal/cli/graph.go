@@ -93,7 +93,7 @@ func graphOf(path, src string) *flow.Graph {
 	}
 	diags := []flow.Diagnostic{}
 	for _, f := range lint.Source(path, src) {
-		d := flow.Diagnostic{Line: f.Line, Column: f.Column, Message: f.Message}
+		d := flow.Diagnostic{Line: f.Line, Column: f.Column, Message: f.Message, Severity: string(f.Severity)}
 		if f.File != "" && filepath.Clean(f.File) != filepath.Clean(path) {
 			d.File = f.File
 		}

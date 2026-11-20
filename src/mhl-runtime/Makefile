@@ -19,6 +19,7 @@ test:
 # runs the sample/ tree (docs-facing .mh examples, migrated from the old
 # test/e2e/{lang/syntax,features}) through the binary build produces above
 functional-test: build
+	$(SAMPLE)/mhl lint $(SAMPLE)
 	$(SAMPLE)/mhl test $(SAMPLE)/syntax
 	$(SAMPLE)/mhl test $(SAMPLE)/features --env-file $(SAMPLE)/features/env/sample.env
 

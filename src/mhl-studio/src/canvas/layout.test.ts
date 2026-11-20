@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawnEdges, layoutWorkflow, takenEdges } from "./layout";
+import { drawnEdges, layoutWorkflow, runOrder, takenEdges, type StepNodeData } from "./layout";
 import { END, FAIL, START, type GraphEdge, type GraphNode, type Route, type Workflow } from "../lib/types";
 
 const node = (id: string, extra: Partial<GraphNode> = {}): GraphNode =>
@@ -225,5 +225,100 @@ describe("stages", () => {
     const wf = staged();
     const taken = takenEdges(wf, ["Intake", "Compile", "L", "R", "Gate", "Compile"], null);
     expect(taken.has("Gate>Build")).toBe(true);
+  });
+});
+
+describe("readability", () => {
+  /** Retry is declared first but only reached from Review; Review asks again twice; Check guards with fail(). */
+  function review(): Workflow {
+    const long = "implementation.status != \"ready\" && attempts < max_attempts";
+    return {
+      ...branching(),
+      nodes: [node("Retry"), node("Check", { exits: ["fail"] }), node("Review"), node("Done")],
+      edges: [
+        edge(START, "Check"),
+        edge("Check", FAIL, "fail", "dir.missing()"),
+        edge("Check", FAIL, "fail", "cmd.is_empty()"),
+        edge("Check", "Review"),
+        edge("Review", "Review", "goto", "note.is_empty()"),
+        edge("Review", "Review", "goto", "!passed"),
+        edge("Review", "Retry", "goto", long),
+        edge("Review", "Done"),
+        edge("Retry", "Review", "goto"),
+        edge("Done", END, "end", "complete"),
+      ],
+    };
+  }
+
+  it("orders nodes as a run reaches them, an early-declared step after its caller", () => {
+    const wf = review();
+    expect(runOrder(wf, wf.nodes).map((n) => n.id)).toEqual(["Check", "Review", "Retry", "Done"]);
+  });
+
+  it("puts a guard's fail() conditions on the step, with no edge to Fail", async () => {
+    const { nodes, edges } = await layoutWorkflow(review());
+    expect(nodes.some((n) => n.id === FAIL)).toBe(false);
+    expect(edges.some((e) => e.target === FAIL)).toBe(false);
+    const check = nodes.find((n) => n.id === "Check")!.data as StepNodeData;
+    expect(check.failsWhen).toEqual(["dir.missing()", "cmd.is_empty()"]);
+  });
+
+  it("keeps a match arm to Fail as an edge to the terminal", async () => {
+    const { nodes, edges } = await layoutWorkflow(branching());
+    expect(nodes.some((n) => n.id === FAIL)).toBe(true);
+    expect(edges.some((e) => e.target === FAIL)).toBe(true);
+  });
+
+  it("draws a step's ask-again gotos as one short loop on its right side", async () => {
+    const { nodes, edges } = await layoutWorkflow(review());
+    const loops = edges.filter((e) => e.source === "Review" && e.target === "Review");
+    expect(loops).toHaveLength(1);
+    const d = loops[0].data!;
+    expect(d.text).toBe("↻ 2");
+    expect(d.title).toBe("asks again when:\nnote.is_empty()\n!passed");
+    expect(loops[0].deletable).toBe(false);
+    const r = nodes.find((n) => n.id === "Review")!;
+    for (const p of d.points) expect(p.x).toBeGreaterThanOrEqual(r.position.x + 236);
+  });
+
+  it("cuts a long label, keeping the full condition for the tooltip", async () => {
+    const { edges } = await layoutWorkflow(review());
+    const d = edges.find((e) => e.source === "Review" && e.target === "Retry")!.data!;
+    expect(d.text!.length).toBeLessThanOrEqual(34);
+    expect(d.text!.endsWith("…")).toBe(true);
+    expect(d.title).toBe(d.edge.label);
+  });
+});
+
+describe("runOrder", () => {
+  /** Fix is declared first; S is Begin → (Draft →) Approve, Approve sending a revision to Fix. */
+  function gated(): Workflow {
+    return {
+      ...branching(),
+      nodes: [node("Fix"), node("Begin", { stage: "S" }), node("Draft", { stage: "S" }), node("Approve", { stage: "S" })],
+      edges: [
+        edge(START, "S", "goto"),
+        edge("Begin", "Approve", "goto", "existing"),
+        edge("Begin", "Draft"),
+        edge("Draft", "Approve"),
+        edge("Approve", "Fix", "goto", "revise"),
+        edge("Fix", "S", "goto"),
+      ],
+      stages: [{ name: "S", members: ["Begin", "Draft", "Approve"] }] as unknown as Workflow["stages"],
+    };
+  }
+
+  it("moves a stage as one unit, its members in written order", () => {
+    const wf = gated();
+    expect(runOrder(wf, wf.nodes).map((n) => n.id)).toEqual(["Begin", "Draft", "Approve", "Fix"]);
+  });
+
+  it("draws a gate below the step that falls into it, though it can send the run back there", async () => {
+    const wf = gated();
+    wf.edges.push(edge("Approve", "Draft", "goto", "!approved"));
+    const { nodes } = await layoutWorkflow(wf);
+    const y = (id: string) => nodes.find((n) => n.id === id)!.position.y;
+    expect(y("Begin")).toBeLessThan(y("Draft"));
+    expect(y("Draft")).toBeLessThan(y("Approve"));
   });
 });

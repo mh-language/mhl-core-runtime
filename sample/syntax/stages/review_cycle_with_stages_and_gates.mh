@@ -8,6 +8,12 @@
 //   mhl run review_cycle_with_stages_and_gates.mh --session s1 --resume --decision '{"approved": true}'
 //   mhl run review_cycle_with_stages_and_gates.mh --session s1 --resume --decision '{"action": "Approve"}'
 //   ...
+//
+// Paused at ReviewCode, redo the whole Specification phase instead of
+// answering — the run re-enters DraftSpec with its variables as of the stop
+// (spec_rounds goes on counting), and the pending review gate is dropped:
+//
+//   mhl run review_cycle_with_stages_and_gates.mh --session s1 --resume --from Specification
 import "story/specification.mh"
 import "story/implementation.mh"
 import "story/consolidation.mh"

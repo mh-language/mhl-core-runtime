@@ -47,6 +47,8 @@ type Diagnostic struct {
 	Line    int    `json:"line"`
 	Column  int    `json:"column"`
 	Message string `json:"message"`
+	// Severity is "warning" for a lint warning, absent for an error.
+	Severity string `json:"severity,omitempty"`
 }
 
 // Import is one `import` declaration.

@@ -1762,6 +1762,10 @@ select {
   margin: 2px 0;
   font-family: var(--mono);
 }
+/* A lint warning: advice, not an error (graph diagnostics' severity). */
+.problem.warning {
+  color: var(--warn, #b8860b);
+}
 
 /* ------------------------------------------------------------ run panel */
 
@@ -2998,4 +3002,8 @@ select {
 }
 .node.stage.foreign {
   border-style: dashed;
+}
+/* Redo a stage of a stopped run (`--resume --from`), in the stage box's title. */
+.node.stage .stage-redo {
+  margin-left: auto;
 }

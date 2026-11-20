@@ -30,6 +30,17 @@ Per-tag release notes are also generated automatically on the
   `mhl lint` rejects a stage on a declaration that is not `partial`, a stage named like a
   step, group or route, and fragments sharing a stage that are not imported consecutively.
   Programs without a stage keep their `DefinitionDigest`.
+- **`mhl run --resume --from <stage>` redoes a phase.** A stopped run (paused, failed or
+  cancelled) re-enters the named stage at its first step instead of the step it stopped at,
+  with the variables as of the stop — nothing rolled back — and any gate it waited at dropped.
+  Also `run/resume {runId, from}` and the `mhl_run_resume` tool's `from`. Refused before
+  anything runs (`invalid_from` / `-32602`) for a name that is not a stage, with a decision,
+  or without a stopped run.
+- **Lint warnings.** A finding may now be a `warning:` — advice that `mhl lint` and
+  `mhl run --dry-run` list without failing (the language server shows it as a warning,
+  `mhl graph` as `"severity": "warning"`). The first one: a `goto` from outside a stage to
+  one of its steps other than the first — prefer `goto <stage>`, so other fragments depend
+  on the phase's name and the stage decides where it begins.
 - **Typed gates: `pause(reason, decision: T)`.** A pause that returns the decision a resume
   passes. The run reports `awaiting` — the step and `T` (a declared `type`/`enum`, or
   `string`/`number`/`bool`) as JSON Schema — in `mhl run --format json|jsonl`, `run/status`
@@ -40,10 +51,13 @@ Per-tag release notes are also generated automatically on the
   never answers a later round. In a test, `Name.run(decisions: [...])` answers each gate in
   turn. `mhl lint` checks `T`, and rejects a gate in a `loop` workflow (not supported yet).
   A plain `pause(reason)` is unchanged. `mhl graph` lists a step's gate types in
-  `decisions`.
+  `decisions`. A step may hold several gates: re-entered on resume, the gates it already
+  passed return their answers again (`Checkpoint.Gate.answered`) instead of pausing.
 
 ### Fixed
 
+- **`make functional-test` lints `sample/` too**, which caught a sample whose fragment fell
+  through into another file.
 - **`mhl graph` no longer draws a start edge into a `partial` fragment without the `entry`
   step.** A run never starts there; the edge pointed at whichever step came first.
 

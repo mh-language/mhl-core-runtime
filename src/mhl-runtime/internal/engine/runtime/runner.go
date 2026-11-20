@@ -143,6 +143,21 @@ type Runner struct {
 	// forceResume downgrades a resume-time definition-digest mismatch from an
 	// error to a logged warning (the operator asserting the edit is safe).
 	forceResume bool
+	// resumeFrom, when set, is a named stage a resume re-enters at its first
+	// member instead of the checkpoint's NextStep (WithResumeFrom).
+	resumeFrom string
+}
+
+// WithResumeFrom makes a resume re-enter the named stage stage at its first
+// member (`mhl run --resume --from <stage>`), redoing the phase, instead of
+// continuing at the step the run stopped at. The variables are the
+// checkpoint's — the state as of the stop, nothing rolled back — and a gate
+// the run was waiting at is dropped: the phase runs again and reaches it
+// anew. Run fails when the stage is unknown or there is no checkpoint. ""
+// keeps the plain resume. Returns r for chaining.
+func (r *Runner) WithResumeFrom(stage string) *Runner {
+	r.resumeFrom = stage
+	return r
 }
 
 // Checkpoint returns the checkpoint a resume of pipeline would continue
@@ -164,7 +179,7 @@ func NewRunner(root string) *Runner {
 // clobber each other's checkpoint. An empty id returns an unscoped runner.
 func (r *Runner) Session(id string) *Runner {
 	s := r.Store.Session(id)
-	return &Runner{Store: s, cp: s, SessionID: id, Out: r.Out, definitionDigest: r.definitionDigest, forceResume: r.forceResume}
+	return &Runner{Store: s, cp: s, SessionID: id, Out: r.Out, definitionDigest: r.definitionDigest, forceResume: r.forceResume, resumeFrom: r.resumeFrom}
 }
 
 // WithStateStore routes this runner's checkpoint and result persistence
@@ -271,6 +286,9 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 		if err != nil {
 			return result, err
 		}
+		if r.resumeFrom != "" && !found {
+			return result, fmt.Errorf("runtime: no stopped run of %q to resume from stage %q", p.Name, r.resumeFrom)
+		}
 		if found {
 			if err := cp.CompatibleWith(r.definitionDigest); err != nil {
 				if r.forceResume && errors.Is(err, ErrCheckpointDefinitionMismatch) {
@@ -281,16 +299,35 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 					return result, err
 				}
 			}
-			if cp.NextStep == "" {
+			entry := ""
+			if r.resumeFrom != "" {
+				var known bool
+				if entry, known = p.StageEntry[r.resumeFrom]; !known {
+					return result, fmt.Errorf("runtime: %q has no stage %q", p.Name, r.resumeFrom)
+				}
+			}
+			if cp.NextStep == "" && entry == "" {
 				// The prior run had already reached its final step.
 				return result, nil
 			}
 			current, ok = cp.NextStep, true
+			if entry != "" {
+				current = entry
+			}
 			if cp.Variables != nil {
 				ctx.Vars = cp.Variables
 			}
 			result.Resumed = true
 			result.Skipped = append([]string{}, cp.CompletedSteps...)
+			if entry != "" {
+				// The stage's own steps run again: they are not skipped.
+				result.Skipped = result.Skipped[:0]
+				for _, s := range cp.CompletedSteps {
+					if p.StageOf[s] != r.resumeFrom {
+						result.Skipped = append(result.Skipped, s)
+					}
+				}
+			}
 			resumedFromCheckpoint = true
 		}
 	}

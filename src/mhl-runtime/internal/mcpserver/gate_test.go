@@ -71,3 +71,50 @@ func TestHTTPRunGateAwaitsAndTakesADecision(t *testing.T) {
 		t.Fatalf("decision for a completed run = %v", body)
 	}
 }
+
+func TestHTTPRunResumeFromAStage(t *testing.T) {
+	ts := newHTTPServer(t, "", map[string]string{
+		"release.mh": `import "build.mh"
+import "review.mh"
+partial workflow Release {
+    var builds = 0
+    entry step Start { goto Build }
+}
+`,
+		"build.mh": `partial workflow Release stage Build {
+    step Compile { self.builds = builds + 1 }
+    step Package { goto Review }
+}
+`,
+		"review.mh": `partial workflow Release stage Review {
+    step Gate { var ok = pause("ship?", decision: bool) }
+}
+`,
+	})
+	sid := initHTTPSession(t, ts.URL)
+	_, body := postMCP(t, ts.URL, sid, rpcMap(2, "run/start", map[string]any{"name": "Release"}), nil)
+	runID := body["result"].(map[string]any)["runId"].(string)
+	if p := pollRun(t, ts.URL, sid, runID); p["state"] != "paused" || p["stage"] != "Review" {
+		t.Fatalf("paused = %v", p)
+	}
+
+	// Refused up front, the run still paused: an unknown stage, or a stage with a decision.
+	for _, params := range []map[string]any{
+		{"runId": runID, "from": "Nope"},
+		{"runId": runID, "from": "Build", "decision": true},
+	} {
+		_, body = postMCP(t, ts.URL, sid, rpcMap(3, "run/resume", params), nil)
+		if e, _ := body["error"].(map[string]any); e == nil || e["code"] != float64(-32602) {
+			t.Fatalf("%v → %v", params, body)
+		}
+	}
+
+	_, body = postMCP(t, ts.URL, sid, rpcMap(4, "run/resume", map[string]any{"runId": runID, "from": "Build"}), nil)
+	if body["result"] == nil {
+		t.Fatalf("run/resume from: %v", body)
+	}
+	again := pollRun(t, ts.URL, sid, runID)
+	if again["state"] != "paused" || again["vars"].(map[string]any)["builds"] != float64(2) {
+		t.Fatalf("after redoing Build: %v", again)
+	}
+}
