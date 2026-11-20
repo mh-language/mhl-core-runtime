@@ -144,3 +144,80 @@ partial workflow W {
 		t.Fatalf("dry-run: %v\n%s", err, out)
 	}
 }
+
+// `--resume --from <stage>` redoes a phase of a stopped run: it re-enters the
+// stage at its first step, with the variables as of the stop.
+func TestResumeFromAStage(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("build.mh", `
+partial workflow Release stage Build {
+    step Compile { self.builds = builds + 1 }
+    step Package {
+        log("package ${builds}")
+        goto Review
+    }
+}
+`)
+	write("review.mh", `
+partial workflow Release stage Review {
+    step Gate { var ok = pause("ship build ${builds}?", decision: bool) }
+    step Ship { complete() }
+}
+`)
+	run := runInDir(t, dir, `
+import "build.mh"
+import "review.mh"
+partial workflow Release {
+    var builds = 0
+    entry step Start { goto Build }
+}
+`)
+	first := gateRun(t, run, "--session", "r")
+	if first["paused"] != true || first["vars"].(map[string]any)["builds"] != 1.0 {
+		t.Fatalf("first leg = %v", first)
+	}
+
+	redo := gateRun(t, run, "--session", "r", "--resume", "--from", "Build")
+	executed := func(r map[string]any) string {
+		var s []string
+		for _, x := range r["executed"].([]any) {
+			s = append(s, x.(string))
+		}
+		return strings.Join(s, ",")
+	}
+	// The Build stage ran again on the stopped run's variables, then paused at the gate anew.
+	if redo["paused"] != true || redo["vars"].(map[string]any)["builds"] != 2.0 || executed(redo) != "Compile,Package,Gate" {
+		t.Fatalf("redo = %v", redo)
+	}
+	if skipped, _ := json.Marshal(redo["skipped"]); string(skipped) != `["Start"]` {
+		t.Fatalf("skipped = %s, want only the steps outside the redone stage", skipped)
+	}
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--session", "r", "--resume", "--from", "Nope"}, `has no stage "Nope" (its stages: Build, Review)`},
+		{[]string{"--session", "r", "--resume", "--from", "Build", "--decision", "true"}, "pass one or the other"},
+		{[]string{"--session", "fresh", "--resume", "--from", "Build"}, "no stopped run"},
+	} {
+		bad := gateRun(t, run, tc.args...)
+		if bad["kind"] != "invalid_from" || !strings.Contains(bad["error"].(string), tc.want) {
+			t.Fatalf("%v: %v", tc.args, bad)
+		}
+	}
+	if _, err := run("--from", "Build"); err == nil || !strings.Contains(err.Error(), "only applies with --resume") {
+		t.Fatalf("--from without --resume: %v", err)
+	}
+
+	// The gate still answers normally afterwards.
+	done := gateRun(t, run, "--session", "r", "--resume", "--decision", "true")
+	if done["ok"] != true || done["paused"] == true {
+		t.Fatalf("after the redo, the gate = %v", done)
+	}
+}

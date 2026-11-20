@@ -21,6 +21,9 @@ same order, same checkpoints. A stage adds two things:
   from any fragment. From outside a stage, that is the way in: `mhl lint` warns (without
   failing) about a `goto` to one of its steps other than the first — the stage's name is its
   interface, and it decides where it begins;
+- `mhl run --resume --from Name` (MCP `run/resume {runId, from}`) redoes the stage in a
+  stopped run: it re-enters at the stage's first step, with the variables as of the stop
+  and any pending gate dropped. A plain `--resume` continues at the step the run stopped at;
 - observers see it: `step.stage` in a `step_start`/`step_end` hook, `stage` on
   `mhl run --format jsonl` step events (and the stage list on `run_start`), `run/status`,
   the `--dry-run` plan, `mhl graph` (`stages`, `Node.stage`) and a box in mhl studio.

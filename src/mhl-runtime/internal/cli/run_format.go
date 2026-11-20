@@ -118,6 +118,13 @@ func classifyRunError(rj *runJSON, err error) {
 		return
 	}
 
+	var badFrom *execsvc.ResumeFromError
+	if errors.As(err, &badFrom) {
+		rj.Kind = "invalid_from"
+		rj.Hint = "--from names a stage of the workflow (`partial workflow X stage Name`) and redoes it in a stopped run: resume with --resume --from <stage>, without --decision."
+		return
+	}
+
 	var badDecision *execsvc.DecisionError
 	if errors.As(err, &badDecision) {
 		rj.Kind = "invalid_decision"

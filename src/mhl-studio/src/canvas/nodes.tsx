@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { Merge, Timer } from "lucide-react";
-import { importedDeclarations, openFile, revealSpan } from "../app/controller";
+import { importedDeclarations, openFile, revealSpan, startRun } from "../app/controller";
 import { useStore } from "../app/store";
 import { CALL_ICON, CALL_ICON_FALLBACK, EXIT_BADGE, StateBadge, type BadgeKind } from "../lib/icons";
 import type { CallSite, Declaration } from "../lib/types";
@@ -279,6 +279,11 @@ export const RouteNode = memo(function RouteNode({ data }: NodeProps<Node<RouteN
  */
 export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageNodeData>>) {
   const statuses = useStore((s) => s.run.statuses);
+  // A stopped run (paused or failed) of this file can redo the stage: `--resume --from`.
+  const canRedo = useStore((s) => {
+    const r = s.run;
+    return !r.running && !!r.session && r.path === s.activePath && !!r.result && (!!r.result.paused || !r.result.ok);
+  });
   const ks = data.steps.map((k) => statuses[k]).filter(Boolean);
   const status = ks.includes("failed")
     ? "failed"
@@ -303,6 +308,18 @@ export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageN
       <div className="stage-title">
         <span className="node-kind">Stage</span>
         <span className="node-name">{s.name}</span>
+        {canRedo && (
+          <button
+            className="call-origin stage-redo"
+            title={`Redo stage ${s.name}: resume the stopped run at ${s.members[0]}, with its variables as of the stop (mhl run --resume --from ${s.name})`}
+            onClick={(e) => {
+              e.stopPropagation();
+              void startRun([], { resume: true, from: s.name });
+            }}
+          >
+            ↻ redo
+          </button>
+        )}
         {s.file && <FragmentChip file={s.file} />}
       </div>
     </div>

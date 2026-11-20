@@ -30,6 +30,12 @@ Per-tag release notes are also generated automatically on the
   `mhl lint` rejects a stage on a declaration that is not `partial`, a stage named like a
   step, group or route, and fragments sharing a stage that are not imported consecutively.
   Programs without a stage keep their `DefinitionDigest`.
+- **`mhl run --resume --from <stage>` redoes a phase.** A stopped run (paused, failed or
+  cancelled) re-enters the named stage at its first step instead of the step it stopped at,
+  with the variables as of the stop — nothing rolled back — and any gate it waited at dropped.
+  Also `run/resume {runId, from}` and the `mhl_run_resume` tool's `from`. Refused before
+  anything runs (`invalid_from` / `-32602`) for a name that is not a stage, with a decision,
+  or without a stopped run.
 - **Lint warnings.** A finding may now be a `warning:` — advice that `mhl lint` and
   `mhl run --dry-run` list without failing (the language server shows it as a warning,
   `mhl graph` as `"severity": "warning"`). The first one: a `goto` from outside a stage to

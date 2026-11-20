@@ -609,7 +609,10 @@ partial workflow Story stage Specification {
 }
 ```
 
-Resume is unaffected: it re-enters the step a run stopped at, never a stage's start.
+Resume re-enters the step a run stopped at, never a stage's start. To redo a whole phase
+of a stopped run, resume with `--from <stage>` (`mhl_run_resume {runId, from}`): it
+re-enters the stage at its first step with the variables as of the stop, so the phase
+must be safe to run again.
 
 A stage needs `partial`. Its name must not repeat a step, group or route name, and fragments
 sharing a stage are imported one right after the other. A fragment without a stage is fine:

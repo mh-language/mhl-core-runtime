@@ -123,6 +123,9 @@ Flags:
                         (pause(..., decision: T)): JSON of type T, or a bare
                         string. Checked before anything runs; answers that
                         gate once. The paused run's output names T ("awaiting").
+  --from <stage>        With --resume, redo a stage of the stopped run: re-enter
+                        it at its first step, with the variables as of the stop
+                        (nothing rolled back) and any pending gate dropped.
   --session <id>        Reuse a named session for durable state
   --format text|json|jsonl
                         Output format (default "text"); json emits one typed
@@ -137,6 +140,7 @@ Flags:
   mhl run main.mh --input name=World
   mhl run pipe.mh --resume --force
   mhl run pipe.mh --resume --decision '{"action": "Approve"}'
+  mhl run pipe.mh --resume --from Implementation
   mhl run pipe.mh --dry-run --format json
 `,
 	"test": `mhl test <file.mh|dir> [--env-file <path> ...]

@@ -86,6 +86,12 @@ type Request struct {
 	// returns it; a run not waiting for a decision refuses one
 	// (*DecisionError). nil resumes as before: a gate pauses again.
 	Decision any
+	// From redoes a phase (`mhl run --resume --from <stage>`): the resume
+	// re-enters that named stage at its first member instead of continuing
+	// at the step the run stopped at, with the variables as of the stop (no
+	// rollback) and any gate the run waited at dropped. Requires Resume and
+	// a checkpoint; refused with Decision (*ResumeFromError).
+	From string
 
 	// ForceResume, with Resume, downgrades a checkpoint definition-digest
 	// mismatch from a hard error to a warning — the operator asserting the
@@ -179,6 +185,12 @@ type Awaiting struct {
 	Type   string         `json:"type"`
 	Schema map[string]any `json:"schema,omitempty"`
 }
+
+// ResumeFromError reports a Request.From that cannot be applied: no such
+// stage, no stopped run, or not a plain resumable pipeline. Nothing ran.
+type ResumeFromError struct{ Msg string }
+
+func (e *ResumeFromError) Error() string { return "from: " + e.Msg }
 
 // DecisionError reports a Request.Decision that cannot be applied: the run
 // is not waiting at a gate, or the value is not of the gate's type. Nothing
@@ -310,6 +322,31 @@ func Run(req Request) (*Result, error) {
 			return nil, &DecisionError{Msg: fmt.Sprintf("%q has checkpointing disabled, so its run cannot be resumed", pipeline.Name)}
 		}
 	}
+	if req.From != "" {
+		switch {
+		case !req.Resume:
+			return nil, &ResumeFromError{Msg: "redoing a stage resumes a stopped run: resume it"}
+		case req.Decision != nil:
+			return nil, &ResumeFromError{Msg: "a decision answers the gate the run waits at, while redoing a stage drops that gate — pass one or the other"}
+		case pipeline.Loop:
+			return nil, &ResumeFromError{Msg: fmt.Sprintf("%q is a loop %s: redoing a stage on resume is not supported there yet", pipeline.Name, pipeline.Kind)}
+		case !pipeline.Checkpoint.Enabled:
+			return nil, &ResumeFromError{Msg: fmt.Sprintf("%q has checkpointing disabled, so its run cannot be resumed", pipeline.Name)}
+		}
+		if _, ok := pipeline.StageEntry[req.From]; !ok {
+			names := make([]string, 0, len(pipeline.StageEntry))
+			for _, st := range pipeline.NamedStages() {
+				names = append(names, st.Name)
+			}
+			msg := fmt.Sprintf("%s %q has no stage %q", pipeline.Kind, pipeline.Name, req.From)
+			if len(names) > 0 {
+				msg += " (its stages: " + strings.Join(names, ", ") + ")"
+			} else {
+				msg += " — it declares no stage"
+			}
+			return nil, &ResumeFromError{Msg: msg}
+		}
+	}
 
 	baseStore := runtime.NewStore(base)
 	sessionID := runtime.ResolveSession(baseStore, pipeline.Name, req.Session, req.Resume)
@@ -317,8 +354,9 @@ func Run(req Request) (*Result, error) {
 	// A decision answers the gate the suspended run waits at: checked
 	// against it here, before anything (a hook included) runs, and handed to
 	// that one gate, which consumes it.
+	// So is a stage to redo: the stopped run must exist.
 	var answer *interpreter.GateAnswer
-	if req.Decision != nil {
+	if req.Decision != nil || req.From != "" {
 		peek := runtime.NewRunner(base).Session(sessionID)
 		if req.StateStore != nil {
 			peek.WithStateStore(req.StateStore)
@@ -330,8 +368,13 @@ func Run(req Request) (*Result, error) {
 		if !found {
 			cp = nil
 		}
-		if answer, err = gateAnswer(prog, pipeline, cp, req.Decision); err != nil {
-			return nil, err
+		if req.From != "" && cp == nil {
+			return nil, &ResumeFromError{Msg: fmt.Sprintf("no stopped run of %q to redo stage %q in", pipeline.Name, req.From)}
+		}
+		if req.Decision != nil {
+			if answer, err = gateAnswer(prog, pipeline, cp, req.Decision); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if sessionID != "" {
@@ -583,7 +626,7 @@ func Run(req Request) (*Result, error) {
 
 	if !pipeline.Loop {
 		runner := runtime.NewRunner(base).Session(sessionID).
-			WithDefinition(defDigest).WithForceResume(req.ForceResume)
+			WithDefinition(defDigest).WithForceResume(req.ForceResume).WithResumeFrom(req.From)
 		runner.Out = out
 		resultSink := runtime.StateStore(runner.Store)
 		if req.StateStore != nil {

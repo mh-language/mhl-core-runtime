@@ -1,6 +1,6 @@
 # Nota de design: um workflow chamando outro (subprocesso)
 
-**Status:** proposta, não implementada · **Data:** 2026-11-20 · inclui `--from <stage>` (seção 6)
+**Status:** proposta, não implementada (o subprocesso) · **Data:** 2026-11-20 · a seção 6, `--from <stage>`, está implementada
 **Contexto:** a fase D do estudo sobre agrupamento e DAG no mhl studio. As fases A (visão do
 workflow `partial` inteiro), B (`stage`) e C (gates tipados, `pause(..., decision: T)`) já
 estão na linguagem. Esta nota registra o que falta decidir antes de escrever código para D.
@@ -104,9 +104,12 @@ Cada passo pode ser lançado sozinho. Só o passo 3 tem o risco de compatibilida
 
 ---
 
-## 6. Relacionado: retomar a partir de uma fase (`--from <stage>`)
+## 6. Relacionado: retomar a partir de uma fase (`--from <stage>`) — implementado
 
-Não depende do subprocesso. Pode sair antes, e é pequeno. Entrou nesta nota porque é a
+Não depende do subprocesso, e já saiu: `mhl run --resume --from <stage>`, `run/resume
+{runId, from}`, a ferramenta `mhl_run_resume` e a ação **↻ redo** na caixa do stage no
+studio. Ficou como descrito abaixo, com as variáveis da parada. Um nome desconhecido dá
+`invalid_from`. Entrou nesta nota porque é a
 outra metade de "fase como unidade": D trata a fase como algo que se chama, e esta seção
 trata a fase como algo que se refaz.
 
@@ -146,9 +149,9 @@ e, no MCP, `run/resume {runId, from: "Specification"}`.
   `mhl_run_resume`. O manifest `mhl://workflow/<name>` já lista os stages.
 - Studio: ação "Refazer esta fase" na caixa do stage quando o run está parado.
 
-### Decisão em aberto
+### Decisão tomada
 
-**Variáveis do começo da fase, ou da parada?** Restaurar o estado do momento em que a fase
+**Variáveis do começo da fase, ou da parada?** Da parada. Restaurar o estado do momento em que a fase
 começou seria mais limpo, porque a fase rodaria de novo sobre a mesma entrada. Mas exigiria
 um snapshot por fase no checkpoint (que cresce) e só valeria para fases que o run já
 atravessou com o recurso ativo. Sugestão: começar com as variáveis da parada, que é o

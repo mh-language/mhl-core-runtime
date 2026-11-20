@@ -32,6 +32,8 @@ export const api = {
       session?: string;
       /** With resume: the JSON answer to the gate the run paused at. */
       decision?: string;
+      /** With resume: a stage of the stopped run to redo, from its first step. */
+      from?: string;
     },
     onEvent: (ev: RunEvent) => void,
   ) => {

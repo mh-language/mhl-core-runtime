@@ -143,7 +143,7 @@ func runPipeline(args []string, out io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force] [--decision <json>]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]")
+		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force] [--decision <json> | --from <stage>]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]")
 	}
 	if err := loadEnvFiles(envFiles); err != nil {
 		return err
@@ -157,6 +157,7 @@ func runPipeline(args []string, out io.Writer) error {
 	sessionFlag := ""
 	workflow := ""
 	var decision any
+	from := ""
 	inputs := map[string]any{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -198,6 +199,12 @@ func runPipeline(args []string, out io.Writer) error {
 			if err := json.Unmarshal([]byte(args[i]), &decision); err != nil {
 				decision = args[i]
 			}
+		case "--from":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--from requires a stage name")
+			}
+			i++
+			from = args[i]
 		case "--input":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--input requires a key=value argument")
@@ -218,6 +225,9 @@ func runPipeline(args []string, out io.Writer) error {
 	}
 	if decision != nil && !resume {
 		return fmt.Errorf("--decision only applies with --resume (it answers the gate a paused run waits at)")
+	}
+	if from != "" && !resume {
+		return fmt.Errorf("--from only applies with --resume (it redoes a stage of a stopped run)")
 	}
 	if dryRun {
 		if resume {
@@ -256,6 +266,7 @@ func runPipeline(args []string, out io.Writer) error {
 		Resume:      resume,
 		ForceResume: force,
 		Decision:    decision,
+		From:        from,
 		Out:         runOut,
 	}
 	var events *eventWriter
@@ -279,7 +290,9 @@ func runPipeline(args []string, out io.Writer) error {
 	}
 
 	if !res.Loop {
-		if res.Resumed {
+		if res.Resumed && from != "" {
+			fmt.Fprintf(out, "resumed pipeline %q at stage %q; skipped %d completed step(s)\n", res.PipelineName, from, len(res.Skipped))
+		} else if res.Resumed {
 			fmt.Fprintf(out, "resumed pipeline %q; skipped %d completed step(s)\n", res.PipelineName, len(res.Skipped))
 		}
 		fmt.Fprintf(out, "executed %d step(s)\n", len(res.Executed))

@@ -3003,3 +3003,7 @@ select {
 .node.stage.foreign {
   border-style: dashed;
 }
+/* Redo a stage of a stopped run (`--resume --from`), in the stage box's title. */
+.node.stage .stage-redo {
+  margin-left: auto;
+}
