@@ -1,0 +1,7 @@
+// The last fragment of Report (see ../stages_in_a_pipeline.mh). It declares
+// no stage: Publish is outside any.
+partial pipeline Report {
+    step Publish {
+        log(summary)
+    }
+}

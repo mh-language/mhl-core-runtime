@@ -91,7 +91,7 @@ jobs:
           retention-days: 7
 
   vscode:
-    name: vscode-mhl (compile, audit)
+    name: vscode-mhl (compile, test, audit)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -103,6 +103,7 @@ jobs:
           node-version: "20"
       - run: npm ci
       - run: npm run compile
+      - run: npm test
       - run: npm audit --omit=dev
 
   docs:

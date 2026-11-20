@@ -68,13 +68,19 @@ type asyncRun struct {
 	mu        sync.Mutex
 	state     RunState // see runstate.go for the full state machine
 	step      string   // last step reached
+	stage     string   // the named stage step belongs to, "" for none
 	stepIndex int      // 1-based position of step
 	stepTotal int      // pipeline's declared step count
 	reached   []string
 	resumable bool // a checkpoint exists that run/resume can continue from
-	vars      map[string]any
-	errMsg    string
-	updated   time.Time
+	// awaiting is the gate a paused run waits at (`pause(..., decision: T)`),
+	// nil for a plain pause; decision is the answer run/resume handed the
+	// next leg (consumed when it launches).
+	awaiting *execsvc.Awaiting
+	decision any
+	vars     map[string]any
+	errMsg   string
+	updated  time.Time
 }
 
 // --- concurrency slots -------------------------------------------------
@@ -185,7 +191,7 @@ func (h *httpServer) publishRunStatus(rn *asyncRun) {
 	}
 	rn.mu.Lock()
 	rec := RunStatusRec{
-		Tool: rn.tool.Name, State: rn.state, Holder: rn.holder, Step: rn.step,
+		Tool: rn.tool.Name, State: rn.state, Holder: rn.holder, Step: rn.step, Stage: rn.stage,
 		StepIndex: rn.stepIndex, StepTotal: rn.stepTotal,
 		Reached:   append([]string(nil), rn.reached...),
 		Resumable: rn.resumable, Error: auth.Redact(rn.errMsg),
@@ -335,7 +341,7 @@ func (h *httpServer) refreshRemote(rn *asyncRun) {
 	if rn.state != RunStateCanceled {
 		rn.state = rec.State
 	}
-	rn.step, rn.stepIndex, rn.stepTotal = rec.Step, rec.StepIndex, rec.StepTotal
+	rn.step, rn.stage, rn.stepIndex, rn.stepTotal = rec.Step, rec.Stage, rec.StepIndex, rec.StepTotal
 	if len(rec.Reached) > 0 {
 		rn.reached = append([]string(nil), rec.Reached...)
 	}
@@ -517,6 +523,9 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	var p struct {
 		RunID     string         `json:"runId"`
 		Arguments map[string]any `json:"arguments"`
+		// Decision answers the gate a paused run waits at (its status's
+		// `awaiting`): a value of the gate's type.
+		Decision any `json:"decision"`
 	}
 	if len(msg.Params) > 0 {
 		if err := json.Unmarshal(msg.Params, &p); err != nil {
@@ -539,7 +548,18 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	// default per-step checkpointing with `checkpoint: { enabled: false }`.
 	rn.mu.Lock()
 	paused := rn.state == RunStatePaused
+	awaiting := rn.awaiting
 	rn.mu.Unlock()
+	// A decision answers a gate: refused here, the run left paused, when the
+	// run is not waiting at one or the value is not of its type.
+	if p.Decision != nil {
+		if !paused || awaiting == nil {
+			return errMsg(msg.ID, -32602, fmt.Sprintf("decision: run %q is not waiting for a decision — resume it without one", p.RunID))
+		}
+		if err := execsvc.CheckDecision(rn.tool, awaiting.Type, p.Decision); err != nil {
+			return errMsg(msg.ID, -32602, err.Error())
+		}
+	}
 	if !paused && !rn.tool.Pipeline.Checkpoint.Enabled {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q's workflow declares checkpoint: { enabled: false } — nothing to resume", p.RunID))
 	}
@@ -580,6 +600,7 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 			rn.args[k] = v
 		}
 	}
+	rn.decision = p.Decision
 	ctx, cancel := context.WithCancel(h.runsCtx)
 	rn.errMsg, rn.updated = "", time.Now()
 	rn.principal = sess.getPrincipal() // context.principal for this leg = the resumer
@@ -690,6 +711,11 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		}
 		stateStore = newExtStateStore(h.store, rn.id, fence) // checkpoints go to the extension, not disk
 	}
+	// The decision run/resume handed this leg answers the gate once.
+	rn.mu.Lock()
+	decision := rn.decision
+	rn.decision, rn.awaiting = nil, nil
+	rn.mu.Unlock()
 	res, runErr := execsvc.Run(execsvc.Request{
 		Context:    ctx,
 		Program:    w.Program,
@@ -699,6 +725,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		BaseDir:    h.cps.BaseDir(),
 		Session:    rn.id,
 		Resume:     resume,
+		Decision:   decision,
 		Principal:  rn.principal,
 		StateStore: stateStore,
 		// Tee step/log() output to this run's own bounded buffer (for
@@ -707,6 +734,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		OnStep: func(step string, idx, total int) {
 			rn.mu.Lock()
 			rn.step, rn.stepIndex, rn.stepTotal = step, idx, total
+			rn.stage = w.Pipeline.StageOf[step]
 			rn.reached = append(rn.reached, step)
 			rn.updated = time.Now()
 			rn.mu.Unlock()
@@ -739,6 +767,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 			// in errMsg the same way a failure message does.
 			rn.state = RunStatePaused
 			rn.errMsg = pauseReasonText(res.PauseReason)
+			rn.awaiting = res.Awaiting
 			rn.vars = res.Vars
 			if all := append(append([]string{}, res.Skipped...), res.Executed...); len(all) > 0 {
 				rn.reached = all
@@ -954,9 +983,14 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 			remote:    true,
 			state:     RunStateFailed,
 			step:      cp.NextStep,
+			stage:     w.Pipeline.StageOf[cp.NextStep],
 			stepTotal: len(w.Pipeline.Steps),
 			reached:   append([]string(nil), cp.CompletedSteps...),
 			resumable: true,
+		}
+		if cp.Gate != nil {
+			// Suspended at a gate: nothing ran past it, so it still waits.
+			rn.state, rn.awaiting = RunStatePaused, execsvc.AwaitingFor(w, cp.Gate)
 		}
 		// A newer live status (e.g. it is working again on another replica)
 		// overrides the checkpoint-derived snapshot.
@@ -982,6 +1016,7 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 		remote:    true,
 		state:     rec.State,
 		step:      rec.Step,
+		stage:     rec.Stage,
 		stepIndex: rec.StepIndex,
 		stepTotal: rec.StepTotal,
 		reached:   append([]string(nil), rec.Reached...),
@@ -1007,6 +1042,9 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 		"state":     rn.state,
 		"startedAt": rn.started.UTC().Format(time.RFC3339),
 	}
+	if rn.stage != "" {
+		v["stage"] = rn.stage
+	}
 	if rn.step != "" {
 		v["step"] = rn.step
 		v["stepIndex"] = rn.stepIndex
@@ -1017,6 +1055,9 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 	}
 	if rn.resumable {
 		v["resumable"] = true
+	}
+	if rn.state == RunStatePaused && rn.awaiting != nil {
+		v["awaiting"] = rn.awaiting
 	}
 	if (rn.state == RunStateCompleted || rn.state == RunStatePaused) && rn.vars != nil {
 		// Redacted here too, so the replica that ran the workflow and a replica

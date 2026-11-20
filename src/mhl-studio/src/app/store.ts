@@ -1,7 +1,16 @@
 import { create } from "zustand";
 import type { Declaration, Graph, Inspection, RunEvent, RunResult } from "../lib/types";
+import { isEnvName } from "../sync/templates";
 
 export type View = "split" | "design" | "code";
+
+/** The main area: the workflow editor, or the MCP test bench (src/mcp). */
+export type Mode = "editor" | "mcp";
+
+/** The color theme the user picked (app/theme.ts): follow the OS, or force one. */
+export type ThemePref = "system" | "light" | "dark";
+/** The scheme actually shown. */
+export type Scheme = "light" | "dark";
 
 /** A step's state in the execution view. */
 export type NodeRunStatus = "running" | "succeeded" | "failed" | "paused" | "skipped";
@@ -49,6 +58,10 @@ export interface LibraryFile {
   path: string;
   ok: boolean;
   declarations: Declaration[];
+  /** Its imports, resolved to absolute "/"-separated paths (app/fragments.ts). */
+  imports: string[];
+  /** The partial workflows whose `entry` fragment it declares. */
+  entries: string[];
 }
 
 export interface State {
@@ -82,6 +95,7 @@ export interface State {
   /** The tool (and method) open in the inspector; exclusive with `selection`. */
   tool: { name: string; method: string | null } | null;
   view: View;
+  mode: Mode;
   toast: Toast | null;
   mhlVersion: string;
   inspection: Inspection | null;
@@ -98,6 +112,9 @@ export interface State {
   clis: Record<string, string> | null;
   /** The run inputs popover (under the Run button's ▾) is open. */
   inputsOpen: boolean;
+  theme: ThemePref;
+  /** `theme` resolved against the OS. */
+  scheme: Scheme;
 }
 
 export const useStore = create<State>(() => ({
@@ -119,6 +136,7 @@ export const useStore = create<State>(() => ({
   importFocus: null,
   tool: null,
   view: "split",
+  mode: "editor",
   toast: null,
   mhlVersion: "",
   inspection: null,
@@ -130,6 +148,8 @@ export const useStore = create<State>(() => ({
   rightOpen: true,
   inputsOpen: false,
   clis: null,
+  theme: "system",
+  scheme: "light",
 }));
 
 export const set = useStore.setState;
@@ -168,6 +188,18 @@ export function inputFields(s: State): InputField[] {
   return (wf?.inputs ?? []).map((i) => ({ name: i.name, type: i.type, def: i.default }));
 }
 
+/**
+ * The variants an input of `type` can take, when that type is an enum this
+ * file declares or imports (`decls`); null for any other type. An optional
+ * `T?` counts as `T`. The runtime takes the bare variant name (`All`, not
+ * `AgentModel.All`) as an `--input` value and refuses anything else.
+ */
+export function enumVariants(type: string, decls: Declaration[]): string[] | null {
+  const name = type.endsWith("?") ? type.slice(0, -1) : type;
+  const d = decls.find((x) => x.kind === "enum" && x.name === name);
+  return d?.variants?.length ? d.variants : null;
+}
+
 /** The filled-in inputs, as `--input` pairs (blank ones fall back to their defaults). */
 export function runInputPairs(s: State = useStore.getState()): [string, string][] {
   return inputFields(s)
@@ -193,6 +225,11 @@ export function isMarkdown(path: string | null | undefined): boolean {
 /** A JSON file (a JSON Schema for `schema X from "x.json"`, or other data): edited as text. */
 export function isJson(path: string | null | undefined): boolean {
   return !!path && /\.json$/i.test(path);
+}
+
+/** An env file `mhl run` loads (`.env` at the workspace root by default; others via --env-file): edited as text. */
+export function isEnv(path: string | null | undefined): boolean {
+  return !!path && isEnvName(path);
 }
 
 /** An mhl source file. */

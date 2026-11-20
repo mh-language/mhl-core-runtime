@@ -47,11 +47,37 @@ func runWorkflowCall(ctx *evalCtx, name, declared string, call *ast.Call, depth 
 	if err != nil {
 		return nil, fmt.Errorf("%s.run: %w", name, err)
 	}
+	decisions, err := resolveDecisionsArg(ctx, call, depth)
+	if err != nil {
+		return nil, fmt.Errorf("%s.run: %w", name, err)
+	}
 	// declared, not name: name may be an import alias (findRunnableName
 	// resolved it via resolveName), but runtime.FindPipeline and every other
 	// lookup below works off the program's own decls and knows nothing of
 	// import aliases.
-	return runWorkflowForTest(ctx, declared, inputs, depth)
+	return runWorkflowForTest(ctx, declared, inputs, decisions, depth)
+}
+
+// resolveDecisionsArg reads call's optional `decisions:` named argument: the
+// decisions to answer the run's gates with, in order — each time the run
+// pauses at a gate (`pause(..., decision: T)`) with one left, it is resumed
+// with the next, as `run/resume {decision}` would.
+func resolveDecisionsArg(ctx *evalCtx, call *ast.Call, depth int) ([]any, error) {
+	for _, arg := range call.Args {
+		if arg.Name != "decisions" {
+			continue
+		}
+		v, err := evalExprAt(ctx, arg.Value, depth)
+		if err != nil {
+			return nil, err
+		}
+		list, ok := v.([]any)
+		if !ok {
+			return nil, fmt.Errorf("decisions must be an array, got %s", typeName(v))
+		}
+		return list, nil
+	}
+	return nil, nil
 }
 
 // resolveInputsArg reads call's `inputs:` named argument as an object —
@@ -103,7 +129,7 @@ func resolveInputsArg(ctx *evalCtx, call *ast.Call, depth int) (map[string]any, 
 // otherwise. With a declared result type (`workflow X(...): T`) the
 // projection is checked against T exactly as execsvc does; a mismatch
 // reports state "failed" with the contract error, output null.
-func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth int) (map[string]any, error) {
+func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, decisions []any, depth int) (map[string]any, error) {
 	pipeline, err := runtime.FindPipeline(ctx.prog, name)
 	if err != nil {
 		return nil, err
@@ -156,14 +182,18 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 	contextView := &ContextView{SessionID: sessionID, StartedAt: time.Now().UTC().Format(time.RFC3339)}
 	spawnSem := NewSpawnSem(pipeline.Spawn.MaxConcurrency)
 
+	var answer *GateAnswer
 	exec := func(stepCtx context.Context, step string, rc *runtime.RunContext) error {
 		pipeline.BindInputs(rc.Vars, inputs)
+		if answer != nil && answer.Step == step && !answer.Used {
+			stepCtx = WithGateAnswer(stepCtx, answer)
+		}
 		stepErr := RunStep(stepCtx, ctx.prog, pipeline.Decl, step, ctx.file, ctx.out, ctx.store, ctx.jsonStore, rc.Vars, mem, contextView, spawnSem)
 		if reason, ok := IsBreak(stepErr); ok {
 			return &runtime.BreakSignal{Reason: reason}
 		}
 		if reason, ok := IsPause(stepErr); ok {
-			return &runtime.PauseSignal{Reason: reason}
+			return &runtime.PauseSignal{Reason: reason, Gate: PauseGate(stepErr)}
 		}
 		if target, ok := IsGoto(stepErr); ok {
 			return &runtime.GotoSignal{Target: target}
@@ -193,6 +223,29 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 	}
 	runner := runtime.NewRunner(tmpDir).Session(sessionID).WithStateStore(newMemStateStore())
 	res, runErr := runner.Run(goctxOf(ctx), pipeline, init, exec, false)
+	executed := append([]string{}, res.Executed...)
+	// Answer each gate the run stops at with the next decision, resuming it
+	// from its checkpoint as a real resume would.
+	for runErr == nil && res.Paused && res.PauseGate != nil && len(decisions) > 0 {
+		gate := res.PauseGate
+		t, ok := ResolveDecisionType(ctx.prog, gate.Type)
+		if !ok {
+			return nil, fmt.Errorf("%s.run: the gate at %q waits for an unknown type %q", name, gate.Step, gate.Type)
+		}
+		label := fmt.Sprintf("decision for %q", gate.Step)
+		v, err := runtime.ConvertEnums(label, t, decisions[0], pipeline.Enums)
+		if err == nil {
+			err = types.Check(label, t, v)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s.run: %w", name, err)
+		}
+		decisions = decisions[1:]
+		answer = &GateAnswer{Step: gate.Step, Index: gate.Index, Value: v}
+		res, runErr = runner.Run(goctxOf(ctx), pipeline, init, exec, true)
+		executed = append(executed, res.Executed...)
+	}
+	res.Executed = executed
 
 	out := map[string]any{
 		"ok":           runErr == nil,
@@ -204,6 +257,7 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 		"step":         "",
 		"break_reason": nil,
 		"pause_reason": nil,
+		"awaiting":     nil,
 	}
 	if res.FinalVars != nil {
 		out["vars"] = res.FinalVars
@@ -220,6 +274,9 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, depth 
 	case res.Paused:
 		out["state"] = "paused"
 		out["pause_reason"] = res.PauseReason
+		if g := res.PauseGate; g != nil {
+			out["awaiting"] = map[string]any{"step": g.Step, "index": float64(g.Index), "type": g.Type}
+		}
 	case res.Broke:
 		out["state"] = "broke"
 		out["break_reason"] = res.BreakReason

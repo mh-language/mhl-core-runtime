@@ -10,6 +10,8 @@
 
 The install scripts download the `mhl` binary and, if VS Code is installed, the `mhl-language`
 extension, both from the latest [GitHub Release](https://github.com/mh-language/mhl-core-runtime/releases).
+The [download page](https://mh-language.github.io/mhl-core-runtime/download.html) picks the right
+file for your system: mhl studio, the CLI and the VS Code extension.
 
 **macOS / Linux:**
 

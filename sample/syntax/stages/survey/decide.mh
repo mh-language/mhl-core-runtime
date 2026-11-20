@@ -1,0 +1,13 @@
+// The Decide phase of Survey (see ../goto_stage_enters_a_parallel_group.mh):
+// `goto Ask` sends the run back to the other file's stage.
+partial workflow Survey stage Decide {
+    step Compare {
+        if (answers[answers.size() - 1] != "agree") {
+            goto Ask
+        }
+    }
+
+    step Done {
+        complete()
+    }
+}

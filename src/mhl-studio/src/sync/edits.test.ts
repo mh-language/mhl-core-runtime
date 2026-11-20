@@ -82,8 +82,14 @@ describe.skipIf(!MHL)("edits round-trip through mhl graph", () => {
     expect(out.wf.nodes[0].id).toBe("Step");
     out = apply(out.doc, insertState(out.doc, "Orders", "parallel", { end: true }));
     expect(out.wf.nodes.map((n) => n.id).slice(-3)).toEqual(["Fan", "FanLeft", "FanRight"]);
+    // A new group comes with its merge, the place to combine its branches.
+    expect(out.wf.nodes.find((n) => n.id === "Fan")!.merge?.param).toBe("branches");
+    expect(out.g.diagnostics).toEqual([]);
     out = apply(out.doc, insertState(out.doc, "Orders", "approval", { into: "Fan" }));
     expect(out.wf.nodes.find((n) => n.id === "Fan")!.children).toEqual(["FanLeft", "FanRight", "Approve"]);
+    // A branch added later lands before the merge, which stays the group's last member.
+    expect(out.src.indexOf("step Approve")).toBeLessThan(out.src.indexOf("merge (branches)"));
+    expect(out.g.diagnostics).toEqual([]);
     d = out.doc;
     expect(() => insertState(d, "Orders", "choice", { into: "Fan" })).toThrow(EditError);
   });

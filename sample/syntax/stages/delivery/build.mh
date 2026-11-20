@@ -1,0 +1,15 @@
+// The Build phase of Delivery (see ../stages_across_fragments.mh). `stage
+// Build` on the header puts the whole fragment in the stage: no block, no
+// extra indentation — the file is the phase.
+partial workflow Delivery stage Build {
+    step Compile {
+        self.builds = builds + 1
+        log_lines.append("build ${builds}")
+    }
+
+    step Package {
+        log("packaging build ${builds}")
+
+        goto Ship
+    }
+}

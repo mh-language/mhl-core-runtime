@@ -24,14 +24,20 @@ failed. Wrap it once and reuse the wrapper.
 ## Declaring tools
 
 A `tool` is a namespace of methods that gives steps, hooks and tests one reusable,
-testable API over native ops. Put logic here and keep steps thin.
+testable API over native ops. Put logic here and keep steps thin. Follow the
+[code layout conventions](../mhl-language/SKILL.md#code-layout): keep signatures
+on one line and separate preparation, validation, effects, and return in the body.
 
 ```mh
 tool Shell {
     // Fails the step on a non-zero exit, so callers need no check.
     must(argv: string[]): string {
         var result = cmd.exec(argv, timeout: 30s)
-        if (result.exit_code != 0) fail(self.describe_failure(argv, result.stderr))
+
+        if (result.exit_code != 0) {
+            fail(self.describe_failure(argv, result.stderr))
+        }
+
         return result.stdout.trim()
     }
 
@@ -47,11 +53,13 @@ test shell {
 
     describe nonzero_exit_fails {
         var message = ""
+
         try {
             Shell.must(["sh", "-c", "echo nope >&2; exit 3"])
         } catch (e) {
             message = "${e}"
         }
+
         is_true(message.contains("nope"))
     }
 
@@ -80,6 +88,7 @@ test shell {
 - Strings are UTF-8 inside mhl. Read legacy files with `encoding:`, for example
   `fs.read("a.csv", encoding: "windows-1252")`.
 - Use `git.status(dir: path)` to target another checkout; every `git.*` op takes `dir`.
+  For other commands, pass `cwd:`: `cmd.exec(["go", "test", "./..."], cwd: path, timeout: 5m)`.
 - Datetimes are plain RFC3339 strings, handled through `time.*`.
 - `os.*` describes the host running mhl. Under `mhl serve` that is the server, so keep it
   out of prompts and treat it as never identifying the caller.
@@ -92,7 +101,11 @@ tool Api {
             auth: {bearer: env("API_TOKEN")},
             timeout: 10s
         )
-        if (!response.ok) fail("job ${id}: HTTP ${response.status}")
+
+        if (!response.ok) {
+            fail("job ${id}: HTTP ${response.status}")
+        }
+
         return response.json
     }
 }
@@ -128,8 +141,10 @@ pipeline Example {
     step Use {
         Session.set("config", {retry: 3})
         log(Session.get("config::retry"))    // :: navigates nested keys
+
         Session.remove("config::retry")
         log(Session.get("missing", "default"))
+
         Audit.append({event: "done"})
     }
 }
@@ -137,6 +152,7 @@ pipeline Example {
 test scratch {
     describe kv_reads_back_with_a_default {
         Scratch.set("attempt", 1)
+
         are_equal(Scratch.get("attempt"), 1)
         are_equal(Scratch.get("other", 0), 0)
     }
@@ -199,7 +215,9 @@ extension a2a Translator {
 // In a step:
 var issues = Tracker.call("search_issues", {query: "is:open"})
 var catalog = Tracker.list_tools()
+
 var reply = Translator.send("Translate 'hello' to French")
+
 log(reply.text, reply.context_id)
 ```
 

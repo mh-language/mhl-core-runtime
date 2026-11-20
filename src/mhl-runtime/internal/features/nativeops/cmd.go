@@ -10,7 +10,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -26,21 +28,52 @@ import (
 // A non-zero exit is not itself an error: the caller (a .mh pipeline)
 // inspects exit_code, the same way an `agent.run` caller never sees a raw
 // exec.ExitError either. Only a genuine failure to execute at all (bad
-// binary, timeout) errors. timeout <= 0 means no deadline.
-func Exec(ctx context.Context, command string, timeout time.Duration) (map[string]any, error) {
+// binary, timeout, a bad dir) errors. timeout <= 0 means no deadline.
+//
+// dir, when non-empty, is the working directory the process starts in — as
+// `cd dir && command` would, so a relative command path (`./gradlew`) is
+// found under dir too. A relative dir is resolved against mhl's own working
+// directory. "" inherits mhl's working directory.
+func Exec(ctx context.Context, command, dir string, timeout time.Duration) (map[string]any, error) {
 	fields := strings.Fields(command)
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("cmd.exec: command must not be empty")
 	}
+	result, err := run(ctx, fields, dir, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("cmd.exec %q: %w", command, err)
+	}
+	return result, nil
+}
+
+// ExecArgs runs argv[0] with argv[1:] as its arguments, with no whitespace
+// splitting or shell quoting — unlike Exec, each element is passed through
+// to exec.Command verbatim, so an argument containing spaces (e.g. a git
+// commit message) survives intact. dir is as in Exec. timeout <= 0 means no
+// deadline.
+func ExecArgs(ctx context.Context, argv []string, dir string, timeout time.Duration) (map[string]any, error) {
+	if len(argv) == 0 {
+		return nil, fmt.Errorf("cmd.exec: argv must not be empty")
+	}
+	result, err := run(ctx, argv, dir, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("cmd.exec %q: %w", argv, err)
+	}
+	return result, nil
+}
+
+// run executes argv in dir and shapes the result; a non-zero exit is part of
+// the result, not an error.
+func run(ctx context.Context, argv []string, dir string, timeout time.Duration) (map[string]any, error) {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	result, err := tools.Exec(ctx, fields[0], fields[1:]...)
+	result, err := tools.Cmd{Dir: dir}.Exec(ctx, argv[0], argv[1:]...)
 	var exitErr *exec.ExitError
 	if err != nil && !errors.As(err, &exitErr) {
-		return nil, fmt.Errorf("cmd.exec %q: %w", command, err)
+		return nil, err
 	}
 	return map[string]any{
 		"stdout":    result.Stdout,
@@ -49,29 +82,29 @@ func Exec(ctx context.Context, command string, timeout time.Duration) (map[strin
 	}, nil
 }
 
-// ExecArgs runs argv[0] with argv[1:] as its arguments, with no whitespace
-// splitting or shell quoting — unlike Exec, each element is passed through
-// to exec.Command verbatim, so an argument containing spaces (e.g. a git
-// commit message) survives intact. timeout <= 0 means no deadline.
-func ExecArgs(ctx context.Context, argv []string, timeout time.Duration) (map[string]any, error) {
-	if len(argv) == 0 {
-		return nil, fmt.Errorf("cmd.exec: argv must not be empty")
+// ResolveDir validates cmd.exec's `cwd:` before any process starts: "" stays
+// "" (inherit mhl's working directory); anything else is made absolute
+// against mhl's working directory and must be an existing directory. A bad
+// dir is an error — like a missing binary, the command never ran — rather
+// than a non-zero exit_code to inspect.
+func ResolveDir(dir string) (string, error) {
+	if dir == "" {
+		return "", nil
 	}
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("cwd %q: %w", dir, err)
 	}
-	result, err := tools.Exec(ctx, argv[0], argv[1:]...)
-	var exitErr *exec.ExitError
-	if err != nil && !errors.As(err, &exitErr) {
-		return nil, fmt.Errorf("cmd.exec %q: %w", argv, err)
+	info, err := os.Stat(abs)
+	switch {
+	case os.IsNotExist(err):
+		return "", fmt.Errorf("cwd not found: %s", abs)
+	case err != nil:
+		return "", fmt.Errorf("cwd %s: %w", abs, err)
+	case !info.IsDir():
+		return "", fmt.Errorf("cwd is not a directory: %s", abs)
 	}
-	return map[string]any{
-		"stdout":    result.Stdout,
-		"stderr":    result.Stderr,
-		"exit_code": float64(result.ExitCode),
-	}, nil
+	return abs, nil
 }
 
 // ExecAll runs each argv in commands concurrently — one goroutine per
@@ -87,7 +120,8 @@ func ExecArgs(ctx context.Context, argv []string, timeout time.Duration) (map[st
 // as Exec/ExecArgs: the caller inspects each result's exit_code); only a
 // genuine failure to launch some command aborts the whole batch, since
 // that's an infra/config problem, not a normal "verify failed" outcome.
-func ExecAll(ctx context.Context, commands [][]string, timeout time.Duration) ([]map[string]any, error) {
+// dir is shared by every command, as in Exec.
+func ExecAll(ctx context.Context, commands [][]string, dir string, timeout time.Duration) ([]map[string]any, error) {
 	results := make([]map[string]any, len(commands))
 	errs := make([]error, len(commands))
 	var wg sync.WaitGroup
@@ -95,7 +129,7 @@ func ExecAll(ctx context.Context, commands [][]string, timeout time.Duration) ([
 		wg.Add(1)
 		go func(i int, argv []string) {
 			defer wg.Done()
-			result, err := ExecArgs(ctx, argv, timeout)
+			result, err := ExecArgs(ctx, argv, dir, timeout)
 			results[i] = result
 			errs[i] = err
 		}(i, argv)

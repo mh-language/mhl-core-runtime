@@ -1,0 +1,28 @@
+// The Implementation phase of Story (see ../review_cycle_with_stages_and_gates.mh):
+// its review decides which phase comes next — by stage name.
+import {CodeReview, ReviewAction} from "review.mh"
+
+partial workflow Story stage Implementation {
+    step Implement {
+        self.attempts = attempts + 1
+    }
+
+    step Verify {
+        log("tests for attempt ${attempts}")
+    }
+
+    step ReviewCode {
+        var d = pause("review attempt ${attempts}", decision: CodeReview)
+        var note = d.get("feedback", "")
+        if (!note.is_empty()) {
+            feedback.append(note)
+        }
+
+        goto match d.action {
+            ReviewAction.Approve -> Consolidation
+            ReviewAction.ReviseCode -> Implementation
+            ReviewAction.ReviseSpec -> Specification
+            ReviewAction.Reject -> Rejected
+        }
+    }
+}

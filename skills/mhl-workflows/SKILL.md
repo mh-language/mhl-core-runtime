@@ -26,6 +26,12 @@ promise to the reader that it runs top to bottom.
 ## Anatomy
 
 Keep this order: `description`, inputs, `const`/`var`/`mem`, hooks, `output`, steps.
+Apply the [code layout conventions](../mhl-language/SKILL.md#code-layout) inside
+steps as well: expand conditional bodies and separate guards, data preparation,
+agent/tool calls, result validation, artifact writes, and the final control-flow
+exit with blank lines when these are distinct phases. Keep related assignments
+together, leave one blank line between sibling steps, and keep step headers on
+one line. A step with a single action stays a simple three-line block.
 
 ```mh
 type ReviewInput = { diff: string, base?: string }
@@ -53,12 +59,17 @@ workflow ReviewChange(req: ReviewInput): ReviewOutput {
 
     step Analyze timeout 5m {
         var base = req.base ?? "main"
+
         self.review = Reviewer.run(prompt: "Review against ${base}: ${req.diff}")
     }
 
     step Decide {
         self.approved = Verdict.is_clean(review)
-        if (!self.approved) goto Reject
+
+        if (!self.approved) {
+            goto Reject
+        }
+
         complete()
     }
 
@@ -70,6 +81,7 @@ workflow ReviewChange(req: ReviewInput): ReviewOutput {
 test review_change {
     describe clean_diff_is_approved {
         var result = ReviewChange.run(inputs: {diff: "fix typo"})
+
         are_equal(result.state, "completed")
         are_equal(result.executed, ["Analyze", "Decide"])
         are_equal(result.output.approved, true)
@@ -77,6 +89,7 @@ test review_change {
 
     describe blocker_takes_the_reject_branch {
         var result = ReviewChange.run(inputs: {diff: "BLOCKER here", base: "dev"})
+
         are_equal(result.executed, ["Analyze", "Decide", "Reject"])
         are_equal(result.output.approved, false)
     }
@@ -130,7 +143,11 @@ workflow Triage {
 
     step FixBug {
         self.attempts = self.attempts + 1
-        if (self.attempts < attempts_allowed) goto FixBug
+
+        if (self.attempts < attempts_allowed) {
+            goto FixBug
+        }
+
         goto Done
     }
 
@@ -148,6 +165,7 @@ workflow Triage {
 test triage {
     describe bug_retries_to_its_limit {
         var result = Triage.run(inputs: {kind: "Bug"})
+
         are_equal(result.executed, ["Dispatch", "FixBug", "FixBug", "Done"])
     }
 }
@@ -181,7 +199,10 @@ loop workflow PollBuild {
     step Check timeout 30s {
         checks = checks + 1
         status = if (checks >= 3) "done" else "pending"
-        if (status == "failed") break "build failed"
+
+        if (status == "failed") {
+            break "build failed"
+        }
     }
 }
 ```
@@ -223,12 +244,18 @@ pipeline FanOut {
     step Check timeout 2m {
         spawn checks = Checker.run(prompt: "check ${item}") for item in files
         wait checks timeout: 90s
+
         self.results = checks.map((handle) -> handle.result)
     }
 
     parallel Gather timeout 2m {
-        step Left { left = Checker.run(prompt: "left") }
-        step Right { right = Checker.run(prompt: "right") }
+        step Left {
+            left = Checker.run(prompt: "left")
+        }
+
+        step Right {
+            right = Checker.run(prompt: "right")
+        }
     }
 
     step Merge {
@@ -239,6 +266,7 @@ pipeline FanOut {
 test fan_out {
     describe every_file_is_checked {
         var result = FanOut.run()
+
         are_equal(result.vars.results, ["check a.go", "check b.go"])
         are_equal(result.vars.right, "right")
     }
@@ -271,13 +299,21 @@ agent Codex {
 
 workflow Panel {
     input question: string = "caching"
+
     var answers = []
 
     parallel Ask {
         var from_claude = ""
         var from_codex = ""
-        step AskClaude { self.from_claude = Claude.run(prompt: question) }
-        step AskCodex { self.from_codex = Codex.run(prompt: question) }
+
+        step AskClaude {
+            self.from_claude = Claude.run(prompt: question)
+        }
+
+        step AskCodex {
+            self.from_codex = Codex.run(prompt: question)
+        }
+
         merge {
             self.answers.append(self.from_claude)
             self.answers.append(self.from_codex)
@@ -288,6 +324,7 @@ workflow Panel {
 test panel {
     describe both_answers_are_kept {
         var result = Panel.run()
+
         are_equal(result.vars.answers, ["claude: caching", "codex: caching"])
     }
 }
@@ -311,11 +348,18 @@ agent Codex {
 
 workflow Consult {
     input question: string = "caching"
+
     var replies = []
 
     parallel Ask {
-        step AskClaude { self.replies = [...self.replies, Claude.run(prompt: question)] }
-        step AskCodex { self.replies = [...self.replies, Codex.run(prompt: question)] }
+        step AskClaude {
+            self.replies = [...self.replies, Claude.run(prompt: question)]
+        }
+
+        step AskCodex {
+            self.replies = [...self.replies, Codex.run(prompt: question)]
+        }
+
         merge (branches) {
             self.replies = [...branches.AskClaude.replies, ...branches.AskCodex.replies]
         }
@@ -329,6 +373,7 @@ workflow Consult {
 test consult {
     describe both_replies_are_kept {
         var result = Consult.run()
+
         are_equal(result.vars.replies, ["claude: caching", "codex: caching"])
     }
 }
@@ -352,7 +397,9 @@ written. So a gate does nothing before its `pause`, or it does that work twice.
 ```mh
 workflow Deploy {
     description: "Prepares a release, waits for approval, then applies it."
+
     input approved: bool = false
+
     var plan = ""
 
     step Prepare {
@@ -361,7 +408,9 @@ workflow Deploy {
 
     // The gate holds only the decision.
     step Gate {
-        if (!approved) pause("approve: ${plan}")
+        if (!approved) {
+            pause("approve: ${plan}")
+        }
     }
 
     step Apply {
@@ -372,6 +421,7 @@ workflow Deploy {
 test deploy {
     describe unapproved_run_parks_at_the_gate {
         var result = Deploy.run()
+
         are_equal(result.state, "paused")
         are_equal(result.executed, ["Prepare", "Gate"])
         are_equal(result.pause_reason, "approve: deploy v2")
@@ -379,6 +429,7 @@ test deploy {
 
     describe approval_runs_to_the_end {
         var result = Deploy.run(inputs: {approved: true})
+
         are_equal(result.executed, ["Prepare", "Gate", "Apply"])
     }
 }
@@ -386,6 +437,72 @@ test deploy {
 
 Resume with `mhl run deploy.mh --input approved=true --resume`, or `mhl_run_resume` over
 MCP. The decision arrives as an input, so give it a default that means "not yet".
+
+### Typed gates
+
+When a person has to choose between outcomes, or a gate can be reached more than once
+(a review loop), make the pause a **gate**: `pause(reason, decision: T)` returns the
+decision. `T` is a declared `type` or `enum`, or `string`/`number`/`bool`. The run reports
+`awaiting` (the step and `T` as JSON Schema); a resume passes the answer with
+`--decision '<json>'` or `run/resume {runId, decision}`. It is checked against `T` before
+anything runs and answers **that gate once**: the next gate reached pauses again. So an old
+approval can never approve a later round, and no `*_round` inputs are needed. A plain
+`pause(reason)` is unchanged. A gate is not allowed in a `loop` workflow yet.
+
+```mh
+enum Action { Approve, Revise, Reject }
+type Review = { action: Action, feedback?: string }
+
+workflow Publish {
+    description: "Drafts until a reviewer approves or rejects."
+
+    var drafts = 0
+    var status = "drafting"
+
+    step Draft {
+        self.drafts = drafts + 1
+    }
+
+    step Review {
+        var d = pause("review draft ${drafts}", decision: Review)
+
+        goto match d.action {
+            Action.Approve -> Approved
+            Action.Revise -> Draft
+            Action.Reject -> Rejected
+        }
+    }
+
+    step Rejected {
+        self.status = "rejected"
+        complete()
+    }
+
+    step Approved {
+        self.status = "approved after ${drafts}"
+    }
+}
+
+test publish {
+    describe the_gate_reports_what_it_waits_for {
+        var result = Publish.run()
+
+        are_equal(result.state, "paused")
+        are_equal(result.awaiting.type, "Review")
+    }
+
+    describe each_decision_answers_one_round {
+        var result = Publish.run(decisions: [{action: "Revise"}, {action: "Approve"}])
+
+        are_equal(result.state, "completed")
+        are_equal(result.output.status, "approved after 2")
+    }
+}
+```
+
+In a test, `Name.run(decisions: [...])` resumes the run with the next decision each time
+it stops at a gate. Resume a real run with
+`mhl run publish.mh --resume --decision '{"action": "Approve"}'`.
 
 ## Failure and resume
 
@@ -415,14 +532,21 @@ import "discovery.brief.mh"
 
 partial workflow Discovery {
     var data = null
-    entry step Dispatch { goto BriefGenerate }
-    step Done { complete() }
+
+    entry step Dispatch {
+        goto BriefGenerate
+    }
+
+    step Done {
+        complete()
+    }
 }
 
 // discovery.brief.mh
 partial workflow Discovery {
     step BriefGenerate {
         self.data = {title: "brief"}
+
         goto Done
     }
 }
@@ -434,6 +558,41 @@ last step of a fragment must end in an unconditional exit, or lint reports a fal
 into another file. Factor what generate/commit pairs repeat into a shared `tool`, keeping
 only the final `goto` in each step.
 
+A fragment is a file; a stage is a phase. A large workflow is best split by phase, with the
+stage on each fragment's header (see Stages).
+
+## Stages
+
+A stage names a phase of a workflow. The steps run exactly as without it: same names, same
+checkpoints, `goto` still names a step. `goto Name` enters the stage at its first member,
+which reads well for "start the phase over". Observers see the stage: `step.stage` in a step
+hook, `stage` in step events and `run/status`, and a box in mhl studio.
+
+A workflow that needs stages is usually big: split it by phase, one `partial` fragment per
+file, and put the stage on each fragment's header. The file is the phase, with no extra
+indentation:
+
+```mh-fragment
+// story/implementation.mh
+partial workflow Story stage Implementation {
+    step Implement {
+        self.attempts = attempts + 1
+    }
+
+    step Review {
+        if (!approved) {
+            goto Implementation
+        }
+
+        goto Consolidation
+    }
+}
+```
+
+A stage needs `partial`. Its name must not repeat a step, group or route name, and fragments
+sharing a stage are imported one right after the other. A fragment without a stage is fine:
+its steps are outside any. See `sample/syntax/stages/` for complete multi-file examples.
+
 ## Review checklist
 
 Before finishing a workflow, confirm each item:
@@ -443,6 +602,10 @@ Before finishing a workflow, confirm each item:
 - Every backward `goto` and every `loop` has a bound.
 - Every terminal convergence step calls `complete()`.
 - No `var` inside a step shadows a pipeline var that step means to write.
-- Every gate pauses before doing work.
+- Every gate pauses before doing work; a gate a person may reach twice is typed
+  (`pause(..., decision: T)`), so no old decision answers it.
+- A long workflow is split by phase, each fragment naming its `stage`.
 - `output:` exposes only what callers should see, and `description:` is set.
 - Each branch and terminal state has a test (see `mhl-testing`).
+- Steps use the shared code layout: logical phases and final exits are separated
+  by blank lines, and sibling steps and parallel branches are visually distinct.

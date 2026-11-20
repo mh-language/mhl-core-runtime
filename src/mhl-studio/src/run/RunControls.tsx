@@ -2,8 +2,10 @@
 // split button: its ▾ opens the inputs popover (store.inputsOpen), whose
 // values (store.runInputs) both Run and Resume use.
 import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Play, RotateCcw, Square } from "lucide-react";
 import { cancelRun, startRun } from "../app/controller";
 import { inputFields, runInputPairs, set, useStore } from "../app/store";
+import { ICON } from "../lib/icons";
 import { InputsForm, missingInputs } from "./InputsForm";
 
 function run(resume = false) {
@@ -45,11 +47,13 @@ function InputsPopover({ anchor, resumable }: { anchor: HTMLElement; resumable: 
           <span className="spacer" />
           {resumable && (
             <button className="btn small" onClick={() => run(true)} title="Continue from the checkpoint with these inputs">
-              ⟳ Resume
+              <RotateCcw {...ICON} size={13} />
+              Resume
             </button>
           )}
           <button className="btn small primary" disabled={!!missing} onClick={() => run()}>
-            ▶ Run {workflow}
+            <Play {...ICON} size={13} fill="currentColor" />
+            Run {workflow}
           </button>
         </div>
       </div>
@@ -77,7 +81,8 @@ export function RunControls() {
     return (
       <div className="run-controls">
         <button className="btn" onClick={() => void cancelRun(false)} title="Stop at the step boundary and save a resumable checkpoint (SIGINT)">
-          ■ Cancel
+          <Square {...ICON} size={13} fill="currentColor" />
+          Cancel
         </button>
         <button className="btn danger" onClick={() => void cancelRun(true)} title="Kill the run immediately">
           Kill
@@ -90,7 +95,8 @@ export function RunControls() {
     <div className="run-controls">
       {resumable && (
         <button className="btn" onClick={() => run(true)} title="Continue from the checkpoint with the current inputs">
-          ⟳ Resume
+          <RotateCcw {...ICON} size={14} />
+          Resume
         </button>
       )}
       <div className="split-btn" ref={split}>
@@ -101,7 +107,8 @@ export function RunControls() {
           // A run that would be refused for missing inputs opens the form instead.
           onClick={() => (missing ? set({ inputsOpen: true }) : run())}
         >
-          ▶ Run
+          <Play {...ICON} size={14} fill="currentColor" />
+          Run
         </button>
         <button
           className={`btn primary split-arrow ${open ? "open" : ""}`}
@@ -111,7 +118,8 @@ export function RunControls() {
           title={`Run inputs${count ? ` (${count})` : ""}…`}
           onClick={() => set({ inputsOpen: !open })}
         >
-          ▾{missing > 0 && <span className="split-dot" aria-label="required inputs missing" />}
+          <ChevronDown {...ICON} size={14} />
+          {missing > 0 && <span className="split-dot" aria-label="required inputs missing" />}
         </button>
       </div>
       {open && split.current && <InputsPopover anchor={split.current} resumable={resumable} />}

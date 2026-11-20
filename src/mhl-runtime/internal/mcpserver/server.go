@@ -543,9 +543,49 @@ func (s *server) callTool(ctx context.Context, sess *session, id json.RawMessage
 	if res.Paused {
 		// A paused run's vars are partial state, not a result — they carry
 		// no `output:` projection, so they can't satisfy an outputSchema.
-		return s.replyResult(sess, id, typedToolResult(w.Pipeline, toolResult(string(text), vars, false)))
+		return s.replyResult(sess, id, s.pausedToolResult(w, res, typedToolResult(w.Pipeline, toolResult(string(text), vars, false))))
 	}
 	return s.replyResult(sess, id, toolResult(string(text), vars, false))
+}
+
+// pausedToolResult marks a tools/call reply whose run stopped at pause():
+// without it the reply is indistinguishable from a completed run's, and a
+// client (an LLM especially) would take the partial vars for the result.
+// `_meta["mhl.run"]` carries the state for a program to read; a second text
+// block says the same for a model that only reads `content`. content[0] and
+// structuredContent are left as they were. The run cannot be resumed — a
+// synchronous call keeps no run state — so the hint points at run/start
+// where the transport serves it.
+func (s *server) pausedToolResult(w execsvc.Workflow, res *execsvc.Result, r map[string]any) map[string]any {
+	// Masked like run/status's reason: it may quote a resolved credential.
+	reason := auth.Redact(pauseReasonText(res.PauseReason))
+	step := ""
+	if n := len(res.Executed); n > 0 {
+		step = res.Executed[n-1]
+	}
+	hint := "tools/call cannot resume a paused run; serve over HTTP and start it with run/start (the mhl_run_start tool) to resume it with run/resume"
+	if s.asyncRuns {
+		hint = "tools/call cannot resume a paused run; start it with run/start (the mhl_run_start tool) instead, then resume it with run/resume (mhl_run_resume)"
+	}
+	meta := map[string]any{"state": "paused", "reason": reason, "resumable": false, "hint": hint}
+	if step != "" {
+		meta["step"] = step
+	}
+	if res.Awaiting != nil {
+		// A gate: what a run/start-ed run would have to be resumed with.
+		meta["awaiting"] = res.Awaiting
+	}
+	r["_meta"] = map[string]any{"mhl.run": meta}
+	note := fmt.Sprintf("Workflow %q paused", w.Name)
+	if step != "" {
+		note += fmt.Sprintf(" at step %q", step)
+	}
+	note += ": " + reason + "."
+	note += " The variables above are its partial state, not a result. " + hint + "."
+	if content, ok := r["content"].([]map[string]any); ok {
+		r["content"] = append(content, map[string]any{"type": "text", "text": note})
+	}
+	return r
 }
 
 // typedToolResult drops structuredContent from a non-result reply (an error,

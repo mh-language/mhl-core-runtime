@@ -1,5 +1,5 @@
-//! The open folder: listing its `.mh` and `.md` files (and folders), and
-//! reading/writing them.
+//! The open folder: listing its `.mh`, `.md`, `.json` and `.env` files (and
+//! folders), and reading/writing them.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,17 +12,24 @@ const SKIP_DIRS: &[&str] = &["node_modules", "target", "dist", "vendor"];
 /// Schemas loaded with `schema X from "x.json"`).
 const EXTENSIONS: &[&str] = &[".mh", ".md", ".json"];
 
+/// An env file `mhl run` can load: `.env`, `.env.local`, `prod.env`, ...
+/// Shown although `.env` is a hidden name (`.envrc` is not one).
+pub fn is_env_file(name: &str) -> bool {
+    name == ".env" || name.starts_with(".env.") || (name.ends_with(".env") && name.len() > 4)
+}
+
 /// What `list_files` returns: relative ("/"-separated), sorted paths.
 #[derive(serde::Serialize, Debug, PartialEq)]
 pub struct Listing {
-    /// Every `.mh`, `.md` and `.json` file.
+    /// Every `.mh`, `.md`, `.json` and env file.
     pub files: Vec<String>,
     /// Every folder, empty ones included (so a folder just created shows).
     pub dirs: Vec<String>,
 }
 
-/// Every `.mh`/`.md`/`.json` file and folder under `root`. Hidden entries (`.git`,
-/// `.mhl` state, ...) and vendor/build folders are skipped.
+/// Every `.mh`/`.md`/`.json`/env file and folder under `root`. Hidden entries
+/// (`.git`, `.mhl` state, ...) other than env files, and vendor/build folders,
+/// are skipped.
 #[tauri::command]
 pub fn list_files(root: String) -> Result<Listing, String> {
     let root = PathBuf::from(root);
@@ -44,10 +51,11 @@ fn walk(root: &Path, dir: &Path, out: &mut Listing) -> std::io::Result<()> {
         let entry = entry?;
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if name.starts_with('.') {
+        let ty = entry.file_type()?;
+        let env = ty.is_file() && is_env_file(&name);
+        if name.starts_with('.') && !env {
             continue;
         }
-        let ty = entry.file_type()?;
         let path = entry.path();
         if ty.is_dir() {
             if !SKIP_DIRS.contains(&name.as_ref()) {
@@ -56,7 +64,7 @@ fn walk(root: &Path, dir: &Path, out: &mut Listing) -> std::io::Result<()> {
                 }
                 walk(root, &path, out)?;
             }
-        } else if ty.is_file() && EXTENSIONS.iter().any(|ext| name.ends_with(ext)) {
+        } else if ty.is_file() && (env || EXTENSIONS.iter().any(|ext| name.ends_with(ext))) {
             if let Some(r) = rel(root, &path) {
                 out.files.push(r);
             }
@@ -133,7 +141,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lists_mh_md_and_json_files_and_dirs_skipping_hidden_and_vendor_dirs() {
+    fn lists_mh_md_json_and_env_files_and_dirs_skipping_hidden_and_vendor_dirs() {
         let dir = std::env::temp_dir().join(format!("mhl-studio-ws-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         for f in [
@@ -144,6 +152,11 @@ mod tests {
             "sub/image.png",
             ".mhl/state/x.mh",
             "node_modules/y.mh",
+            ".env",
+            ".env.local",
+            "sub/prod.env",
+            ".envrc",
+            "pyenv/.env/lib/z.mh",
         ] {
             let p = dir.join(f);
             fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -152,14 +165,36 @@ mod tests {
         assert!(create_dir(dir.join("prompts/empty").to_string_lossy().into_owned()).is_ok());
         assert!(create_dir(dir.join("sub").to_string_lossy().into_owned()).is_err());
         let l = list_files(dir.to_string_lossy().into_owned()).unwrap();
-        assert_eq!(l.files, vec!["a.mh", "sub/b.mh", "sub/data.json", "sub/notes.md"]);
-        assert_eq!(l.dirs, vec!["prompts", "prompts/empty", "sub"]);
+        // Env files show although hidden; a `.env` *folder* (a Python venv) does not.
+        assert_eq!(
+            l.files,
+            vec![
+                ".env",
+                ".env.local",
+                "a.mh",
+                "sub/b.mh",
+                "sub/data.json",
+                "sub/notes.md",
+                "sub/prod.env"
+            ]
+        );
+        assert_eq!(l.dirs, vec!["prompts", "prompts/empty", "pyenv", "sub"]);
         assert!(create_file(
             dir.join("a.mh").to_string_lossy().into_owned(),
             String::new()
         )
         .is_err());
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn env_file_names() {
+        for yes in [".env", ".env.local", ".env.example", "prod.env"] {
+            assert!(is_env_file(yes), "{yes}");
+        }
+        for no in [".envrc", "env", ".env-old", ".environment", "x.mh"] {
+            assert!(!is_env_file(no), "{no}");
+        }
     }
 
     #[test]

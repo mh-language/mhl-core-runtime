@@ -1,5 +1,49 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Syntax highlighting for a fragment's stage — `partial workflow Story stage Build {`:
+  `stage` as a declaration keyword and the stage's name as a label, like a `goto` target.
+  Only in that form — `stage` used as a name (`input stage`, `step.stage`) stays a plain
+  identifier.
+
+## 0.8.0
+
+### Added
+
+- The extension bundles the `mhl` CLI (v1.11.1) on `linux-x64`, `linux-arm64`,
+  `alpine-x64`, `alpine-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64` and
+  `win32-arm64`, so diagnostics, completion and navigation work without installing
+  it. It is also appended to `PATH` in integrated terminals. Other platforms get a
+  universal package that uses `mhl` on `PATH`, as before.
+
+### Changed
+
+- `mhl.serverPath` defaults to empty, meaning the bundled CLI, else `mhl` on `PATH`.
+  Set it to `mhl` to keep using an installed CLI instead of the bundled one.
+
+### Fixed
+
+- `entry` is highlighted as a keyword in a workflow's starting route
+  (`entry route Choose(model: AgentModel) { ... }`), not only before `step`.
+
+## 0.7.2
+
+### Added
+
+- Highlighting for the `merge` keyword, which ends a `parallel` group with an explicit
+  join (`merge (branches) { ... }`), new in mhl v1.11.0.
+
+Completion, diagnostics and running a `merge` block come from `mhl lsp` and the
+runtime, so they need mhl v1.11.0 or later rather than this extension version.
+
+### Changed
+
+- The extension's source moved to `src/vscode-mhl/` in the repository; the
+  `repository.directory` field and the README's development instructions point there.
+
 ## 0.7.1
 
 ### Added

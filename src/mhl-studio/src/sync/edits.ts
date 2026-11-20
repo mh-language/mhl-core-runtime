@@ -6,9 +6,10 @@
 // ranges — comments, formatting — is never touched.
 
 import type { Declaration, Graph, GraphEdge, GraphNode, Span, Workflow } from "../lib/types";
-import { END, FAIL } from "../lib/types";
+import { END, FAIL, START } from "../lib/types";
 import { OffsetMap } from "./offsets";
-import { renderState, uniqueName, STATE_PREFIX, type StateKind, type TemplateContext } from "./templates";
+import { PALETTE, renderState, uniqueName, STATE_PREFIX, type StateKind, type TemplateContext } from "./templates";
+import { stateAllowed, transitionAllowed, workflowOnlyReason } from "./kinds";
 import { addArm, choiceTemplate, nextPattern, type ChoiceTemplate } from "./choice";
 import { addMerge } from "./merge";
 
@@ -40,15 +41,68 @@ export function applyEdits(text: string, edits: TextEdit[]): string {
 }
 
 /** One source text plus the graph built from it. */
+/**
+ * `g` as this file alone sees it: a merged workflow's members from another
+ * fragment (`file` set) dropped — their spans index another text — and
+ * their names kept as externals, so they still count as taken and as
+ * goto targets. Every edit is computed against this view.
+ */
+export function localGraph(g: Graph): Graph {
+  if (!g.workflows.some((w) => w.merged)) return g;
+  return {
+    ...g,
+    workflows: g.workflows.map((w) => {
+      if (!w.merged) return w;
+      const nodes = w.nodes.filter((n) => !n.file);
+      const local = new Set(nodes.map((n) => n.id));
+      // A start edge into another fragment is that fragment's, as in its own graph.
+      const edges = w.edges.filter((e) => local.has(e.from) || (e.from === START && local.has(e.to)));
+      // Every name another fragment declares is taken here too, referenced or not.
+      const foreign = w.nodes.filter((n) => n.file && !n.parent).map((n) => n.id);
+      const externals = [...new Set([...edges.map((e) => e.to).filter((t) => t !== END && t !== FAIL && !local.has(t)), ...foreign])];
+      return {
+        ...w,
+        nodes,
+        edges,
+        externals,
+        inputs: w.inputs.filter((x) => !x.file),
+        vars: w.vars.filter((x) => !x.file),
+        props: w.props.filter((x) => !x.file),
+        routes: w.routes.filter((x) => !x.file),
+        stages: w.stages?.filter((x) => !x.file),
+      };
+    }),
+  };
+}
+
 export class Doc {
   readonly map: OffsetMap;
+  readonly graph: Graph;
   constructor(
     readonly src: string,
-    readonly graph: Graph,
+    /** The graph as given: a merged workflow keeps its other fragments here (see foreignRefs). */
+    readonly whole: Graph,
     /** Declarations imported from other files (no spans in this text). */
     readonly external: Declaration[] = [],
   ) {
     this.map = new OffsetMap(src);
+    this.graph = localGraph(whole);
+  }
+
+  /** The other fragments' files (base names) whose steps go to `id` — an edit here can't follow them there. */
+  foreignRefs(wfName: string, id: string): string[] {
+    const wf = this.whole.workflows.find((w) => w.name === wfName);
+    if (!wf?.merged) return [];
+    const files = new Map(wf.nodes.filter((n) => n.file).map((n) => [n.id, n.file!]));
+    const out = new Set<string>();
+    for (const e of wf.edges) if (e.to === id && files.has(e.from)) out.add(files.get(e.from)!.split(/[\\/]/).pop()!);
+    return [...out];
+  }
+
+  /** Refuses an edit that would leave another fragment's goto to `id` dangling. */
+  assertUnreferenced(wfName: string, id: string, what: string) {
+    const files = this.foreignRefs(wfName, id);
+    if (files.length) throw new EditError(`${id} is a goto target in ${files.join(", ")}: ${what} it in the code, in every fragment`);
   }
 
   /** A byte offset as a UTF-16 index. */
@@ -151,6 +205,7 @@ export function insertState(
   schema?: string,
 ): EditResult {
   const wf = doc.workflow(wfName);
+  if (!stateAllowed(wf, kind)) throw new EditError(workflowOnlyReason(wf, PALETTE.find((p) => p.kind === kind)?.label ?? kind));
   const taken = [...wf.nodes.map((n) => n.id), ...wf.routes.map((r) => r.name), ...wf.externals];
   const name = uniqueName(STATE_PREFIX[kind], taken);
   const tops = topLevel(wf);
@@ -247,6 +302,7 @@ function insertStateAt(
 export function deleteNode(doc: Doc, wfName: string, id: string): EditResult {
   const wf = doc.workflow(wfName);
   const n = doc.node(wf, id);
+  doc.assertUnreferenced(wfName, id, "delete");
   if (n.parent) {
     const group = doc.node(wf, n.parent);
     if ((group.children ?? []).length <= 1) {
@@ -278,9 +334,12 @@ export function renameNode(doc: Doc, wfName: string, id: string, next: string): 
   const n = doc.node(wf, id);
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(next)) throw new EditError(`"${next}" is not a valid name`);
   if (next === id) return { edits: [] };
-  if (wf.nodes.some((x) => x.id === next) || wf.routes.some((r) => r.name === next)) {
+  const whole = doc.whole.workflows.find((w) => w.name === wfName);
+  const elsewhere = !!whole?.merged && whole.nodes.some((x) => x.file && x.id === next);
+  if (wf.nodes.some((x) => x.id === next) || wf.routes.some((r) => r.name === next) || wf.stages?.some((x) => x.name === next) || elsewhere) {
     throw new EditError(`${next} already exists in ${wf.name}`);
   }
+  doc.assertUnreferenced(wfName, id, "rename");
   const edits: TextEdit[] = [n.nameSpan, ...referenceSpans(wf, id)].map((s) => {
     const [start, end] = doc.span(s);
     return { start, end, text: next };
@@ -347,11 +406,12 @@ export function connect(doc: Doc, wfName: string, from: string, to: string): Edi
     return addArm(doc, wfName, from, nextPattern(decls, wf, n.choice, to), to);
   }
   if (n.parent) throw new EditError("a step inside a parallel group cannot goto; connect the group instead");
-  if (to !== END && to !== FAIL) {
+  // A stage is a target too, by its name: the run enters it at its first member.
+  if (to !== END && to !== FAIL && !wf.stages?.some((x) => x.name === to)) {
     const target = doc.node(wf, to);
     if (target.parent) throw new EditError(`${to} is inside a parallel group; a goto must target a top-level step`);
   }
-  if (wf.kind !== "workflow" && to !== END && to !== FAIL) {
+  if (!transitionAllowed(wf, to)) {
     throw new EditError(`goto is only allowed in a workflow; ${wf.name} is a pipeline`);
   }
   const tops = topLevel(wf);

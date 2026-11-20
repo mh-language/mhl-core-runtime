@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Cuts a VS Code extension release: checks what .github/workflows/publish-extension.yml
 # will check, packages the extension the same way it does, then pushes an
-# extensions-vX.Y.Z tag. The push triggers that workflow, which publishes the one
-# VSIX to the Visual Studio Marketplace (Trusted Publishing, no stored token) and to
-# Open VSX (the OPEN_VSX repository secret). Nothing is published from this machine.
+# extensions-vX.Y.Z tag. The push triggers that workflow, which publishes one VSIX
+# per platform target (each bundling the runtime release pinned in package.json's
+# "mhlRuntime") plus a universal one, to the Visual Studio Marketplace (Trusted
+# Publishing, no stored token) and to Open VSX (the OPEN_VSX repository secret).
+# Nothing is published from this machine.
 #
 # The version comes from package.json, so bump it and commit first:
 #   npm version 0.7.1 --no-git-tag-version   # updates package.json + package-lock.json
@@ -14,7 +16,8 @@
 #   ./release.sh 0.7.1        # same, but fails unless package.json says 0.7.1
 #   ./release.sh --dry-run    # run every check and package, don't tag or push
 #
-# The extension is versioned on its own, independent of the runtime's vX.Y.Z tags.
+# The extension is versioned on its own, independent of the runtime's vX.Y.Z tags;
+# "mhlRuntime" names the released runtime it bundles. Needs go to build it.
 
 set -euo pipefail
 
@@ -33,7 +36,7 @@ for arg in "$@"; do
   case "$arg" in
     --dry-run) dry_run=1 ;;
     -h|--help)
-      sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     v*|extensions-v*) die "pass the bare version (e.g. 0.7.1), not a tag: $arg" ;;
@@ -45,12 +48,14 @@ done
 need_cmd git
 need_cmd node
 need_cmd npm
+need_cmd go
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 [ -f package.json ] || die "package.json not found next to release.sh"
 
 version="$(node -p "require('./package.json').version")"
 lock_version="$(node -p "require('./package-lock.json').version")"
+runtime_tag="$(node -p "require('./package.json').mhlRuntime || ''")"
 tag="extensions-v$version"
 
 printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
@@ -82,17 +87,33 @@ if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/$tag" >/dev/null 2>&1; 
   die "tag $tag already exists on $REMOTE — bump the version in package.json"
 fi
 
+# The workflow builds the bundled runtime from this tag, so it must be released.
+[ -n "$runtime_tag" ] || die "package.json has no \"mhlRuntime\" (the runtime release tag to bundle)"
+git ls-remote --exit-code --tags "$REMOTE" "refs/tags/$runtime_tag" >/dev/null 2>&1 \
+  || die "mhlRuntime $runtime_tag is not a tag on $REMOTE — release the runtime first, or pin a released one"
+
 # --- package exactly as the workflow does -------------------------------------
-# The VSIX goes to a temp dir and is thrown away: it only proves the workflow's
-# package job will succeed. The workflow builds the one it publishes.
+# The VSIXs go to a temp dir and are thrown away: they only prove the workflow's
+# package jobs will succeed (the universal one, and this host's target as a
+# stand-in for the rest). The workflow builds the ones it publishes.
 out_dir="$(mktemp -d)"
 trap 'rm -rf "$out_dir"' EXIT
 
 info "npm ci"
 npm ci --no-audit --no-fund
 
-info "packaging with $VSCE"
-npx --yes "$VSCE" package --out "$out_dir/mhl-language.vsix"
+info "npm test"
+npm test
+
+info "packaging the universal VSIX with $VSCE"
+rm -rf bin
+npx --yes "$VSCE" package --out "$out_dir/mhl-language-universal.vsix"
+
+host_target="$(node scripts/vendor-runtime.mjs --host-target)"
+info "vendoring mhl $runtime_tag for $host_target"
+node scripts/vendor-runtime.mjs --target "$host_target"
+info "packaging the $host_target VSIX with $VSCE"
+npx --yes "$VSCE" package --target "$host_target" --out "$out_dir/mhl-language-$host_target.vsix"
 
 [ -z "$(git status --porcelain)" ] \
   || die "packaging changed tracked files (see git status); commit the result first"

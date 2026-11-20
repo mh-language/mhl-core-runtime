@@ -9,6 +9,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -116,7 +117,7 @@ func runLSP(out io.Writer) error {
 
 // runPipeline implements:
 //
-//	mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--session <id>] [--format text|json|jsonl] [--dry-run]
+//	mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--session <id>] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]
 //
 // It executes a pipeline from the start, or resumes it from the last saved
 // checkpoint when --resume is given (IF-1). --resume refuses a checkpoint
@@ -133,10 +134,19 @@ func runLSP(out io.Writer) error {
 // the file). --dry-run validates
 // the file (parse, imports, lint, input contract) and prints the static plan
 // — step order, parallel groups, checkpoint policy — without executing any
-// step or calling any agent.
+// step or calling any agent. Before anything runs, the working directory's
+// `.env` (or each --env-file instead) is loaded into the environment
+// (envfile.go); a variable already set wins.
 func runPipeline(args []string, out io.Writer) error {
+	args, envFiles, err := takeEnvFiles(args)
+	if err != nil {
+		return err
+	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run]")
+		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force] [--decision <json>]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]")
+	}
+	if err := loadEnvFiles(envFiles); err != nil {
+		return err
 	}
 	defer loadSessionExtensions(out)()
 	file := args[0]
@@ -146,6 +156,7 @@ func runPipeline(args []string, out io.Writer) error {
 	format := "text"
 	sessionFlag := ""
 	workflow := ""
+	var decision any
 	inputs := map[string]any{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -176,6 +187,17 @@ func runPipeline(args []string, out io.Writer) error {
 			}
 			i++
 			sessionFlag = args[i]
+		case "--decision":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--decision requires a value: JSON (`{\"action\": \"Approve\"}`, `true`) or a bare string")
+			}
+			i++
+			// JSON when it parses (an object, a number, a bool, a quoted
+			// string), else the text itself — `--decision Approve` for an
+			// enum or string decision.
+			if err := json.Unmarshal([]byte(args[i]), &decision); err != nil {
+				decision = args[i]
+			}
 		case "--input":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--input requires a key=value argument")
@@ -193,6 +215,9 @@ func runPipeline(args []string, out io.Writer) error {
 
 	if force && !resume {
 		return fmt.Errorf("--force only applies with --resume")
+	}
+	if decision != nil && !resume {
+		return fmt.Errorf("--decision only applies with --resume (it answers the gate a paused run waits at)")
 	}
 	if dryRun {
 		if resume {
@@ -230,6 +255,7 @@ func runPipeline(args []string, out io.Writer) error {
 		Session:     sessionFlag,
 		Resume:      resume,
 		ForceResume: force,
+		Decision:    decision,
 		Out:         runOut,
 	}
 	var events *eventWriter
@@ -262,6 +288,7 @@ func runPipeline(args []string, out io.Writer) error {
 		}
 		if res.Paused {
 			printPauseReason(out, res.PipelineName, res.PauseReason)
+			printAwaiting(out, res.Awaiting)
 		}
 		return nil
 	}
@@ -287,6 +314,19 @@ func printBreakReason(out io.Writer, name string, reason any) {
 	}
 }
 
+// printAwaiting tells how to answer the gate a paused run waits at.
+func printAwaiting(out io.Writer, a *execsvc.Awaiting) {
+	if a == nil {
+		return
+	}
+	fmt.Fprintf(out, "awaiting a decision of type %s at %q: resume with --resume --decision '<json>'\n", a.Type, a.Step)
+	if a.Schema != nil {
+		if b, err := json.Marshal(a.Schema); err == nil {
+			fmt.Fprintf(out, "decision schema: %s\n", b)
+		}
+	}
+}
+
 func printPauseReason(out io.Writer, name string, reason any) {
 	if reason != nil {
 		fmt.Fprintf(out, "%q paused (resume with --resume): %v\n", name, runtime.RedactValue(reason))
@@ -297,8 +337,11 @@ func printPauseReason(out io.Writer, name string, reason any) {
 
 // runTests implements:
 //
-//	mhl test <file.mh>
-//	mhl test <dir>
+//	mhl test <file.mh> [--env-file <path> ...]
+//	mhl test <dir> [--env-file <path> ...]
+//
+// Like `mhl run`, it first loads the working directory's `.env` (or each
+// --env-file instead) into the environment (envfile.go).
 //
 // Given a file, it runs every `test { ... }` block declared in it. Given a
 // directory, it recursively finds every .mh file under it (same traversal
@@ -317,8 +360,15 @@ func printPauseReason(out io.Writer, name string, reason any) {
 // any assertion failed, or when no test blocks were found at all; an
 // `incomplete(...)` assertion does not count as a failure.
 func runTests(args []string, out io.Writer) error {
+	args, envFiles, err := takeEnvFiles(args)
+	if err != nil {
+		return err
+	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl test <file.mh|dir>")
+		return fmt.Errorf("usage: mhl test <file.mh|dir> [--env-file <path> ...]")
+	}
+	if err := loadEnvFiles(envFiles); err != nil {
+		return err
 	}
 	defer loadSessionExtensions(out)()
 	target := args[0]

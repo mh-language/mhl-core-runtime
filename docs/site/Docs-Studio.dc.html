@@ -4,22 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>mhl studio — Meta-Harness Language</title>
-<meta name="description" content="mhl studio: a desktop IDE that draws MHL workflows as a diagram kept in sync with the .mh code, and runs them live — install, tour, how each shape maps to the language, editing and running." />
+<meta name="description" content="mhl studio: a desktop IDE that draws MHL workflows as a diagram kept in sync with the .mh code, runs them live and tests the folder as an MCP server — install, tour, templates, editing, the inspector, tools, running, pause/resume and the MCP test bench." />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Meta-Harness Language" />
 <meta property="og:title" content="mhl studio — Meta-Harness Language" />
-<meta property="og:description" content="Design MHL workflows as a diagram, keep the code as the source of truth, and run them live." />
+<meta property="og:description" content="Design MHL workflows as a diagram, keep the code as the source of truth, run them live and test them as an MCP server." />
 <meta property="og:url" content="https://mh-language.github.io/mhl-core-runtime/Docs-Studio.dc.html" />
 <meta property="og:image" content="https://mh-language.github.io/mhl-core-runtime/assets/mhl-studio.png" />
-<meta property="og:image:alt" content="mhl studio: a workflow diagram next to its .mh code." />
+<meta property="og:image:alt" content="mhl studio: a workflow diagram next to its .mh code and the inspector." />
 <meta property="og:image:type" content="image/png" />
-<meta property="og:image:width" content="3440" />
-<meta property="og:image:height" content="1440" />
+<meta property="og:image:width" content="3200" />
+<meta property="og:image:height" content="2000" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="mhl studio — Meta-Harness Language" />
-<meta name="twitter:description" content="Design MHL workflows as a diagram, keep the code as the source of truth, and run them live." />
+<meta name="twitter:description" content="Design MHL workflows as a diagram, keep the code as the source of truth, run them live and test them as an MCP server." />
 <meta name="twitter:image" content="https://mh-language.github.io/mhl-core-runtime/assets/mhl-studio.png" />
-<meta name="twitter:image:alt" content="mhl studio: a workflow diagram next to its .mh code." />
+<meta name="twitter:image:alt" content="mhl studio: a workflow diagram next to its .mh code and the inspector." />
 <script src="./support.js"></script>
 </head>
 <body>
@@ -46,6 +46,21 @@ html { scroll-behavior:smooth; }
 .studio-tour li { counter-increment:tour; position:relative; padding:12px 14px 12px 50px; border:1px solid var(--line); border-radius:10px; background:var(--panel); line-height:1.6; scroll-margin-top:96px; }
 .studio-tour li::before { content:counter(tour); position:absolute; left:14px; top:12px; display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff; font:700 12px 'DM Mono',monospace; }
 .studio-tour li:target { border-color:var(--accent); }
+.studio-figs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:22px 0 18px; align-items:start; }
+.studio-fig { margin:0; }
+.studio-fig-wide { margin:22px 0 18px; }
+.studio-fig .studio-shot-frame { display:block; }
+.studio-fig img { display:block; width:100%; height:auto; }
+.studio-fig-tall img { max-height:420px; width:auto; max-width:100%; margin:0 auto; }
+.studio-fig-tall .studio-shot-frame { background:#16181d; }
+.studio-fig figcaption { margin-top:9px; color:var(--muted); font-size:14px; line-height:1.55; }
+.studio-table-2 .table-row { grid-template-columns:minmax(0,.7fr) minmax(0,2fr); }
+.studio-download { display:inline-flex; gap:10px; align-items:center; padding:11px 18px; border-radius:8px; background:var(--accent); color:#fff !important; font-weight:800; font-size:15px; text-decoration:none; }
+.studio-download:hover { filter:brightness(1.08); }
+.studio-download-note { margin-left:10px; color:var(--muted); font-size:14px; }
+.studio-content kbd { font:12px 'DM Mono',monospace; border:1px solid var(--line); border-radius:4px; padding:0 4px; background:var(--panel); white-space:nowrap; }
+.studio-figs-files { grid-template-columns:minmax(0,.55fr) minmax(0,1fr); }
+@media (max-width:900px) { .studio-figs, .studio-figs-files { grid-template-columns:1fr; } .studio-figs-files .studio-fig:first-child img { max-width:340px; margin:0 auto; } }
 @media (max-width:700px) { .studio-pin { width:18px; height:18px; font-size:10px; } }
 </style>
 </helmet>
@@ -101,26 +116,28 @@ html { scroll-behavior:smooth; }
         <section class="ref-hero doc-section" id="intro" data-title="mhl studio desktop ide visual designer diagram workflow step functions tauri">
           <p class="eyebrow accent">MHL · STUDIO · PREVIEW</p>
           <h1>Design workflows as a diagram. Keep the code as the source of truth.</h1>
-          <p class="lead"><strong>mhl studio</strong> is a desktop IDE for designing and running MHL workflows, in the spirit of a visual workflow designer. You drag states onto a diagram, the diagram and the <code>.mh</code> code stay in sync in both directions, and a run streams live onto the same diagram. It is optional: the language, the CLI and every server work without it.</p>
+          <p class="lead"><strong>mhl studio</strong> is a desktop IDE for designing and running MHL workflows, in the spirit of a visual workflow designer. You drag states onto a diagram, the diagram and the <code>.mh</code> code stay in sync in both directions, a run streams live onto the same diagram, and the folder can be tested as the MCP server your clients will see. It is optional: the language, the CLI and every server work without it.</p>
           <figure class="studio-shot">
             <div class="studio-shot-frame">
-              <a href="assets/mhl-studio.png" target="_blank" rel="noreferrer" title="Open full size"><img src="assets/mhl-studio.png" width="3440" height="1440" alt="mhl studio: a file explorer on the left, a workflow diagram in the middle that starts at an entry route named Choose and branches to ProcessWithClaude, ProcessWithCodex, a parallel group Fan and Fail, the matching .mh code on the right, and an inspector showing the workflow's inputs and routes." /></a>
-              <a class="studio-pin" href="#tour-explorer" style="left:5%;top:19%" aria-label="1: explorer">1</a>
-              <a class="studio-pin" href="#tour-states" style="left:23.5%;top:6%" aria-label="2: states bar">2</a>
-              <a class="studio-pin" href="#tour-diagram" style="left:48%;top:54%" aria-label="3: diagram">3</a>
-              <a class="studio-pin" href="#tour-imports" style="left:15%;top:13%" aria-label="4: imports card">4</a>
-              <a class="studio-pin" href="#tour-code" style="left:70%;top:27%" aria-label="5: code editor">5</a>
-              <a class="studio-pin" href="#tour-inspector" style="left:93%;top:57%" aria-label="6: inspector">6</a>
-              <a class="studio-pin" href="#tour-run" style="left:30%;top:97%" aria-label="7: run panel">7</a>
-              <a class="studio-pin" href="#tour-toolbar" style="left:81.2%;top:2.5%" aria-label="8: run and view toolbar">8</a>
+              <a href="assets/mhl-studio.png" target="_blank" rel="noreferrer" title="Open full size"><img src="assets/mhl-studio.png" width="3200" height="2000" alt="mhl studio in Split view: the folder's files on the left, the states bar and the diagram of the SupportTriage workflow in the middle — Normalize, Classify, a parallel group Draft with two agent branches and a merge, Approve, AutoReply and Send — the matching .mh code to its right, and the workflow inspector with its inputs on the far right." /></a>
+              <a class="studio-pin" href="#tour-explorer" style="left:9%;top:34%" aria-label="1: explorer">1</a>
+              <a class="studio-pin" href="#tour-states" style="left:30.5%;top:10%" aria-label="2: states bar">2</a>
+              <a class="studio-pin" href="#tour-diagram" style="left:44%;top:56%" aria-label="3: diagram">3</a>
+              <a class="studio-pin" href="#tour-imports" style="left:23%;top:13.4%" aria-label="4: imports card">4</a>
+              <a class="studio-pin" href="#tour-code" style="left:72.5%;top:31%" aria-label="5: code editor">5</a>
+              <a class="studio-pin" href="#tour-inspector" style="left:95%;top:45%" aria-label="6: inspector">6</a>
+              <a class="studio-pin" href="#tour-run" style="left:46%;top:96.4%" aria-label="7: run panel">7</a>
+              <a class="studio-pin" href="#tour-toolbar" style="left:78%;top:4.6%" aria-label="8: run and view toolbar">8</a>
+              <a class="studio-pin" href="#tour-mode" style="left:18.4%;top:4.6%" aria-label="9: Editor | MCP switch">9</a>
             </div>
-            <figcaption>A workflow that starts at an <code>entry route</code>: the diagram on the left and the code on the right are the same file. The numbers match <a href="#tour">the tour</a> below · <a href="assets/mhl-studio.png" target="_blank" rel="noreferrer">open full size ↗</a></figcaption>
+            <figcaption>The <a href="#example">example</a> used on this page, in Split view: the diagram and the code are the same file. The numbers match <a href="#tour">the tour</a> below · <a href="assets/mhl-studio.png" target="_blank" rel="noreferrer">open full size ↗</a></figcaption>
           </figure>
           <div class="quick-index">
-            <a href="#install">Install<span>macOS, Windows, Linux</span></a>
-            <a href="#tour">Tour<span>the eight areas</span></a>
-            <a href="#mapping">Diagram ↔ code<span>what each shape is</span></a>
+            <a href="download.html#studio">Download<span>macOS, Windows, Linux</span></a>
+            <a href="#tour">Tour<span>the nine areas</span></a>
+            <a href="#editing">Editing<span>drag, drop, inspect</span></a>
             <a href="#running">Running<span>live runs, pause, resume</span></a>
+            <a href="#mcp">MCP test bench<span>serve the folder, call it</span></a>
           </div>
         </section>
 
@@ -128,29 +145,36 @@ html { scroll-behavior:smooth; }
           <div class="feature-head"><h2><span class="feature-num">01</span>The code is the source of truth</h2><span class="status status-partial">Preview</span></div>
           <p class="feature-lede">The studio never keeps a model of its own. The diagram is drawn from the code, every diagram action becomes a small text edit, and every run is a real <code>mhl run</code>.</p>
           <ul class="studio-points">
-            <li><strong>The diagram is a projection.</strong> It comes from <code>mhl graph &lt;file&gt; --stdin</code>, which reports every step, parallel group, route and transition with the byte span of the source it came from.</li>
+            <li><strong>The diagram is a projection.</strong> It comes from <code>mhl graph &lt;file&gt; --stdin</code>, which reports every step, parallel group, route, transition and call with the byte span of the source it came from.</li>
             <li><strong>Edits are text edits.</strong> A diagram or inspector action rewrites only those spans, as one undoable step in the editor. Comments and formatting elsewhere are never touched.</li>
+            <li><strong>A split workflow is drawn whole.</strong> A <code>partial</code> workflow is graphed with <code>mhl graph --merged</code>, from the file that declares its <code>entry</code> step, so every fragment shows in one diagram. Steps from another file are dashed, carry that file's name and are read-only here: double-click one, or its file chip, to open the file and edit it there. Renaming or deleting a step another fragment's <code>goto</code> targets is refused.</li>
+            <li><strong>Stages are boxes.</strong> A stage — the <code>stage Name</code> on a <code>partial</code> fragment's header — is drawn as a titled box around that fragment's steps and parallel groups, in the whole-workflow diagram; a <code>goto</code> to the stage lands on the box, and during a run the box takes its steps' status. Double-click a box to show it in the code.</li>
+            <li><strong>Gates ask for a decision.</strong> A step with <code>pause(reason, decision: T)</code> is labelled <em>Gate · T</em>; a run paused there shows a form built from <code>T</code> — a select per enum, a checkbox per bool — and <strong>Resume with decision</strong> answers it.</li>
             <li><strong>Editing the code redraws the diagram.</strong> While the code does not parse, the diagram keeps the last version that did, read-only, until the code is fixed.</li>
-            <li><strong>It ships its own runtime.</strong> Each installer bundles the <code>mhl</code> binary it was built with, so the language it edits is the runtime it runs — never an <code>mhl</code> on your <code>PATH</code>.</li>
+            <li><strong>It ships its own runtime.</strong> Each installer bundles the <code>mhl</code> binary it was built with — its version is shown at the right of the toolbar — so the language it edits is the runtime it runs, never an <code>mhl</code> on your <code>PATH</code>.</li>
           </ul>
           <div class="reference-table">
             <div class="table-row table-head"><span>Feature</span><span><code>mhl</code> command</span><span>What it provides</span></div>
-            <div class="table-row"><span>Diagram</span><span><code>mhl graph --stdin</code></span><span>nodes, edges, call sites and spans</span></div>
+            <div class="table-row"><span>Diagram</span><span><code>mhl graph --stdin [--merged]</code></span><span>nodes, edges, call sites and spans; a partial workflow from all its fragments</span></div>
             <div class="table-row"><span>Inputs form</span><span><code>mhl run --dry-run --format json</code></span><span>the declared inputs and their types, validated before a run</span></div>
             <div class="table-row"><span>Execution</span><span><code>mhl run --format jsonl</code></span><span>streamed <code>step_start</code> / <code>step_end</code> / <code>log</code> / <code>result</code> events</span></div>
+            <div class="table-row"><span>Run method</span><span><code>mhl run --format json</code></span><span>a throwaway one-step program that calls a tool method, written outside the workspace</span></div>
             <div class="table-row"><span>Editor</span><span><code>mhl lsp</code></span><span>diagnostics, completion, hover, signature help, go-to-definition</span></div>
+            <div class="table-row"><span>MCP test bench</span><span><code>mhl serve mcp</code></span><span>the folder served over stdio or Streamable HTTP, exactly as a client sees it</span></div>
           </div>
         </section>
 
         <section class="feature doc-section" id="install" data-title="install download release studio-v dmg msi exe deb rpm appimage unsigned gatekeeper smartscreen build from source">
           <div class="feature-head"><h2><span class="feature-num">02</span>Install</h2><span class="status status-partial">Preview</span></div>
           <p class="feature-lede">Studio releases are published on the project's <a href="https://github.com/mh-language/mhl-core-runtime/releases" target="_blank" rel="noreferrer">GitHub Releases</a> under their own <code>studio-vX.Y.Z</code> tags, separate from the language's <code>vX.Y.Z</code> releases. Every installer already contains the runtime — nothing else to install.</p>
+          <p><a class="studio-download" href="download.html#studio">Go to the download page <span aria-hidden="true">→</span></a> <span class="studio-download-note">It picks the right installer for your system.</span></p>
           <div class="reference-table">
             <div class="table-row table-head"><span>Platform</span><span>Download</span><span>Notes</span></div>
             <div class="table-row"><span>macOS · Apple Silicon</span><span><code>…_aarch64.dmg</code></span><span>drag <strong>mhl studio</strong> to Applications</span></div>
             <div class="table-row"><span>macOS · Intel</span><span><code>…_x64.dmg</code></span><span>same</span></div>
             <div class="table-row"><span>Windows · x64</span><span><code>…_x64-setup.exe</code> or <code>.msi</code></span><span>the installer, or the MSI package</span></div>
-            <div class="table-row"><span>Linux · x64</span><span><code>.AppImage</code>, <code>.deb</code>, <code>.rpm</code></span><span>the AppImage runs without installing</span></div>
+            <div class="table-row"><span>Windows · ARM</span><span><code>…_arm64-setup.exe</code></span><span>the installer (there is no ARM64 MSI)</span></div>
+            <div class="table-row"><span>Linux · x64 / ARM</span><span><code>.AppImage</code>, <code>.deb</code>, <code>.rpm</code></span><span>the AppImage runs without installing</span></div>
           </div>
           <div class="security-banner"><span>!</span><div><strong>The installers are not code-signed yet</strong><p>On <strong>macOS</strong>, if it says the app "is damaged" or "can't be opened", run <code>xattr -dr com.apple.quarantine "/Applications/mhl studio.app"</code> once, or right-click the app → Open. On <strong>Windows</strong>, SmartScreen shows "Windows protected your PC": choose <strong>More info → Run anyway</strong>. On <strong>Linux</strong>, make the AppImage executable with <code>chmod +x</code>.</p></div></div>
           <p class="block-label">Build from source</p>
@@ -165,23 +189,51 @@ npm run tauri build   # an installer for this machine</code></pre>
           </div>
         </section>
 
-        <section class="feature doc-section" id="tour" data-title="tour window explorer states bar palette diagram imports card code editor monaco inspector run panel toolbar split design">
+        <section class="feature doc-section" id="tour" data-title="tour window explorer states bar palette diagram imports card code editor monaco inspector run panel toolbar split design mcp mode">
           <div class="feature-head"><h2><span class="feature-num">03</span>A tour of the window</h2><span class="status status-full">Available</span></div>
-          <p class="feature-lede">Open a folder with <strong>Open folder…</strong>; every <code>.mh</code> file in it is editable, and a file with several workflows offers a picker in the toolbar. The numbers match the screenshot above.</p>
+          <p class="feature-lede">Open a folder with the folder button (<kbd>⌘O</kbd>); every <code>.mh</code> file in it is editable, and the studio reopens the last folder on launch. The numbers match the screenshot above.</p>
           <ol class="studio-tour">
-            <li id="tour-explorer"><strong>Explorer.</strong> The folder's files. <strong>+</strong> asks what the new file declares — workflow, tool, agent, prompt, memory, MCP server, type, enum or test — and starts it from a template that already lints clean, named after the file (<code>flows/review_bot.mh</code> → <code>ReviewBot</code>).</li>
-            <li id="tour-states"><strong>States bar.</strong> Drag a state onto the diagram to add it: <em>Pass</em>, <em>Choice</em>, <em>Parallel</em>, <em>Human approval</em>, <em>Succeed</em> and <em>Fail</em>. Dropped on a step, it is inserted right after it.</li>
-            <li id="tour-diagram"><strong>Diagram.</strong> Laid out automatically from the code, top to bottom, from <em>Start</em> to <em>End</em>. Each step shows one box per agent or tool call it makes; click a box to see the call in the code.</li>
-            <li id="tour-imports"><strong>Imports card.</strong> What the file imports and from where. Click a name to highlight the steps that use it; ↗ opens the file it comes from.</li>
-            <li id="tour-code"><strong>Code.</strong> The <code>.mh</code> file, with MHL highlighting and the language server: diagnostics, completion, hover and go-to-definition. Typing redraws the diagram.</li>
-            <li id="tour-inspector"><strong>Inspector.</strong> With nothing selected: the workflow's name, description, <code>loop</code>, inputs, routes, properties and problems. With a step selected: its name, timeout and transitions — for a Choice, its rules; for a parallel group, its branches, vars and merge.</li>
-            <li id="tour-run"><strong>Run panel.</strong> The run's execution history, events, logs and final variables.</li>
-            <li id="tour-toolbar"><strong>Run and views.</strong> <strong>Run</strong> asks for the workflow's inputs and starts it. <strong>Design</strong>, <strong>Split</strong> and <strong>Code</strong> switch between the diagram, both, and the code alone.</li>
+            <li id="tour-explorer"><strong>Explorer.</strong> The folder's <code>.mh</code>, Markdown, JSON and <code>.env</code> files. <strong>+</strong> creates a file from a <a href="#files">template</a>; files also drag onto the diagram — an agent, a prompt, a schema — so the explorer doubles as the toolbox.</li>
+            <li id="tour-states"><strong>States bar.</strong> The shapes you can drag onto the diagram, grouped as <em>Flow</em> (Pass, Choice, Parallel), <em>Gate</em> (Human approval) and <em>End</em> (Succeed, Fail).</li>
+            <li id="tour-diagram"><strong>Diagram.</strong> Laid out automatically from the code, top to bottom, from <em>Start</em> to <em>End</em>. Each step shows one box per agent or tool call it makes. The controls on its right zoom, fit the whole diagram (<kbd>⇧1</kbd>), center it (<kbd>⇧2</kbd>), or keep it centered after each change.</li>
+            <li id="tour-imports"><strong>Imports card.</strong> What the file imports and from where, with how many times each name is used. Click a name to highlight the steps that use it; ↗ opens the file it comes from. Drop another <code>.mh</code> file on it to import it.</li>
+            <li id="tour-code"><strong>Code.</strong> The <code>.mh</code> file, with MHL highlighting and the <a href="#code">language server</a>. Typing redraws the diagram.</li>
+            <li id="tour-inspector"><strong>Inspector.</strong> Edits whatever is selected — the <a href="#inspector">workflow, a step, a Choice, a parallel group</a>, or a <a href="#tools">tool</a>.</li>
+            <li id="tour-run"><strong>Run panel.</strong> The run's execution summary, events, logs and variables (<kbd>⌘J</kbd> shows or hides it).</li>
+            <li id="tour-toolbar"><strong>Run and views.</strong> <strong>Run</strong> starts the workflow; the arrow next to it opens its inputs. <strong>Design</strong>, <strong>Split</strong> and <strong>Code</strong> switch between the diagram, both, and the code alone; the three panel buttons show or hide the files (<kbd>⌘B</kbd>), the run panel (<kbd>⌘J</kbd>) and the inspector (<kbd>⌥⌘B</kbd>). A file with several workflows offers a picker, and <strong>+</strong> adds a workflow to it.</li>
+            <li id="tour-mode"><strong>Editor | MCP.</strong> Swaps the editor for the <a href="#mcp">MCP test bench</a>. A green dot on <em>MCP</em> means its server is running.</li>
           </ol>
+          <div class="tip-row"><span>ZOOM</span><p><kbd>⌘+</kbd>, <kbd>⌘-</kbd> and <kbd>⌘0</kbd> (Ctrl elsewhere) scale the whole window — diagram, editor and panels together — and the level is remembered, as is which panels are open.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="files" data-title="new file template workflow tool agent prompt markdown json schema env memory mcp server type enum test folder rename delete move agent picker claude codex copilot antigravity devin api">
+          <div class="feature-head"><h2><span class="feature-num">04</span>Files and templates</h2><span class="status status-full">Available</span></div>
+          <p class="feature-lede"><strong>+</strong> in the explorer's header (or on a folder) asks what the new file declares and starts it from a template that already parses and lints clean, its declaration named after the file: <code>flows/review_bot.mh</code> → <code>ReviewBot</code>. New tools, agents and prompts start out <code>export</code>ed, so a workflow file can import them.</p>
+          <div class="studio-figs studio-figs-files">
+            <figure class="studio-fig">
+              <a class="studio-shot-frame" href="assets/studio/new-file.webp" target="_blank" rel="noreferrer"><img src="assets/studio/new-file.webp" width="959" height="1639" loading="lazy" alt="The explorer's New menu: Workflow, Tool, Agent…, Prompt, Prompt (Markdown), JSON Schema, Environment (.env), Memory, MCP server, Type, Enum, Test, Empty file and Folder, each with a one-line hint." /></a>
+              <figcaption>The <strong>+</strong> menu: one template per kind of declaration.</figcaption>
+            </figure>
+            <figure class="studio-fig">
+              <a class="studio-shot-frame" href="assets/studio/agent-picker.webp" target="_blank" rel="noreferrer"><img src="assets/studio/agent-picker.webp" width="1088" height="1096" loading="lazy" alt="The New agent picker: a table of agent CLIs — Claude Code, Codex CLI, GitHub Copilot CLI, Antigravity, Devin CLI — by role (Structured answer, Coder, Reader), each marked installed, and a table of HTTP APIs — Claude API, OpenAI-compatible API, Gemini API — by Structured answer or Text answer, marked curl + jq." /></a>
+              <figcaption><strong>Agent…</strong> picks a ready-made agent: a CLI or an HTTP API, and a role.</figcaption>
+            </figure>
+          </div>
+          <div class="reference-table">
+            <div class="table-row table-head"><span>Template</span><span>Starts</span><span>Notes</span></div>
+            <div class="table-row"><span>Workflow</span><span>a <code>workflow</code> with inputs and steps</span><span>opens on the diagram</span></div>
+            <div class="table-row"><span>Tool</span><span>an exported <code>tool</code> with one method</span><span>opens the <a href="#tools">tool inspector</a></span></div>
+            <div class="table-row"><span>Agent…</span><span>an exported <code>agent</code> for a CLI or an API, in a role</span><span>the prompt goes on stdin; model and effort are per-call inputs; an API key stays in the environment, never on the command line</span></div>
+            <div class="table-row"><span>Prompt · Prompt (Markdown)</span><span>a <code>prompt</code>, or a <code>.md</code> body</span><span>a Markdown file drags onto the diagram as a prompt</span></div>
+            <div class="table-row"><span>JSON Schema</span><span>a <code>.json</code> answer shape</span><span>drags onto a step as an agent call's <code>schema:</code></span></div>
+            <div class="table-row"><span>Environment (.env)</span><span>keys and settings every run loads</span><span>added to <code>.gitignore</code>; only the root <code>.env</code> is loaded automatically</span></div>
+            <div class="table-row"><span>Memory · MCP server · Type · Enum · Test · Empty</span><span>the matching declaration</span><span>a test file runs with <code>mhl test</code></span></div>
+          </div>
+          <p>In the agent picker, each CLI is marked <em>✓ installed</em> or <em>… not found</em> from your shell's <code>PATH</code>; a missing one is still offered, since the workflow may run elsewhere. Right-click a row for <em>New</em>, <em>Rename</em> and <em>Delete</em> (<kbd>F2</kbd> renames, <kbd>⌘⌫</kbd> moves to the Trash); drag a row onto a folder to move it, and references to the moved file are rewritten.</p>
         </section>
 
         <section class="feature doc-section" id="mapping" data-title="diagram code mapping step parallel merge choice goto match route entry route pause complete fail edges">
-          <div class="feature-head"><h2><span class="feature-num">04</span>What each shape is in the code</h2><span class="status status-full">Available</span></div>
+          <div class="feature-head"><h2><span class="feature-num">05</span>What each shape is in the code</h2><span class="status status-full">Available</span></div>
           <p class="feature-lede">Every shape on the diagram is a piece of the language — nothing on it is studio-only.</p>
           <div class="reference-table">
             <div class="table-row table-head"><span>On the diagram</span><span>In the code</span><span>Notes</span></div>
@@ -192,43 +244,268 @@ npm run tauri build   # an installer for this machine</code></pre>
             <div class="table-row"><span>Parallel group</span><span><code>parallel Name { step … step … }</code></span><span>its own vars on the header; a <code>merge { … }</code> is the bar along its bottom</span></div>
             <div class="table-row"><span>Human approval 👤</span><span><code>pause("…")</code></span><span>the run parks there until it is resumed</span></div>
             <div class="table-row"><span>Succeed ✓ / Fail ✕</span><span><code>complete()</code> / <code>fail("…")</code></span><span>edges to <em>End</em> or <em>Fail</em></span></div>
-            <div class="table-row"><span>Edge</span><span>fall-through, <code>goto</code>, an arm</span><span>a dashed edge is the start; a label is the arm's pattern or the <code>if</code> guarding a <code>goto</code></span></div>
+            <div class="table-row"><span>Edge</span><span>fall-through, <code>goto</code>, an arm</span><span>a dashed edge is a fall-through to the next declared step; a label is the arm's pattern or the <code>if</code> guarding a <code>goto</code></span></div>
             <div class="table-row"><span>⏱ badge</span><span><code>step Name timeout 5m { … }</code></span><span>editable in the inspector</span></div>
           </div>
         </section>
 
-        <section class="feature doc-section" id="editing" data-title="editing connect delete transition drag tool agent prompt schema toolbox import export rename tool builder run method">
-          <div class="feature-head"><h2><span class="feature-num">05</span>Editing on the diagram</h2><span class="status status-full">Available</span></div>
-          <p class="feature-lede">Each action below is a text edit you can undo in the code view.</p>
+        <section class="feature doc-section" id="editing" data-title="editing connect delete transition drag drop state agent prompt schema import export call site toolbox">
+          <div class="feature-head"><h2><span class="feature-num">06</span>Editing on the diagram</h2><span class="status status-full">Available</span></div>
+          <p class="feature-lede">Each action below is a text edit you can undo (<kbd>⌘Z</kbd>) like typing. The file is marked unsaved (●) until you save it (<kbd>⌘S</kbd>).</p>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/drop-state.webp" target="_blank" rel="noreferrer"><img src="assets/studio/drop-state.webp" width="2080" height="1488" loading="lazy" alt="After dropping Pass on the Normalize step: a new empty step named Step sits between Normalize and Classify on the diagram, and the code shows step Step { } inserted after step Normalize, highlighted; the inspector shows the new step with its fall-through transition to Classify." /></a>
+            <figcaption>A <em>Pass</em> dropped on <code>Normalize</code> becomes <code>step Step { }</code> right after it, falling through to <code>Classify</code>.</figcaption>
+          </figure>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/drop-prompt.webp" target="_blank" rel="noreferrer"><img src="assets/studio/drop-prompt.webp" width="2080" height="1200" loading="lazy" alt="After dragging reply.prompt.md from the explorer onto the DraftEmpathetic branch: a toast reads Declared prompt Reply from ./prompts/reply.prompt.md, and the branch's agent call now passes prompt: Reply(...)." /></a>
+            <figcaption><code>reply.prompt.md</code> dropped on an agent step: the prompt is declared and the call now reads <code>Drafter.run(prompt: Reply(ticket: ticket))</code>.</figcaption>
+          </figure>
           <div class="reference-table">
             <div class="table-row table-head"><span>Action</span><span>Becomes</span><span></span></div>
+            <div class="table-row"><span>Drag a state onto empty space</span><span>a new step there</span><span>Pass, Choice (<code>goto match</code>), Parallel, Human approval (<code>pause</code>), Succeed or Fail</span></div>
+            <div class="table-row"><span>Drag a state onto a step</span><span>a new step right after it</span><span>onto a branch of a parallel group, it joins the group</span></div>
             <div class="table-row"><span>Connect two steps</span><span><code>goto Target</code></span><span>or retargets the step's trailing <code>goto</code>; on a Choice, a new rule</span></div>
             <div class="table-row"><span>Delete a transition</span><span>removes its line</span><span>a <code>goto</code>, a <code>goto match</code> arm or a route arm; a fall-through ends the step with <code>complete()</code></span></div>
-            <div class="table-row"><span>Drop a tool method or agent on a step</span><span><code>var x = Tool.method(…)</code></span><span>placed before the step's final <code>goto</code>/<code>complete()</code></span></div>
-            <div class="table-row"><span>Drop it on empty space</span><span>a new step calling it</span><span></span></div>
-            <div class="table-row"><span>Use something from another file</span><span><code>import { Name } from "./file.mh"</code></span><span>and marks it <code>export</code> in its own file when needed</span></div>
-            <div class="table-row"><span>Drop a prompt or JSON Schema</span><span>the agent call's <code>prompt:</code> / <code>schema:</code></span><span>declaring the <code>prompt</code> / <code>schema</code> when it comes from a file</span></div>
+            <div class="table-row"><span>Drag an agent's file onto a step</span><span><code>var reply = Agent.run(prompt: …)</code></span><span>for a <code>.mh</code> file that declares one agent; placed before the step's final <code>goto</code>/<code>complete()</code>. Onto empty space: a new step calling it</span></div>
+            <div class="table-row"><span>Drag a Markdown file</span><span>the agent call's <code>prompt:</code></span><span>declares <code>prompt Name(…) from "./file.md"</code>; onto empty space, a new agent step</span></div>
+            <div class="table-row"><span>Drag a JSON file</span><span>the agent call's <code>schema:</code></span><span>declaring the schema from the file</span></div>
+            <div class="table-row"><span>Use something from another file</span><span><code>import { Name } from "./file.mh"</code></span><span>merged into an existing import of that file, and marks the declaration <code>export</code> in its own file when needed. Dropping a <code>.mh</code> file on the Imports card imports it</span></div>
           </div>
-          <div class="tip-row"><span>TOOLS</span><p>Select a <code>tool</code> to rename it, add or remove methods, and edit a method's parameters, return type and body. <strong>Run method</strong> calls it with real arguments and shows the result, without writing anything to the workspace.</p></div>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/call-site.webp" target="_blank" rel="noreferrer"><img src="assets/studio/call-site.webp" width="2080" height="1040" loading="lazy" alt="The Tickets.priority call box inside the Classify step is selected, and the code editor highlights Tickets.priority(urgency) on the goto match line." /></a>
+            <figcaption>Click a call box inside a step to find that call in the code — here <code>Tickets.priority(urgency)</code> in <code>Classify</code>.</figcaption>
+          </figure>
         </section>
 
-        <section class="feature doc-section" id="running" data-title="run execute live status highlight path events logs variables pause approve resume cancel checkpoint jsonl">
-          <div class="feature-head"><h2><span class="feature-num">06</span>Running a workflow</h2><span class="status status-full">Available</span></div>
-          <p class="feature-lede"><strong>Run</strong> opens a form built from the workflow's declared inputs, validates it, and starts a real <code>mhl run</code>.</p>
+        <section class="feature doc-section" id="inspector" data-title="inspector workflow inputs loop description routes properties problems step timeout transitions choice rules parallel branches group vars merge up down show code delete">
+          <div class="feature-head"><h2><span class="feature-num">07</span>The inspector</h2><span class="status status-full">Available</span></div>
+          <p class="feature-lede">The right-hand panel edits whatever is selected. Every field writes to the code, and <strong>Show code</strong> jumps to the selection's source.</p>
+          <div class="studio-figs">
+            <figure class="studio-fig">
+              <a class="studio-shot-frame" href="assets/studio/choice.webp" target="_blank" rel="noreferrer"><img src="assets/studio/choice.webp" width="1472" height="1160" loading="lazy" alt="The Classify step selected: the inspector, titled Choice, shows its name, timeout, the call it makes, the expression it branches on — Tickets.priority(urgency) — and its rules: high to Draft, low to AutoReply, otherwise to Fail, plus a row to add a rule; the step's code is highlighted in the editor." /></a>
+              <figcaption>A <strong>Choice</strong>: the expression it branches on and one rule per arm, each with its target.</figcaption>
+            </figure>
+            <figure class="studio-fig">
+              <a class="studio-shot-frame" href="assets/studio/parallel.webp" target="_blank" rel="noreferrer"><img src="assets/studio/parallel.webp" width="1472" height="1432" loading="lazy" alt="The Draft parallel group selected: the inspector shows its name, a 2-minute timeout, its branches DraftEmpathetic and DraftConcise with Add branch, group vars, the merge with Show in code and Remove merge, and its transition goto Approve; the group's code is highlighted." /></a>
+              <figcaption>A <strong>parallel group</strong>: its timeout, branches, group vars, merge and transitions.</figcaption>
+            </figure>
+          </div>
+          <div class="reference-table studio-table-2">
+            <div class="table-row table-head"><span>Selected</span><span>You can edit</span></div>
+            <div class="table-row"><span>Nothing (the workflow)</span><span>name, description, <strong>Loop</strong> (run the steps again after the last one), inputs — name, type, default; add or remove — routes, properties such as <code>output:</code>, and the file's problems</span></div>
+            <div class="table-row"><span>A step</span><span>name, timeout (h / m / s / ms), the calls it makes, transitions (add, remove), <strong>Up</strong>/<strong>Down</strong> to reorder, <strong>Show code</strong>, <strong>Delete</strong></span></div>
+            <div class="table-row"><span>A Choice</span><span>everything a step has, plus the expression it branches on and its rules: pattern → target, an <em>otherwise</em> arm, <strong>+ Rule</strong>, ↗ to select a target</span></div>
+            <div class="table-row"><span>A parallel group</span><span>name, timeout, branches (<strong>+ Add branch</strong>), group vars with initial values, its merge (<strong>Show in code</strong>, <strong>Remove merge</strong>) and transitions</span></div>
+            <div class="table-row"><span>A branch of a group</span><span>name, timeout, the calls it makes</span></div>
+          </div>
+        </section>
+
+        <section class="feature doc-section" id="tools" data-title="tool builder method parameters return type internal body expression block run method test">
+          <div class="feature-head"><h2><span class="feature-num">08</span>Building tools</h2><span class="status status-partial">Preview</span></div>
+          <p class="feature-lede">A <code>tool</code> is a set of methods that steps, agent hooks and other tools call. Create one with <strong>+ → Tool</strong> and the inspector becomes a small tool builder.</p>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/tool-method.webp" target="_blank" rel="noreferrer"><img src="assets/studio/tool-method.webp" width="2720" height="1472" loading="lazy" alt="The new tool ReplyFormat open in the code editor, and the inspector editing its method greet: name, a parameter name of type string, return type string, an internal checkbox, the body as an Expression, and a Test section where the argument support team was entered; Run method shows ReplyFormat.greet(&quot;support team&quot;) returning &quot;hello support team&quot;." /></a>
+            <figcaption><strong>Run method</strong> called <code>ReplyFormat.greet("support team")</code> through the bundled runtime and shows its result.</figcaption>
+          </figure>
           <ul class="studio-points">
-            <li><strong>Live.</strong> Each step's status is drawn on the diagram as the run goes, and the path it took — through routes and parallel groups too — is highlighted.</li>
-            <li><strong>Human in the loop.</strong> A run that reaches <code>pause("…")</code> stops there, resumable. Set the inputs the gate reads (for example <code>approved = true</code>) and <strong>Resume</strong>: the paused step runs again with them.</li>
-            <li><strong>Cancel.</strong> A run in flight can be cancelled; it saves a checkpoint you can resume from.</li>
-            <li><strong>After the run.</strong> The panel below the diagram keeps the event history, the logs and the final variables.</li>
+            <li><strong>The tool.</strong> Rename it (its calls in this file are rewritten; files that import it are not), add or delete methods, <strong>Show code</strong>, <strong>Delete tool</strong>.</li>
+            <li><strong>A method.</strong> Its name, parameters (name, type, default), return type, <code>internal</code> (only the tool itself and this file's tests may call it), and its body — an <em>Expression</em> (<code>-&gt; value</code>) or a <em>Block</em> of statements, where native ops (<code>fs</code>, <code>cmd</code>, <code>git</code>, <code>http</code>, <code>json</code>, …) are available.</li>
+            <li><strong>Run method.</strong> Type the arguments as MHL values (<code>"text"</code>, <code>3</code>, <code>true</code>, <code>[1, 2]</code>). It saves the file and calls the method for real — native ops do run — in a throwaway program outside your folder, so nothing else is written to the workspace.</li>
           </ul>
-          <div class="tip-row"><span>SAME RUNTIME</span><p>A run from the studio is the same <code>mhl run --format jsonl</code> you can start from a terminal, with the runtime bundled in the app — what you see on the diagram is the runtime's own event stream.</p></div>
         </section>
 
-        <section class="feature doc-section" id="limits" data-title="limitations known limits windows cancel unsigned auto update transitions">
-          <div class="feature-head"><h2><span class="feature-num">07</span>Known limits</h2><span class="status status-partial">Preview</span></div>
+        <section class="feature doc-section" id="code" data-title="code editor monaco lsp language server diagnostics completion hover signature help go to definition">
+          <div class="feature-head"><h2><span class="feature-num">09</span>The code editor</h2><span class="status status-full">Available</span></div>
+          <p class="feature-lede">A Monaco editor with MHL highlighting and the bundled <code>mhl lsp</code>: diagnostics, completion, hover, signature help and go-to-definition — across the folder's imports.</p>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/code-hover.webp" target="_blank" rel="noreferrer"><img src="assets/studio/code-hover.webp" width="2080" height="1312" loading="lazy" alt="Code view of support_triage.mh with a hover card over Tickets: tool Tickets, its doc comment Deterministic helpers the support workflow calls, and its methods normalize, urgency and priority." /></a>
+            <figcaption>Code view, hovering an imported tool: its doc comment and its methods, read from <code>tools/tickets.mh</code>.</figcaption>
+          </figure>
+        </section>
+
+        <section class="feature doc-section" id="running" data-title="run execute live status highlight path events logs variables inputs validate pause approve resume cancel checkpoint jsonl">
+          <div class="feature-head"><h2><span class="feature-num">10</span>Running a workflow</h2><span class="status status-full">Available</span></div>
+          <p class="feature-lede"><strong>Run</strong> starts a real <code>mhl run</code> of the selected workflow and draws it on the diagram as it goes.</p>
+          <div class="studio-figs">
+            <figure class="studio-fig">
+              <a class="studio-shot-frame" href="assets/studio/run-inputs.webp" target="_blank" rel="noreferrer"><img src="assets/studio/run-inputs.webp" width="884" height="416" loading="lazy" alt="The Inputs for SupportTriage popover under the Run button: ticket as a string with its default as placeholder, approved as a bool select showing default (false), a Validate button and Run SupportTriage, with Enter to run." /></a>
+              <figcaption>The arrow next to <strong>Run</strong>: a form built from the declared inputs and their types. <strong>Validate</strong> checks them with a dry run.</figcaption>
+            </figure>
+            <figure class="studio-fig studio-fig-tall">
+              <a class="studio-shot-frame" href="assets/studio/run-live.webp" target="_blank" rel="noreferrer"><img src="assets/studio/run-live.webp" width="1100" height="1200" loading="lazy" alt="The diagram during a run: Normalize and Classify are marked SUCCEEDED with the high edge in green, and both branches of the Draft parallel group are marked RUNNING." /></a>
+              <figcaption>Live: finished steps and the path taken turn green; both branches of <code>Draft</code> are still <em>RUNNING</em>.</figcaption>
+            </figure>
+          </div>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/run-paused.webp" target="_blank" rel="noreferrer"><img src="assets/studio/run-paused.webp" width="3200" height="2000" loading="lazy" alt="A run paused at the Approve step: the path from Start through Normalize, Classify and both Draft branches is green, Approve is amber and marked PAUSED, the toolbar shows a Resume button, and the run panel shows a Waiting for a decision card with the pause reason and a Set inputs and resume button, the session id and the steps executed." /></a>
+            <figcaption>Human in the loop: the run reached <code>pause("urgent reply needs a human: …")</code> in <code>Approve</code> and waits for a decision.</figcaption>
+          </figure>
+          <ul class="studio-points">
+            <li><strong>Pause and resume.</strong> A run that reaches <code>pause("…")</code> stops there, resumable, with its reason in the panel. <strong>Set inputs and resume…</strong> opens the inputs form: set what the gate reads (here <code>approved = true</code>) and <strong>Resume</strong> — the paused step runs again with them, and the steps before it are skipped, not re-run.</li>
+            <li><strong>Cancel.</strong> A run in flight can be cancelled; it saves a checkpoint you can resume from.</li>
+            <li><strong>The run panel.</strong> <em>Execution</em> has the session, the steps executed and those skipped on resume; <em>Events</em> every <code>run_start</code> / <code>step_start</code> / <code>step_end</code> with its time, step and outcome (<code>goto → Draft</code>, <code>ok · 612 ms</code>); <em>Logs</em> the run's output; <em>Variables</em> its result. <strong>Clear</strong> clears the execution view.</li>
+          </ul>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/run-completed.webp" target="_blank" rel="noreferrer"><img src="assets/studio/run-completed.webp" width="2080" height="1536" loading="lazy" alt="After resuming: every step on the taken path, Approve and Send included, is green and marked SUCCEEDED, and the Variables tab shows the result: reply and urgency 4; the status reads Succeeded." /></a>
+            <figcaption>Resumed with <code>approved = true</code>: the run succeeds and <em>Variables</em> shows its <code>output:</code>.</figcaption>
+          </figure>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/run-events.webp" target="_blank" rel="noreferrer"><img src="assets/studio/run-events.webp" width="2080" height="496" loading="lazy" alt="The Events tab: a table with Time, Event, Step and Detail columns listing RunStarted, StepEntered and StepExited for Normalize and Classify — goto → Draft — and the two Draft branches entering in parallel." /></a>
+            <figcaption>The <em>Events</em> tab: the runtime's own event stream, step by step.</figcaption>
+          </figure>
+          <div class="tip-row"><span>SAME RUNTIME</span><p>A run from the studio is the same <code>mhl run --format jsonl</code> you can start from a terminal, with the runtime bundled in the app — what you see on the diagram is the runtime's own event stream. Agent CLIs and their API keys come from your login shell's environment, as in a terminal.</p></div>
+        </section>
+
+        <section class="feature doc-section" id="mcp" data-title="mcp test bench serve mcp stdio http streamable token curl tools call run start resume cancel resources manifest console traffic server log">
+          <div class="feature-head"><h2><span class="feature-num">11</span>The MCP test bench</h2><span class="status status-partial">Preview</span></div>
+          <p class="feature-lede"><strong>Editor | MCP</strong> swaps the editor for a bench that serves the open folder with <code>mhl serve mcp</code> — one tool per workflow, a manifest resource for each — exactly as Claude Desktop, VS Code or any other MCP client would see it. It is laid out like an API client. See <a href="Docs-Servers.dc.html">Servers</a> for the protocol itself.</p>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/mcp-call.webp" target="_blank" rel="noreferrer"><img src="assets/studio/mcp-call.webp" width="3200" height="2000" loading="lazy" alt="The MCP bench over HTTP: on the left a tree with Tools (SupportTriage), Run control (mhl_run_start, status, resume, cancel, list, logs), Resources, Runs and Raw request; in the middle the SupportTriage tool with tools/call, its URL and Send, an Arguments table generated from its input schema with approved true and a ticket, and below the response: OK, 944 ms, 293 B, with the reply and urgency as pretty JSON." /></a>
+            <figcaption>A <code>tools/call</code> of the <code>SupportTriage</code> workflow over Streamable HTTP, with its arguments generated from the tool's <code>inputSchema</code>.</figcaption>
+          </figure>
+          <ul class="studio-points">
+            <li><strong>Transport.</strong> <em>stdio</em>, or <em>HTTP</em> on a free loopback port with a random bearer token. <strong>URL</strong>, <strong>Token</strong> and <strong>curl</strong> copy what another client needs to reach the same server.</li>
+            <li><strong>Left:</strong> a filterable tree of what the server serves — tools (<code>CALL</code>), the <code>mhl_run_*</code> control tools (<code>CTRL</code>), resources (<code>READ</code>), runs, and a <strong>Raw request</strong> for any method with any params.</li>
+            <li><strong>Middle:</strong> the request — method, address and <strong>Send</strong> — then the arguments, as a key/value form generated from the tool's <code>inputSchema</code>, as <strong>JSON</strong>, or the <strong>Schema</strong> and <strong>Docs</strong> themselves.</li>
+            <li><strong>Below:</strong> the response, with its status, time and size, shown <strong>Pretty</strong> (highlighted, foldable), <strong>Raw</strong> or as a <strong>Table</strong>. A string that holds JSON, such as an agent CLI's raw output, is shown decoded and marked <code>JSON string</code>.</li>
+          </ul>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/mcp-run.webp" target="_blank" rel="noreferrer"><img src="assets/studio/mcp-run.webp" width="2176" height="1216" loading="lazy" alt="An async run under Runs: SupportTriage, paused, with its run id and a run/cancel button, a progress bar, the steps reached Normalize → Classify → DraftEmpathetic → DraftConcise → Approve, 5 of 8 steps run, the pause reason, a run/resume form with approved and ticket, and the run's vars below." /></a>
+            <figcaption>An async run from <code>run/start</code>: paused at the gate, with <code>run/resume</code> and <code>run/cancel</code> one click away.</figcaption>
+          </figure>
+          <figure class="studio-fig studio-fig-wide">
+            <a class="studio-shot-frame" href="assets/studio/mcp-resource.webp" target="_blank" rel="noreferrer"><img src="assets/studio/mcp-resource.webp" width="2720" height="1904" loading="lazy" alt="The resources/read of mhl://workflow/SupportTriage returning the workflow manifest — async tool, checkpoint strategy per_step, declared agents Drafter and Reviewer and tool Tickets, description, file and input schema — above the console's Traffic tab listing each JSON-RPC message with time, method, id, HTTP status, duration and size." /></a>
+            <figcaption>The workflow's manifest resource, and the <em>Traffic</em> console with every JSON-RPC message.</figcaption>
+          </figure>
+          <ul class="studio-points">
+            <li><strong>Async runs (HTTP only).</strong> Switch a tool's method from <code>tools/call</code> to <code>run/start</code>: it returns at once and the run is followed under <strong>Runs</strong> — progress, the steps reached, its vars, logs and status. A paused run is resumed with new arguments (<code>run/resume</code>); a running one can be cancelled.</li>
+            <li><strong>Console.</strong> <em>Traffic</em> lists every JSON-RPC message with its status, time and size (status polls are hidden unless you ask for them); <em>Server log</em> is the server's own output.</li>
+            <li><strong>Saved files only.</strong> The server reads the files on disk when it starts. The bench flags unsaved files and offers a restart after a save.</li>
+          </ul>
+        </section>
+
+        <section class="feature doc-section" id="example" data-title="example sample support desk triage workflow agents tools reproduce">
+          <div class="feature-head"><h2><span class="feature-num">12</span>The example on this page</h2><span class="status status-full">Available</span></div>
+          <p class="feature-lede">Every screenshot above is the same small folder, <code>support-desk/</code>. Its two agents are shell commands standing in for model CLIs, so it runs offline — swap their <code>command</code>/<code>args</code> for <code>claude</code>, <code>codex</code>, … to use real ones.</p>
+          <p class="block-label">support_triage.mh</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-mhl">import { Drafter, Reviewer } from "./agents/assistants.mh"
+import { Tickets } from "./tools/tickets.mh"
+
+workflow SupportTriage {
+    description: "Triages a support ticket, drafts replies with two agents and asks a human before sending urgent ones."
+
+    input ticket: string = "URGENT: my invoice was charged twice, please refund"
+    input approved: bool = false
+
+    var text = ""
+    var urgency = 0
+    var drafts = []
+    var reply = ""
+
+    output: {
+        reply: reply,
+        urgency: urgency
+    }
+
+    step Normalize {
+        text = Tickets.normalize(ticket)
+        urgency = Tickets.urgency(text)
+        log("urgency ${urgency} for: ${text}")
+    }
+
+    step Classify {
+        goto match Tickets.priority(urgency) {
+            "high" -> Draft
+            "low" -> AutoReply
+            _ -> fail("unknown priority")
+        }
+    }
+
+    parallel Draft timeout 2m {
+        step DraftEmpathetic {
+            self.drafts.append(Drafter.run(prompt: "Empathetic reply to: ${text}"))
+        }
+
+        step DraftConcise {
+            self.drafts.append(Reviewer.run(prompt: "Concise reply to: ${text}"))
+        }
+
+        merge (branches) {
+            self.drafts = [...branches.DraftEmpathetic.drafts, ...branches.DraftConcise.drafts]
+            self.reply = self.drafts[0].trim()
+            goto Approve
+        }
+    }
+
+    step AutoReply {
+        reply = "Thanks! We received your ticket and will get back to you soon."
+        goto Send
+    }
+
+    step Approve {
+        if (!approved) {
+            pause("urgent reply needs a human: ${reply}")
+        }
+    }
+
+    step Send {
+        log("sending: ${reply}")
+        complete()
+    }
+}</code></pre>
+          </div>
+          <p class="block-label">agents/assistants.mh</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-mhl">// Two local "assistants": shell commands standing in for real model CLIs,
+// so the workflow runs offline. Swap `command`/`args` for claude, codex, ...
+export agent Drafter {
+    command: "sh"
+    args: ["-c", "sleep 0.6; echo 'We are sorry about the double charge - a refund is on its way.'"]
+}
+
+export agent Reviewer {
+    command: "sh"
+    args: ["-c", "sleep 0.9; echo 'Refund issued. You will see it in 3-5 business days.'"]
+}</code></pre>
+          </div>
+          <p class="block-label">tools/tickets.mh</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button" data-copy="copy">Copy</button>
+            <pre class="code-block"><code class="language-mhl">// Deterministic helpers the support workflow calls.
+export tool Tickets {
+    normalize(text: string): string -> text.trim().to_lower()
+
+    urgency(text: string): number {
+        var score = 1
+        if (text.contains("urgent")) {
+            score += 2
+        }
+        if (text.contains("refund") || text.contains("charged")) {
+            score += 1
+        }
+        return score
+    }
+
+    priority(score: number, threshold: number = 3): string {
+        if (score >= threshold) {
+            return "high"
+        }
+        return "low"
+    }
+}</code></pre>
+          </div>
+          <p>The same folder runs without the studio: <code>mhl run support_triage.mh</code> pauses at <code>Approve</code>, and <code>--input approved=true</code> (or <code>--input "ticket=hello"</code>, which takes the <code>AutoReply</code> branch) runs it to the end.</p>
+        </section>
+
+        <section class="feature doc-section" id="limits" data-title="limitations known limits windows cancel unsigned auto update transitions tool method drag">
+          <div class="feature-head"><h2><span class="feature-num">13</span>Known limits</h2><span class="status status-partial">Preview</span></div>
           <ul class="studio-points">
             <li>Only transitions that are a whole line can be deleted on the diagram — a <code>goto</code>, an <code>if (…) goto</code>, a single arm. The rest are edited in the code.</li>
             <li>Linking a step to a route by dragging is not supported yet: write <code>goto Route(x)</code> in the step.</li>
+            <li>Tool methods cannot be dragged onto the diagram yet, and the tool inspector opens for a tool created with <strong>+ → Tool</strong>: call an existing tool's methods, and edit its methods, in the code.</li>
             <li>On Windows, cancel ends the run's processes at once; a resume re-runs the interrupted step.</li>
             <li>The installers are not code-signed yet, and there is no auto-update: download new versions from GitHub Releases.</li>
           </ul>
@@ -253,9 +530,15 @@ npm run tauri build   # an installer for this machine</code></pre>
           <a href="#model" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">The code is the source of truth</a>
           <a href="#install" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Install</a>
           <a href="#tour" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">A tour of the window</a>
+          <a href="#files" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Files and templates</a>
           <a href="#mapping" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">What each shape is in the code</a>
           <a href="#editing" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Editing on the diagram</a>
+          <a href="#inspector" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">The inspector</a>
+          <a href="#tools" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Building tools</a>
+          <a href="#code" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">The code editor</a>
           <a href="#running" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Running a workflow</a>
+          <a href="#mcp" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">The MCP test bench</a>
+          <a href="#example" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">The example on this page</a>
           <a href="#limits" data-toc style="color:var(--muted);border-left:2px solid transparent;padding:5px 10px;font-size:14px;line-height:1.45;border-radius:0 6px 6px 0;transition:.2s">Known limits</a>
     </nav>
   </div>
@@ -276,7 +559,7 @@ npm run tauri build   # an installer for this machine</code></pre>
 </x-dc>
 <script type="text/x-dc" data-dc-script>
 const KEYWORDS=new Set('import from as export loop entry route var mem if else while try catch finally return break goto for in self fail pause'.split(' '));
-const DECLS=new Set('agent router memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
+const DECLS=new Set('agent router memory tool pipeline prompt extension parallel stage step input output test describe'.split(' '));
 const CONSTS=new Set(['true','false','null']);
 const esc=(v)=>v.replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const span=(cls,v)=>'<span class="'+cls+'">'+v+'</span>';

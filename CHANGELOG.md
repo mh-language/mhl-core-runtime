@@ -12,6 +12,70 @@ Per-tag release notes are also generated automatically on the
 
 ### Added
 
+- **`mhl graph --merged` shows a `partial` workflow whole.** Every fragment in the file's
+  import closure (or in `--root <entry.mh>`'s) is joined in run order: one start edge to the
+  `entry` step, and a fragment's last step falling through into the next fragment's first.
+  A node, input, var, prop or route from another fragment carries that file's absolute path
+  in `"file"`, its spans indexing that file.
+
+- **`stage` — named phases.** A `partial` fragment names its phase on its header —
+  `partial workflow Story stage Implementation { ... }` — putting every step and parallel
+  group of the file in it, with no block and no extra indentation: a workflow that wants
+  stages is split by phase, one fragment per stage. The steps run exactly as without it —
+  same step names, same checkpoints — and `goto Name` enters the stage at its first member,
+  from any fragment. The stage reaches observers: `StepContext.stage` (optional field; `null`
+  outside a stage) in `step_start`/`step_end`, `stage` on `--format jsonl` step events (and the
+  stage list on `run_start`), `run/status`, the `mhl://workflow/<name>` manifest, the
+  `--dry-run` plan (`named_stages` in its JSON) and `mhl graph` (`stages`, `Node.stage`).
+  `mhl lint` rejects a stage on a declaration that is not `partial`, a stage named like a
+  step, group or route, and fragments sharing a stage that are not imported consecutively.
+  Programs without a stage keep their `DefinitionDigest`.
+- **Typed gates: `pause(reason, decision: T)`.** A pause that returns the decision a resume
+  passes. The run reports `awaiting` — the step and `T` (a declared `type`/`enum`, or
+  `string`/`number`/`bool`) as JSON Schema — in `mhl run --format json|jsonl`, `run/status`
+  and a paused `tools/call`. `mhl run --resume --decision '<json>'` and
+  `run/resume {runId, decision}` answer it: checked against `T` before anything runs (a
+  wrong one is refused with the run still paused: `invalid_decision` / `-32602`), then
+  returned by that gate — once, so the next gate reached pauses again and an old approval
+  never answers a later round. In a test, `Name.run(decisions: [...])` answers each gate in
+  turn. `mhl lint` checks `T`, and rejects a gate in a `loop` workflow (not supported yet).
+  A plain `pause(reason)` is unchanged. `mhl graph` lists a step's gate types in
+  `decisions`.
+
+### Fixed
+
+- **`mhl graph` no longer draws a start edge into a `partial` fragment without the `entry`
+  step.** A run never starts there; the edge pointed at whichever step came first.
+
+## 1.12.0 — 2026-11-20
+
+### Added
+
+- **`cmd.exec(..., cwd: dir)` — run a command in another directory.** `cmd.exec` and
+  `cmd.exec_all` take an optional named `cwd:`, the directory the process starts in, as
+  `cd dir && command` would: a relative command path (`./gradlew`) resolves there, and a
+  relative `cwd` against mhl's working directory. A missing or non-directory `cwd` (or a
+  non-string one) raises before any process starts; `""` or `null` inherits mhl's working
+  directory. Previously `cwd:` was silently ignored, so a harness running a project's tests
+  in another checkout needed a wrapper (`sh -c "cd ..."` or a Python `subprocess` adapter).
+
+### Repository
+
+- **`release.sh --bump vX.Y.Z`** turns `## Unreleased` into `## X.Y.Z — <date>` under a new,
+  empty `## Unreleased`, and `release.sh vX.Y.Z` refuses to tag a version without its
+  section. 1.11.0 and 1.11.1 had shipped with their notes still under `Unreleased`; they now
+  have their own sections.
+
+## 1.11.1 — 2026-11-17
+
+No changes to the language or the `mhl` CLI: the runtime is built from the same source as
+1.11.0. Only the VS Code extension shipped with the release changed (0.7.2, see
+[its changelog](src/vscode-mhl/CHANGELOG.md)).
+
+## 1.11.0 — 2026-11-15
+
+### Added
+
 - **`entry route` — a workflow can start with a dispatch.**
   `entry route Choose(model: AgentModel) { ... }` is evaluated before any step, its
   parameter bound to the workflow input of the same name, and the run continues at the

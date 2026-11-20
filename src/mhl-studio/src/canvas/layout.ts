@@ -4,7 +4,7 @@
 // change, never stored, so code and diagram cannot disagree.
 import ELK, { type ElkExtendedEdge, type ElkNode } from "elkjs/lib/elk.bundled.js";
 import type { Edge, Node } from "@xyflow/react";
-import { END, FAIL, START, type GraphEdge, type GraphNode, type Route, type Workflow } from "../lib/types";
+import { END, FAIL, START, type GraphEdge, type GraphNode, type Route, type StageGroup, type Workflow } from "../lib/types";
 
 /** An edge's label as drawn: a match/route arm's `_` reads "otherwise". */
 export function edgeLabel(e: { kind: string; label?: string }): string | undefined {
@@ -225,6 +225,13 @@ export interface Point {
 }
 
 export type StepNodeData = { node: GraphNode; workflow: string };
+/** A stage (a fragment's header `stage Name`): a labelled box around its members. */
+export type StageNodeData = { stage: StageGroup; workflow: string; steps: string[] };
+
+/** The canvas id of a stage — its own name: `goto Name` edges target it. */
+export const stageId = (name: string) => name;
+/** Room above a stage's members for its title. */
+const STAGE_PAD = "[top=40,left=20,bottom=20,right=20]";
 export type TerminalNodeData = { role: "start" | "end" | "fail" };
 export type ExternalNodeData = { name: string };
 /** `used`: some step runs `goto Route(x)` — it is in the flow, with edges. */
@@ -271,9 +278,25 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
 
   const children: ElkNode[] = [{ id: START, width: TERM_W, height: TERM_H }];
   for (const r of after.get(START) ?? []) children.push(routeNode(r));
+  // A stage is a box holding its members: each top-level node goes into its
+  // stage's box (created where its first member comes, in model order).
+  const stages = new Map((wf.stages ?? []).map((s) => [s.name, s]));
+  const boxes = new Map<string, ElkNode>();
+  const holder = (n: GraphNode): ElkNode[] => {
+    const s = n.stage ? stages.get(n.stage) : undefined;
+    if (!s) return children;
+    let box = boxes.get(s.name);
+    if (!box) {
+      box = { id: stageId(s.name), layoutOptions: { "elk.padding": STAGE_PAD, "elk.spacing.nodeNode": "36" }, children: [] };
+      boxes.set(s.name, box);
+      children.push(box);
+    }
+    return box.children!;
+  };
   for (const n of top) {
+    const into = holder(n);
     if (n.kind === "parallel") {
-      children.push({
+      into.push({
         id: n.id,
         layoutOptions: {
           // A merge is drawn as a bar along the group's bottom edge.
@@ -283,9 +306,9 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
         children: childrenOf(n.id).map((c) => ({ id: c.id, width: STEP_W, height: stepHeight(c) })),
       });
     } else {
-      children.push({ id: n.id, width: STEP_W, height: stepHeight(n) });
+      into.push({ id: n.id, width: STEP_W, height: stepHeight(n) });
     }
-    for (const r of after.get(n.id) ?? []) children.push(routeNode(r));
+    for (const r of after.get(n.id) ?? []) into.push(routeNode(r));
   }
   for (const x of wf.externals) children.push({ id: `ext:${x}`, width: 170, height: 44 });
   children.push({ id: END, width: TERM_W, height: TERM_H });
@@ -303,9 +326,19 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
     };
   });
 
-  const line = mainLine(drawn.map((e) => [ref(e.from), ref(e.to)]));
-  const root = await elk.layout({ id: "root", layoutOptions: LAYERED, children, edges: linkMainLine(edges, line) });
-  centerMainLine(root, line);
+  // With stages, edges cross the boxes: ELK lays the hierarchy out as one
+  // (INCLUDE_CHILDREN) and returns every edge in root coordinates, while a
+  // node's position stays relative to its box — what React Flow expects of
+  // a child. The main-line straightening only knows the root level.
+  const nested = boxes.size > 0;
+  const line = nested ? [] : mainLine(drawn.map((e) => [ref(e.from), ref(e.to)]));
+  const root = await elk.layout({
+    id: "root",
+    layoutOptions: nested ? { ...LAYERED, "elk.hierarchyHandling": "INCLUDE_CHILDREN", "elk.json.edgeCoords": "ROOT" } : LAYERED,
+    children,
+    edges: nested ? edges : linkMainLine(edges, line),
+  });
+  if (!nested) centerMainLine(root, line);
 
   const byId = new Map(wf.nodes.map((n) => [n.id, n]));
   const routes = new Map(wf.routes.map((r) => [routeId(r.name), r]));
@@ -329,21 +362,43 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
     });
     asideY += height + 24;
   }
-  for (const c of laidOut) {
+  const emit = (c: ElkNode, parentId?: string) => {
     const pos = { x: c.x ?? 0, y: c.y ?? 0 };
+    const inBox = parentId ? { parentId, extent: "parent" as const } : {};
+    const stage = boxes.has(c.id) ? stages.get(c.id) : undefined;
+    if (stage) {
+      // Every step that runs in it — a group's branches and merge too — for its run status.
+      const steps = stage.members.flatMap((m) => {
+        const g = byId.get(m);
+        return [m, ...childrenOf(m).map((k) => k.id), ...(g?.merge ? [g.merge.stepName] : [])];
+      });
+      nodes.push({
+        id: c.id,
+        type: "stage",
+        position: pos,
+        data: { stage, workflow: wf.name, steps } satisfies StageNodeData,
+        style: { width: c.width, height: c.height },
+        draggable: false,
+        selectable: false,
+        deletable: false,
+        zIndex: -1,
+      });
+      for (const k of c.children ?? []) emit(k, c.id);
+      return;
+    }
     const route = routes.get(c.id);
     if (route) {
-      nodes.push({ id: c.id, type: "route", position: pos, data: { route, workflow: wf.name, used: true } satisfies RouteNodeData, draggable: false, connectable: false, deletable: false });
-      continue;
+      nodes.push({ id: c.id, type: "route", position: pos, ...inBox, data: { route, workflow: wf.name, used: true } satisfies RouteNodeData, draggable: false, connectable: false, deletable: false });
+      return;
     }
     if (c.id === START || c.id === END || c.id === FAIL) {
       const role = c.id === START ? "start" : c.id === END ? "end" : "fail";
       nodes.push({ id: c.id, type: "terminal", position: pos, data: { role } satisfies TerminalNodeData, draggable: false, connectable: c.id !== START, deletable: false });
-      continue;
+      return;
     }
     if (c.id.startsWith("ext:")) {
       nodes.push({ id: c.id, type: "external", position: pos, data: { name: c.id.slice(4) } satisfies ExternalNodeData, draggable: false, deletable: false });
-      continue;
+      return;
     }
     const n = byId.get(c.id)!;
     if (n.kind === "parallel") {
@@ -351,6 +406,7 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
         id: n.id,
         type: "parallel",
         position: pos,
+        ...inBox,
         data: { node: n, workflow: wf.name } satisfies StepNodeData,
         style: { width: c.width, height: c.height },
         draggable: false,
@@ -368,9 +424,10 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
         });
       }
     } else {
-      nodes.push({ id: n.id, type: "step", position: pos, data: { node: n, workflow: wf.name } satisfies StepNodeData, style: { height: c.height }, draggable: false });
+      nodes.push({ id: n.id, type: "step", position: pos, ...inBox, data: { node: n, workflow: wf.name } satisfies StepNodeData, style: { height: c.height }, draggable: false });
     }
-  }
+  };
+  for (const c of laidOut) emit(c);
 
   const laid = new Map((root.edges ?? []).map((e) => [e.id, e]));
   const flowEdges: Edge<FlowEdgeData>[] = drawn.map((e, i) => {
@@ -399,9 +456,13 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
  */
 export function takenEdges(wf: Workflow, visits: string[], ended: "end" | "fail" | null): Set<string> {
   const out = new Set<string>();
+  // `goto Stage` is drawn into the stage's box: the hop into its first member took it.
+  const entryOf = new Map((wf.stages ?? []).map((s) => [s.members[0], s.name]));
   for (const key of hops(wf, visits, ended)) {
     out.add(key);
     const [from, to] = key.split(">");
+    const stage = entryOf.get(to);
+    if (stage && wf.edges.some((e) => e.from === from && e.to === stage)) out.add(`${from}>${stage}`);
     for (const e of wf.edges)
       if (e.kind === "route" && e.via && e.from === from && e.to === to) {
         out.add(`${from}>${routeId(e.via)}`);

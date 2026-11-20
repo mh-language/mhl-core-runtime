@@ -37,6 +37,29 @@ the `.mh` code stay in sync in both directions. Tauri 2 (Rust) + React + React F
   each step's status is drawn live on the diagram and the path taken is highlighted. Below
   the diagram are an event history, logs and the final variables. A run that hits
   `pause(...)` can be approved and resumed, and a run in flight can be cancelled.
+- **MCP test bench:** the toolbar's **Editor | MCP** switch swaps the editor for a bench that
+  serves the open folder with `mhl serve mcp`, the way Claude Desktop or VS Code would see
+  it: one tool per workflow, and a manifest resource for each. It is laid out like an API
+  client.
+  - **Left:** a filterable tree of what the server serves (tools, run control tools,
+    resources, runs), each with a method badge.
+  - **Middle:** the selected request: method, address and **Send**, then the arguments,
+    as a key/value form generated from the tool's `inputSchema` or as JSON.
+  - **Below:** the response, with a status, a time and a size. The body can be shown
+    **Pretty** (highlighted, foldable JSON), **Raw** or as a **Table**. A string that
+    holds JSON, such as an agent CLI's raw output, is shown decoded, marked
+    `JSON string`; clicking the mark shows the original string.
+  - **Transport:** stdio, or Streamable HTTP on a free loopback port with a random bearer
+    token. The URL, token and a ready-made `curl` command can be copied, to point another
+    client at the same server.
+  - **Async runs (HTTP only):** `run/start` returns at once, and the run is followed under
+    **Runs**: progress, steps reached, vars, `run/logs`. A paused run can be resumed with
+    new arguments (`run/resume`) and a running one cancelled.
+  - **Raw request:** any method with any params.
+  - **Console** (bottom): every JSON-RPC message, with status polls hidden by default, and
+    the server's own log.
+  - **Saved files only:** the server reads the saved files when it starts. The bench flags
+    unsaved files, and offers a restart after a save.
 
 ## How it works
 
@@ -65,6 +88,7 @@ runtime it ships. That copy is used for:
 | Input form, validation | `mhl run <file> --dry-run --format json [--workflow W]` |
 | Execution | `mhl run <file> --format jsonl [--workflow W] [--resume --session S]`: streams `run_start` / `step_start` / `step_end` / `log` / `result` events. Cancel sends SIGINT, which saves a resumable checkpoint. |
 | Editor intelligence | `mhl lsp`, bridged over stdio by `src-tauri/src/lsp.rs` |
+| MCP test bench | `mhl serve mcp .` (stdio) or `mhl serve mcp --http --addr 127.0.0.1:<free port> .` with `MHL_SERVE_TOKEN` in its environment, managed by `src-tauri/src/mcp.rs`. HTTP requests go through the backend (`mcp_http`, a minimal loopback HTTP/1.1 client), not the webview's `fetch`: the server refuses a non-loopback `Origin`, and a `tauri://` page always sends one. The JSON-RPC client is `src/mcp/` (`rpc.ts`, `connection.ts`). |
 | Tool "Run method" | `mhl run <tmp>/eval.mh --workflow __mhl_studio_eval --format json`, where `eval.mh` imports the saved file and runs one step, `self.result = Tool.method(…)`, with checkpointing off, so nothing is written to the workspace. The language has no "evaluate an expression" command, so `src-tauri/src/mhl.rs` (`evaluate`) writes that throwaway program. |
 
 | Palette state | Generated `.mh` |
@@ -139,9 +163,10 @@ language (`vX.Y.Z`) and the VS Code extension (`extensions-vX.Y.Z`).
 
 The tag runs `.github/workflows/studio-release.yml`. It reruns `studio.yml`'s checks, checks
 that the four versions match the tag, and opens a draft GitHub Release. It then builds the
-installers on one runner per target, because Tauri does not cross-compile: macOS
-aarch64 and x86_64 (`.dmg`), Windows x86_64 (`.msi`, `-setup.exe`) and Linux x86_64
-(`.deb`, `.rpm`, `.AppImage`). Each installer bundles the `mhl` sidecar for its target. The
+installers on one runner per target, because Tauri does not cross-compile between
+OSes: macOS aarch64 and x86_64 (`.dmg`), Windows x86_64 (`.msi`, `-setup.exe`), Windows
+aarch64 (`-setup.exe` only: WiX/MSI has no ARM64 support; built on the x64 runner), and
+Linux x86_64 and aarch64 (`.deb`, `.rpm`, `.AppImage`; aarch64 on `ubuntu-22.04-arm`). Each installer bundles the `mhl` sidecar for its target. The
 release is published only after every target uploaded. It is never marked "Latest", which
 stays the language's release.
 

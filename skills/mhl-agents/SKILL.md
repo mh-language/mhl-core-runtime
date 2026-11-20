@@ -31,6 +31,7 @@ agent Claude {
         delay: 2s
         retry_on: [500, 503, "timeout", "rate_limit"]
     }
+
     timeout: 10m                            // per attempt
     cache: { ttl: 10m, storage: "disk" }
     rate_limit: { requests_per_minute: 20, concurrency: 2 }
@@ -89,6 +90,7 @@ test hung_agent {
     describe times_out_and_finally_runs {
         var message = ""
         var cleaned = false
+
         try {
             Hung.run(prompt: "x")
         } catch (e) {
@@ -96,6 +98,7 @@ test hung_agent {
         } finally {
             cleaned = true
         }
+
         is_true(message.contains("timeout after 200ms"))
         is_true(cleaned)
     }
@@ -128,6 +131,7 @@ agent Coder {
     input live: string = ""
 
     command: "sh"
+
     // stands in for a coding CLI: prints its directory and argv
     args: [
         "-c", "echo \"$(pwd -P) $*\"", "sh",
@@ -144,9 +148,11 @@ test coder_in_repo {
     describe inputs_shape_each_call {
         are_equal(Coder.run(prompt: "fix", repo: "/"), "/")
         are_equal(
+
             Coder.run(prompt: "fix", repo: "/", effort: "high", dirs: ["/a"], live: "/tmp/mhl-skill-live/coder.log"),
             "/ --effort high --add-dir /a"
         )
+
         is_true(fs.read("/tmp/mhl-skill-live/coder.log").contains("--add-dir /a"))
     }
 }
@@ -214,6 +220,7 @@ prompt Review(role: prompt, file: string, lang: string = "en") {
 test prompts {
     describe composition {
         var text = Review(role: Role(), file: "auth.go")
+
         is_true(text.starts_with("You are a security reviewer."))
         is_true(text.contains("Answer in en."))
     }
@@ -244,24 +251,33 @@ tool Parse {
     // Each CLI wraps its answer differently; test this against a captured sample.
     finding(raw: string): any {
         var envelope = {}
+
         try {
             envelope = json.parse(raw)
         } catch (e) {
             fail("model returned invalid JSON: ${e}")
         }
+
         var finding = envelope?.structured_output
-        if (finding == null) fail("no structured_output in: ${raw}")
+
+        if (finding == null) {
+            fail("no structured_output in: ${raw}")
+        }
+
         return finding
     }
 }
 
 pipeline Extract {
     input text: string
+
     var finding = null
 
     step Ask timeout 2m {
         var shape = json.stringify({type: "object", properties: {severity: {type: "string"}}})
+
         var raw = Extractor.run(prompt: "Extract the finding: ${text}", schema: shape)
+
         self.finding = Parse.finding(raw)
     }
 }
@@ -269,16 +285,19 @@ pipeline Extract {
 test parse {
     describe unwraps_the_envelope {
         var raw = "{\"structured_output\":{\"severity\":\"high\"}}"
+
         are_equal(Parse.finding(raw).severity, "high")
     }
 
     describe rejects_prose {
         var message = ""
+
         try {
             Parse.finding("Sure! Here is the JSON")
         } catch (e) {
             message = "${e}"
         }
+
         is_true(message.contains("invalid JSON"))
     }
 }
@@ -315,9 +334,13 @@ agent Judge {
 router Frontdesk {
     agents: [Billing, Support]
     select: (prompt) -> {
-        if (prompt.contains("invoice")) { return nameof(Billing) }
+        if (prompt.contains("invoice")) {
+            return nameof(Billing)
+        }
+
         return null          // null cascades to the decider
     }
+
     decider: Judge
 }
 
@@ -352,7 +375,11 @@ agent Reviewer {
     skills: [CodeReview]                 // allow-list
     system_prompt: (skills, prompt) -> {
         var text = ""
-        for (var s in skills) { text += "## ${s.frontmatter.name}\n${s.content}\n\n" }
+
+        for (var s in skills) {
+            text += "## ${s.frontmatter.name}\n${s.content}\n\n"
+        }
+
         return text + prompt
     }
 }

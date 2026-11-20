@@ -3,8 +3,8 @@
 // values live in store.runInputs, so Run and Resume use them wherever they
 // are clicked. Shown in the popover under the Run button's ▾.
 import { useMemo } from "react";
-import { inspect } from "../app/controller";
-import { inputFields, runInputPairs, set, useStore, type State } from "../app/store";
+import { importedDeclarations, inspect } from "../app/controller";
+import { enumVariants, inputFields, runInputPairs, set, useStore, type State } from "../app/store";
 
 /**
  * Required inputs still left blank: a run would be refused. The dry-run is
@@ -29,6 +29,10 @@ export function InputsForm({ autoFocus }: { autoFocus?: boolean }) {
   const setValues = (v: Record<string, string>) => set({ runInputs: v });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fields = useMemo(() => inputFields(useStore.getState()), [inspection, graph, workflow]);
+  const library = useStore((s) => s.library);
+  // The enums an input can be typed with: this file's and what it imports.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const decls = useMemo(() => [...importedDeclarations(graph), ...(graph?.declarations ?? [])], [graph, library]);
 
   return (
     <div className="inputs-form">
@@ -36,28 +40,43 @@ export function InputsForm({ autoFocus }: { autoFocus?: boolean }) {
         Inputs {inspection?.pipeline ? <span className="muted small">for {inspection.pipeline}</span> : null}
       </h4>
       {fields.length === 0 && <p className="muted small">This workflow takes no inputs.</p>}
-      {fields.map((f, i) => (
-        <label key={f.name} className="field inline">
-          <span className="mono">
-            {f.name}: <span className="muted">{f.type}</span>
-          </span>
-          {f.type === "bool" ? (
-            <select autoFocus={autoFocus && i === 0} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}>
-              <option value="">{f.def ? `default (${f.def})` : "—"}</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          ) : (
-            <input
-              autoFocus={autoFocus && i === 0}
-              className="mono"
-              placeholder={f.def ? `default ${f.def}` : !inspection || required?.includes(f.name) ? "required" : "optional"}
-              value={values[f.name] ?? ""}
-              onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
-            />
-          )}
-        </label>
-      ))}
+      {fields.map((f, i) => {
+        const variants = enumVariants(f.type, decls);
+        const value = values[f.name] ?? "";
+        return (
+          <label key={f.name} className="field inline">
+            <span className="mono">
+              {f.name}: <span className="muted">{f.type}</span>
+            </span>
+            {variants ? (
+              <select className="mono" autoFocus={autoFocus && i === 0} value={value} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}>
+                <option value="">{f.def ? `default (${f.def})` : !inspection || required?.includes(f.name) ? "— required —" : "—"}</option>
+                {variants.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+                {/* A value typed before the enum was known (or no longer a variant) stays visible, to fix by hand. */}
+                {value && !variants.includes(value) && <option value={value}>{value} (not a variant)</option>}
+              </select>
+            ) : f.type === "bool" ? (
+              <select autoFocus={autoFocus && i === 0} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}>
+                <option value="">{f.def ? `default (${f.def})` : "—"}</option>
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            ) : (
+              <input
+                autoFocus={autoFocus && i === 0}
+                className="mono"
+                placeholder={f.def ? `default ${f.def}` : !inspection || required?.includes(f.name) ? "required" : "optional"}
+                value={values[f.name] ?? ""}
+                onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+              />
+            )}
+          </label>
+        );
+      })}
       {fields.length > 0 && (
         <div className="button-row">
           <button className="btn small" onClick={() => void inspect(runInputPairs())} title="Check the inputs with a dry run (nothing executes)">

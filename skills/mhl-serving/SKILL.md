@@ -43,6 +43,7 @@ workflow TriageIssue(req: TriageInput): TriageOutput {
 test triage_issue {
     describe outage_is_urgent {
         var result = TriageIssue.run(inputs: {title: "api outage", body: "down"})
+
         are_equal(result.output.priority, "urgent")
     }
 }
@@ -100,6 +101,10 @@ Client configuration, with an absolute path:
 
 The `mhl_run_*` tools (`start`, `status`, `resume`, `cancel`, `list`, `logs`) exist on the
 HTTP transport only, and any MCP client can call them as ordinary tools.
+
+For a typed gate (`pause(reason, decision: T)`), `run/status` shows `awaiting` — the
+step and `T` as JSON Schema — and `mhl_run_resume {runId, decision}` answers it; a
+decision of the wrong type is refused with the run still paused.
 
 For human approval, write a `pause()` gate (see `mhl-workflows`), start it with
 `mhl_run_start`, and continue with `mhl_run_resume {runId, arguments: {approved: true}}`.

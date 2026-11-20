@@ -14,7 +14,9 @@ export const api = {
   writeFile: (path: string, contents: string) => invoke<void>("write_file", { path, contents }),
   createFile: (path: string, contents: string) => invoke<void>("create_file", { path, contents }),
   mhlVersion: () => invoke<string>("mhl_version"),
-  graph: (path: string, source: string) => invoke<Graph>("graph", { path, source }),
+  /** `merged` shows each partial workflow whole (`mhl graph --merged`), from `root`'s fragments when given. */
+  graph: (path: string, source: string, opts?: { merged?: boolean; root?: string | null }) =>
+    invoke<Graph>("graph", { path, source, merged: opts?.merged ?? false, root: opts?.root ?? null }),
   inspect: (cwd: string, path: string, workflow: string | null, inputs: [string, string][]) =>
     invoke<Inspection>("inspect", { cwd, path, workflow, inputs }),
   /** Evaluates an expression against a saved file's declarations (src-tauri/src/mhl.rs `evaluate`). */
@@ -28,6 +30,8 @@ export const api = {
       resume: boolean;
       force: boolean;
       session?: string;
+      /** With resume: the JSON answer to the gate the run paused at. */
+      decision?: string;
     },
     onEvent: (ev: RunEvent) => void,
   ) => {
@@ -41,7 +45,25 @@ export const api = {
   lspStart: (cwd: string) => invoke<void>("lsp_start", { cwd }),
   lspSend: (message: string) => invoke<void>("lsp_send", { message }),
   lspStop: () => invoke<void>("lsp_stop"),
+  /**
+   * Serves the workspace with `mhl serve mcp` (src-tauri/src/mcp.rs), over
+   * stdio or HTTP; the server's messages and log arrive on `onEvent`.
+   */
+  mcpStart: (request: { cwd: string; transport: "stdio" | "http"; token?: string }, onEvent: (ev: McpEvent) => void) => {
+    const channel = new Channel<McpEvent>();
+    channel.onmessage = onEvent;
+    return invoke<{ url: string | null }>("mcp_start", { request, onEvent: channel });
+  },
+  /** One JSON-RPC line to a stdio server. */
+  mcpSend: (message: string) => invoke<void>("mcp_send", { message }),
+  /** One request to the HTTP server; the bearer token is added by the backend. */
+  mcpHttp: (method: "GET" | "POST" | "DELETE", path: string, headers: [string, string][], body: string) =>
+    invoke<{ status: number; headers: [string, string][]; body: string }>("mcp_http", { method, path, headers, body }),
+  mcpStop: () => invoke<void>("mcp_stop"),
 };
+
+/** What `mhl serve mcp` sends the studio: a stdio protocol message, a log line, or its exit (always last). */
+export type McpEvent = { type: "message"; text: string } | { type: "log"; text: string } | { type: "exit" };
 
 export function joinPath(root: string, rel: string): string {
   const sep = root.includes("\\") && !root.includes("/") ? "\\" : "/";

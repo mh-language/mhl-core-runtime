@@ -1,0 +1,31 @@
+// `goto <stage>` enters the stage at its first member — here a parallel
+// group (survey/ask.mh, stage Ask), so the whole group runs again: every
+// branch, then its merge, not one branch. A stage name is a goto target
+// like a step's or a group's, from any fragment.
+import "survey/ask.mh"
+import "survey/decide.mh"
+
+partial workflow Survey {
+    description: "Asks two sources in parallel until their answers agree."
+
+    var round = 0
+    var answers = []
+
+    output: { round, answers }
+
+    entry step Start {
+        goto Ask
+    }
+}
+
+test goto_stage {
+    describe re_enters_the_group_with_every_branch {
+        var r = Survey.run()
+        are_equal(r.state, "completed")
+        are_equal(r.output.round, 2)
+        are_equal(r.output.answers, ["differ", "agree"])
+        // Both branches ran twice: the group, not one step, was re-entered.
+        are_equal(r.executed.filter((s) -> s == "Right").size(), 2)
+        are_equal(r.executed.filter((s) -> s == "Compare").size(), 2)
+    }
+}

@@ -43,12 +43,19 @@ export function goTarget(triple) {
   return { GOOS: os, GOARCH: arch, ext: os === "windows" ? ".exe" : "" };
 }
 
+/**
+ * The runtime's version: the nearest v*.*.* tag, "-dirty" only when the
+ * runtime's own tracked files have uncommitted changes. Untracked files
+ * don't count, as with `git describe --dirty` — which can't be used here: it
+ * looks at the whole repository, so unrelated edits (the studio, the docs)
+ * would mark an unchanged runtime dirty.
+ */
 function version() {
+  const git = (...args) => execFileSync("git", args, { cwd: runtime, encoding: "utf8" });
   try {
-    return execFileSync("git", ["describe", "--tags", "--match", "v*.*.*", "--always", "--dirty"], {
-      cwd: runtime,
-      encoding: "utf8",
-    }).trim();
+    const base = git("describe", "--tags", "--match", "v*.*.*", "--always").trim();
+    const dirty = git("status", "--porcelain", "--untracked-files=no", "--", ".").trim() !== "";
+    return dirty ? `${base}-dirty` : base;
   } catch {
     return "dev";
   }

@@ -1,0 +1,20 @@
+// The Ask phase of Survey (see ../goto_stage_enters_a_parallel_group.mh):
+// its first — and only — member is a parallel group.
+partial workflow Survey stage Ask {
+    parallel Sources {
+        step Left {
+            self.round = round + 1
+        }
+
+        step Right {
+            log("asking right")
+        }
+
+        merge {
+            // Agreement only on the second round.
+            self.answers = answers.append(if (round >= 2) "agree" else "differ")
+
+            goto Decide
+        }
+    }
+}

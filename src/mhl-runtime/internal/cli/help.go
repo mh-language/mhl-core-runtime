@@ -32,7 +32,7 @@ Commands:
   run <file.mh> [flags]      Execute a pipeline or workflow
   test <file.mh|dir>         Run every test { ... } block in a file or directory
   lint [dir]                 Statically check .mh files (default ".")
-  graph <file.mh> [--stdin]  Print a file's workflow control-flow graph as JSON
+  graph <file.mh> [--stdin] [--merged]  Print a file's workflow control-flow graph as JSON
   lsp                        Start the language server over stdio (used by vscode-mhl)
   serve <mcp|a2a> [flags]    Expose workflows as MCP tools or A2A skills
   pack <dir> -o <file>       Seal a workflow directory into an encrypted pack
@@ -47,6 +47,7 @@ Flags for "run":
   --session <id>             Reuse a named session for durable state
   --format text|json|jsonl   Output format (default "text"); jsonl streams step events
   --dry-run                  Validate and print the static plan without executing
+  --env-file <path>          Load env vars from a file (repeatable; default ./.env)
 
 Examples:
   mhl init myproject
@@ -118,6 +119,10 @@ Flags:
   --input key=value     Bind a pipeline input (repeatable)
   --resume              Resume from the last saved checkpoint
   --force               With --resume, proceed even if the pipeline shape changed
+  --decision <json>     With --resume, answer the gate the run paused at
+                        (pause(..., decision: T)): JSON of type T, or a bare
+                        string. Checked before anything runs; answers that
+                        gate once. The paused run's output names T ("awaiting").
   --session <id>        Reuse a named session for durable state
   --format text|json|jsonl
                         Output format (default "text"); json emits one typed
@@ -125,16 +130,21 @@ Flags:
                         (run_start, step_start, step_end, log, result)
   --dry-run             Validate (parse, imports, lint, input contract) and print
                         the static plan without executing any step
+  --env-file <path>     Load environment variables from this file before running
+                        (repeatable; a later file wins). Without it, ./.env is
+                        loaded when present. Variables already set always win.
 
   mhl run main.mh --input name=World
   mhl run pipe.mh --resume --force
+  mhl run pipe.mh --resume --decision '{"action": "Approve"}'
   mhl run pipe.mh --dry-run --format json
 `,
-	"test": `mhl test <file.mh|dir>
+	"test": `mhl test <file.mh|dir> [--env-file <path> ...]
 
 Run every test { ... } block. Given a directory, recurse into every .mh
 file under it and aggregate one report. Exit non-zero if any assertion
-failed or no test blocks were found.
+failed or no test blocks were found. Like run, it first loads ./.env (or
+each --env-file instead); variables already set always win.
 
   mhl test main.mh
   mhl test ./sample/features
@@ -162,7 +172,7 @@ or misconfigured agents, syntax errors — each with a file and line.
   mhl lint
   mhl lint ./workflows
 `,
-	"graph": `mhl graph <file.mh> [--stdin]
+	"graph": `mhl graph <file.mh> [--stdin] [--merged [--root <entry.mh>]]
 
 Print the control-flow graph of every workflow/pipeline in file.mh as one
 JSON object: steps and parallel groups (nodes), fall-through, goto, goto
@@ -174,8 +184,14 @@ With --stdin the source is read from stdin and file.mh only names it
 "ok": false with its diagnostics and still exits 0. Meant for editors
 and visual workflow tools.
 
+--merged shows each partial workflow whole: the fragments in file.mh's
+import closure (or entry.mh's, with --root) are joined in run order, and a
+node, input, var, prop or route from another fragment carries that file's
+absolute path in "file" (its spans index that file).
+
   mhl graph main.mh
   cat main.mh | mhl graph main.mh --stdin
+  mhl graph story/review.mh --merged --root story.mh
 `,
 	"lsp": `mhl lsp
 

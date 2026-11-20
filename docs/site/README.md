@@ -14,10 +14,12 @@ with its own stylesheet.
 | `playground-lessons.en.js` | English lesson text, comments, and program messages; preserves the original lesson IDs, filenames, and execution contracts. |
 | `playground-core.js`, `playground.js`, `playground.css` | Source tokenizer, closure diagnostics, defensive storage loading, editor interactions, and responsive layout. |
 | `playground.test.cjs` | Node regression tests with optional integration against a locally built MHL binary. |
+| `download.html`, `download.css`, `download.js` | The download page: detects the visitor's system, then reads the latest `studio-v*` and `v*` releases from the GitHub API (cached 15 min in `sessionStorage`) to link the right studio installer, CLI archive and `.vsix` directly, beside the CLI one-liners and the VS Code Marketplace/Open VSX links. Without JavaScript, or when the API can't be reached, every button still leads to the matching releases page; while no `studio-v*` release exists it says so and offers build-from-source. |
+| `download.test.cjs` | Download-page link checks, and unit tests of `download.js`'s system detection and release/asset picking (against the real `v1.11.1` asset names and tauri-action's installer names). |
 | `Docs-Reference.dc.html` | The practical reference with copyable examples: modules, syntax and types, expressions, control flow, `agent`, `prompt`, `memory`/`mem`, `tool` and native operations, `extension mcp`/`extension a2a`, `pipeline`/`workflow`, tests, and the CLI. |
 | `Docs-Specification.dc.html` | The ECMA-style specification: lexical and syntactic grammar, values and types, expressions, statements, declarations, standard library, native operations, agents, memory, extensions, pipelines, tests, CLI/serving, security, plus a grammar annex and a complete example. |
 | `Docs-Servers.dc.html` | The server side of `mhl serve`: stdio and Streamable HTTP MCP transports, the async `run/*` methods and their `mhl_run_*` control tools, `pause()`/`run/resume` for human-in-the-loop, `mhl://` resources, per-caller ownership, `--state-dir`, and A2A skills. |
-| `Docs-Studio.dc.html` | mhl studio, the optional desktop IDE: install (and the unsigned-installer caveats), an annotated tour of the window over `assets/mhl-studio.png`, how each diagram shape maps to the language (steps, Choice, `route`/`entry route`, parallel/merge, pause, terminals), editing, running, and known limits. Uses `styles.css` + `docs-modern.css` and its own inline styles. |
+| `Docs-Studio.dc.html` | mhl studio, the optional desktop IDE: install (and the unsigned-installer caveats), an annotated tour of the window over `assets/mhl-studio.png`, file templates and the agent picker, how each diagram shape maps to the language (steps, Choice, `route`/`entry route`, parallel/merge, pause, terminals), editing by drag and drop, the inspector, the tool builder, the code editor, running (live status, pause/resume, events), the MCP test bench, the `support-desk` example every screenshot uses, and known limits. Screenshots live in `assets/studio/` (WebP, cropped from 2× captures of the real app). Uses `styles.css` + `docs-modern.css` and its own inline styles. |
 | `Docs-Extensions.dc.html` | For runtime developers: external extension manifests, permissions, the newline-delimited JSON-RPC process protocol, and locked installation. |
 | `Docs-Proposta.html` | A pt-BR executive deck, not part of the language documentation set. |
 | `review-types.mh` | Shared type module retained for existing review examples. |
@@ -54,7 +56,7 @@ restores focus navigation. Each lesson has a stable URL fragment.
 Run browser-independent regression checks from the repository root:
 
 ```sh
-node --test docs/site/home.test.cjs docs/site/playground.test.cjs
+node --test docs/site/home.test.cjs docs/site/playground.test.cjs docs/site/download.test.cjs
 ```
 
 To validate all original programs in both languages with the real parser/linter and run all local

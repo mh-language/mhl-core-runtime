@@ -48,7 +48,8 @@ make functional-test  # runs `mhl test` against sample/syntax and sample/feature
 go vet ./...
 make release          # cross-compiles linux-amd64, darwin-arm64, windows-amd64
 make verify-release   # release + asserts each binary is non-empty
-./release.sh vX.Y.Z [--dry-run] [--no-verify-release]  # cut a language release: ci.yml's checks, then push the v* tag (→ release.yml)
+./release.sh --bump vX.Y.Z  # repo-root CHANGELOG.md: "## Unreleased" → "## X.Y.Z — <today>" under a fresh empty "## Unreleased"; no commit/tag (the version is only the tag — Makefile's `git describe` — so no source file holds it)
+./release.sh vX.Y.Z [--dry-run] [--no-verify-release]  # cut a language release: refuses without a "## X.Y.Z" CHANGELOG section, runs ci.yml's checks, then pushes the v* tag (→ release.yml)
 ```
 
 Each product has its own `release.sh` next to it and its own tag: the language here
@@ -73,10 +74,10 @@ The built CLI itself:
 
 ```sh
 mhl init [dir]  # scaffolds an immediately-runnable main.mh; never overwrites
-mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run]  # --workflow picks the declared pipeline/workflow (default: first entry point; execsvc.Request.Workflow); --format jsonl streams events (cli/run_events.go: run_start, step_start/step_end ← execsvc.Request.OnStart/OnStep/OnStepEnd, log, result); SIGINT/SIGTERM cancel at the step boundary (checkpoint saved), a second one kills; --resume refuses a checkpoint whose pipeline definition changed shape (digest), --force downgrades to warning; --format json emits one typed result/error object (runtime.StepError / InvalidInputsError feed its kind/step/hint), run output → its `log` field; --dry-run = validate (parse/imports/lint/input contract — presence *and* declared value types, via the shared `execsvc.coerceInputs`) + print static plan via execsvc.Inspect, executes nothing
-mhl test <file.mh|dir>
+mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]  # --workflow picks the declared pipeline/workflow (default: first entry point; execsvc.Request.Workflow); --format jsonl streams events (cli/run_events.go: run_start, step_start/step_end ← execsvc.Request.OnStart/OnStep/OnStepEnd, log, result); SIGINT/SIGTERM cancel at the step boundary (checkpoint saved), a second one kills; --resume refuses a checkpoint whose pipeline definition changed shape (digest), --force downgrades to warning; --format json emits one typed result/error object (runtime.StepError / InvalidInputsError feed its kind/step/hint), run output → its `log` field; --dry-run = validate (parse/imports/lint/input contract — presence *and* declared value types, via the shared `execsvc.coerceInputs`) + print static plan via execsvc.Inspect, executes nothing
+mhl test <file.mh|dir> [--env-file <path> ...]  # run and test first load ./.env, or each --env-file instead (internal/features/dotenv via cli/envfile.go, before extensions load); an already-set variable always wins
 mhl lint [dir]
-mhl graph <file.mh> [--stdin]  # JSON control-flow graph for editors/visual tools, e.g. src/mhl-studio (internal/lang/flow): nodes (with each step's `callSites`)/edges — plus each `tool`'s methods (args, returns, header/body spans) and `Name.` call sites — with byte spans from the AST's parser-set Pos/EndPos (`parser:"" digest:"-"`, so DefinitionDigest is unchanged); flow.GotoTargets/AlwaysDiverts are the one copy execsvc.Inspect and lint use
+mhl graph <file.mh> [--stdin] [--merged [--root <entry.mh>]]  # --merged: each partial workflow from all its fragments in run order (flow.BuildMerged; members from another fragment carry `file` = its abs path, spans index that file — the studio's sync/edits.ts `localGraph` drops them so edits stay single-file); JSON control-flow graph for editors/visual tools, e.g. src/mhl-studio (internal/lang/flow): nodes (with each step's `callSites`)/edges — plus each `tool`'s methods (args, returns, header/body spans) and `Name.` call sites — with byte spans from the AST's parser-set Pos/EndPos (`parser:"" digest:"-"`, so DefinitionDigest is unchanged); flow.GotoTargets/AlwaysDiverts are the one copy execsvc.Inspect and lint use
 mhl lsp        # LSP server over stdio, used by vscode-mhl
 mhl serve mcp [dir]                 # workflows as MCP tools (stdio JSON-RPC)
 mhl serve mcp --http [--addr h:p] [--token t] [--state-dir path] [--principal-header h] [--drain-timeout d] [--max-concurrent-runs n] [--single-replica] [--workflows-pack file] [dir]  # ... over Streamable HTTP (POST /mcp; GET /healthz, /readyz, /metrics); --single-replica (or MHL_SERVE_SINGLE_REPLICA) is required to start with a non-cas `extension state`; --workflows-pack (MHL_SERVE_WORKFLOWS_PACK, key in MHL_SERVE_WORKFLOWS_KEY, unset from the env before anything runs) loads the program from an encrypted DMPK v2 pack (`internal/pack`) in memory only — `execsvc.ParseFS`/`LoadFilesFS` → `interpreter.NewImportCacheFS`, whose read func replaces os.ReadFile for imports/prompts/skills/schemas; [dir] is then only the root a schema's path is composed under
@@ -124,7 +125,17 @@ block is optional and only needed to override a field (`ttl`) or opt out entirel
 run parks in `state: "paused"` / `resumable: true` with its subtree kept, then
 `run/resume {runId, arguments}` re-enters that step with the decision merged in; `pause`
 writes its own checkpoint even when the block is disabled, and it is a control signal
-like `break`, not a catchable error like `fail()`). Signal path: `interpreter.pauseSignal`
+like `break`, not a catchable error like `fail()`). A **typed gate**, `var d = pause(reason, decision: T)` (`interpreter/gate.go`), returns
+the decision a resume passes instead: the pause signal carries a `runtime.Gate{Step, Index, Type}`
+(Index = ordinal of the step's gated pauses, counted per step execution), persisted as
+`Checkpoint.Gate` and surfaced as `execsvc.Result.Awaiting` (T as JSON Schema via
+`Pipeline.TypeSchema`) → `awaiting` in `--format json`/jsonl, `run/status`, paused `tools/call`.
+`execsvc.Request.Decision` (`mhl run --resume --decision`, `run/resume {decision}` —
+prevalidated by `execsvc.CheckDecision` so the run stays paused) is checked against the
+checkpoint's gate before any hook runs (`*execsvc.DecisionError`) and handed to that one gate
+via `interpreter.WithGateAnswer` — consumed once, so a later gate pauses again. Test mode:
+`Name.run(decisions: [...])`. `lint/gate.go` checks T and refuses a gate in a `loop`; flow
+lists a step's gate types in `Node.Decisions`. Signal path: `interpreter.pauseSignal`
 → `IsPause` → `runtime.PauseSignal` → `RunResult.Paused` / `LoopResult.TerminalReason
 "pause"` → `execsvc.Result.Paused` → `mcpserver` `state: "paused"`. Via
 `execsvc.Request.{Session,Resume}`; `--state-dir` / `MHL_SERVE_STATE_DIR` makes that run
@@ -174,6 +185,17 @@ modes (stdio, HTTP sync, HTTP async, resume) with sequence diagrams:
 puts one A2A skill per workflow on top
 (`message/send` starts a task, `tasks/get`/`tasks/cancel` drive it; skill + inputs are named
 explicitly in `message.metadata.skill` / `.input`). Both dispatched from `internal/cli/serve.go`.
+A stage is declared only on a `partial` fragment's header (`partial workflow X stage Name {`,
+`ast.Pipeline.Stage`; lint `lint/stage.go`: only on `partial`, no name clash, consecutive
+fragments). `parser.expandStages` tags every member of that body (`Step.Stage` /
+`ParallelGroup.Stage`, `digest:"omitzero"`) and records the stage in `Pipeline.Stages` (span,
+member order; `digest:"-"`) — so everything that walks `Body` (runtime, lint, interpreter,
+checkpoints) sees plain members. The runtime calls it a *named stage* (`Pipeline.StageOf`/
+`StageEntry`/`NamedStages()`) since `runtime.Stage` already means a unit of execution;
+`Runner` maps `goto <stage>` to its first member (`StageTarget`); `execsvc` emits `stage` in
+`StepContext` and `Request.OnStages` feeds jsonl/`run/status`; flow projects
+`Workflow.Stages` + `Node.Stage` (studio draws ELK compound boxes, `elk.json.edgeCoords:
+ROOT`).
 A pipeline/workflow body property (`checkpoint`, `spawn`, `repeat`, `context`, `description`,
 `output`) is declared once in `ast.PipelineBodyProperties` (`internal/lang/ast/pipeline.go`);
 `lint.checkPipelineProperties` and `internal/lsp/properties.go` both derive from it, so adding
@@ -189,25 +211,33 @@ as one object by `Pipeline.BindInputs`; `Out` requires an explicit `output:` (li
 `types.Type.Optional`). New AST fields are tagged `digest:"omitzero"` so unused ones don't change
 `DefinitionDigest` (pinned by `TestDefinitionDigestUnchangedByOmitzeroFields`).
 
-VS Code extension, from `src/vscode-mhl` (needs `mhl` built first — `mhl.serverPath` defaults to
-`mhl` on `PATH`):
+VS Code extension, from `src/vscode-mhl`. Like the studio's sidecar, it vendors the runtime:
+`scripts/vendor-runtime.mjs --target <vscode-target>` builds package.json's `"mhlRuntime"` tag
+(a released `vX.Y.Z`, via `git archive`; `--source` builds the working tree instead) into `bin/`
+(`mhl[.exe]`, `mhl.json` {target, version}, LICENSE/THIRD_PARTY_NOTICES), and `vsce package
+--target` carries it. The extension (`serverPath.ts`) starts `mhl.serverPath` if set, else
+`bin/mhl` when `mhl.json`'s target matches the host, else `mhl` on `PATH`:
 
 ```sh
 npm install
 npm run compile   # esbuild bundle to out/extension.js
+npm test          # node --test test/*.test.mjs (serverPath.ts, vendor-runtime.mjs)
 npm run watch
-npx @vscode/vsce package   # .vsix
+npm run vendor -- [--target darwin-arm64] [--source]   # needs go
+npx @vscode/vsce package [--target darwin-arm64]       # .vsix (universal = no bin/)
 ```
 Open `src/vscode-mhl/` in VS Code and press F5 for an Extension Development Host.
 
 The extension ships on its own version and tag, not the runtime's: pushing
 `extensions-v<version>` (must equal `package.json`'s version) runs
-`.github/workflows/publish-extension.yml`, which publishes one VSIX to the VS Marketplace via
-Trusted Publishing (OIDC, no stored PAT) and to Open VSX (`OPEN_VSX` secret). The Marketplace
+`.github/workflows/publish-extension.yml`, which builds one VSIX per platform target (matrix ↔
+`goTarget`, checked by `test/vendor-runtime.test.mjs`) plus a universal one without `bin/`, and
+publishes them all to the VS Marketplace via Trusted Publishing (OIDC, no stored PAT) and to Open
+VSX (`OPEN_VSX` secret). `release.yml`'s VSIX (for install.sh) stays universal. The Marketplace
 policy names that workflow file, so renaming it means updating the policy.
 `src/vscode-mhl/release.sh [X.Y.Z] [--dry-run]` cuts that tag: it checks package.json/lock/CHANGELOG
-agree, the tree is clean and in sync with `origin/main`, packages with the workflow's pinned
-`vsce`, then pushes the tag — it publishes nothing itself.
+agree, the tree is clean and in sync with `origin/main`, `mhlRuntime` is a tag on `origin`,
+packages (universal + host target) with the workflow's pinned `vsce`, then pushes the tag — it publishes nothing itself.
 
 ## Architecture — `src/mhl-runtime`
 

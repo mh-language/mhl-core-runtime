@@ -32,6 +32,8 @@ type Env map[string]any
 // live stores those declarations back onto, where agent responses and
 // log(...) output get traced, and the current step's variable environment.
 type evalCtx struct {
+	// gates counts a step execution's gated pauses (gate.go); nil outside RunStep.
+	gates        *gateState
 	prog         *ast.Program
 	pipelineName string
 	store        *memory.KVStore
@@ -912,9 +914,18 @@ func evalFailCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 // operator resumes with `run/resume {runId, arguments}` merging the
 // decision in. The single optional argument is the reason carried into the
 // run's status. `pause` is only meaningful inside a pipeline/workflow step.
+//
+// With a `decision: T` argument it is a gate instead — see gate.go.
 func evalPauseCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 	if len(args) == 0 {
 		return nil, &pauseSignal{}
+	}
+	reasonArgs, decision, err := decisionArg(args)
+	if err != nil {
+		return nil, err
+	}
+	if decision != "" {
+		return evalGate(ctx, reasonArgs, decision, depth)
 	}
 	values, err := evalLogArgs(ctx, args, depth)
 	if err != nil {

@@ -55,14 +55,14 @@ var htmlElementParamDocs = map[string]string{
 
 var nativeSigs = map[string]sig{
 	"cmd.exec": {
-		Label:  "cmd.exec(command: string | string[], timeout?: duration, encoding?: string) -> {stdout: string, stderr: string, exit_code: number}",
-		Params: []string{"command", "timeout", "encoding"},
-		Doc:    "Runs a subprocess. A non-zero `exit_code` is returned, not raised. Prefer the argv-array form. `encoding` (e.g. `\"ibm850\"`, `\"windows-1252\"`) decodes `stdout`/`stderr` to UTF-8.",
+		Label:  "cmd.exec(command: string | string[], timeout?: duration, encoding?: string, cwd?: string) -> {stdout: string, stderr: string, exit_code: number}",
+		Params: []string{"command", "timeout", "encoding", "cwd"},
+		Doc:    "Runs a subprocess. A non-zero `exit_code` is returned, not raised. Prefer the argv-array form. `encoding` (e.g. `\"ibm850\"`, `\"windows-1252\"`) decodes `stdout`/`stderr` to UTF-8. `cwd` is the directory the command starts in, as `cd cwd && command` (a relative command path such as `./gradlew` resolves there; a relative `cwd` against mhl's working directory); a missing or non-directory `cwd` raises before anything runs.",
 	},
 	"cmd.exec_all": {
-		Label:  "cmd.exec_all(commands: (string | string[])[], timeout?: duration, encoding?: string) -> {stdout, stderr, exit_code}[]",
-		Params: []string{"commands", "timeout", "encoding"},
-		Doc:    "Runs each command concurrently; results come back in input order. `timeout` applies per command; `encoding` decodes every `stdout`/`stderr` to UTF-8.",
+		Label:  "cmd.exec_all(commands: (string | string[])[], timeout?: duration, encoding?: string, cwd?: string) -> {stdout, stderr, exit_code}[]",
+		Params: []string{"commands", "timeout", "encoding", "cwd"},
+		Doc:    "Runs each command concurrently; results come back in input order. `timeout` applies per command; `encoding` decodes every `stdout`/`stderr` to UTF-8; `cwd` (as in `cmd.exec`) is shared by every command.",
 	},
 	"git.diff": {
 		Label:  "git.diff(target?: string, dir?: string) -> string",
@@ -348,7 +348,7 @@ var pipelineMethodSigs = map[string]sig{
 var globalSigs = map[string]sig{
 	"log":       {Label: "log(...values: any) -> null", Params: []string{"values"}, Doc: "Writes one space-joined line to stdout."},
 	"fail":      {Label: "fail(...values: any) -> never", Params: []string{"values"}, Doc: "Raises an error whose message is the joined values. Catchable with `try/catch`; uncaught, it makes `mhl run` exit non-zero."},
-	"pause":     {Label: "pause(reason?: any) -> never", Params: []string{"reason"}, Doc: "Suspends the run at this step for a human-in-the-loop hand-off — not a failure, not a completion. The checkpoint is kept; `mhl run --resume` / `run/resume {runId, arguments}` re-enters this step with the merged decision. `reason` rides in the run status."},
+	"pause":     {Label: "pause(reason?: any, decision?: Type) -> never | Type", Params: []string{"reason", "decision"}, Doc: "Suspends the run at this step for a human-in-the-loop hand-off — not a failure, not a completion. The checkpoint is kept; `mhl run --resume` / `run/resume {runId, arguments}` re-enters this step with the merged decision. `reason` rides in the run status. With `decision: T` (a declared `type`/`enum`, or string/number/bool) it is a gate: the run reports `awaiting` (T as JSON Schema), and a resume with a decision of type T (`--decision <json>`, `run/resume {decision}`) re-enters the step, where this call returns it — once: the next gate reached pauses again."},
 	"complete":  {Label: "complete() -> never", Params: nil, Doc: "Ends the run in the normal \"completed\" state right here, regardless of what step (if any) is declared after this one — the only other way a pipeline reaches \"completed\" is running off the very end of the fully merged step list. Takes no arguments. This is what a convergence/terminal step should call instead of relying on being physically last, especially in a `partial` pipeline where the merged order depends on cross-file `import` order rather than one file's own layout."},
 	"env":       {Label: "env(name: string, default?: string) -> string", Params: []string{"name", "default"}, Doc: "Reads an OS environment variable. Returns `default` (or `\"\"` when no default is given) when unset. In a `command`/`args`/extension-property position, only the 1-argument form is treated as a required credential (fail-closed + redacted); the 2-argument form opts out of that on purpose."},
 	"nameof":    {Label: "nameof(Name) -> string", Params: []string{"Name"}, Doc: "Returns a declared top-level name (an `agent`, `router`, `memory`, `tool`, `prompt`, `pipeline`/`workflow`, `extension`, `type`, or `enum`) as a string, validated to exist. `Name` must be a bare identifier, not a string or expression — e.g. `nameof(Billing)`, not `nameof(\"Billing\")`. Useful anywhere a declared name is needed as a string but a free-floating literal would risk a silent typo — most commonly a router's `select: (prompt) -> { return nameof(Billing) }`."},

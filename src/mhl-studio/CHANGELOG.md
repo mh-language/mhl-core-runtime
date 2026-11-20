@@ -4,6 +4,61 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
+## Unreleased
+
+### Added
+
+- **A split workflow is drawn whole.** A `partial` workflow is graphed with
+  `mhl graph --merged`, from the workspace file that declares its `entry` step, so
+  every fragment shows in one diagram. Steps from another file are dashed, carry
+  that file's name, and are read-only here: double-click one (or its file chip) to
+  open its file; the inspector shows it with **Open file** / **Show in code**.
+  Renaming or deleting a step that another fragment's `goto` targets is refused,
+  and a name another fragment declares counts as taken.
+- **Stages are boxes.** A stage — the `stage Name` on a `partial` fragment's
+  header — is drawn as a titled box around that fragment's steps and parallel
+  groups (an ELK compound node) in the whole-workflow diagram; a `goto` to the
+  stage lands on the box, which takes its steps' status during a run, and a
+  transition drawn onto it writes `goto <stage>`.
+- **`stage` is highlighted** in the code editor (the shared TextMate grammar of
+  the VS Code extension): the keyword and the stage's name, only in a header's
+  `stage Name {`.
+- **Resume a gate with a form.** A run paused at a typed gate
+  (`pause(reason, decision: T)`) shows a decision form built from `T` — a select
+  per enum, a checkbox per bool, a field per string/number — and **Resume with
+  decision** passes it (`mhl run --resume --decision`). A gate step is labelled
+  `Gate · T` on the diagram.
+
+## 0.4.0
+
+### Fixed
+
+- **macOS: no more "is damaged and can't be opened".** The app bundle is now
+  ad-hoc signed as a whole (`bundle.macOS.signingIdentity: "-"`), not just its
+  executable by the linker, so Info.plist and resources are sealed. A downloaded
+  copy now gets Gatekeeper's "could not verify" prompt, which System Settings →
+  Privacy & Security → **Open Anyway** clears without a terminal. Still not
+  Developer ID–signed or notarized.
+
+## 0.3.0
+
+### Added
+
+- **Light/dark theme switch.** A toolbar button next to the runtime version cycles
+  the theme through System → Light → Dark. System, the default, follows the OS as
+  before and still switches live when the OS does. The choice is remembered across
+  launches and applies to the whole window: panels, diagram, code editor and the
+  native title bar.
+
+## 0.2.0
+
+### Added
+
+- **Native ARM builds.** Windows on ARM gets its own installer
+  (`mhl.studio_X.Y.Z_arm64-setup.exe`) instead of the x64 one under emulation. There
+  is no ARM64 `.msi`, because WiX does not support it. Linux on ARM gets an
+  `.AppImage`, a `.deb` and an `.rpm`. Each bundles the `mhl` runtime built for ARM64.
+
 ## 0.1.0
 
 First public preview. The installers are not code-signed yet.
@@ -28,6 +83,13 @@ First public preview. The installers are not code-signed yet.
 - **Code editor** with MHL highlighting and the `mhl lsp` language server.
 - **Live runs:** an inputs form, each step's status and the path taken on the
   diagram, event history, logs and final variables. Pause, resume and cancel.
+- **MCP test bench** (the toolbar's **Editor | MCP** switch): serves the open folder with
+  `mhl serve mcp`, over stdio or HTTP, and calls it like an API client would. You pick a
+  tool, fill in a form generated from its `inputSchema`, and **Send**. The response comes
+  back as highlighted, foldable JSON, with JSON held in strings shown decoded, or as raw
+  text or a table. It also covers the workflow manifests, async runs over HTTP (start,
+  follow, resume a paused run, cancel) and raw requests. A console logs every JSON-RPC
+  message.
 - **New files from templates** that already lint clean: workflow, tool, agent,
   prompt, memory, MCP server, type, enum and test.
 - Installers for macOS (Apple Silicon and Intel), Windows and Linux, each bundling

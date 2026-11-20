@@ -1,0 +1,6 @@
+// The Analyse phase of Report (see ../stages_in_a_pipeline.mh).
+partial pipeline Report stage Analyse {
+    step Summarise {
+        self.summary = "${rows.size()} rows, max ${rows[rows.size() - 1]}"
+    }
+}

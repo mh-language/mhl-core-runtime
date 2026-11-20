@@ -12,12 +12,15 @@ import { applyEdits, Doc, type EditResult, type TextEdit } from "../sync/edits";
 import { exportDeclaration, resolveImport } from "../sync/imports";
 import { moverFor, relinkEdits } from "../sync/relink";
 import { declNameFor, newFilePath, newFileSource, type NewFileKind } from "../sync/templates";
+import { ignoreLine, withEnvIgnored } from "../sync/gitignore";
 import { BACKENDS, renderAgent, type Backend, type Companion, type Role } from "../sync/agentTemplates";
 import { LspClient } from "../editor/lsp";
-import { JSON_LANG, LANG, MD_LANG, monaco, setupMonaco } from "../editor/monaco";
-import { emptyRun, get, isJson, isMarkdown, isMh, selectTool, set, type LibraryFile, type NodeRunStatus, type Toast } from "./store";
+import { DOTENV_LANG, JSON_LANG, LANG, MD_LANG, monaco, setupMonaco } from "../editor/monaco";
+import { emptyRun, get, isEnv, isJson, isMarkdown, isMh, selectTool, set, type LibraryFile, type NodeRunStatus, type Toast } from "./store";
 import { installZoom } from "./zoom";
 import { installPanels } from "./panels";
+import { installTheme } from "./theme";
+import { fragmentInfo, mergeRoot } from "./fragments";
 
 const models = new Map<string, monaco.editor.ITextModel>();
 let lsp: LspClient | null = null;
@@ -39,6 +42,7 @@ export function toast(kind: Toast["kind"], text: string) {
 }
 
 export async function init() {
+  installTheme();
   await setupMonaco();
   installPanels();
   installZoom((z) => toast("info", `Zoom ${Math.round(z * 100)}%`));
@@ -94,9 +98,12 @@ export async function refreshFiles() {
 
 let librarySeq = 0;
 
-function setLibraryFile(rel: string, path: string, g: { ok: boolean; declarations: Declaration[] }) {
+function setLibraryFile(rel: string, path: string, g: Graph) {
   set((s) => {
-    const entry: LibraryFile = { rel, path, ok: g.ok, declarations: g.ok ? g.declarations : (s.library.find((l) => l.path === path)?.declarations ?? []) };
+    const prev = s.library.find((l) => l.path === path);
+    const entry: LibraryFile = g.ok
+      ? { rel, path, ok: true, declarations: g.declarations, ...fragmentInfo(path, g) }
+      : { rel, path, ok: false, declarations: prev?.declarations ?? [], imports: prev?.imports ?? [], entries: prev?.entries ?? [] };
     const rest = s.library.filter((l) => l.path !== path);
     return { library: [...rest, entry].sort((a, b) => a.rel.localeCompare(b.rel)) };
   });
@@ -113,13 +120,16 @@ export async function refreshLibrary() {
     try {
       const src = models.get(path)?.getValue() ?? (await api.readFile(path));
       const g = await api.graph(path, src);
-      out.push({ rel, path, ok: g.ok, declarations: g.declarations });
+      out.push({ rel, path, ok: g.ok, declarations: g.declarations, ...(g.ok ? fragmentInfo(path, g) : { imports: [], entries: [] }) });
     } catch {
-      out.push({ rel, path, ok: false, declarations: [] });
+      out.push({ rel, path, ok: false, declarations: [], imports: [], entries: [] });
     }
     if (seq !== librarySeq) return;
   }
   set({ library: out });
+  // A partial workflow is merged from the file that starts it, which the
+  // library has only now found.
+  if (get().graph?.workflows.some((w) => w.partial)) void refreshGraph();
 }
 
 /** Declarations the open file imports from other workspace files. */
@@ -204,7 +214,7 @@ export function activeModel(): monaco.editor.ITextModel | null {
 /** The editor buffer of `path`, holding `text`, registered with the language server. */
 function createModel(path: string, text: string): monaco.editor.ITextModel {
   const mh = isMh(path);
-  const lang = mh ? LANG : isMarkdown(path) ? MD_LANG : isJson(path) ? JSON_LANG : "plaintext";
+  const lang = mh ? LANG : isMarkdown(path) ? MD_LANG : isJson(path) ? JSON_LANG : isEnv(path) ? DOTENV_LANG : "plaintext";
   const model = monaco.editor.createModel(text, lang, monaco.Uri.parse(fileUri(path)));
   model.updateOptions(mh ? { tabSize: 4, insertSpaces: true } : { tabSize: 2, insertSpaces: true });
   models.set(path, model);
@@ -251,7 +261,9 @@ export async function refreshGraph(): Promise<void> {
   const text = model.getValue();
   const seq = ++graphSeq;
   try {
-    const g = await api.graph(path, text);
+    const plain = await api.graph(path, text);
+    if (seq !== graphSeq || get().activePath !== path) return;
+    const g = plain.ok ? await mergedGraph(path, text, plain) : plain;
     if (seq !== graphSeq || get().activePath !== path) return;
     if (g.ok) {
       const keep = g.workflows.some((w) => w.name === get().workflow);
@@ -262,12 +274,29 @@ export async function refreshGraph(): Promise<void> {
       const tool = t && g.declarations.some((d) => d.kind === "tool" && d.name === t.name) ? t : null;
       set({ graph: g, graphSource: text, stale: false, diagnostics: g.diagnostics, workflow, selection, tool });
       const root = get().root;
-      if (root) setLibraryFile(relPath(root, path), path, g);
+      if (root) setLibraryFile(relPath(root, path), path, plain);
     } else {
       set({ stale: true, diagnostics: g.diagnostics });
     }
   } catch (e) {
     if (seq === graphSeq) toast("error", errorText(e));
+  }
+}
+
+/**
+ * `plain`, with each partial workflow shown whole: merged from the file that
+ * starts it (app/fragments.ts), or from this file's own imports when no
+ * workspace file does. Falls back to `plain` when merging fails.
+ */
+async function mergedGraph(path: string, text: string, plain: Graph): Promise<Graph> {
+  const partial = plain.workflows.find((w) => w.name === get().workflow && w.partial) ?? plain.workflows.find((w) => w.partial);
+  if (!partial) return plain;
+  const root = mergeRoot(path, partial.name, get().library);
+  try {
+    const g = await api.graph(path, text, { merged: true, root: root && root !== path ? root : null });
+    return g.ok ? g : plain;
+  } catch {
+    return plain;
   }
 }
 
@@ -322,7 +351,9 @@ export function redo() {
 }
 
 /** Selects and shows a byte span of the active file in the code editor. */
-export function revealSpan(span: Span) {
+/** Selects `span` in the code view: of `file` when given (another fragment of a merged workflow), else of the open file. */
+export async function revealSpan(span: Span, file?: string) {
+  if (file && file !== get().activePath) await openFile(file);
   const model = activeModel();
   const { graphSource } = get();
   if (!model || !editorInstance) return;
@@ -348,6 +379,30 @@ export async function save(path = get().activePath): Promise<void> {
  * appended when missing) holding a new declaration of `kind`, named after
  * the file, and opens it.
  */
+/**
+ * Adds a line ignoring env file `rel` to the workspace root's .gitignore
+ * (created if missing) unless one already covers it (sync/gitignore.ts).
+ * Returns what to tell the user, or null when nothing was added.
+ */
+async function ignoreEnvFile(root: string, rel: string): Promise<string | null> {
+  const path = joinPath(root, ".gitignore");
+  let existing: string | null = null;
+  try {
+    existing = await api.readFile(path);
+  } catch {
+    /* no .gitignore yet */
+  }
+  const next = withEnvIgnored(existing, rel);
+  if (next === null) return null;
+  try {
+    await api.writeFile(path, next);
+    return `Added ${ignoreLine(rel)} to .gitignore, keeping its keys out of git.`;
+  } catch (e) {
+    toast("error", `Could not add ${rel} to .gitignore: ${errorText(e)}`);
+    return null;
+  }
+}
+
 export async function newFile(relName: string, kind: NewFileKind = "workflow") {
   const { root } = get();
   if (!root) return;
@@ -365,14 +420,20 @@ export async function newFile(relName: string, kind: NewFileKind = "workflow") {
   await refreshFiles();
   await openFile(path);
   if (kind === "tool") selectTool(name);
+  if (kind === "env") {
+    const ignored = await ignoreEnvFile(root, rel);
+    const notLoaded = rel !== ".env" ? `Only the workspace root's .env is loaded automatically: ${rel} needs mhl run --env-file ${rel}.` : null;
+    const note = [ignored, notLoaded].filter(Boolean).join(" ");
+    if (note) toast("info", note);
+  }
 }
 
-/** Looks up which agent CLIs are on PATH (cached; `force` looks again). */
+/** Looks up which agent CLIs (and curl/jq, for the API templates) are on PATH (cached; `force` looks again). */
 export async function loadClis(force = false): Promise<Record<string, string>> {
   const known = get().clis;
   if (known && !force) return known;
   try {
-    const clis = await api.findClis(BACKENDS.map((b) => b.command));
+    const clis = await api.findClis([...new Set(BACKENDS.flatMap((b) => b.requires))]);
     set({ clis });
     return clis;
   } catch {
@@ -514,10 +575,11 @@ export async function movePath(fromRel: string, toRel: string): Promise<boolean>
   }
 
   await refreshFiles();
+  const ignored = isEnv(to) ? await ignoreEnvFile(root, to) : null;
   if (get().activePath) await refreshGraph();
   const updated = plans.length ? ` — updated paths in ${plans.length} file${plans.length > 1 ? "s" : ""}` : "";
   const warn = skipped.length ? `. Not checked (they have errors): ${skipped.join(", ")}` : "";
-  toast(skipped.length ? "error" : "info", `Moved ${fromRel} → ${to}${updated}${warn}`);
+  toast(skipped.length ? "error" : "info", `Moved ${fromRel} → ${to}${updated}${warn}${ignored ? `. ${ignored}` : ""}`);
   return true;
 }
 
@@ -638,7 +700,7 @@ function onRunEvent(ev: RunEvent) {
   });
 }
 
-export async function startRun(inputs: [string, string][], opts: { resume?: boolean; force?: boolean } = {}) {
+export async function startRun(inputs: [string, string][], opts: { resume?: boolean; force?: boolean; decision?: unknown } = {}) {
   const { root, activePath, workflow, run: prev } = get();
   if (!root || !activePath || prev.running) return;
   await save();
@@ -652,7 +714,16 @@ export async function startRun(inputs: [string, string][], opts: { resume?: bool
   set({ run: { ...base, running: true }, bottomOpen: true });
   try {
     const id = await api.runStart(
-      { cwd: root, path: activePath, workflow, inputs, resume: !!opts.resume, force: !!opts.force, session },
+      {
+        cwd: root,
+        path: activePath,
+        workflow,
+        inputs,
+        resume: !!opts.resume,
+        force: !!opts.force,
+        session,
+        ...(opts.resume && opts.decision !== undefined ? { decision: JSON.stringify(opts.decision) } : {}),
+      },
       onRunEvent,
     );
     set((s) => ({ run: { ...s.run, id: s.run.running ? id : null } }));

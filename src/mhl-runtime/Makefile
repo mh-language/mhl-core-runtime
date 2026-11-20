@@ -20,7 +20,7 @@ test:
 # test/e2e/{lang/syntax,features}) through the binary build produces above
 functional-test: build
 	$(SAMPLE)/mhl test $(SAMPLE)/syntax
-	$(SAMPLE)/mhl test $(SAMPLE)/features
+	$(SAMPLE)/mhl test $(SAMPLE)/features --env-file $(SAMPLE)/features/env/sample.env
 
 # Red Hat runs the standard Linux binaries; build both supported CPU architectures.
 redhat: $(DIST)/linux-amd64/mhl $(DIST)/linux-arm64/mhl

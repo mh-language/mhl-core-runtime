@@ -336,6 +336,7 @@ type RunStatusRec struct {
 	// claimed transition by durable intake; empty otherwise).
 	Holder    string         `json:"holder,omitempty"`
 	Step      string         `json:"step,omitempty"`
+	Stage     string         `json:"stage,omitempty"` // the named stage Step belongs to
 	StepIndex int            `json:"stepIndex,omitempty"`
 	StepTotal int            `json:"stepTotal,omitempty"`
 	Reached   []string       `json:"reached,omitempty"`

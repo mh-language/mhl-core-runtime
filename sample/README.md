@@ -71,6 +71,8 @@ este índice cobre apenas o que tem exemplo executável aqui.
   → [claude_cli_calls_the_real_api.mh](features/agents/claude_cli_calls_the_real_api.mh)
 - **`cmd.exec`** — executa um processo com argv seguro, retorna `{stdout, stderr, exit_code}`.
   → [memory_session_mem_value_survives_cmd_exec_argv.mh](features/memory/memory_session_mem_value_survives_cmd_exec_argv.mh)
+- **`cmd.exec(..., cwd:)`** — executa o comando em outro diretório (`cd cwd && comando`).
+  → [cmd_exec_cwd_runs_in_another_directory.mh](features/cmd/cmd_exec_cwd_runs_in_another_directory.mh)
 - **Comparação** (`< > <= >= == !=`). → [syntax/conditional_symbols/](syntax/conditional_symbols/README.md)
 - **`complete()`** — termina o workflow com sucesso a partir de qualquer step.
   → [order_triage.mh](features/graph_and_events/order_triage.mh) ·
@@ -141,6 +143,10 @@ este índice cobre apenas o que tem exemplo executável aqui.
 ## G
 
 - **`.get(key, default)`** — leitura de objeto sem exceção. → [object_get_with_default.mh](syntax/object_property_access/object_get_with_default.mh)
+- **`stage`** — fase nomeada: um fragmento `partial` a declara no cabeçalho (`partial workflow X stage Fase {`); `goto Fase` entra no primeiro step; eventos e hooks informam a etapa.
+  → [syntax/stages/](syntax/stages/README.md)
+- **Gate** (`pause(motivo, decision: T)`) — pausa tipada que devolve a decisão da retomada (`--decision`), uma vez.
+  → [typed_gate_review_loop.mh](syntax/pipeline_vs_workflow/typed_gate_review_loop.mh)
 - **`git.*`** — `status`, `diff`, `log`, `rev_parse`, `add`, `commit`, com `dir:`.
   → [features/git/](features/git/README.md)
 - **`goto`** — salto entre steps (só em `workflow`); `goto nameof(X)`; alvo pode ser um grupo `parallel`.

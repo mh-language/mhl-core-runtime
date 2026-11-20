@@ -37,6 +37,10 @@ Each product has its own `release.sh` next to it and its own tag: `src/mhl-runti
 (`studio-vX.Y.Z`). The installers (`install.sh`, `install.ps1`, `uninstall.*`) stay at the
 repository root: their `raw.githubusercontent.com/.../main/...` URLs are published.
 
+A language release turns `CHANGELOG.md`'s `## Unreleased` into the version's section first:
+`src/mhl-runtime/release.sh --bump vX.Y.Z`, review, commit and push, then
+`src/mhl-runtime/release.sh vX.Y.Z`, which refuses a tag without a `## X.Y.Z` section.
+
 The runtime is divided into four main areas under `src/mhl-runtime/internal/`:
 
 - `lang/` defines the grammar, AST, parser, and static analysis.

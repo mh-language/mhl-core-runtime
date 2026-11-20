@@ -24,7 +24,14 @@ const studio = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repo = resolve(studio, "../..");
 const out = join(studio, "THIRD_PARTY_NOTICES.md");
 // Keep in sync with the matrix of .github/workflows/studio-release.yml.
-const TARGETS = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"];
+const TARGETS = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+];
 const LICENSE_FILE = /^(licen[cs]e|copying|unlicense|notice)([-._].*)?$/i;
 
 /** The license/notice files in a package directory, sorted, as [name, text]. */

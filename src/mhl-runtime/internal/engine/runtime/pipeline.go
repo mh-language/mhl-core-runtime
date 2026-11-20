@@ -122,6 +122,14 @@ type Pipeline struct {
 	Description string
 	Steps       []string
 	Stages      []Stage
+	// StageOf maps a step — a top-level one, a parallel group, a group's
+	// branch or merge — to its named stage: the header stage of the
+	// fragment it was declared in (ast.Stage; not to be confused with Stage,
+	// a unit of execution here). Absent for a step of a fragment without one.
+	// StageEntry maps each named stage to its first member, where `goto
+	// <stage>` enters it. Both nil without any named stage.
+	StageOf    map[string]string
+	StageEntry map[string]string
 	// StepTimeouts maps a step name — or a `parallel` group name — to the
 	// duration from its optional `timeout <dur>` header clause. Nil when no
 	// clause is declared anywhere (a missing key reads back as 0, i.e. no
@@ -298,6 +306,7 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 	for _, m := range p.Body {
 		switch {
 		case m.Step != nil:
+			out.inNamedStage(m.Step.Stage, m.Step.Name)
 			out.Steps = append(out.Steps, m.Step.Name)
 			out.Stages = append(out.Stages, Stage{Name: m.Step.Name, Steps: []string{m.Step.Name}})
 			out.setStepTimeout(m.Step.Name, m.Step.Timeout)
@@ -305,6 +314,13 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 				entryStage = len(out.Stages) - 1
 			}
 		case m.Parallel != nil:
+			out.inNamedStage(m.Parallel.Stage, m.Parallel.Name)
+			for _, s := range m.Parallel.Steps {
+				out.inNamedStage(m.Parallel.Stage, s.Name)
+			}
+			if m.Parallel.Merge != nil {
+				out.inNamedStage(m.Parallel.Stage, ast.MergeStepName(m.Parallel.Name))
+			}
 			names := make([]string, 0, len(m.Parallel.Steps))
 			for _, s := range m.Parallel.Steps {
 				names = append(names, s.Name)
@@ -677,4 +693,71 @@ func checkpointFromExpr(e *ast.Expr) CheckpointConfig {
 		}
 	}
 	return cfg
+}
+
+// inNamedStage records that step (or group) name belongs to named stage
+// stage — the first such name being where `goto <stage>` enters it. A no-op
+// for stage "".
+func (p *Pipeline) inNamedStage(stage, name string) {
+	if stage == "" {
+		return
+	}
+	if p.StageOf == nil {
+		p.StageOf, p.StageEntry = map[string]string{}, map[string]string{}
+	}
+	p.StageOf[name] = stage
+	if _, ok := p.StageEntry[stage]; !ok {
+		p.StageEntry[stage] = name
+	}
+}
+
+// StageTarget resolves a goto target: a named stage's name is its
+// first member; anything else is returned unchanged.
+func (p Pipeline) StageTarget(target string) string {
+	if entry, ok := p.StageEntry[target]; ok {
+		return entry
+	}
+	return target
+}
+
+// NamedStage is one named stage of a pipeline — a fragment's header stage
+// (ast.Stage), not a Stage of execution — as a caller sees it: its
+// name and every step that runs in it — top-level steps, a parallel group's
+// branches and merge — in order.
+type NamedStage struct {
+	Name  string   `json:"name"`
+	Steps []string `json:"steps"`
+}
+
+// NamedStages lists the pipeline's named stages in run order; nil
+// without any.
+func (p Pipeline) NamedStages() []NamedStage {
+	if len(p.StageOf) == 0 {
+		return nil
+	}
+	var out []NamedStage
+	for _, unit := range p.Stages {
+		name := p.StageOf[unit.Name]
+		if name == "" {
+			continue
+		}
+		if len(out) == 0 || out[len(out)-1].Name != name {
+			out = append(out, NamedStage{Name: name})
+		}
+		last := &out[len(out)-1]
+		last.Steps = append(last.Steps, unit.Steps...)
+		if unit.Merge != "" {
+			last.Steps = append(last.Steps, unit.Merge)
+		}
+	}
+	return out
+}
+
+// StageNameOf is the named stage step runs in, nil when none — the
+// value a hook's StepContext.stage and a step event carry.
+func (p Pipeline) StageNameOf(step string) any {
+	if name, ok := p.StageOf[step]; ok {
+		return name
+	}
+	return nil
 }

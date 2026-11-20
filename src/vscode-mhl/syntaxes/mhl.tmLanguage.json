@@ -131,6 +131,14 @@
           ]
         },
         {
+          "comment": "a fragment's stage: `partial workflow Story stage Build {` — a named phase; the name is a goto target. Only before `{`: `stage` stays a plain name elsewhere (`input stage`, `step.stage`).",
+          "match": "\\b(stage)[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)(?=[ \\t]*\\{)",
+          "captures": {
+            "1": { "name": "storage.type.declaration.mhl" },
+            "2": { "name": "entity.name.label.mhl" }
+          }
+        },
+        {
           "name": "storage.type.declaration.mhl",
           "match": "\\b(from|import|as|export|extension|extensible|agent|router|memory|tool|loop|partial|pipeline|workflow|prompt|parallel|merge|step|route|timeout|input|test|describe|type|enum)\\b"
         },
@@ -167,8 +175,8 @@
           }
         },
         {
-          "comment": "`entry` header clause on a step — entry step Name { ... } — matched only directly before `step` so it never lights up an ordinary identifier, a step literally named Entry, or an `entry:`/`entry(` property or call",
-          "match": "\\b(entry)(?=[ \\t]+step\\b)",
+          "comment": "`entry` header clause on a step or a workflow's starting route — entry step Name { ... }, entry route Choose(p: T) { ... } — matched only directly before `step`/`route` so it never lights up an ordinary identifier, a step literally named Entry, or an `entry:`/`entry(` property or call",
+          "match": "\\b(entry)(?=[ \\t]+(?:step|route)\\b)",
           "captures": {
             "1": {
               "name": "storage.type.declaration.mhl"

@@ -110,3 +110,48 @@ func TestGraphUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestGraphMergedProjectsEveryPartialFragment(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	main := write("main.mh", `import "part.mh"
+partial workflow W {
+    entry step A { log("a") }
+}
+`)
+	part := write("part.mh", `partial workflow W {
+    step B { goto A }
+}
+`)
+	ids := func(doc graphDoc) []string {
+		var out []string
+		for _, n := range doc.Workflows[0].Nodes {
+			out = append(out, n.ID)
+		}
+		return out
+	}
+	if got := ids(runGraphDoc(t, []string{main}, "")); strings.Join(got, ",") != "A" {
+		t.Fatalf("without --merged: nodes %v", got)
+	}
+	doc := runGraphDoc(t, []string{main, "--merged"}, "")
+	if got := ids(doc); strings.Join(got, ",") != "A,B" {
+		t.Fatalf("--merged: nodes %v", got)
+	}
+	// A fragment graphed from its importer's closure, its buffer from stdin.
+	doc = runGraphDoc(t, []string{part, "--stdin", "--merged", "--root", main}, "partial workflow W {\n    step B2 { goto A }\n}\n")
+	if got := ids(doc); strings.Join(got, ",") != "A,B2" {
+		t.Fatalf("--root: nodes %v (diagnostics %v)", got, doc.Diagnostics)
+	}
+	// A root that does not import the file is a diagnostic, not a failure.
+	other := write("other.mh", "workflow O { step S { log(1) } }\n")
+	doc = runGraphDoc(t, []string{part, "--merged", "--root", other}, "")
+	if !doc.OK || len(doc.Diagnostics) == 0 || !strings.Contains(doc.Diagnostics[0].Message, "does not import") {
+		t.Fatalf("diagnostics = %v", doc.Diagnostics)
+	}
+}
