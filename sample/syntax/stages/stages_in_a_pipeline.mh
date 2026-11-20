@@ -1,0 +1,67 @@
+// Stages in a `pipeline` (no goto): one `partial` fragment per phase, each
+// naming its stage on its header — report/collect.mh is the Collect stage,
+// report/analyse.mh the Analyse stage. A pipeline runs its fragments in
+// import order, this file's steps first, falling through from one file to
+// the next — so stages here only name the phases: the same steps written
+// flat run to the same output. A fragment without a stage is fine:
+// report/publish.mh holds Publish, outside any stage.
+import "report/collect.mh"
+import "report/analyse.mh"
+import "report/publish.mh"
+
+partial pipeline Report {
+    description: "Collects, analyses and publishes a report in named phases."
+
+    var rows = []
+    var summary = ""
+
+    output: { rows, summary }
+
+    entry step Start {
+        log("report")
+    }
+}
+
+// The same steps without stages, for comparison.
+pipeline ReportFlat {
+    var rows = []
+    var summary = ""
+
+    output: { rows, summary }
+
+    step Start {
+        log("report")
+    }
+
+    step Fetch {
+        self.rows = [3, 1, 2]
+    }
+
+    step Clean {
+        self.rows = rows.sort_by((x) -> x)
+    }
+
+    step Summarise {
+        self.summary = "${rows.size()} rows, max ${rows[rows.size() - 1]}"
+    }
+
+    step Publish {
+        log(summary)
+    }
+}
+
+test stages_in_a_pipeline {
+    describe fragments_run_in_import_order {
+        var r = Report.run()
+        are_equal(r.state, "completed")
+        are_equal(r.executed, ["Start", "Fetch", "Clean", "Summarise", "Publish"])
+    }
+
+    describe stages_change_no_result {
+        var staged = Report.run()
+        var flat = ReportFlat.run()
+        are_equal(staged.executed, flat.executed)
+        are_equal(staged.output, flat.output)
+        are_equal(staged.output.summary, "3 rows, max 3")
+    }
+}

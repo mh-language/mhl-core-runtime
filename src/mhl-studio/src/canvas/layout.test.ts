@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawnEdges, layoutWorkflow, takenEdges } from "./layout";
+import { drawnEdges, layoutWorkflow, runOrder, takenEdges, type StepNodeData } from "./layout";
 import { END, FAIL, START, type GraphEdge, type GraphNode, type Route, type Workflow } from "../lib/types";
 
 const node = (id: string, extra: Partial<GraphNode> = {}): GraphNode =>
@@ -156,5 +156,169 @@ describe("layoutWorkflow", () => {
         const overlap = a.position.x < b.position.x + bw && b.position.x < a.position.x + aw && a.position.y < b.position.y + bh && b.position.y < a.position.y + ah;
         expect(overlap, `${a.id} / ${b.id}`).toBe(false);
       }
+  });
+});
+
+describe("stages", () => {
+  /** Intake → [Build: Compile, Fan(L, R)] → [Ship: Gate → goto Build | Publish] → End */
+  function staged(): Workflow {
+    const nodes = [
+      node("Intake"),
+      node("Compile", { stage: "Build" }),
+      node("Fan", { kind: "parallel", children: ["L", "R"], stage: "Build" }),
+      node("L", { parent: "Fan" }),
+      node("R", { parent: "Fan" }),
+      node("Gate", { stage: "Ship" }),
+      node("Publish", { stage: "Ship" }),
+    ];
+    const edges = [
+      edge(START, "Intake"),
+      edge("Intake", "Compile"),
+      edge("Compile", "Fan"),
+      edge("Fan", "Gate"),
+      edge("Gate", "Build", "goto"),
+      edge("Gate", "Publish"),
+      edge("Publish", END),
+    ];
+    const stage = (name: string, members: string[]) => ({ name, members, span: [0, 0], headerSpan: [0, 0], nameSpan: [0, 0], bodyOpen: 0, bodyClose: 0 }) as const;
+    return {
+      ...branching(),
+      nodes,
+      edges,
+      stages: [stage("Build", ["Compile", "Fan"]), stage("Ship", ["Gate", "Publish"])] as unknown as Workflow["stages"],
+    };
+  }
+
+  it("boxes each stage around its members, a group's branches inside the group", async () => {
+    const { nodes, edges } = await layoutWorkflow(staged());
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    expect(byId.get("Build")?.type).toBe("stage");
+    expect(byId.get("Compile")?.parentId).toBe("Build");
+    expect(byId.get("Fan")?.parentId).toBe("Build");
+    expect(byId.get("L")?.parentId).toBe("Fan");
+    expect(byId.get("Gate")?.parentId).toBe("Ship");
+    expect(byId.get("Intake")?.parentId).toBeUndefined();
+    // A parent comes before its children, as React Flow requires.
+    const at = (id: string) => nodes.findIndex((n) => n.id === id);
+    expect(at("Build")).toBeLessThan(at("Compile"));
+    expect(at("Fan")).toBeLessThan(at("L"));
+    // Every edge is routed, the goto into a stage's box included.
+    for (const e of edges) expect(e.data!.points.length).toBeGreaterThan(1);
+    expect(edges.some((e) => e.target === "Build")).toBe(true);
+    // Edges are in canvas coordinates: one between two boxed nodes leaves the
+    // source's bottom edge where React Flow draws it (box + relative position).
+    const abs = (id: string): { x: number; y: number } => {
+      const n = byId.get(id)!;
+      const p = n.parentId ? abs(n.parentId) : { x: 0, y: 0 };
+      return { x: p.x + n.position.x, y: p.y + n.position.y };
+    };
+    const e = edges.find((x) => x.source === "Compile" && x.target === "Fan")!;
+    const start = e.data!.points[0];
+    const c = abs("Compile");
+    const h = Number(byId.get("Compile")!.style?.height);
+    expect(Math.abs(start.y - (c.y + h))).toBeLessThan(1);
+    expect(start.x).toBeGreaterThanOrEqual(c.x);
+    expect(start.x).toBeLessThanOrEqual(c.x + 236);
+  });
+
+  it("lights the goto into a stage when the run took it", () => {
+    const wf = staged();
+    const taken = takenEdges(wf, ["Intake", "Compile", "L", "R", "Gate", "Compile"], null);
+    expect(taken.has("Gate>Build")).toBe(true);
+  });
+});
+
+describe("readability", () => {
+  /** Retry is declared first but only reached from Review; Review asks again twice; Check guards with fail(). */
+  function review(): Workflow {
+    const long = "implementation.status != \"ready\" && attempts < max_attempts";
+    return {
+      ...branching(),
+      nodes: [node("Retry"), node("Check", { exits: ["fail"] }), node("Review"), node("Done")],
+      edges: [
+        edge(START, "Check"),
+        edge("Check", FAIL, "fail", "dir.missing()"),
+        edge("Check", FAIL, "fail", "cmd.is_empty()"),
+        edge("Check", "Review"),
+        edge("Review", "Review", "goto", "note.is_empty()"),
+        edge("Review", "Review", "goto", "!passed"),
+        edge("Review", "Retry", "goto", long),
+        edge("Review", "Done"),
+        edge("Retry", "Review", "goto"),
+        edge("Done", END, "end", "complete"),
+      ],
+    };
+  }
+
+  it("orders nodes as a run reaches them, an early-declared step after its caller", () => {
+    const wf = review();
+    expect(runOrder(wf, wf.nodes).map((n) => n.id)).toEqual(["Check", "Review", "Retry", "Done"]);
+  });
+
+  it("puts a guard's fail() conditions on the step, with no edge to Fail", async () => {
+    const { nodes, edges } = await layoutWorkflow(review());
+    expect(nodes.some((n) => n.id === FAIL)).toBe(false);
+    expect(edges.some((e) => e.target === FAIL)).toBe(false);
+    const check = nodes.find((n) => n.id === "Check")!.data as StepNodeData;
+    expect(check.failsWhen).toEqual(["dir.missing()", "cmd.is_empty()"]);
+  });
+
+  it("keeps a match arm to Fail as an edge to the terminal", async () => {
+    const { nodes, edges } = await layoutWorkflow(branching());
+    expect(nodes.some((n) => n.id === FAIL)).toBe(true);
+    expect(edges.some((e) => e.target === FAIL)).toBe(true);
+  });
+
+  it("draws a step's ask-again gotos as one short loop on its right side", async () => {
+    const { nodes, edges } = await layoutWorkflow(review());
+    const loops = edges.filter((e) => e.source === "Review" && e.target === "Review");
+    expect(loops).toHaveLength(1);
+    const d = loops[0].data!;
+    expect(d.text).toBe("↻ 2");
+    expect(d.title).toBe("asks again when:\nnote.is_empty()\n!passed");
+    expect(loops[0].deletable).toBe(false);
+    const r = nodes.find((n) => n.id === "Review")!;
+    for (const p of d.points) expect(p.x).toBeGreaterThanOrEqual(r.position.x + 236);
+  });
+
+  it("cuts a long label, keeping the full condition for the tooltip", async () => {
+    const { edges } = await layoutWorkflow(review());
+    const d = edges.find((e) => e.source === "Review" && e.target === "Retry")!.data!;
+    expect(d.text!.length).toBeLessThanOrEqual(34);
+    expect(d.text!.endsWith("…")).toBe(true);
+    expect(d.title).toBe(d.edge.label);
+  });
+});
+
+describe("runOrder", () => {
+  /** Fix is declared first; S is Begin → (Draft →) Approve, Approve sending a revision to Fix. */
+  function gated(): Workflow {
+    return {
+      ...branching(),
+      nodes: [node("Fix"), node("Begin", { stage: "S" }), node("Draft", { stage: "S" }), node("Approve", { stage: "S" })],
+      edges: [
+        edge(START, "S", "goto"),
+        edge("Begin", "Approve", "goto", "existing"),
+        edge("Begin", "Draft"),
+        edge("Draft", "Approve"),
+        edge("Approve", "Fix", "goto", "revise"),
+        edge("Fix", "S", "goto"),
+      ],
+      stages: [{ name: "S", members: ["Begin", "Draft", "Approve"] }] as unknown as Workflow["stages"],
+    };
+  }
+
+  it("moves a stage as one unit, its members in written order", () => {
+    const wf = gated();
+    expect(runOrder(wf, wf.nodes).map((n) => n.id)).toEqual(["Begin", "Draft", "Approve", "Fix"]);
+  });
+
+  it("draws a gate below the step that falls into it, though it can send the run back there", async () => {
+    const wf = gated();
+    wf.edges.push(edge("Approve", "Draft", "goto", "!approved"));
+    const { nodes } = await layoutWorkflow(wf);
+    const y = (id: string) => nodes.find((n) => n.id === id)!.position.y;
+    expect(y("Begin")).toBeLessThan(y("Draft"));
+    expect(y("Draft")).toBeLessThan(y("Approve"));
   });
 });

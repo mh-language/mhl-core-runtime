@@ -35,7 +35,35 @@ func (g *GotoSignal) Error() string { return "goto " + g.Target }
 // Reason carries whatever value (if any) the pause argument evaluated to, for
 // the caller / human operator to see in the run status. This is the primitive
 // for a human-in-the-loop delegation.
-type PauseSignal struct{ Reason any }
+type PauseSignal struct {
+	Reason any
+	// Gate is set when the pause is a typed one, `pause(reason, decision: T)`:
+	// the run waits for a decision of type T (see Gate).
+	Gate *Gate
+}
+
+// Gate identifies a typed pause — `pause(reason, decision: T)` — a run is
+// suspended at: the Index-th gated pause evaluated in Step (0-based, in
+// evaluation order, counted afresh each time the step runs), waiting for a
+// decision of type Type (as written). It is persisted in the checkpoint so
+// a resume knows which gate a decision answers, and what it must be.
+type Gate struct {
+	Step  string `json:"step"`
+	Index int    `json:"index"`
+	Type  string `json:"type"`
+	// Answered are the decisions the step's earlier gates (Index 0 to
+	// Index-1) returned in the execution that paused here. A resume re-enters
+	// the step from its start, so it replays them: each earlier gate returns
+	// its answer again instead of pausing, and the run reaches this gate.
+	Answered []GateReply `json:"answered,omitempty"`
+}
+
+// GateReply is one earlier gate's answer (Gate.Answered): its decision
+// type and the decision, as given.
+type GateReply struct {
+	Type     string `json:"type"`
+	Decision any    `json:"decision"`
+}
 
 func (p *PauseSignal) Error() string { return "pause" }
 

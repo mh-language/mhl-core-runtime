@@ -1,0 +1,11 @@
+// The Consolidation phase of Story (see ../review_cycle_with_stages_and_gates.mh).
+partial workflow Story stage Consolidation {
+    step Consolidate {
+        log("updating the global specs")
+    }
+
+    step Done {
+        self.status = "done"
+        complete()
+    }
+}

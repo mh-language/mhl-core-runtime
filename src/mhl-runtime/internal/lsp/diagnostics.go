@@ -29,12 +29,16 @@ func diagnosticsFor(path, text string) []diagnostic {
 		if col < 0 {
 			col = 0
 		}
+		severity := 1 // Error
+		if f.IsWarning() {
+			severity = 2 // Warning
+		}
 		diags = append(diags, diagnostic{
 			Range: rangeT{
 				Start: position{Line: line, Character: col},
 				End:   position{Line: line, Character: col + 1},
 			},
-			Severity: 1,
+			Severity: severity,
 			Source:   "mhl",
 			Message:  f.Message,
 		})

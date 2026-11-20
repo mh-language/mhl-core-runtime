@@ -10,6 +10,8 @@ export interface Diagnostic {
   line: number;
   column: number;
   message: string;
+  /** "warning" for a lint warning (advice, never blocking); absent for an error. */
+  severity?: "warning";
 }
 
 export interface Declaration {
@@ -64,6 +66,8 @@ export interface WfInput {
   type: string;
   default?: string;
   span: Span;
+  /** Declared in another fragment of a merged workflow (absolute path); `span` indexes that file. */
+  file?: string;
 }
 
 export interface Arm {
@@ -108,6 +112,20 @@ export interface Choice {
   arms: Arm[];
 }
 
+/** A fragment's header stage — `partial workflow X stage Name {` (flow.StageGroup): the fragment's steps, a named phase. */
+export interface StageGroup {
+  name: string;
+  /** Its steps' and parallel groups' ids, in order. */
+  members: string[];
+  span: Span;
+  headerSpan: Span;
+  nameSpan: Span;
+  bodyOpen: number;
+  bodyClose: number;
+  /** As WfInput.file. */
+  file?: string;
+}
+
 export interface Route {
   name: string;
   /** `entry route`: the run starts by dispatching on it (the start edges are its arms). */
@@ -115,6 +133,8 @@ export interface Route {
   params: string[];
   span: Span;
   arms: Arm[];
+  /** As WfInput.file. */
+  file?: string;
 }
 
 export interface GraphNode {
@@ -122,6 +142,10 @@ export interface GraphNode {
   kind: "step" | "parallel";
   name: string;
   parent?: string;
+  /** Declared in another fragment of a merged workflow (absolute path): its spans, and its edges', index that file. */
+  file?: string;
+  /** The stage of the fragment a top-level step or parallel group belongs to. */
+  stage?: string;
   children?: string[];
   entry?: boolean;
   timeout?: string;
@@ -141,6 +165,8 @@ export interface GraphNode {
   /** A parallel group's `merge (param) { ... }` block, if any. */
   merge?: Merge;
   exits: string[];
+  /** The decision types of the step's gates — `pause(reason, decision: T)` — in source order. */
+  decisions?: string[];
   fallsThrough: boolean;
 }
 
@@ -171,6 +197,8 @@ export interface Workflow {
   kind: "workflow" | "pipeline";
   loop?: boolean;
   partial?: boolean;
+  /** Shown whole, from every fragment (`mhl graph --merged`): members with `file` come from another fragment. */
+  merged?: boolean;
   internal?: boolean;
   max?: string;
   description?: string;
@@ -182,9 +210,12 @@ export interface Workflow {
   bodyOpen: number;
   bodyClose: number;
   inputs: WfInput[];
-  vars: { name: string; kind: string; span: Span }[];
-  props: { name: string; span: Span }[];
+  /** `file`: declared in that other fragment (absolute path) — `span` indexes that file. */
+  vars: { name: string; kind: string; span: Span; file?: string }[];
+  props: { name: string; span: Span; file?: string }[];
   routes: Route[];
+  /** The stages — each a fragment's header stage, a named phase; `goto Name` enters one at its first member. */
+  stages?: StageGroup[];
   nodes: GraphNode[];
   edges: GraphEdge[];
   externals: string[];
@@ -199,6 +230,14 @@ export interface Graph {
   imports: { from: string; names: string[]; locals: string[]; span: Span }[];
   declarations: Declaration[];
   workflows: Workflow[];
+}
+
+/** A gate a paused run waits at (execsvc.Awaiting): `schema` is its decision type as JSON Schema. */
+export interface Awaiting {
+  step: string;
+  index: number;
+  type: string;
+  schema?: Record<string, unknown>;
 }
 
 export const START = "$start";
@@ -251,6 +290,8 @@ export interface RunResult {
   resumed?: boolean;
   paused?: boolean;
   pause_reason?: unknown;
+  /** The gate a paused run waits at — `pause(..., decision: T)`; resume it with a decision of T. */
+  awaiting?: Awaiting;
   broke?: boolean;
   break_reason?: unknown;
   vars?: Record<string, unknown>;

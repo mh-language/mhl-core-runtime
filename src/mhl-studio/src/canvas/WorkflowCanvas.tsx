@@ -13,7 +13,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { currentWorkflow, get, set, useStore } from "../app/store";
 import { addAgentCallToStep, addAgentStep, addToolCallStep, addToolCallToStep, hintSchema } from "../app/library";
-import { edit } from "../app/controller";
+import { edit, openFile, toast } from "../app/controller";
 import { connect, deleteNode, insertState, removeEdge, type Placement } from "../sync/edits";
 import { transitionAllowed } from "../sync/kinds";
 import { END, FAIL, START } from "../lib/types";
@@ -173,6 +173,10 @@ function Canvas() {
     [wf],
   );
 
+  /** The file another fragment declares `id` in (a merged partial workflow), if so: read-only here. */
+  const foreignFile = useCallback((id: string | null | undefined) => (id ? wf?.nodes.find((n) => n.id === id)?.file : undefined), [wf]);
+  const readOnly = (id: string, file: string) => toast("info", `${id} is declared in ${file.split(/[\\/]/).pop()}: open that file to edit it.`);
+
   const onKeyDown = useCallback(
     (ev: React.KeyboardEvent) => {
       if ((ev.target as HTMLElement).closest("input, textarea, .monaco-editor")) return;
@@ -185,15 +189,20 @@ function Canvas() {
       if (!wf || (ev.key !== "Delete" && ev.key !== "Backspace")) return;
       if (selectedEdge) {
         const e = layout.edges.find((x) => x.id === selectedEdge);
-        if (e) void edit((doc) => removeEdge(doc, wf.name, (e.data as FlowEdgeData).edge));
+        const from = e ? (e.data as FlowEdgeData).edge.from : undefined;
+        const file = foreignFile(from);
+        if (file) readOnly(from!, file);
+        else if (e) void edit((doc) => removeEdge(doc, wf.name, (e.data as FlowEdgeData).edge));
         setSelectedEdge(null);
         ev.preventDefault();
       } else if (selection && wf.nodes.some((n) => n.id === selection)) {
-        void edit((doc) => deleteNode(doc, wf.name, selection)).then((ok) => ok && set({ selection: null }));
+        const file = foreignFile(selection);
+        if (file) readOnly(selection, file);
+        else void edit((doc) => deleteNode(doc, wf.name, selection)).then((ok) => ok && set({ selection: null }));
         ev.preventDefault();
       }
     },
-    [wf, selectedEdge, selection, layout.edges, fit, center],
+    [wf, selectedEdge, selection, layout.edges, fit, center, foreignFile],
   );
 
   /** Where a palette state dropped at a screen point goes. */
@@ -206,7 +215,8 @@ function Canvas() {
       if (group && !["parallel", "choice"].includes(kind)) {
         return step ? { after: step.id } : { into: group.id };
       }
-      if (step) return { after: step.parentId ?? step.id };
+      // A step's parent is its parallel group — or its stage, which a new state joins after the step.
+      if (step) return { after: step.parentId && group?.id === step.parentId ? step.parentId : step.id };
       if (group) return { after: group.id };
       if (hits.some((h) => h.id === START) && wf?.nodes.some((n) => !n.parent)) {
         return { before: wf!.nodes.find((n) => !n.parent)!.id };
@@ -314,8 +324,12 @@ function Canvas() {
         onNodeClick={(_, n) => {
           setSelectedEdge(null);
           // A route is not a step: clicking it shows its declaration (RouteNode).
-          const inert = n.id === START || n.id === END || n.id === FAIL || n.id.startsWith("ext:") || n.id.startsWith(ROUTE_PREFIX);
+          const inert = n.id === START || n.id === END || n.id === FAIL || n.id.startsWith("ext:") || n.id.startsWith(ROUTE_PREFIX) || n.type === "stage";
           set({ selection: inert ? null : n.id });
+        }}
+        onNodeDoubleClick={(_, n) => {
+          const file = foreignFile(n.id);
+          if (file) void openFile(file);
         }}
         onEdgeClick={(_, e) => {
           setSelectedEdge(e.id);
@@ -327,7 +341,8 @@ function Canvas() {
         }}
         onConnect={stale ? undefined : onConnect}
         // A pipeline has no goto: a handle only snaps to End or Fail.
-        isValidConnection={(c) => !wf || !c.target || transitionAllowed(wf, c.target.startsWith("ext:") ? c.target.slice(4) : c.target)}
+        // Another fragment's step is read-only here: no new goto out of it.
+        isValidConnection={(c) => !wf || !c.target || (!foreignFile(c.source) && transitionAllowed(wf, c.target.startsWith("ext:") ? c.target.slice(4) : c.target))}
         onDragOver={(ev) => {
           ev.preventDefault();
           ev.dataTransfer.dropEffect = "copy";

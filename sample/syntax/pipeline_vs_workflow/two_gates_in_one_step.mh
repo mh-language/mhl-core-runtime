@@ -1,0 +1,38 @@
+// A step may hold several gates. A resume re-enters the step from its first
+// line, so each gate already answered in that execution returns its answer
+// again — replayed from the checkpoint — and the run moves on to the next
+// one instead of asking the first again.
+//
+//   mhl run two_gates_in_one_step.mh --session s1                        → awaiting Size
+//   mhl run two_gates_in_one_step.mh --session s1 --resume --decision Large   → awaiting bool
+//   mhl run two_gates_in_one_step.mh --session s1 --resume --decision true    → completed
+enum Size { Small, Large }
+
+workflow Order {
+    var size = ""
+    var gift = false
+
+    output: { size, gift }
+
+    step Choose {
+        var picked = pause("which size?", decision: Size)
+        self.size = "${picked}"
+
+        self.gift = pause("wrap the ${picked} one as a gift?", decision: bool)
+    }
+}
+
+test two_gates_in_one_step {
+    describe the_second_gate_waits_after_the_first_is_answered {
+        var r = Order.run(decisions: ["Large"])
+        are_equal(r.state, "paused")
+        are_equal(r.awaiting.type, "bool")
+        are_equal(r.pause_reason, "wrap the Large one as a gift?")
+    }
+
+    describe both_answers_reach_the_end {
+        var r = Order.run(decisions: ["Large", true])
+        are_equal(r.state, "completed")
+        are_equal(r.output, {size: "Large", gift: true})
+    }
+}

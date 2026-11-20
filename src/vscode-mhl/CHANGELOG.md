@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Syntax highlighting for a fragment's stage — `partial workflow Story stage Build {`:
+  `stage` as a declaration keyword and the stage's name as a label, like a `goto` target.
+  Only in that form — `stage` used as a name (`input stage`, `step.stage`) stays a plain
+  identifier.
+
 ## 0.8.0
 
 ### Added

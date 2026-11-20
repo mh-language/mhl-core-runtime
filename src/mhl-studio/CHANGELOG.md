@@ -4,6 +4,48 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
+## Unreleased
+
+### Added
+
+- **A split workflow is drawn whole.** A `partial` workflow is graphed with
+  `mhl graph --merged`, from the workspace file that declares its `entry` step, so
+  every fragment shows in one diagram. Steps from another file are dashed, carry
+  that file's name, and are read-only here: double-click one (or its file chip) to
+  open its file; the inspector shows it with **Open file** / **Show in code**.
+  Renaming or deleting a step that another fragment's `goto` targets is refused,
+  and a name another fragment declares counts as taken.
+- **Stages are boxes.** A stage — the `stage Name` on a `partial` fragment's
+  header — is drawn as a titled box around that fragment's steps and parallel
+  groups (an ELK compound node) in the whole-workflow diagram; a `goto` to the
+  stage lands on the box, which takes its steps' status during a run, and a
+  transition drawn onto it writes `goto <stage>`.
+- **`stage` is highlighted** in the code editor (the shared TextMate grammar of
+  the VS Code extension): the keyword and the stage's name, only in a header's
+  `stage Name {`.
+- **Redo a stage.** When a run has stopped (paused or failed), each stage box
+  shows **↻ redo**: it resumes the run at that stage's first step
+  (`mhl run --resume --from`), with the variables as of the stop.
+- **Lint warnings look like warnings** in the inspector's Problems list (`warning ·`,
+  amber) — such as a `goto` into the middle of another stage.
+- **Resume a gate with a form.** A run paused at a typed gate
+  (`pause(reason, decision: T)`) shows a decision form built from `T` — a select
+  per enum, a checkbox per bool, a field per string/number — and **Resume with
+  decision** passes it (`mhl run --resume --decision`). A gate step is labelled
+  `Gate · T` on the diagram.
+
+### Changed
+
+- **Big diagrams read better.** Steps are laid out in the order a run reaches
+  them, so a shared step declared early (a revision step in the entry fragment)
+  sits after its callers instead of above the whole diagram, and a stage keeps
+  its steps in the order they are written. A step's guard `fail(...)` no longer
+  draws an edge to Fail: its ✕ badge lists the conditions on hover (a
+  `goto match`/route arm to `fail` still goes to the Fail terminal). A step that
+  asks again (`goto` itself) gets a short `↻` loop on its side, its conditions on
+  hover, and a long condition label is cut with the full text in its tooltip. On
+  the AgileSpec story workflow: 2386 → 775 px wide, 79 → 42 bends.
+
 ## 0.4.0
 
 ### Fixed

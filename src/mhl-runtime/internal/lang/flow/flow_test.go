@@ -234,6 +234,13 @@ func TestBuildSamples(t *testing.T) {
 			for _, x := range w.Externals {
 				ids[x] = true
 			}
+			// A stage is a goto target by its name; its spans read back too.
+			for _, st := range w.Stages {
+				ids[st.Name] = true
+				if got := slice(src, st.NameSpan); got != st.Name {
+					t.Errorf("%s: stage %s name span = %q", f, st.Name, got)
+				}
+			}
 			for _, n := range w.Nodes {
 				ids[n.ID] = true
 				if got := slice(src, n.NameSpan); got != n.Name {

@@ -401,3 +401,19 @@ func TestDefinitionDigestExtensionProvider(t *testing.T) {
 		t.Fatal("a `from` provider must count toward the digest")
 	}
 }
+
+// A fragment's header stage (v1.12) tags its members with the stage
+// (omitzero): a program without one hashes exactly as before stages
+// existed, while putting the steps in one does change it.
+func TestDefinitionDigestUnchangedByStages(t *testing.T) {
+	src := "type T = { a: string }\npipeline P {\n input x: string\n step S { log(x) }\n}\n"
+	const want = "96013d89ba34542d56d8eec6f5c5c371bc58782fb8d5eff91e38c7593f3f1556"
+	if got := digestOfPipeline(t, src, "P"); got != want {
+		t.Fatalf("digest = %s, want %s (the pre-stage value)", got, want)
+	}
+	staged := "type T = { a: string }\npartial pipeline P stage One {\n input x: string\n entry step S { log(x) }\n}\n"
+	plain := "type T = { a: string }\npartial pipeline P {\n input x: string\n entry step S { log(x) }\n}\n"
+	if digestOfPipeline(t, staged, "P") == digestOfPipeline(t, plain, "P") {
+		t.Fatal("putting a fragment in a stage must change the digest")
+	}
+}

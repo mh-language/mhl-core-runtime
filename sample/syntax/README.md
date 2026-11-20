@@ -38,6 +38,8 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
   (`goto`-capable), including `goto match` for static step dispatch
 - [shorthand/](shorthand/README.md) — `{artifact, path}` object fields and `f(name:)`
   named arguments
+- [stages/](stages/README.md) — named phases: a `partial` fragment's header
+  `stage Name`; `goto Name` enters one at its first member; stages with typed gates
 - [string_methods/](string_methods/README.md) — built-in string methods
 - [type_alias/](type_alias/README.md) — `type X = <TypeExpr>` named aliases for the type
   vocabulary

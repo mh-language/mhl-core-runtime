@@ -1,0 +1,81 @@
+// Stages and typed gates together — the shape of a delivery cycle with
+// human review (AgileSpec's story flow), split by phase: one `partial`
+// fragment per stage under story/, each review a gate whose decision says
+// which phase to go back to. `goto Implementation` / `goto Specification`
+// restart a phase by name, whatever its first step is, from any file.
+//
+//   mhl run review_cycle_with_stages_and_gates.mh --session s1
+//   mhl run review_cycle_with_stages_and_gates.mh --session s1 --resume --decision '{"approved": true}'
+//   mhl run review_cycle_with_stages_and_gates.mh --session s1 --resume --decision '{"action": "Approve"}'
+//   ...
+//
+// Paused at ReviewCode, redo the whole Specification phase instead of
+// answering — the run re-enters DraftSpec with its variables as of the stop
+// (spec_rounds goes on counting), and the pending review gate is dropped:
+//
+//   mhl run review_cycle_with_stages_and_gates.mh --session s1 --resume --from Specification
+import "story/specification.mh"
+import "story/implementation.mh"
+import "story/consolidation.mh"
+
+partial workflow Story {
+    description: "Specifies, implements and consolidates one story, with a human gate per phase."
+
+    var spec_rounds = 0
+    var attempts = 0
+    var feedback = []
+    var status = "in_progress"
+
+    output: { status, spec_rounds, attempts, feedback }
+
+    entry step Start {
+        goto Specification
+    }
+
+    // Outside every phase: where a rejection ends.
+    step Rejected {
+        self.status = "rejected"
+        complete()
+    }
+}
+
+test review_cycle {
+    describe waits_at_the_first_phase_gate {
+        var r = Story.run()
+        are_equal(r.state, "paused")
+        are_equal(r.awaiting.step, "ApproveSpec")
+        are_equal(r.awaiting.type, "SpecReview")
+    }
+
+    describe code_revision_restarts_the_implementation_phase {
+        var r = Story.run(decisions: [
+            {approved: true},
+            {action: "ReviseCode", feedback: "handle empty input"},
+            {action: "Approve"}
+        ])
+        are_equal(r.state, "completed")
+        are_equal(r.output.status, "done")
+        are_equal(r.output.spec_rounds, 1)
+        are_equal(r.output.attempts, 2)
+        are_equal(r.output.feedback, ["handle empty input"])
+    }
+
+    describe spec_revision_goes_back_two_phases {
+        var r = Story.run(decisions: [
+            {approved: true},
+            {action: "ReviseSpec"},
+            {approved: false},
+            {approved: true},
+            {action: "Approve"}
+        ])
+        are_equal(r.output.spec_rounds, 3)
+        are_equal(r.output.attempts, 2)
+        are_equal(r.output.status, "done")
+    }
+
+    describe rejection_leaves_every_phase {
+        var r = Story.run(decisions: [{approved: true}, {action: "Reject"}])
+        are_equal(r.output.status, "rejected")
+        is_false(r.executed.contains("Consolidate"))
+    }
+}

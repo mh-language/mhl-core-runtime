@@ -9,6 +9,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -142,7 +143,7 @@ func runPipeline(args []string, out io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]")
+		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force] [--decision <json> | --from <stage>]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]")
 	}
 	if err := loadEnvFiles(envFiles); err != nil {
 		return err
@@ -155,6 +156,8 @@ func runPipeline(args []string, out io.Writer) error {
 	format := "text"
 	sessionFlag := ""
 	workflow := ""
+	var decision any
+	from := ""
 	inputs := map[string]any{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -185,6 +188,23 @@ func runPipeline(args []string, out io.Writer) error {
 			}
 			i++
 			sessionFlag = args[i]
+		case "--decision":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--decision requires a value: JSON (`{\"action\": \"Approve\"}`, `true`) or a bare string")
+			}
+			i++
+			// JSON when it parses (an object, a number, a bool, a quoted
+			// string), else the text itself — `--decision Approve` for an
+			// enum or string decision.
+			if err := json.Unmarshal([]byte(args[i]), &decision); err != nil {
+				decision = args[i]
+			}
+		case "--from":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--from requires a stage name")
+			}
+			i++
+			from = args[i]
 		case "--input":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--input requires a key=value argument")
@@ -202,6 +222,12 @@ func runPipeline(args []string, out io.Writer) error {
 
 	if force && !resume {
 		return fmt.Errorf("--force only applies with --resume")
+	}
+	if decision != nil && !resume {
+		return fmt.Errorf("--decision only applies with --resume (it answers the gate a paused run waits at)")
+	}
+	if from != "" && !resume {
+		return fmt.Errorf("--from only applies with --resume (it redoes a stage of a stopped run)")
 	}
 	if dryRun {
 		if resume {
@@ -239,6 +265,8 @@ func runPipeline(args []string, out io.Writer) error {
 		Session:     sessionFlag,
 		Resume:      resume,
 		ForceResume: force,
+		Decision:    decision,
+		From:        from,
 		Out:         runOut,
 	}
 	var events *eventWriter
@@ -262,7 +290,9 @@ func runPipeline(args []string, out io.Writer) error {
 	}
 
 	if !res.Loop {
-		if res.Resumed {
+		if res.Resumed && from != "" {
+			fmt.Fprintf(out, "resumed pipeline %q at stage %q; skipped %d completed step(s)\n", res.PipelineName, from, len(res.Skipped))
+		} else if res.Resumed {
 			fmt.Fprintf(out, "resumed pipeline %q; skipped %d completed step(s)\n", res.PipelineName, len(res.Skipped))
 		}
 		fmt.Fprintf(out, "executed %d step(s)\n", len(res.Executed))
@@ -271,6 +301,7 @@ func runPipeline(args []string, out io.Writer) error {
 		}
 		if res.Paused {
 			printPauseReason(out, res.PipelineName, res.PauseReason)
+			printAwaiting(out, res.Awaiting)
 		}
 		return nil
 	}
@@ -293,6 +324,19 @@ func printBreakReason(out io.Writer, name string, reason any) {
 		fmt.Fprintf(out, "%q stopped by break: %v\n", name, runtime.RedactValue(reason))
 	} else {
 		fmt.Fprintf(out, "%q stopped by break\n", name)
+	}
+}
+
+// printAwaiting tells how to answer the gate a paused run waits at.
+func printAwaiting(out io.Writer, a *execsvc.Awaiting) {
+	if a == nil {
+		return
+	}
+	fmt.Fprintf(out, "awaiting a decision of type %s at %q: resume with --resume --decision '<json>'\n", a.Type, a.Step)
+	if a.Schema != nil {
+		if b, err := json.Marshal(a.Schema); err == nil {
+			fmt.Fprintf(out, "decision schema: %s\n", b)
+		}
 	}
 }
 
@@ -502,12 +546,27 @@ func runLint(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	errs, warns := 0, 0
 	for _, f := range findings {
 		fmt.Fprintln(out, f.String())
+		if f.IsWarning() {
+			warns++
+		} else {
+			errs++
+		}
 	}
-	if len(findings) > 0 {
-		fmt.Fprintf(out, "%d problem(s) found\n", len(findings))
-		return fmt.Errorf("%d problem(s) found", len(findings))
+	// Only errors fail the command; a warning is advice.
+	if errs > 0 {
+		msg := fmt.Sprintf("%d problem(s) found", errs)
+		if warns > 0 {
+			msg += fmt.Sprintf(" (and %d warning(s))", warns)
+		}
+		fmt.Fprintln(out, msg)
+		return fmt.Errorf("%s", msg)
+	}
+	if warns > 0 {
+		fmt.Fprintf(out, "No problems found; %d warning(s).\n", warns)
+		return nil
 	}
 	fmt.Fprintln(out, "No problems found.")
 	return nil

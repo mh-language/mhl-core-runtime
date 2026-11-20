@@ -67,3 +67,11 @@ mhl run sample/syntax/pipeline_vs_workflow/goto_match_artifact_review.mh --sessi
 mhl run sample/syntax/pipeline_vs_workflow/goto_match_artifact_review.mh --session review-brief --resume --input feedback=change-title
 mhl run sample/syntax/pipeline_vs_workflow/goto_match_artifact_review.mh --session review-brief --resume --input approved=true
 ```
+- [typed_gate_review_loop.mh](typed_gate_review_loop.mh) — a typed gate,
+  `var d = pause(reason, decision: Review)`: the run reports `awaiting` (the step and
+  `Review` as JSON Schema), `--resume --decision '<json>'` answers it, and `goto match
+  d.action` branches on the answer. Each decision answers one round only — Revise loops back
+  and the next round pauses again. Its tests drive it with `ReviewLoop.run(decisions: [...])`.
+- [two_gates_in_one_step.mh](two_gates_in_one_step.mh) — two gates in one step: a resume
+  re-enters the step from its first line, and each gate already answered in that execution
+  returns its answer again (replayed from the checkpoint), so the run reaches the next gate.

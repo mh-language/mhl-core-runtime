@@ -10,6 +10,57 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+### Added
+
+- **`mhl graph --merged` shows a `partial` workflow whole.** Every fragment in the file's
+  import closure (or in `--root <entry.mh>`'s) is joined in run order: one start edge to the
+  `entry` step, and a fragment's last step falling through into the next fragment's first.
+  A node, input, var, prop or route from another fragment carries that file's absolute path
+  in `"file"`, its spans indexing that file.
+
+- **`stage` — named phases.** A `partial` fragment names its phase on its header —
+  `partial workflow Story stage Implementation { ... }` — putting every step and parallel
+  group of the file in it, with no block and no extra indentation: a workflow that wants
+  stages is split by phase, one fragment per stage. The steps run exactly as without it —
+  same step names, same checkpoints — and `goto Name` enters the stage at its first member,
+  from any fragment. The stage reaches observers: `StepContext.stage` (optional field; `null`
+  outside a stage) in `step_start`/`step_end`, `stage` on `--format jsonl` step events (and the
+  stage list on `run_start`), `run/status`, the `mhl://workflow/<name>` manifest, the
+  `--dry-run` plan (`named_stages` in its JSON) and `mhl graph` (`stages`, `Node.stage`).
+  `mhl lint` rejects a stage on a declaration that is not `partial`, a stage named like a
+  step, group or route, and fragments sharing a stage that are not imported consecutively.
+  Programs without a stage keep their `DefinitionDigest`.
+- **`mhl run --resume --from <stage>` redoes a phase.** A stopped run (paused, failed or
+  cancelled) re-enters the named stage at its first step instead of the step it stopped at,
+  with the variables as of the stop — nothing rolled back — and any gate it waited at dropped.
+  Also `run/resume {runId, from}` and the `mhl_run_resume` tool's `from`. Refused before
+  anything runs (`invalid_from` / `-32602`) for a name that is not a stage, with a decision,
+  or without a stopped run.
+- **Lint warnings.** A finding may now be a `warning:` — advice that `mhl lint` and
+  `mhl run --dry-run` list without failing (the language server shows it as a warning,
+  `mhl graph` as `"severity": "warning"`). The first one: a `goto` from outside a stage to
+  one of its steps other than the first — prefer `goto <stage>`, so other fragments depend
+  on the phase's name and the stage decides where it begins.
+- **Typed gates: `pause(reason, decision: T)`.** A pause that returns the decision a resume
+  passes. The run reports `awaiting` — the step and `T` (a declared `type`/`enum`, or
+  `string`/`number`/`bool`) as JSON Schema — in `mhl run --format json|jsonl`, `run/status`
+  and a paused `tools/call`. `mhl run --resume --decision '<json>'` and
+  `run/resume {runId, decision}` answer it: checked against `T` before anything runs (a
+  wrong one is refused with the run still paused: `invalid_decision` / `-32602`), then
+  returned by that gate — once, so the next gate reached pauses again and an old approval
+  never answers a later round. In a test, `Name.run(decisions: [...])` answers each gate in
+  turn. `mhl lint` checks `T`, and rejects a gate in a `loop` workflow (not supported yet).
+  A plain `pause(reason)` is unchanged. `mhl graph` lists a step's gate types in
+  `decisions`. A step may hold several gates: re-entered on resume, the gates it already
+  passed return their answers again (`Checkpoint.Gate.answered`) instead of pausing.
+
+### Fixed
+
+- **`make functional-test` lints `sample/` too**, which caught a sample whose fragment fell
+  through into another file.
+- **`mhl graph` no longer draws a start edge into a `partial` fragment without the `entry`
+  step.** A run never starts there; the edge pointed at whichever step came first.
+
 ## 1.12.0 — 2026-11-20
 
 ### Added

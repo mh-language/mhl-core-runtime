@@ -39,6 +39,13 @@ pub struct RunRequest {
     #[serde(default)]
     pub force: bool,
     pub session: Option<String>,
+    /// With `resume`: the JSON answer to the gate the run paused at
+    /// (`mhl run --decision`).
+    #[serde(default)]
+    pub decision: Option<String>,
+    /// With `resume`: a stage of the stopped run to redo (`mhl run --from`).
+    #[serde(default)]
+    pub from: Option<String>,
 }
 
 /// The `mhl` argument list for a run request.
@@ -57,6 +64,14 @@ pub fn run_args(req: &RunRequest) -> Vec<String> {
         args.push("--resume".into());
         if req.force {
             args.push("--force".into());
+        }
+        if let Some(d) = req.decision.as_deref() {
+            args.push("--decision".into());
+            args.push(d.to_string());
+        }
+        if let Some(stage) = req.from.as_deref().filter(|s| !s.is_empty()) {
+            args.push("--from".into());
+            args.push(stage.to_string());
         }
     }
     if let Some(s) = req.session.as_deref().filter(|s| !s.is_empty()) {
@@ -172,6 +187,8 @@ mod tests {
             resume: true,
             force: false,
             session: Some("abc".into()),
+            decision: None,
+            from: None,
         };
         assert_eq!(
             run_args(&req),
@@ -191,6 +208,45 @@ mod tests {
                 "approved=true"
             ]
         );
+    }
+
+    #[test]
+    fn passes_a_decision_only_on_resume() {
+        let mut req = RunRequest {
+            cwd: ".".into(),
+            path: "w.mh".into(),
+            workflow: None,
+            inputs: vec![],
+            resume: true,
+            force: false,
+            session: None,
+            decision: Some(r#"{"action":"Approve"}"#.into()),
+            from: None,
+        };
+        assert_eq!(
+            run_args(&req)[4..],
+            ["--resume", "--decision", r#"{"action":"Approve"}"#]
+        );
+        req.resume = false;
+        assert!(!run_args(&req).contains(&"--decision".to_string()));
+    }
+
+    #[test]
+    fn passes_a_stage_to_redo_only_on_resume() {
+        let mut req = RunRequest {
+            cwd: ".".into(),
+            path: "w.mh".into(),
+            workflow: None,
+            inputs: vec![],
+            resume: true,
+            force: false,
+            session: None,
+            decision: None,
+            from: Some("Build".into()),
+        };
+        assert_eq!(run_args(&req)[4..], ["--resume", "--from", "Build"]);
+        req.resume = false;
+        assert!(!run_args(&req).contains(&"--from".to_string()));
     }
 
     #[test]

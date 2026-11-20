@@ -539,6 +539,11 @@ func checkPipelineGoto(file string, prog *ast.Program) []Finding {
 			if m.Parallel != nil {
 				steps[m.Parallel.Name] = true
 			}
+			// So is a named stage, by its name: the run enters it at its
+			// first member.
+			if st := memberStage(m); st != "" {
+				steps[st] = true
+			}
 		}
 		for _, route := range routes {
 			findings = append(findings, checkRouteArms(file, route)...)

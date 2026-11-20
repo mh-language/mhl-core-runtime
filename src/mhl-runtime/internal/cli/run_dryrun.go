@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
@@ -31,24 +32,31 @@ func dryRunPipeline(out io.Writer, file, workflow string, inputs map[string]any,
 	}
 
 	warnings := make([]string, 0, len(findings))
+	lintErrors := 0
 	for _, f := range findings {
-		if f.Line > 0 {
-			warnings = append(warnings, fmt.Sprintf("%s:%d:%d %s", f.File, f.Line, f.Column, f.Message))
+		msg := f.Message
+		if f.IsWarning() {
+			msg = "warning: " + msg // listed, but not a problem: it does not block
 		} else {
-			warnings = append(warnings, fmt.Sprintf("%s %s", f.File, f.Message))
+			lintErrors++
+		}
+		if f.Line > 0 {
+			warnings = append(warnings, fmt.Sprintf("%s:%d:%d %s", f.File, f.Line, f.Column, msg))
+		} else {
+			warnings = append(warnings, fmt.Sprintf("%s %s", f.File, msg))
 		}
 	}
-	problems := len(warnings) + len(ins.MissingInputs) + len(ins.UnknownInputs) + len(ins.InvalidInputs)
+	problems := lintErrors + len(ins.MissingInputs) + len(ins.UnknownInputs) + len(ins.InvalidInputs)
 	blocked := problems > 0
 
 	if format == "json" {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(struct {
-			OK       bool                  `json:"ok"`
-			DryRun   bool                  `json:"dry_run"`
-			Warnings []string              `json:"warnings,omitempty"`
-			Note     string                `json:"note"`
+			OK       bool     `json:"ok"`
+			DryRun   bool     `json:"dry_run"`
+			Warnings []string `json:"warnings,omitempty"`
+			Note     string   `json:"note"`
 			*execsvc.Inspection
 		}{OK: !blocked, DryRun: true, Warnings: warnings, Note: dryRunScope, Inspection: ins})
 		if blocked {
@@ -130,6 +138,12 @@ func printDryRunText(out io.Writer, ins *execsvc.Inspection, warnings []string) 
 	}
 	if ins.HasOutputProjection {
 		fmt.Fprintln(out, "  output: explicit projection declared")
+	}
+	if len(ins.NamedStages) > 0 {
+		fmt.Fprintln(out, "  stages:")
+		for _, st := range ins.NamedStages {
+			fmt.Fprintf(out, "    %s: %s\n", st.Name, strings.Join(st.Steps, ", "))
+		}
 	}
 	if len(ins.Goto) > 0 {
 		fmt.Fprintln(out, "  goto edges:")

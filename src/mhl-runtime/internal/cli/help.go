@@ -32,7 +32,7 @@ Commands:
   run <file.mh> [flags]      Execute a pipeline or workflow
   test <file.mh|dir>         Run every test { ... } block in a file or directory
   lint [dir]                 Statically check .mh files (default ".")
-  graph <file.mh> [--stdin]  Print a file's workflow control-flow graph as JSON
+  graph <file.mh> [--stdin] [--merged]  Print a file's workflow control-flow graph as JSON
   lsp                        Start the language server over stdio (used by vscode-mhl)
   serve <mcp|a2a> [flags]    Expose workflows as MCP tools or A2A skills
   pack <dir> -o <file>       Seal a workflow directory into an encrypted pack
@@ -119,6 +119,13 @@ Flags:
   --input key=value     Bind a pipeline input (repeatable)
   --resume              Resume from the last saved checkpoint
   --force               With --resume, proceed even if the pipeline shape changed
+  --decision <json>     With --resume, answer the gate the run paused at
+                        (pause(..., decision: T)): JSON of type T, or a bare
+                        string. Checked before anything runs; answers that
+                        gate once. The paused run's output names T ("awaiting").
+  --from <stage>        With --resume, redo a stage of the stopped run: re-enter
+                        it at its first step, with the variables as of the stop
+                        (nothing rolled back) and any pending gate dropped.
   --session <id>        Reuse a named session for durable state
   --format text|json|jsonl
                         Output format (default "text"); json emits one typed
@@ -132,6 +139,8 @@ Flags:
 
   mhl run main.mh --input name=World
   mhl run pipe.mh --resume --force
+  mhl run pipe.mh --resume --decision '{"action": "Approve"}'
+  mhl run pipe.mh --resume --from Implementation
   mhl run pipe.mh --dry-run --format json
 `,
 	"test": `mhl test <file.mh|dir> [--env-file <path> ...]
@@ -167,7 +176,7 @@ or misconfigured agents, syntax errors — each with a file and line.
   mhl lint
   mhl lint ./workflows
 `,
-	"graph": `mhl graph <file.mh> [--stdin]
+	"graph": `mhl graph <file.mh> [--stdin] [--merged [--root <entry.mh>]]
 
 Print the control-flow graph of every workflow/pipeline in file.mh as one
 JSON object: steps and parallel groups (nodes), fall-through, goto, goto
@@ -179,8 +188,14 @@ With --stdin the source is read from stdin and file.mh only names it
 "ok": false with its diagnostics and still exits 0. Meant for editors
 and visual workflow tools.
 
+--merged shows each partial workflow whole: the fragments in file.mh's
+import closure (or entry.mh's, with --root) are joined in run order, and a
+node, input, var, prop or route from another fragment carries that file's
+absolute path in "file" (its spans index that file).
+
   mhl graph main.mh
   cat main.mh | mhl graph main.mh --stdin
+  mhl graph story/review.mh --merged --root story.mh
 `,
 	"lsp": `mhl lsp
 

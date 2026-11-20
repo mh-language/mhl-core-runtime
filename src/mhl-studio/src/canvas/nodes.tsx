@@ -1,13 +1,13 @@
 import { memo, useMemo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { Merge, Timer } from "lucide-react";
-import { importedDeclarations, openFile, revealSpan } from "../app/controller";
+import { importedDeclarations, openFile, revealSpan, startRun } from "../app/controller";
 import { useStore } from "../app/store";
 import { CALL_ICON, CALL_ICON_FALLBACK, EXIT_BADGE, StateBadge, type BadgeKind } from "../lib/icons";
 import type { CallSite, Declaration } from "../lib/types";
 import type { ImportOrigin } from "../sync/imports";
 import { useImportOrigins } from "./ImportsCard";
-import { ARM_ROW_H, MAX_BOXES, MERGE_H, type ExternalNodeData, type RouteNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
+import { ARM_ROW_H, MAX_BOXES, MERGE_H, type ExternalNodeData, type RouteNodeData, type StageNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
 
 /** Declaration kind by name — this file's and what it imports — to pick each call box's icon. */
 function useDeclKinds(): Record<string, Declaration["kind"]> {
@@ -22,7 +22,7 @@ function useDeclKinds(): Record<string, Declaration["kind"]> {
 }
 
 /** One action box: the call a step makes, like a Step Functions task. Click shows it in the code. */
-function CallBox({ call, kind, origin }: { call: CallSite; kind?: Declaration["kind"]; origin?: ImportOrigin }) {
+function CallBox({ call, kind, origin, at }: { call: CallSite; kind?: Declaration["kind"]; origin?: ImportOrigin; at?: string }) {
   const args = call.text.slice(call.receiver.length + 1 + call.method.length);
   const file = origin?.from.split("/").pop()?.replace(/\.mh$/, "");
   const Icon = CALL_ICON[kind ?? ""] ?? CALL_ICON_FALLBACK;
@@ -32,7 +32,7 @@ function CallBox({ call, kind, origin }: { call: CallSite; kind?: Declaration["k
       title={`${kind ?? "call"}: ${call.text}\nClick to show it in the code`}
       onClick={(e) => {
         e.stopPropagation();
-        revealSpan(call.span);
+        void revealSpan(call.span, at);
       }}
     >
       <Icon className="call-icon" size={12} strokeWidth={2} aria-hidden="true" />
@@ -56,8 +56,27 @@ function CallBox({ call, kind, origin }: { call: CallSite; kind?: Declaration["k
   );
 }
 
+/** The file chip of a node another fragment declares (a merged partial workflow): read-only here, click opens it. */
+export function FragmentChip({ file }: { file: string }) {
+  const base = file.split(/[\\/]/).pop() ?? file;
+  return (
+    <button
+      className="call-origin fragment-chip"
+      title={`declared in ${file}\nEdit it there — click to open it`}
+      onClick={(e) => {
+        e.stopPropagation();
+        void openFile(file);
+      }}
+    >
+      ↗{base.replace(/\.mh$/, "")}
+    </button>
+  );
+}
+
 function kindOf(data: StepNodeData): { kind: BadgeKind; label: string } {
   const n = data.node;
+  // A gate (`pause(..., decision: T)`) is the step's defining trait, even when it also branches on the answer.
+  if (n.decisions?.length) return { kind: "approval", label: `Gate · ${n.decisions.join(", ")}` };
   if (n.choice) return { kind: "choice", label: `Choice · ${n.choice.subject}` };
   if (n.calls.length) return { kind: "task", label: "Task" };
   if (n.exits.includes("pause")) return { kind: "approval", label: "Human approval" };
@@ -96,8 +115,10 @@ export const StepNode = memo(function StepNode({ id, data, selected }: NodeProps
       {n.timeout && <TimeoutBadge timeout={n.timeout} />}
       {n.exits.map((x) => {
         const b = EXIT_BADGE[x];
+        // A guard's fail(...) has no edge: its conditions are listed here.
+        const when = x === "fail" && data.failsWhen?.length ? `${b?.title ?? "can fail the run"} when:\n${data.failsWhen.join("\n")}` : b?.title;
         return (
-          <span key={x} className={`badge icon ${b?.cls ?? ""}`} title={b?.title}>
+          <span key={x} className={`badge icon ${b?.cls ?? ""}`} title={when}>
             {b ? <b.Icon size={10} strokeWidth={2.25} aria-label={x} /> : x}
           </span>
         );
@@ -105,18 +126,19 @@ export const StepNode = memo(function StepNode({ id, data, selected }: NodeProps
     </span>
   );
   return (
-    <div className={`node step ${sites.length ? "has-calls" : ""} ${selected ? "selected" : ""} ${status ? `run-${status}` : ""} ${dropping ? "drop-target" : ""} ${focusCls}`}>
+    <div className={`node step ${sites.length ? "has-calls" : ""} ${selected ? "selected" : ""} ${status ? `run-${status}` : ""} ${dropping ? "drop-target" : ""} ${focusCls} ${n.file ? "foreign" : ""}`}>
       <Handle type="target" position={Position.Top} />
       <div className="node-title">
         <StateBadge kind={k.kind} size={18} />
         <span className="node-name">{n.name}</span>
         {n.entry && <span className="badge" title="entry step">entry</span>}
+        {n.file && <FragmentChip file={n.file} />}
         {sites.length > 0 && badges}
       </div>
       {sites.length > 0 ? (
         <div className="call-boxes">
           {sites.slice(0, MAX_BOXES).map((c, i) => (
-            <CallBox key={i} call={c} kind={kinds[c.receiver]} origin={origins.get(c.receiver)} />
+            <CallBox key={i} call={c} kind={kinds[c.receiver]} origin={n.file ? undefined : origins.get(c.receiver)} at={n.file} />
           ))}
           {sites.length > MAX_BOXES && <div className="call-more">+{sites.length - MAX_BOXES} more</div>}
         </div>
@@ -148,12 +170,13 @@ export const ParallelNode = memo(function ParallelNode({ id, data, selected }: N
         : statuses[id];
   const mergeStatus = merge ? statuses[merge.stepName] : undefined;
   return (
-    <div className={`node parallel ${selected ? "selected" : ""} ${status ? `run-${status}` : ""}`}>
+    <div className={`node parallel ${selected ? "selected" : ""} ${status ? `run-${status}` : ""} ${data.node.file ? "foreign" : ""}`}>
       <Handle type="target" position={Position.Top} />
       <div className="node-title">
         <StateBadge kind="parallel" size={18} />
         <span className="node-name">{data.node.name}</span>
         <span className="node-kind">Parallel</span>
+        {data.node.file && <FragmentChip file={data.node.file} />}
         {data.node.timeout && <TimeoutBadge timeout={data.node.timeout} />}
         {!!data.node.vars?.length && (
           <span className="badge mono" title={`the group's own vars, alive only while it runs:\n${data.node.vars.map((v) => v.name).join(", ")}`}>
@@ -172,7 +195,7 @@ export const ParallelNode = memo(function ParallelNode({ id, data, selected }: N
           }
           onClick={(e) => {
             e.stopPropagation();
-            revealSpan(merge.span);
+            void revealSpan(merge.span, data.node.file);
           }}
         >
           <Merge className="merge-icon" size={13} strokeWidth={2} aria-hidden="true" />
@@ -251,4 +274,58 @@ export const RouteNode = memo(function RouteNode({ data }: NodeProps<Node<RouteN
   );
 });
 
-export const nodeTypes = { step: StepNode, parallel: ParallelNode, terminal: TerminalNode, external: ExternalNode, route: RouteNode };
+/**
+ * A stage — a `partial` fragment's header `stage Name`: a titled box around
+ * that fragment's steps — a named phase, as a folder groups jobs. Its status is its steps' during a run;
+ * double-click shows it in the code. A `goto Name` edge lands on it.
+ */
+export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageNodeData>>) {
+  const statuses = useStore((s) => s.run.statuses);
+  // A stopped run (paused or failed) of this file can redo the stage: `--resume --from`.
+  const canRedo = useStore((s) => {
+    const r = s.run;
+    return !r.running && !!r.session && r.path === s.activePath && !!r.result && (!!r.result.paused || !r.result.ok);
+  });
+  const ks = data.steps.map((k) => statuses[k]).filter(Boolean);
+  const status = ks.includes("failed")
+    ? "failed"
+    : ks.includes("running")
+      ? "running"
+      : ks.includes("paused")
+        ? "paused"
+        : ks.length === data.steps.length && ks.every((k) => k === "succeeded")
+          ? "succeeded"
+          : undefined;
+  const s = data.stage;
+  return (
+    <div
+      className={`node stage ${status ? `run-${status}` : ""} ${s.file ? "foreign" : ""}`}
+      title={`stage ${s.name}: ${s.members.join(", ")}\ngoto ${s.name} enters it at ${s.members[0]}. Double-click to show it in the code.`}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        void revealSpan(s.span, s.file);
+      }}
+    >
+      <Handle type="target" position={Position.Top} />
+      <div className="stage-title">
+        <span className="node-kind">Stage</span>
+        <span className="node-name">{s.name}</span>
+        {canRedo && (
+          <button
+            className="call-origin stage-redo"
+            title={`Redo stage ${s.name}: resume the stopped run at ${s.members[0]}, with its variables as of the stop (mhl run --resume --from ${s.name})`}
+            onClick={(e) => {
+              e.stopPropagation();
+              void startRun([], { resume: true, from: s.name });
+            }}
+          >
+            ↻ redo
+          </button>
+        )}
+        {s.file && <FragmentChip file={s.file} />}
+      </div>
+    </div>
+  );
+});
+
+export const nodeTypes = { step: StepNode, parallel: ParallelNode, terminal: TerminalNode, external: ExternalNode, route: RouteNode, stage: StageNode };

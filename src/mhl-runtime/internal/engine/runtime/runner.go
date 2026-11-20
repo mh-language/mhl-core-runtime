@@ -86,7 +86,10 @@ type RunResult struct {
 	BreakReason any
 	Paused      bool
 	PauseReason any
-	FinalVars   map[string]any
+	// PauseGate is set when the pause is a typed one (Gate): the decision the
+	// run now waits for.
+	PauseGate *Gate
+	FinalVars map[string]any
 }
 
 // maxStepVisits caps how many times Run may (re-)enter the same step name,
@@ -140,6 +143,28 @@ type Runner struct {
 	// forceResume downgrades a resume-time definition-digest mismatch from an
 	// error to a logged warning (the operator asserting the edit is safe).
 	forceResume bool
+	// resumeFrom, when set, is a named stage a resume re-enters at its first
+	// member instead of the checkpoint's NextStep (WithResumeFrom).
+	resumeFrom string
+}
+
+// WithResumeFrom makes a resume re-enter the named stage stage at its first
+// member (`mhl run --resume --from <stage>`), redoing the phase, instead of
+// continuing at the step the run stopped at. The variables are the
+// checkpoint's — the state as of the stop, nothing rolled back — and a gate
+// the run was waiting at is dropped: the phase runs again and reaches it
+// anew. Run fails when the stage is unknown or there is no checkpoint. ""
+// keeps the plain resume. Returns r for chaining.
+func (r *Runner) WithResumeFrom(stage string) *Runner {
+	r.resumeFrom = stage
+	return r
+}
+
+// Checkpoint returns the checkpoint a resume of pipeline would continue
+// from (found false when there is none), without running anything — how a
+// caller checks what a suspended run waits for (its Gate) up front.
+func (r *Runner) Checkpoint(pipeline string) (*Checkpoint, bool, error) {
+	return r.checkpoints().Load(pipeline)
 }
 
 // NewRunner returns a Runner backed by a Store rooted at root. It is
@@ -154,7 +179,7 @@ func NewRunner(root string) *Runner {
 // clobber each other's checkpoint. An empty id returns an unscoped runner.
 func (r *Runner) Session(id string) *Runner {
 	s := r.Store.Session(id)
-	return &Runner{Store: s, cp: s, SessionID: id, Out: r.Out, definitionDigest: r.definitionDigest, forceResume: r.forceResume}
+	return &Runner{Store: s, cp: s, SessionID: id, Out: r.Out, definitionDigest: r.definitionDigest, forceResume: r.forceResume, resumeFrom: r.resumeFrom}
 }
 
 // WithStateStore routes this runner's checkpoint and result persistence
@@ -261,6 +286,9 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 		if err != nil {
 			return result, err
 		}
+		if r.resumeFrom != "" && !found {
+			return result, fmt.Errorf("runtime: no stopped run of %q to resume from stage %q", p.Name, r.resumeFrom)
+		}
 		if found {
 			if err := cp.CompatibleWith(r.definitionDigest); err != nil {
 				if r.forceResume && errors.Is(err, ErrCheckpointDefinitionMismatch) {
@@ -271,16 +299,35 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 					return result, err
 				}
 			}
-			if cp.NextStep == "" {
+			entry := ""
+			if r.resumeFrom != "" {
+				var known bool
+				if entry, known = p.StageEntry[r.resumeFrom]; !known {
+					return result, fmt.Errorf("runtime: %q has no stage %q", p.Name, r.resumeFrom)
+				}
+			}
+			if cp.NextStep == "" && entry == "" {
 				// The prior run had already reached its final step.
 				return result, nil
 			}
 			current, ok = cp.NextStep, true
+			if entry != "" {
+				current = entry
+			}
 			if cp.Variables != nil {
 				ctx.Vars = cp.Variables
 			}
 			result.Resumed = true
 			result.Skipped = append([]string{}, cp.CompletedSteps...)
+			if entry != "" {
+				// The stage's own steps run again: they are not skipped.
+				result.Skipped = result.Skipped[:0]
+				for _, s := range cp.CompletedSteps {
+					if p.StageOf[s] != r.resumeFrom {
+						result.Skipped = append(result.Skipped, s)
+					}
+				}
+			}
 			resumedFromCheckpoint = true
 		}
 	}
@@ -339,11 +386,12 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 				CompletedSteps: append([]string{}, completedBefore...),
 				Variables:      copyVars(ctx.Vars),
 				TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
+				Gate:           pause.Gate,
 			}
 			if saveErr := r.save(cp); saveErr != nil {
 				return result, saveErr
 			}
-			result.Paused, result.PauseReason = true, pause.Reason
+			result.Paused, result.PauseReason, result.PauseGate = true, pause.Reason, pause.Gate
 			result.FinalVars = copyVars(ctx.Vars)
 			return result, nil
 
@@ -371,7 +419,9 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 		case errors.As(err, &gt):
 			// A target is a step, or a whole `parallel` group by its name
 			// (a stage: all its branches run, then the barrier) — never one
-			// branch step of a group.
+			// branch step of a group. A named stage's name enters it at its
+			// first member.
+			gt = &GotoSignal{Target: p.StageTarget(gt.Target)}
 			_, isStage := p.stageByName(gt.Target)
 			if !isStage && !p.hasStep(gt.Target) {
 				return result, fmt.Errorf("runtime: goto target %q is not a step or parallel group of pipeline %q", gt.Target, p.Name)

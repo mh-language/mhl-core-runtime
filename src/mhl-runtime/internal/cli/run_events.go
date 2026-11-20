@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
 	"github.com/mh-language/mhl-core-runtime/internal/features/auth"
 )
@@ -16,9 +17,9 @@ import (
 // dashboard, a CI step) can
 // follow a run live instead of waiting for the final result.
 //
-//	{"type":"run_start","pipeline","session","steps":[...],"ts"}
-//	{"type":"step_start","step","index","total","ts"}
-//	{"type":"step_end","step","index","status","target?","error?","ms","ts"}
+//	{"type":"run_start","pipeline","session","steps":[...],"stages?":[{name,steps}],"ts"}
+//	{"type":"step_start","step","index","total","stage?","ts"}
+//	{"type":"step_end","step","index","status","target?","error?","stage?","ms","ts"}
 //	{"type":"log","text","ts"}          one per line the run prints
 //	{"type":"result", ...}              the --format json object, last line
 //
@@ -28,6 +29,10 @@ type eventWriter struct {
 	mu      sync.Mutex
 	out     io.Writer
 	partial bytes.Buffer // log text not yet terminated by a newline
+	// stages are the pipeline's named stages, stageOf the stage of each
+	// step: set once (OnStages) before any step event.
+	stages  []runtime.NamedStage
+	stageOf map[string]string
 }
 
 func newEventWriter(out io.Writer) *eventWriter { return &eventWriter{out: out} }
@@ -81,14 +86,33 @@ func (w *eventWriter) flush() {
 // hook wires the writer into an execsvc request.
 func (w *eventWriter) hook(req *execsvc.Request) {
 	req.Out = w
+	req.OnStages = func(stages []runtime.NamedStage) {
+		w.stages, w.stageOf = stages, map[string]string{}
+		for _, st := range stages {
+			for _, s := range st.Steps {
+				w.stageOf[s] = st.Name
+			}
+		}
+	}
 	req.OnStart = func(pipeline, session string, steps []string) {
-		w.send(map[string]any{"type": "run_start", "pipeline": pipeline, "session": session, "steps": steps, "ts": eventTime()})
+		ev := map[string]any{"type": "run_start", "pipeline": pipeline, "session": session, "steps": steps, "ts": eventTime()}
+		if len(w.stages) > 0 {
+			ev["stages"] = w.stages
+		}
+		w.send(ev)
 	}
 	req.OnStep = func(step string, index, total int) {
-		w.send(map[string]any{"type": "step_start", "step": step, "index": index, "total": total, "ts": eventTime()})
+		ev := map[string]any{"type": "step_start", "step": step, "index": index, "total": total, "ts": eventTime()}
+		if st := w.stageOf[step]; st != "" {
+			ev["stage"] = st
+		}
+		w.send(ev)
 	}
 	req.OnStepEnd = func(step string, index int, status, target string, err error, elapsed time.Duration) {
 		ev := map[string]any{"type": "step_end", "step": step, "index": index, "status": status, "ms": elapsed.Milliseconds(), "ts": eventTime()}
+		if st := w.stageOf[step]; st != "" {
+			ev["stage"] = st
+		}
 		if target != "" {
 			ev["target"] = target
 		}

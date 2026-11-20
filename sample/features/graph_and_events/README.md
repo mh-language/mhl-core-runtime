@@ -5,6 +5,12 @@ visual designers, dashboards, CI: `mhl graph`, which turns a `.mh` file into its
 graph, and `mhl run --format jsonl`, which streams a run as events. Neither is needed to write or
 run `.mh`; the mhl IDE (`src/mhl-ide`) is one consumer of both.
 
+- [review_flow.mh](review_flow.mh) + [review/gate.mh](review/gate.mh) — a `partial` workflow
+  split in two files. `mhl graph review/gate.mh` alone has no start edge (the run never starts
+  there); `mhl graph review_flow.mh --merged` draws the whole workflow in run order, each node
+  from the other file carrying its absolute path in `"file"` — and `mhl graph review/gate.mh
+  --merged --root review_flow.mh` the same, from the other fragment's side. Its `test` runs
+  the gate both ways.
 - [order_triage.mh](order_triage.mh) — one workflow using every shape the graph draws:
   fall-through between steps, a `parallel` group, `goto match` (with a `_ -> fail(...)` arm), a
   reusable `route`, a guarded `pause(...)` gate, the `complete()` / `break` terminals, and a

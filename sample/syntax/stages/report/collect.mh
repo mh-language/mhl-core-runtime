@@ -1,0 +1,10 @@
+// The Collect phase of Report (see ../stages_in_a_pipeline.mh).
+partial pipeline Report stage Collect {
+    step Fetch {
+        self.rows = [3, 1, 2]
+    }
+
+    step Clean {
+        self.rows = rows.sort_by((x) -> x)
+    }
+}

@@ -314,6 +314,7 @@ error after 10000 iterations.
 | `break "reason"` | Clean stop of the whole run, exit 0, state kept |
 | `complete()` | Finishes the run as completed, here |
 | `pause("reason")` | Suspends for a human; resume re-enters this step |
+| `var d = pause("reason", decision: T)` | A gate: returns the decision a resume passes (`--decision`), checked against `T` |
 | `goto Step` | `workflow` only. Jumps to another step |
 
 `catch` handles failures only. `break`, `pause`, `complete` and `goto` pass straight

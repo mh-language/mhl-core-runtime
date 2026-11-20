@@ -418,8 +418,11 @@ mod tests {
         found
     }
 
-    fn workspace() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("mhl-studio-mcp-{}", std::process::id()));
+    /// A fresh workspace per test (`name` tells them apart): the tests run
+    /// in parallel and each removes its own when done, so a shared one
+    /// could vanish under a server still starting.
+    fn workspace(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("mhl-studio-mcp-{}-{name}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("main.mh"),
@@ -433,7 +436,7 @@ mod tests {
     #[tokio::test]
     async fn talks_to_the_vendored_server_over_stdio() {
         let Some(mhl) = sidecar() else { return };
-        let dir = workspace();
+        let dir = workspace("stdio");
         let mut child = tokio::process::Command::new(mhl)
             .args(serve_args("stdio", 0).unwrap())
             .current_dir(&dir)
@@ -468,7 +471,7 @@ mod tests {
     #[tokio::test]
     async fn talks_to_the_vendored_server_over_http() {
         let Some(mhl) = sidecar() else { return };
-        let dir = workspace();
+        let dir = workspace("http");
         let port = free_port().unwrap();
         let mut child = tokio::process::Command::new(mhl)
             .args(serve_args("http", port).unwrap())

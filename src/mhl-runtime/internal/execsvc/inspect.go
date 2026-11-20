@@ -26,9 +26,12 @@ type Inspection struct {
 	MaxIterations int            `json:"max_iterations,omitempty"`
 	Steps         []string       `json:"steps"`
 	Stages        []InspectStage `json:"stages"`
-	Inputs        []InspectInput `json:"inputs,omitempty"`
-	MissingInputs []string       `json:"missing_inputs,omitempty"`
-	UnknownInputs []string       `json:"unknown_inputs,omitempty"`
+	// NamedStages are the fragments' header stages (runtime.NamedStage) —
+	// named phases, not the units of execution Stages lists.
+	NamedStages   []runtime.NamedStage `json:"named_stages,omitempty"`
+	Inputs        []InspectInput       `json:"inputs,omitempty"`
+	MissingInputs []string             `json:"missing_inputs,omitempty"`
+	UnknownInputs []string             `json:"unknown_inputs,omitempty"`
 	// InvalidInputs lists supplied values that fail their declared `input
 	// name: Type` — the same coercion/type check Run performs, so a dry-run
 	// catches `--input count=abc` for `input count: number` before a real run
@@ -128,6 +131,7 @@ func Inspect(req Request) (*Inspection, error) {
 		ins.Checkpoint.TTL = humanDuration(pipeline.Checkpoint.TTL)
 	}
 	ins.Goto = collectPipelineGotos(prog, pipeline.Decl)
+	ins.NamedStages = pipeline.NamedStages()
 	for _, s := range pipeline.Stages {
 		ins.Stages = append(ins.Stages, InspectStage{Name: s.Name, Steps: s.Steps, Parallel: s.Parallel, Merge: s.Merge})
 	}

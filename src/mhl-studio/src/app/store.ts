@@ -58,6 +58,10 @@ export interface LibraryFile {
   path: string;
   ok: boolean;
   declarations: Declaration[];
+  /** Its imports, resolved to absolute "/"-separated paths (app/fragments.ts). */
+  imports: string[];
+  /** The partial workflows whose `entry` fragment it declares. */
+  entries: string[];
 }
 
 export interface State {

@@ -78,6 +78,20 @@ type Request struct {
 	// with Resume — the most recent in-progress one via the .latest pointer).
 	Session string
 	Resume  bool
+	// Decision answers the typed pause — `pause(reason, decision: T)` — a
+	// suspended run waits at (Result.Awaiting): a JSON value of type T (an
+	// object, or a string/number/bool; a string is also accepted for an
+	// object or array as its JSON text). Requires Resume. It is checked
+	// against T before any step runs and handed to that one gate, which
+	// returns it; a run not waiting for a decision refuses one
+	// (*DecisionError). nil resumes as before: a gate pauses again.
+	Decision any
+	// From redoes a phase (`mhl run --resume --from <stage>`): the resume
+	// re-enters that named stage at its first member instead of continuing
+	// at the step the run stopped at, with the variables as of the stop (no
+	// rollback) and any gate the run waited at dropped. Requires Resume and
+	// a checkpoint; refused with Decision (*ResumeFromError).
+	From string
 
 	// ForceResume, with Resume, downgrades a checkpoint definition-digest
 	// mismatch from a hard error to a warning — the operator asserting the
@@ -114,6 +128,10 @@ type Request struct {
 	// the session is resolved and before any step runs, with the pipeline
 	// name, the session id and its declared steps in execution order.
 	OnStart func(pipeline, session string, steps []string)
+	// OnStages, when non-nil, is called once just before OnStart with the
+	// pipeline's named stages (nil without any) — the step → stage map a
+	// caller tags step events with.
+	OnStages func(stages []runtime.NamedStage)
 
 	// OnStepEnd, when non-nil, is called once each time a step finishes,
 	// right after its body returns (before the step_end hook). status is
@@ -138,6 +156,9 @@ type Result struct {
 	// pause argument.
 	Paused      bool
 	PauseReason any
+	// Awaiting is set when the pause is a typed one: the gate the run waits
+	// at and the decision a resume must supply (Request.Decision).
+	Awaiting *Awaiting
 	// Vars is the run's final variable state — the same map persisted as
 	// result.json for a later run's `context:` to read. Populated on a normal
 	// completion and on `break` (a clean early exit keeps its output); on a
@@ -151,6 +172,108 @@ type Result struct {
 	Loop           bool
 	Iterations     int
 	TerminalReason string
+}
+
+// Awaiting describes the gate — `pause(reason, decision: T)` — a paused run
+// waits at.
+type Awaiting struct {
+	Step string `json:"step"`
+	// Index tells apart several gates of one step (0-based, evaluation order).
+	Index int `json:"index"`
+	// Type is T as written; Schema is it as JSON Schema (enum variants filled
+	// in), what a client renders a decision form from.
+	Type   string         `json:"type"`
+	Schema map[string]any `json:"schema,omitempty"`
+}
+
+// ResumeFromError reports a Request.From that cannot be applied: no such
+// stage, no stopped run, or not a plain resumable pipeline. Nothing ran.
+type ResumeFromError struct{ Msg string }
+
+func (e *ResumeFromError) Error() string { return "from: " + e.Msg }
+
+// DecisionError reports a Request.Decision that cannot be applied: the run
+// is not waiting at a gate, or the value is not of the gate's type. Nothing
+// ran; a paused run stays paused.
+type DecisionError struct{ Msg string }
+
+func (e *DecisionError) Error() string { return "decision: " + e.Msg }
+
+// awaitingOf describes gate for the caller, its schema rendered from the
+// program's declarations (nil when the type no longer resolves).
+func awaitingOf(prog *ast.Program, pipeline runtime.Pipeline, gate *runtime.Gate) *Awaiting {
+	if gate == nil {
+		return nil
+	}
+	a := &Awaiting{Step: gate.Step, Index: gate.Index, Type: gate.Type}
+	if t, ok := interpreter.ResolveDecisionType(prog, gate.Type); ok {
+		a.Schema = pipeline.TypeSchema(t, gate.Type)
+	}
+	return a
+}
+
+// AwaitingFor describes gate for a run of w, as Result.Awaiting does — for a
+// server that knows a run's gate only from its checkpoint.
+func AwaitingFor(w Workflow, gate *runtime.Gate) *Awaiting {
+	return awaitingOf(w.Program, w.Pipeline, gate)
+}
+
+// CheckDecision reports, as a *DecisionError, whether decision cannot answer
+// a gate of w waiting for type typeName — what a server checks before it
+// relaunches a paused run, so a bad decision is refused while the run stays
+// paused. Run checks it again against the checkpoint.
+func CheckDecision(w Workflow, typeName string, decision any) error {
+	t, ok := interpreter.ResolveDecisionType(w.Program, typeName)
+	if !ok {
+		return &DecisionError{Msg: fmt.Sprintf("the gate waits for an unknown type %q", typeName)}
+	}
+	if _, err := coerceOne(typeName, t, decision, w.Pipeline.Enums); err != nil {
+		return &DecisionError{Msg: err.Error()}
+	}
+	return nil
+}
+
+// gateAnswer checks decision against the gate cp is suspended at, and
+// returns the answer for that gate.
+func gateAnswer(prog *ast.Program, pipeline runtime.Pipeline, cp *runtime.Checkpoint, decision any) (*interpreter.GateAnswer, error) {
+	if cp == nil {
+		return nil, &DecisionError{Msg: fmt.Sprintf("no suspended run of %q to resume", pipeline.Name)}
+	}
+	if cp.Gate == nil {
+		return nil, &DecisionError{Msg: fmt.Sprintf("the run of %q is not waiting for a decision (it stopped at %q without `pause(..., decision: T)`) — resume it without one", pipeline.Name, cp.NextStep)}
+	}
+	t, ok := interpreter.ResolveDecisionType(prog, cp.Gate.Type)
+	if !ok {
+		return nil, &DecisionError{Msg: fmt.Sprintf("the gate at %q waits for an unknown type %q", cp.Gate.Step, cp.Gate.Type)}
+	}
+	v, err := coerceOne(cp.Gate.Type, t, decision, pipeline.Enums)
+	if err != nil {
+		return nil, &DecisionError{Msg: err.Error()}
+	}
+	replay, err := replayOf(prog, pipeline, cp.Gate)
+	if err != nil {
+		return nil, err
+	}
+	return &interpreter.GateAnswer{Step: cp.Gate.Step, Index: cp.Gate.Index, Value: v, Replay: replay}, nil
+}
+
+// replayOf checks the answers gate's step gave its earlier gates, as stored
+// in the checkpoint, against their types again — so re-entering the step
+// they are returned exactly as the first time.
+func replayOf(prog *ast.Program, pipeline runtime.Pipeline, gate *runtime.Gate) ([]interpreter.GateReplay, error) {
+	out := make([]interpreter.GateReplay, 0, len(gate.Answered))
+	for i, r := range gate.Answered {
+		t, ok := interpreter.ResolveDecisionType(prog, r.Type)
+		if !ok {
+			return nil, &DecisionError{Msg: fmt.Sprintf("gate %d of %q waited for an unknown type %q", i, gate.Step, r.Type)}
+		}
+		v, err := coerceOne(r.Type, t, r.Decision, pipeline.Enums)
+		if err != nil {
+			return nil, &DecisionError{Msg: fmt.Sprintf("gate %d of %q: %v", i, gate.Step, err)}
+		}
+		out = append(out, interpreter.GateReplay{Type: r.Type, Value: v})
+	}
+	return out, nil
 }
 
 // Run executes the pipeline described by req.
@@ -212,11 +335,76 @@ func Run(req Request) (*Result, error) {
 			return nil, err
 		}
 	}
+	if req.Decision != nil {
+		switch {
+		case !req.Resume:
+			return nil, &DecisionError{Msg: "a decision answers a suspended run: resume it"}
+		case pipeline.Loop:
+			return nil, &DecisionError{Msg: fmt.Sprintf("%q is a loop %s: answering a gate on resume is not supported there yet", pipeline.Name, pipeline.Kind)}
+		case !pipeline.Checkpoint.Enabled:
+			return nil, &DecisionError{Msg: fmt.Sprintf("%q has checkpointing disabled, so its run cannot be resumed", pipeline.Name)}
+		}
+	}
+	if req.From != "" {
+		switch {
+		case !req.Resume:
+			return nil, &ResumeFromError{Msg: "redoing a stage resumes a stopped run: resume it"}
+		case req.Decision != nil:
+			return nil, &ResumeFromError{Msg: "a decision answers the gate the run waits at, while redoing a stage drops that gate — pass one or the other"}
+		case pipeline.Loop:
+			return nil, &ResumeFromError{Msg: fmt.Sprintf("%q is a loop %s: redoing a stage on resume is not supported there yet", pipeline.Name, pipeline.Kind)}
+		case !pipeline.Checkpoint.Enabled:
+			return nil, &ResumeFromError{Msg: fmt.Sprintf("%q has checkpointing disabled, so its run cannot be resumed", pipeline.Name)}
+		}
+		if _, ok := pipeline.StageEntry[req.From]; !ok {
+			names := make([]string, 0, len(pipeline.StageEntry))
+			for _, st := range pipeline.NamedStages() {
+				names = append(names, st.Name)
+			}
+			msg := fmt.Sprintf("%s %q has no stage %q", pipeline.Kind, pipeline.Name, req.From)
+			if len(names) > 0 {
+				msg += " (its stages: " + strings.Join(names, ", ") + ")"
+			} else {
+				msg += " — it declares no stage"
+			}
+			return nil, &ResumeFromError{Msg: msg}
+		}
+	}
 
 	baseStore := runtime.NewStore(base)
 	sessionID := runtime.ResolveSession(baseStore, pipeline.Name, req.Session, req.Resume)
+
+	// A decision answers the gate the suspended run waits at: checked
+	// against it here, before anything (a hook included) runs, and handed to
+	// that one gate, which consumes it.
+	// So is a stage to redo: the stopped run must exist.
+	var answer *interpreter.GateAnswer
+	if req.Decision != nil || req.From != "" {
+		peek := runtime.NewRunner(base).Session(sessionID)
+		if req.StateStore != nil {
+			peek.WithStateStore(req.StateStore)
+		}
+		cp, found, err := peek.Checkpoint(pipeline.Name)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			cp = nil
+		}
+		if req.From != "" && cp == nil {
+			return nil, &ResumeFromError{Msg: fmt.Sprintf("no stopped run of %q to redo stage %q in", pipeline.Name, req.From)}
+		}
+		if req.Decision != nil {
+			if answer, err = gateAnswer(prog, pipeline, cp, req.Decision); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if sessionID != "" {
 		fmt.Fprintf(out, "session: %s\n", sessionID)
+	}
+	if req.OnStages != nil {
+		req.OnStages(pipeline.NamedStages())
 	}
 	if req.OnStart != nil {
 		req.OnStart(pipeline.Name, sessionID, append([]string(nil), pipeline.Steps...))
@@ -353,11 +541,15 @@ func Run(req Request) (*Result, error) {
 		// here since the step hasn't run yet; step_end below fills it in.
 		if err := runHook(pipeline.StepStart, "step_start", map[string]any{
 			"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal), "error": nil,
+			"stage": pipeline.StageNameOf(step),
 		}, ctx.InstanceID, ctx.Vars, stepOut); err != nil {
 			return err
 		}
 		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
 		stepStarted := time.Now()
+		if answer != nil && answer.Step == step && !answer.Used {
+			stepCtx = interpreter.WithGateAnswer(stepCtx, answer)
+		}
 		stepErr := interpreter.RunStep(stepCtx, prog, pipeline.Decl, step, file, stepOut, store, jsonStore, ctx.Vars, mem, contextView, spawnSem)
 		breakReason, isBreak := interpreter.IsBreak(stepErr)
 		pauseReason, isPause := interpreter.IsPause(stepErr)
@@ -386,6 +578,7 @@ func Run(req Request) (*Result, error) {
 			}
 			if hookErr := runHook(pipeline.StepEnd, "step_end", map[string]any{
 				"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal), "error": hookErrVal,
+				"stage": pipeline.StageNameOf(step),
 			}, ctx.InstanceID, ctx.Vars, stepOut); hookErr != nil {
 				return hookErr
 			}
@@ -394,7 +587,7 @@ func Run(req Request) (*Result, error) {
 		case isBreak:
 			return &runtime.BreakSignal{Reason: breakReason}
 		case isPause:
-			return &runtime.PauseSignal{Reason: pauseReason}
+			return &runtime.PauseSignal{Reason: pauseReason, Gate: interpreter.PauseGate(stepErr)}
 		case isComplete:
 			return &runtime.CompleteSignal{}
 		case isGoto:
@@ -456,7 +649,7 @@ func Run(req Request) (*Result, error) {
 
 	if !pipeline.Loop {
 		runner := runtime.NewRunner(base).Session(sessionID).
-			WithDefinition(defDigest).WithForceResume(req.ForceResume)
+			WithDefinition(defDigest).WithForceResume(req.ForceResume).WithResumeFrom(req.From)
 		runner.Out = out
 		resultSink := runtime.StateStore(runner.Store)
 		if req.StateStore != nil {
@@ -500,6 +693,7 @@ func Run(req Request) (*Result, error) {
 			BreakReason:  res.BreakReason,
 			Paused:       res.Paused,
 			PauseReason:  res.PauseReason,
+			Awaiting:     awaitingOf(prog, pipeline, res.PauseGate),
 			Vars:         vars,
 		}, nil
 	}

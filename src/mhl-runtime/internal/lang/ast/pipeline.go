@@ -59,15 +59,40 @@ type Pipeline struct {
 	// entry point: `mhl serve` does not publish it and `mhl run` does not
 	// pick it. It still runs as a workflow alias's target and through
 	// `X.run(...)` in tests.
-	Internal bool              `parser:"@'internal'?" digest:"omitzero"`
-	Partial  bool              `parser:"@'partial'?"`
-	Loop     bool              `parser:"@'loop'?"`
-	Kind     string            `parser:"@( 'pipeline' | 'workflow' )"`
-	Name     string            `parser:"@Ident"`
-	Param    *PipelineParam    `parser:"( '(' @@ ')' )?" digest:"omitzero"`
-	Returns  *TypeExpr         `parser:"( ':' @@ )?" digest:"omitzero"`
-	Max      string            `parser:"( 'max' @Number )?"`
-	Body     []*PipelineMember `parser:"'{' @@* '}'"`
+	Internal bool           `parser:"@'internal'?" digest:"omitzero"`
+	Partial  bool           `parser:"@'partial'?"`
+	Loop     bool           `parser:"@'loop'?"`
+	Kind     string         `parser:"@( 'pipeline' | 'workflow' )"`
+	Name     string         `parser:"@Ident"`
+	Param    *PipelineParam `parser:"( '(' @@ ')' )?" digest:"omitzero"`
+	Returns  *TypeExpr      `parser:"( ':' @@ )?" digest:"omitzero"`
+	Max      string         `parser:"( 'max' @Number )?"`
+	// Stage (`partial workflow Story stage Implementation { ... }`) puts the
+	// whole fragment in one stage — the only way to declare one: a workflow
+	// that wants named phases is split into one `partial` fragment per phase.
+	// Every step and parallel group the fragment declares belongs to it
+	// (parser.expandStages tags them: Step.Stage, ParallelGroup.Stage, which
+	// is what the digest sees). Only on a `partial` declaration (lint).
+	Stage string            `parser:"( 'stage' @Ident )?" digest:"-"`
+	Body  []*PipelineMember `parser:"'{' @@* '}'"`
+	// Stages holds the fragment's header stage as parser.expandStages found
+	// it (at most one; none on a merged partial — its members carry their
+	// stage), kept for its span and member order.
+	Stages []*Stage `parser:"" digest:"-"`
+}
+
+// Stage is a fragment's header stage (Pipeline.Stage): a named phase of a
+// workflow. It is organisational — the steps keep their own names (a `goto`
+// still names a step, checkpoints are unchanged) — plus two things: `goto
+// Name` enters the stage at its first member, and step events, StepContext
+// and a run's status name the stage a step belongs to. Pos..EndPos is the
+// whole fragment.
+type Stage struct {
+	Pos    lexer.Position
+	EndPos lexer.Position
+	Name   string
+	// Members are the names of the stage's steps and parallel groups, in order.
+	Members []string
 }
 
 // PipelineParam is the single `name: Type` parameter of a typed
@@ -266,6 +291,8 @@ type ParallelGroup struct {
 	Vars    []*GroupVar    `parser:"'{' @@*" digest:"omitzero"`
 	Steps   []*Step        `parser:"@@+"`
 	Merge   *ParallelMerge `parser:"@@? '}'" digest:"omitzero"`
+	// Stage is as Step.Stage.
+	Stage string `parser:"" digest:"omitzero"`
 }
 
 // GroupVar is one `var name = expr` of a parallel group (ParallelGroup.Vars).
@@ -380,6 +407,10 @@ type Step struct {
 	Name    string         `parser:"'step' @Ident"`
 	Timeout string         `parser:"( 'timeout' @Duration )?"`
 	Body    []*Statement   `parser:"'{' @@* '}'"`
+	// Stage names the stage of the fragment the step was declared in ("" when
+	// the fragment has none, and for a parallel group's branch — its group
+	// carries it).
+	Stage string `parser:"" digest:"omitzero"`
 }
 
 // Statement is a single statement inside a step body. Assignment is tried

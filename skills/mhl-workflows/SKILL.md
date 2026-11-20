@@ -438,6 +438,72 @@ test deploy {
 Resume with `mhl run deploy.mh --input approved=true --resume`, or `mhl_run_resume` over
 MCP. The decision arrives as an input, so give it a default that means "not yet".
 
+### Typed gates
+
+When a person has to choose between outcomes, or a gate can be reached more than once
+(a review loop), make the pause a **gate**: `pause(reason, decision: T)` returns the
+decision. `T` is a declared `type` or `enum`, or `string`/`number`/`bool`. The run reports
+`awaiting` (the step and `T` as JSON Schema); a resume passes the answer with
+`--decision '<json>'` or `run/resume {runId, decision}`. It is checked against `T` before
+anything runs and answers **that gate once**: the next gate reached pauses again. So an old
+approval can never approve a later round, and no `*_round` inputs are needed. A plain
+`pause(reason)` is unchanged. A gate is not allowed in a `loop` workflow yet.
+
+```mh
+enum Action { Approve, Revise, Reject }
+type Review = { action: Action, feedback?: string }
+
+workflow Publish {
+    description: "Drafts until a reviewer approves or rejects."
+
+    var drafts = 0
+    var status = "drafting"
+
+    step Draft {
+        self.drafts = drafts + 1
+    }
+
+    step Review {
+        var d = pause("review draft ${drafts}", decision: Review)
+
+        goto match d.action {
+            Action.Approve -> Approved
+            Action.Revise -> Draft
+            Action.Reject -> Rejected
+        }
+    }
+
+    step Rejected {
+        self.status = "rejected"
+        complete()
+    }
+
+    step Approved {
+        self.status = "approved after ${drafts}"
+    }
+}
+
+test publish {
+    describe the_gate_reports_what_it_waits_for {
+        var result = Publish.run()
+
+        are_equal(result.state, "paused")
+        are_equal(result.awaiting.type, "Review")
+    }
+
+    describe each_decision_answers_one_round {
+        var result = Publish.run(decisions: [{action: "Revise"}, {action: "Approve"}])
+
+        are_equal(result.state, "completed")
+        are_equal(result.output.status, "approved after 2")
+    }
+}
+```
+
+In a test, `Name.run(decisions: [...])` resumes the run with the next decision each time
+it stops at a gate. Resume a real run with
+`mhl run publish.mh --resume --decision '{"action": "Approve"}'`.
+
 ## Failure and resume
 
 - Checkpointing is on by default. `--resume` continues from the failed step. Declare
@@ -492,6 +558,66 @@ last step of a fragment must end in an unconditional exit, or lint reports a fal
 into another file. Factor what generate/commit pairs repeat into a shared `tool`, keeping
 only the final `goto` in each step.
 
+A fragment is a file; a stage is a phase. A large workflow is best split by phase, with the
+stage on each fragment's header (see Stages).
+
+## Stages
+
+A stage names a phase of a workflow. The steps run exactly as without it: same names, same
+checkpoints, `goto` still names a step. `goto Name` enters the stage at its first member,
+which reads well for "start the phase over". Observers see the stage: `step.stage` in a step
+hook, `stage` in step events and `run/status`, and a box in mhl studio.
+
+A workflow that needs stages is usually big: split it by phase, one `partial` fragment per
+file, and put the stage on each fragment's header. The file is the phase, with no extra
+indentation:
+
+```mh-fragment
+// story/implementation.mh
+partial workflow Story stage Implementation {
+    step Implement {
+        self.attempts = attempts + 1
+    }
+
+    step Review {
+        if (!approved) {
+            goto Implementation
+        }
+
+        goto Consolidation
+    }
+}
+```
+
+From another stage, go to the stage, not to one of its steps: `goto Specification`, not
+`goto ApproveSpec`. The other fragment then depends only on the phase's name, and the
+stage decides where it begins. `mhl lint` warns (without failing) about a `goto` into the
+middle of another stage. When a caller must skip ahead, give the stage a first step that
+dispatches:
+
+```mh-fragment
+partial workflow Story stage Specification {
+    step Begin {
+        if (specs_exist) {
+            goto ApproveSpec
+        }
+    }
+
+    step DraftSpec { ... }
+
+    step ApproveSpec { ... }
+}
+```
+
+Resume re-enters the step a run stopped at, never a stage's start. To redo a whole phase
+of a stopped run, resume with `--from <stage>` (`mhl_run_resume {runId, from}`): it
+re-enters the stage at its first step with the variables as of the stop, so the phase
+must be safe to run again.
+
+A stage needs `partial`. Its name must not repeat a step, group or route name, and fragments
+sharing a stage are imported one right after the other. A fragment without a stage is fine:
+its steps are outside any. See `sample/syntax/stages/` for complete multi-file examples.
+
 ## Review checklist
 
 Before finishing a workflow, confirm each item:
@@ -501,7 +627,9 @@ Before finishing a workflow, confirm each item:
 - Every backward `goto` and every `loop` has a bound.
 - Every terminal convergence step calls `complete()`.
 - No `var` inside a step shadows a pipeline var that step means to write.
-- Every gate pauses before doing work.
+- Every gate pauses before doing work; a gate a person may reach twice is typed
+  (`pause(..., decision: T)`), so no old decision answers it.
+- A long workflow is split by phase, each fragment naming its `stage`.
 - `output:` exposes only what callers should see, and `description:` is set.
 - Each branch and terminal state has a test (see `mhl-testing`).
 - Steps use the shared code layout: logical phases and final exits are separated

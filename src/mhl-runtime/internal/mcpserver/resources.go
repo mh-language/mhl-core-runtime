@@ -142,6 +142,9 @@ func workflowManifest(w execsvc.Workflow) map[string]any {
 	if len(groups) > 0 {
 		m["parallelGroups"] = groups
 	}
+	if stages := p.NamedStages(); len(stages) > 0 {
+		m["stages"] = stages
+	}
 	if len(p.StepTimeouts) > 0 {
 		to := make(map[string]any, len(p.StepTimeouts))
 		for k, v := range p.StepTimeouts {

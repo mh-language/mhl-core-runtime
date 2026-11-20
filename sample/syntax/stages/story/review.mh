@@ -1,0 +1,7 @@
+// The decisions Story's gates wait for (see ../review_cycle_with_stages_and_gates.mh),
+// shared by the fragments that declare those gates.
+export enum ReviewAction { Approve, ReviseCode, ReviseSpec, Reject }
+
+export type SpecReview = { approved: bool }
+
+export type CodeReview = { action: ReviewAction, feedback?: string }

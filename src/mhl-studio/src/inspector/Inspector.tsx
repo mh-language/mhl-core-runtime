@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { edit, revealSpan } from "../app/controller";
+import { edit, openFile, revealSpan } from "../app/controller";
 import { currentWorkflow, set, useStore } from "../app/store";
 import {
   addInput,
@@ -86,7 +86,10 @@ function StepInspector({ wf, node, doc }: { wf: Workflow; node: GraphNode; doc: 
   const isPipeline = wf.kind !== "workflow";
   return (
     <div className="inspector-body">
-      <div className="inspector-kind">{node.kind === "parallel" ? "Parallel group" : node.parent ? `Branch of ${node.parent}` : node.choice ? "Choice" : "Step"}</div>
+      <div className="inspector-kind">
+        {node.kind === "parallel" ? "Parallel group" : node.parent ? `Branch of ${node.parent}` : node.choice ? "Choice" : "Step"}
+        {node.stage ? ` · stage ${node.stage}` : ""}
+      </div>
       <Field label="Name" value={node.name} mono onCommit={(v) => void edit((d) => renameNode(d, wf.name, node.id, v.trim()))} />
       <TimeoutField value={node.timeout} onCommit={(v) => void edit((d) => setTimeoutClause(d, wf.name, node.id, v))} />
 
@@ -247,9 +250,15 @@ function WorkflowInspector({ wf }: { wf: Workflow }) {
                       {i.default ?? <span className="io-required">required</span>}
                     </td>
                     <td>
-                      <button className="icon-btn" title={`Remove input ${i.name}`} onClick={() => void edit((d) => removeInput(d, wf.name, i.name))}>
-                        ×
-                      </button>
+                      {i.file ? (
+                        <button className="icon-btn" title={`declared in ${i.file} — click to show it`} onClick={() => void revealSpan(i.span, i.file)}>
+                          ↗
+                        </button>
+                      ) : (
+                        <button className="icon-btn" title={`Remove input ${i.name}`} onClick={() => void edit((d) => removeInput(d, wf.name, i.name))}>
+                          ×
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -285,7 +294,7 @@ function WorkflowInspector({ wf }: { wf: Workflow }) {
         <section>
           <h4>Routes</h4>
           {wf.routes.map((r) => (
-            <button key={r.name} className="link-row mono" onClick={() => revealSpan(r.span)}>
+            <button key={r.name} className="link-row mono" onClick={() => void revealSpan(r.span, r.file)}>
               {r.entry ? "entry " : ""}route {r.name}({r.params.join(", ")}) · {r.arms.length} arms
             </button>
           ))}
@@ -298,7 +307,7 @@ function WorkflowInspector({ wf }: { wf: Workflow }) {
           {wf.props
             .filter((p) => p.name !== "description")
             .map((p) => (
-              <button key={p.name} className="link-row mono" onClick={() => revealSpan(p.span)}>
+              <button key={p.name} className="link-row mono" onClick={() => void revealSpan(p.span, p.file)}>
                 {p.name}: …
               </button>
             ))}
@@ -311,7 +320,8 @@ function WorkflowInspector({ wf }: { wf: Workflow }) {
           <p className="muted small">No problems.</p>
         ) : (
           diagnostics.map((d, i) => (
-            <p key={i} className="problem small">
+            <p key={i} className={`problem small ${d.severity === "warning" ? "warning" : ""}`}>
+              {d.severity === "warning" ? "warning · " : ""}
               {d.file ? `${d.file}:` : ""}
               {d.line}:{d.column} {d.message}
             </p>
@@ -340,10 +350,34 @@ export function Inspector() {
   }
   if (!wf || !doc) return <div className="inspector-body muted">Nothing selected. Pick a tool on the left to edit it.</div>;
   const node = wf.nodes.find((n) => n.id === selection);
+  if (node?.file) return <ForeignInspector node={node} />;
   return (
     <fieldset className="inspector" disabled={stale}>
       {node ? <StepInspector key={node.id} wf={wf} node={node} doc={doc} /> : <WorkflowInspector wf={wf} />}
     </fieldset>
+  );
+}
+
+/** A step another fragment of a merged partial workflow declares: shown, edited in its own file. */
+function ForeignInspector({ node }: { node: GraphNode }) {
+  const file = node.file!;
+  return (
+    <div className="inspector-body">
+      <div className="inspector-kind">{node.kind} · another fragment</div>
+      <h3 className="mono">{node.name}</h3>
+      <p className="muted small">
+        Declared in <span className="mono">{file}</span>, another fragment of this partial workflow. It is shown here so the whole flow
+        reads in one diagram; edit it in its own file.
+      </p>
+      <div className="button-row">
+        <button className="btn small" onClick={() => void openFile(file)}>
+          Open file
+        </button>
+        <button className="btn small" onClick={() => void revealSpan(node.span, file)}>
+          Show in code
+        </button>
+      </div>
+    </div>
   );
 }
 
