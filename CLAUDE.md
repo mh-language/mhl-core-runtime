@@ -185,6 +185,17 @@ modes (stdio, HTTP sync, HTTP async, resume) with sequence diagrams:
 puts one A2A skill per workflow on top
 (`message/send` starts a task, `tasks/get`/`tasks/cancel` drive it; skill + inputs are named
 explicitly in `message.metadata.skill` / `.input`). Both dispatched from `internal/cli/serve.go`.
+A stage is declared only on a `partial` fragment's header (`partial workflow X stage Name {`,
+`ast.Pipeline.Stage`; lint `lint/stage.go`: only on `partial`, no name clash, consecutive
+fragments). `parser.expandStages` tags every member of that body (`Step.Stage` /
+`ParallelGroup.Stage`, `digest:"omitzero"`) and records the stage in `Pipeline.Stages` (span,
+member order; `digest:"-"`) — so everything that walks `Body` (runtime, lint, interpreter,
+checkpoints) sees plain members. The runtime calls it a *named stage* (`Pipeline.StageOf`/
+`StageEntry`/`NamedStages()`) since `runtime.Stage` already means a unit of execution;
+`Runner` maps `goto <stage>` to its first member (`StageTarget`); `execsvc` emits `stage` in
+`StepContext` and `Request.OnStages` feeds jsonl/`run/status`; flow projects
+`Workflow.Stages` + `Node.Stage` (studio draws ELK compound boxes, `elk.json.edgeCoords:
+ROOT`).
 A pipeline/workflow body property (`checkpoint`, `spawn`, `repeat`, `context`, `description`,
 `output`) is declared once in `ast.PipelineBodyProperties` (`internal/lang/ast/pipeline.go`);
 `lint.checkPipelineProperties` and `internal/lsp/properties.go` both derive from it, so adding

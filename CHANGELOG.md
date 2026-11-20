@@ -18,6 +18,18 @@ Per-tag release notes are also generated automatically on the
   A node, input, var, prop or route from another fragment carries that file's absolute path
   in `"file"`, its spans indexing that file.
 
+- **`stage` — named phases.** A `partial` fragment names its phase on its header —
+  `partial workflow Story stage Implementation { ... }` — putting every step and parallel
+  group of the file in it, with no block and no extra indentation: a workflow that wants
+  stages is split by phase, one fragment per stage. The steps run exactly as without it —
+  same step names, same checkpoints — and `goto Name` enters the stage at its first member,
+  from any fragment. The stage reaches observers: `StepContext.stage` (optional field; `null`
+  outside a stage) in `step_start`/`step_end`, `stage` on `--format jsonl` step events (and the
+  stage list on `run_start`), `run/status`, the `mhl://workflow/<name>` manifest, the
+  `--dry-run` plan (`named_stages` in its JSON) and `mhl graph` (`stages`, `Node.stage`).
+  `mhl lint` rejects a stage on a declaration that is not `partial`, a stage named like a
+  step, group or route, and fragments sharing a stage that are not imported consecutively.
+  Programs without a stage keep their `DefinitionDigest`.
 - **Typed gates: `pause(reason, decision: T)`.** A pause that returns the decision a resume
   passes. The run reports `awaiting` — the step and `T` (a declared `type`/`enum`, or
   `string`/`number`/`bool`) as JSON Schema — in `mhl run --format json|jsonl`, `run/status`

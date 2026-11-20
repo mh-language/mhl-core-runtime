@@ -215,7 +215,8 @@ function Canvas() {
       if (group && !["parallel", "choice"].includes(kind)) {
         return step ? { after: step.id } : { into: group.id };
       }
-      if (step) return { after: step.parentId ?? step.id };
+      // A step's parent is its parallel group — or its stage, which a new state joins after the step.
+      if (step) return { after: step.parentId && group?.id === step.parentId ? step.parentId : step.id };
       if (group) return { after: group.id };
       if (hits.some((h) => h.id === START) && wf?.nodes.some((n) => !n.parent)) {
         return { before: wf!.nodes.find((n) => !n.parent)!.id };
@@ -323,7 +324,7 @@ function Canvas() {
         onNodeClick={(_, n) => {
           setSelectedEdge(null);
           // A route is not a step: clicking it shows its declaration (RouteNode).
-          const inert = n.id === START || n.id === END || n.id === FAIL || n.id.startsWith("ext:") || n.id.startsWith(ROUTE_PREFIX);
+          const inert = n.id === START || n.id === END || n.id === FAIL || n.id.startsWith("ext:") || n.id.startsWith(ROUTE_PREFIX) || n.type === "stage";
           set({ selection: inert ? null : n.id });
         }}
         onNodeDoubleClick={(_, n) => {

@@ -1,0 +1,14 @@
+// The Ship phase of Delivery (see ../stages_across_fragments.mh): it sends
+// the run back to the Build stage — declared in another file — by name.
+partial workflow Delivery stage Ship {
+    step Verify {
+        if (builds < needed) {
+            goto Build
+        }
+    }
+
+    step Publish {
+        log_lines.append("shipped")
+        complete()
+    }
+}

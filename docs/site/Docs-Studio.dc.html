@@ -148,6 +148,7 @@ html { scroll-behavior:smooth; }
             <li><strong>The diagram is a projection.</strong> It comes from <code>mhl graph &lt;file&gt; --stdin</code>, which reports every step, parallel group, route, transition and call with the byte span of the source it came from.</li>
             <li><strong>Edits are text edits.</strong> A diagram or inspector action rewrites only those spans, as one undoable step in the editor. Comments and formatting elsewhere are never touched.</li>
             <li><strong>A split workflow is drawn whole.</strong> A <code>partial</code> workflow is graphed with <code>mhl graph --merged</code>, from the file that declares its <code>entry</code> step, so every fragment shows in one diagram. Steps from another file are dashed, carry that file's name and are read-only here: double-click one, or its file chip, to open the file and edit it there. Renaming or deleting a step another fragment's <code>goto</code> targets is refused.</li>
+            <li><strong>Stages are boxes.</strong> A stage — the <code>stage Name</code> on a <code>partial</code> fragment's header — is drawn as a titled box around that fragment's steps and parallel groups, in the whole-workflow diagram; a <code>goto</code> to the stage lands on the box, and during a run the box takes its steps' status. Double-click a box to show it in the code.</li>
             <li><strong>Gates ask for a decision.</strong> A step with <code>pause(reason, decision: T)</code> is labelled <em>Gate · T</em>; a run paused there shows a form built from <code>T</code> — a select per enum, a checkbox per bool — and <strong>Resume with decision</strong> answers it.</li>
             <li><strong>Editing the code redraws the diagram.</strong> While the code does not parse, the diagram keeps the last version that did, read-only, until the code is fixed.</li>
             <li><strong>It ships its own runtime.</strong> Each installer bundles the <code>mhl</code> binary it was built with — its version is shown at the right of the toolbar — so the language it edits is the runtime it runs, never an <code>mhl</code> on your <code>PATH</code>.</li>
@@ -558,7 +559,7 @@ export tool Tickets {
 </x-dc>
 <script type="text/x-dc" data-dc-script>
 const KEYWORDS=new Set('import from as export loop entry route var mem if else while try catch finally return break goto for in self fail pause'.split(' '));
-const DECLS=new Set('agent router memory tool pipeline prompt extension parallel step input output test describe'.split(' '));
+const DECLS=new Set('agent router memory tool pipeline prompt extension parallel stage step input output test describe'.split(' '));
 const CONSTS=new Set(['true','false','null']);
 const esc=(v)=>v.replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const span=(cls,v)=>'<span class="'+cls+'">'+v+'</span>';

@@ -9,9 +9,9 @@ const httpTypedGateWF = `
 enum Action { Approve, Reject }
 type Review = { action: Action }
 
-workflow Reviewed {
+partial workflow Reviewed stage Approval {
     var outcome = ""
-    step Gate {
+    entry step Gate {
         var d = pause("review it", decision: Review)
         self.outcome = if (d.action == Action.Approve) "approved" else "rejected"
     }
@@ -29,6 +29,9 @@ func TestHTTPRunGateAwaitsAndTakesADecision(t *testing.T) {
 	awaiting, _ := paused["awaiting"].(map[string]any)
 	if paused["state"] != "paused" || awaiting["step"] != "Gate" || awaiting["type"] != "Review" {
 		t.Fatalf("paused = %v", paused)
+	}
+	if paused["stage"] != "Approval" {
+		t.Fatalf("run/status names the stage it is in: %v", paused)
 	}
 	if _, ok := awaiting["schema"].(map[string]any); !ok {
 		t.Fatalf("awaiting carries no schema: %v", awaiting)

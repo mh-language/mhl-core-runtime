@@ -7,7 +7,7 @@ import { CALL_ICON, CALL_ICON_FALLBACK, EXIT_BADGE, StateBadge, type BadgeKind }
 import type { CallSite, Declaration } from "../lib/types";
 import type { ImportOrigin } from "../sync/imports";
 import { useImportOrigins } from "./ImportsCard";
-import { ARM_ROW_H, MAX_BOXES, MERGE_H, type ExternalNodeData, type RouteNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
+import { ARM_ROW_H, MAX_BOXES, MERGE_H, type ExternalNodeData, type RouteNodeData, type StageNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
 
 /** Declaration kind by name — this file's and what it imports — to pick each call box's icon. */
 function useDeclKinds(): Record<string, Declaration["kind"]> {
@@ -272,4 +272,41 @@ export const RouteNode = memo(function RouteNode({ data }: NodeProps<Node<RouteN
   );
 });
 
-export const nodeTypes = { step: StepNode, parallel: ParallelNode, terminal: TerminalNode, external: ExternalNode, route: RouteNode };
+/**
+ * A stage — a `partial` fragment's header `stage Name`: a titled box around
+ * that fragment's steps — a named phase, as a folder groups jobs. Its status is its steps' during a run;
+ * double-click shows it in the code. A `goto Name` edge lands on it.
+ */
+export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageNodeData>>) {
+  const statuses = useStore((s) => s.run.statuses);
+  const ks = data.steps.map((k) => statuses[k]).filter(Boolean);
+  const status = ks.includes("failed")
+    ? "failed"
+    : ks.includes("running")
+      ? "running"
+      : ks.includes("paused")
+        ? "paused"
+        : ks.length === data.steps.length && ks.every((k) => k === "succeeded")
+          ? "succeeded"
+          : undefined;
+  const s = data.stage;
+  return (
+    <div
+      className={`node stage ${status ? `run-${status}` : ""} ${s.file ? "foreign" : ""}`}
+      title={`stage ${s.name}: ${s.members.join(", ")}\ngoto ${s.name} enters it at ${s.members[0]}. Double-click to show it in the code.`}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        void revealSpan(s.span, s.file);
+      }}
+    >
+      <Handle type="target" position={Position.Top} />
+      <div className="stage-title">
+        <span className="node-kind">Stage</span>
+        <span className="node-name">{s.name}</span>
+        {s.file && <FragmentChip file={s.file} />}
+      </div>
+    </div>
+  );
+});
+
+export const nodeTypes = { step: StepNode, parallel: ParallelNode, terminal: TerminalNode, external: ExternalNode, route: RouteNode, stage: StageNode };

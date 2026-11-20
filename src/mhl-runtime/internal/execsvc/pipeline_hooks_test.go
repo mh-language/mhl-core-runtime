@@ -109,12 +109,12 @@ pipeline P {
 	}
 	// Order: START A, RAN:A, END A, START B, RAN:B, END B, START C, RAN:C, END C.
 	order := []string{
-		`START {"error":null,"index":1,"pipeline":"P","step":"A","total":3}`, "RAN:A",
-		`END {"error":null,"index":1,"pipeline":"P","step":"A","total":3}`,
-		`START {"error":null,"index":2,"pipeline":"P","step":"B","total":3}`, "RAN:B",
-		`END {"error":null,"index":2,"pipeline":"P","step":"B","total":3}`,
-		`START {"error":null,"index":3,"pipeline":"P","step":"C","total":3}`, "RAN:C",
-		`END {"error":null,"index":3,"pipeline":"P","step":"C","total":3}`,
+		`START {"error":null,"index":1,"pipeline":"P","stage":null,"step":"A","total":3}`, "RAN:A",
+		`END {"error":null,"index":1,"pipeline":"P","stage":null,"step":"A","total":3}`,
+		`START {"error":null,"index":2,"pipeline":"P","stage":null,"step":"B","total":3}`, "RAN:B",
+		`END {"error":null,"index":2,"pipeline":"P","stage":null,"step":"B","total":3}`,
+		`START {"error":null,"index":3,"pipeline":"P","stage":null,"step":"C","total":3}`, "RAN:C",
+		`END {"error":null,"index":3,"pipeline":"P","stage":null,"step":"C","total":3}`,
 	}
 	last := -1
 	for _, marker := range order {

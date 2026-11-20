@@ -134,8 +134,13 @@ type Workflow struct {
 	Vars        []Var   `json:"vars"`
 	Props       []Prop  `json:"props"`
 	Routes      []Route `json:"routes"`
-	Nodes       []Node  `json:"nodes"`
-	Edges       []Edge  `json:"edges"`
+	// Stages are the workflow's stages, in order — each the header stage of
+	// one of its fragments (all of them in a Merged workflow, else this
+	// file's): the named phases its steps and parallel groups belong to (each
+	// member node names its stage in Node.Stage). Absent without any.
+	Stages []StageGroup `json:"stages,omitempty"`
+	Nodes  []Node       `json:"nodes"`
+	Edges  []Edge       `json:"edges"`
 	// Externals names edge targets not declared in this file — a step of
 	// another fragment of a `partial` workflow. An editor draws them as
 	// placeholders.
@@ -173,6 +178,23 @@ type Prop struct {
 	Name string `json:"name"`
 	Span Span   `json:"span"`
 	File string `json:"file,omitempty"` // as Input.File
+}
+
+// StageGroup is a `partial` fragment's header stage (`partial workflow X
+// stage Name { ... }`, ast.Stage): a named phase made of the fragment's steps
+// and parallel groups. `goto Name` enters it at its first member, so an edge
+// may target a stage's name. Span and the body braces are the fragment's,
+// HeaderSpan its header, NameSpan the name after `stage`.
+type StageGroup struct {
+	Name string `json:"name"`
+	// Members are the ids of its steps and parallel groups, in order.
+	Members    []string `json:"members"`
+	Span       Span     `json:"span"`
+	HeaderSpan Span     `json:"headerSpan"`
+	NameSpan   Span     `json:"nameSpan"`
+	BodyOpen   int      `json:"bodyOpen"`
+	BodyClose  int      `json:"bodyClose"`
+	File       string   `json:"file,omitempty"` // as Input.File
 }
 
 // Route is a `route Name(params) { arms }` dispatch table. Entry marks an
@@ -235,6 +257,10 @@ type Node struct {
 	Kind   string `json:"kind"` // "step" | "parallel"
 	Name   string `json:"name"`
 	Parent string `json:"parent,omitempty"`
+	// Stage names the stage of the fragment a top-level step or parallel
+	// group was declared in ("" for none; a group's branches carry their
+	// group's Parent instead).
+	Stage string `json:"stage,omitempty"`
 	// File is as Input.File: every span of this node (and of its outgoing
 	// edges) indexes that fragment's source.
 	File        string   `json:"file,omitempty"`
@@ -360,6 +386,7 @@ func BuildMerged(frags []Fragment) (Workflow, error) {
 			}
 		}
 		p := f.Decl.Pipeline
+		b.stages(&w, p.Stages, f.File)
 		w.Loop = w.Loop || p.Loop
 		w.Internal = w.Internal || p.Internal
 		if w.Max == "" {
@@ -602,6 +629,7 @@ func (b *builder) closeOf(s Span) int {
 
 func (b *builder) workflow(d *ast.Declaration) Workflow {
 	w := b.header(d)
+	b.stages(&w, d.Pipeline.Stages, "")
 	top := b.members(&w, d.Pipeline.Body, "")
 	finish(&w, d.Pipeline, top, func(string) *builder { return b })
 	return w
@@ -636,6 +664,29 @@ func (b *builder) header(d *ast.Declaration) Workflow {
 		w.Returns = p.Returns.String()
 	}
 	return w
+}
+
+// stages appends a fragment's header stage to w, stamped with file.
+func (b *builder) stages(w *Workflow, stages []*ast.Stage, file string) {
+	for _, st := range stages {
+		s := Span{st.Pos.Offset, st.EndPos.Offset}
+		g := StageGroup{Name: st.Name, Members: append([]string{}, st.Members...), Span: s, File: file, BodyClose: b.closeOf(s)}
+		ts := b.in(s)
+		for i, t := range ts {
+			// The name is the identifier right after the `stage` keyword.
+			if t.Kind == "Ident" && t.Value == "stage" && i+1 < len(ts) && ts[i+1].Value == st.Name && g.NameSpan == (Span{}) {
+				g.NameSpan = tokSpan(ts[i+1])
+			}
+			if t.Kind == "Punct" && t.Value == "{" {
+				g.BodyOpen = t.Offset
+				if i > 0 {
+					g.HeaderSpan = Span{s[0], ts[i-1].End()}
+				}
+				break
+			}
+		}
+		w.Stages = append(w.Stages, g)
+	}
 }
 
 // members appends body's inputs, vars, props, routes and nodes to w, each
@@ -674,12 +725,12 @@ func (b *builder) members(w *Workflow, body []*ast.PipelineMember, file string) 
 			w.Routes = append(w.Routes, r)
 		case m.Step != nil:
 			n := b.step(m.Step, ms, "")
-			n.File = file
+			n.File, n.Stage = file, m.Step.Stage
 			w.Nodes = append(w.Nodes, n)
 			top = append(top, n.ID)
 		case m.Parallel != nil:
 			group := b.parallel(m.Parallel, ms)
-			group.File = file
+			group.File, group.Stage = file, m.Parallel.Stage
 			w.Nodes = append(w.Nodes, group)
 			for _, st := range m.Parallel.Steps {
 				n := b.step(st, Span{st.Pos.Offset, st.EndPos.Offset}, m.Parallel.Name)
@@ -706,8 +757,12 @@ func finish(w *Workflow, p *ast.Pipeline, topIDs []string, builderOf func(id str
 	}
 	w.Edges = edges(p, top, builderOf)
 	w.Externals = []string{}
+	stages := map[string]bool{}
+	for _, s := range w.Stages {
+		stages[s.Name] = true
+	}
 	for _, e := range w.Edges {
-		if byID[e.To] == nil && e.To != EndID && e.To != FailID && !contains(w.Externals, e.To) {
+		if byID[e.To] == nil && !stages[e.To] && e.To != EndID && e.To != FailID && !contains(w.Externals, e.To) {
 			w.Externals = append(w.Externals, e.To)
 		}
 	}

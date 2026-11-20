@@ -1,0 +1,46 @@
+// A `partial` workflow with one phase per file. A fragment declares its phase
+// on its header — `partial workflow Delivery stage Build { ... }` — so the
+// whole file is the stage, with no block and no extra indentation: when a
+// workflow is big enough to want stages, it is big enough to split by phase.
+// This entry fragment declares no stage: Intake is outside any.
+//
+// Each fragment hands over to the next phase by name (`goto Build`, `goto
+// Ship`) — a fragment's last step must not fall through into another file
+// (lint) — and Ship sends the run back to Build: the run sees one workflow
+// with all its stages.
+//
+//   mhl graph sample/syntax/stages/stages_across_fragments.mh --merged
+//
+// lists `stages` (Build, Ship — each with the file it came from) and every node with its `stage`; mhl studio draws the whole workflow
+// with a box per stage. `mhl run ... --dry-run` lists the stages in the plan.
+import "delivery/build.mh"
+import "delivery/ship.mh"
+
+partial workflow Delivery {
+    input needed: number = 2
+
+    var builds = 0
+    var log_lines = []
+
+    output: { builds, log_lines }
+
+    entry step Intake {
+        self.log_lines = ["intake"]
+
+        goto Build
+    }
+}
+
+test stages_across_fragments {
+    describe runs_the_phases_of_every_file_in_order {
+        var r = Delivery.run(inputs: {needed: 1})
+        are_equal(r.state, "completed")
+        are_equal(r.executed, ["Intake", "Compile", "Package", "Verify", "Publish"])
+    }
+
+    describe goto_a_stage_declared_in_another_file {
+        var r = Delivery.run()
+        are_equal(r.output.builds, 2)
+        are_equal(r.output.log_lines, ["intake", "build 1", "build 2", "shipped"])
+    }
+}

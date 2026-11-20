@@ -2966,3 +2966,36 @@ select {
 .decision-form .decision-field input[type="checkbox"] {
   justify-self: start;
 }
+
+/* A stage (a fragment's header `stage Name`): a titled box around its steps (canvas/nodes.tsx StageNode). */
+.node.stage {
+  width: 100%;
+  height: 100%;
+  border: 1.5px solid var(--node-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--group) 55%, transparent);
+  padding: 10px 14px;
+}
+.node.stage .stage-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.node.stage .stage-title .node-kind {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.node.stage .stage-title .node-name {
+  font-weight: 600;
+}
+.node.stage.run-running {
+  border-color: var(--accent);
+}
+.node.stage.run-failed {
+  border-color: var(--danger, #d14);
+}
+.node.stage.foreign {
+  border-style: dashed;
+}

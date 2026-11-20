@@ -68,6 +68,7 @@ type asyncRun struct {
 	mu        sync.Mutex
 	state     RunState // see runstate.go for the full state machine
 	step      string   // last step reached
+	stage     string   // the named stage step belongs to, "" for none
 	stepIndex int      // 1-based position of step
 	stepTotal int      // pipeline's declared step count
 	reached   []string
@@ -190,7 +191,7 @@ func (h *httpServer) publishRunStatus(rn *asyncRun) {
 	}
 	rn.mu.Lock()
 	rec := RunStatusRec{
-		Tool: rn.tool.Name, State: rn.state, Holder: rn.holder, Step: rn.step,
+		Tool: rn.tool.Name, State: rn.state, Holder: rn.holder, Step: rn.step, Stage: rn.stage,
 		StepIndex: rn.stepIndex, StepTotal: rn.stepTotal,
 		Reached:   append([]string(nil), rn.reached...),
 		Resumable: rn.resumable, Error: auth.Redact(rn.errMsg),
@@ -340,7 +341,7 @@ func (h *httpServer) refreshRemote(rn *asyncRun) {
 	if rn.state != RunStateCanceled {
 		rn.state = rec.State
 	}
-	rn.step, rn.stepIndex, rn.stepTotal = rec.Step, rec.StepIndex, rec.StepTotal
+	rn.step, rn.stage, rn.stepIndex, rn.stepTotal = rec.Step, rec.Stage, rec.StepIndex, rec.StepTotal
 	if len(rec.Reached) > 0 {
 		rn.reached = append([]string(nil), rec.Reached...)
 	}
@@ -733,6 +734,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		OnStep: func(step string, idx, total int) {
 			rn.mu.Lock()
 			rn.step, rn.stepIndex, rn.stepTotal = step, idx, total
+			rn.stage = w.Pipeline.StageOf[step]
 			rn.reached = append(rn.reached, step)
 			rn.updated = time.Now()
 			rn.mu.Unlock()
@@ -981,6 +983,7 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 			remote:    true,
 			state:     RunStateFailed,
 			step:      cp.NextStep,
+			stage:     w.Pipeline.StageOf[cp.NextStep],
 			stepTotal: len(w.Pipeline.Steps),
 			reached:   append([]string(nil), cp.CompletedSteps...),
 			resumable: true,
@@ -1013,6 +1016,7 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 		remote:    true,
 		state:     rec.State,
 		step:      rec.Step,
+		stage:     rec.Stage,
 		stepIndex: rec.StepIndex,
 		stepTotal: rec.StepTotal,
 		reached:   append([]string(nil), rec.Reached...),
@@ -1037,6 +1041,9 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 		"tool":      rn.tool.Name,
 		"state":     rn.state,
 		"startedAt": rn.started.UTC().Format(time.RFC3339),
+	}
+	if rn.stage != "" {
+		v["stage"] = rn.stage
 	}
 	if rn.step != "" {
 		v["step"] = rn.step

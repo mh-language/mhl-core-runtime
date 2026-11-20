@@ -122,6 +122,10 @@ type Request struct {
 	// the session is resolved and before any step runs, with the pipeline
 	// name, the session id and its declared steps in execution order.
 	OnStart func(pipeline, session string, steps []string)
+	// OnStages, when non-nil, is called once just before OnStart with the
+	// pipeline's named stages (nil without any) — the step → stage map a
+	// caller tags step events with.
+	OnStages func(stages []runtime.NamedStage)
 
 	// OnStepEnd, when non-nil, is called once each time a step finishes,
 	// right after its body returns (before the step_end hook). status is
@@ -333,6 +337,9 @@ func Run(req Request) (*Result, error) {
 	if sessionID != "" {
 		fmt.Fprintf(out, "session: %s\n", sessionID)
 	}
+	if req.OnStages != nil {
+		req.OnStages(pipeline.NamedStages())
+	}
 	if req.OnStart != nil {
 		req.OnStart(pipeline.Name, sessionID, append([]string(nil), pipeline.Steps...))
 	}
@@ -468,6 +475,7 @@ func Run(req Request) (*Result, error) {
 		// here since the step hasn't run yet; step_end below fills it in.
 		if err := runHook(pipeline.StepStart, "step_start", map[string]any{
 			"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal), "error": nil,
+			"stage": pipeline.StageNameOf(step),
 		}, ctx.InstanceID, ctx.Vars, stepOut); err != nil {
 			return err
 		}
@@ -504,6 +512,7 @@ func Run(req Request) (*Result, error) {
 			}
 			if hookErr := runHook(pipeline.StepEnd, "step_end", map[string]any{
 				"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal), "error": hookErrVal,
+				"stage": pipeline.StageNameOf(step),
 			}, ctx.InstanceID, ctx.Vars, stepOut); hookErr != nil {
 				return hookErr
 			}

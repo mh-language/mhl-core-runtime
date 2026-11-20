@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { applyEdits, deleteNode, Doc, insertState, localGraph, renameNode } from "./edits";
+import { applyEdits, connect, deleteNode, Doc, insertState, localGraph, renameNode } from "./edits";
 import type { Graph } from "../lib/types";
 import { MHL } from "./testutil";
 
@@ -65,5 +65,41 @@ describe.skipIf(!MHL)("edits a merged workflow can't follow into another fragmen
     const d = new Doc(MAIN, merged());
     expect(() => renameNode(d, "W", "A", "Start")).toThrow(/goto target in part\.mh/);
     expect(() => deleteNode(d, "W", "A")).toThrow(/goto target in part\.mh/);
+  });
+});
+
+describe.skipIf(!MHL)("a fragment's stage", () => {
+  const SRC = `partial workflow W stage Build {
+    entry step Compile {
+        log("c")
+    }
+
+    step Check {
+        log("k")
+    }
+}
+`;
+  const graph = (src: string) => JSON.parse(execFileSync(MHL!, ["graph", "w.mh", "--stdin"], { input: src, encoding: "utf8" })) as Graph;
+
+  it("holds every step of the fragment", () => {
+    const wf = graph(SRC).workflows[0];
+    expect(wf.stages?.map((s) => [s.name, s.members])).toEqual([["Build", ["Compile", "Check"]]]);
+    expect(wf.nodes.every((n) => n.stage === "Build")).toBe(true);
+  });
+
+  it("is a transition target: drawn onto the stage, a transition writes `goto <stage>`", () => {
+    const out = applyEdits(SRC, connect(new Doc(SRC, graph(SRC)), "W", "Check", "Build").edits);
+    expect(graph(out).workflows[0].edges.some((e) => e.from === "Check" && e.to === "Build" && e.kind === "goto")).toBe(true);
+  });
+
+  it("stays when its last step is deleted — only the step goes", () => {
+    const one = applyEdits(SRC, deleteNode(new Doc(SRC, graph(SRC)), "W", "Check").edits);
+    const out = applyEdits(one, deleteNode(new Doc(one, graph(one)), "W", "Compile").edits);
+    expect(out).toContain("partial workflow W stage Build {");
+    expect(out).not.toContain("step");
+  });
+
+  it("is a taken name", () => {
+    expect(() => renameNode(new Doc(SRC, graph(SRC)), "W", "Check", "Build")).toThrow(/already exists/);
   });
 });

@@ -1,0 +1,17 @@
+// The Specification phase of Story (see ../review_cycle_with_stages_and_gates.mh).
+import {SpecReview} from "review.mh"
+
+partial workflow Story stage Specification {
+    step DraftSpec {
+        self.spec_rounds = spec_rounds + 1
+    }
+
+    step ApproveSpec {
+        var d = pause("approve spec round ${spec_rounds}", decision: SpecReview)
+        if (!d.approved) {
+            goto Specification
+        }
+
+        goto Implementation
+    }
+}

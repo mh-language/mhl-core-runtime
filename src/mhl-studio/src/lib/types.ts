@@ -110,6 +110,20 @@ export interface Choice {
   arms: Arm[];
 }
 
+/** A fragment's header stage — `partial workflow X stage Name {` (flow.StageGroup): the fragment's steps, a named phase. */
+export interface StageGroup {
+  name: string;
+  /** Its steps' and parallel groups' ids, in order. */
+  members: string[];
+  span: Span;
+  headerSpan: Span;
+  nameSpan: Span;
+  bodyOpen: number;
+  bodyClose: number;
+  /** As WfInput.file. */
+  file?: string;
+}
+
 export interface Route {
   name: string;
   /** `entry route`: the run starts by dispatching on it (the start edges are its arms). */
@@ -128,6 +142,8 @@ export interface GraphNode {
   parent?: string;
   /** Declared in another fragment of a merged workflow (absolute path): its spans, and its edges', index that file. */
   file?: string;
+  /** The stage of the fragment a top-level step or parallel group belongs to. */
+  stage?: string;
   children?: string[];
   entry?: boolean;
   timeout?: string;
@@ -196,6 +212,8 @@ export interface Workflow {
   vars: { name: string; kind: string; span: Span; file?: string }[];
   props: { name: string; span: Span; file?: string }[];
   routes: Route[];
+  /** The stages — each a fragment's header stage, a named phase; `goto Name` enters one at its first member. */
+  stages?: StageGroup[];
   nodes: GraphNode[];
   edges: GraphEdge[];
   externals: string[];

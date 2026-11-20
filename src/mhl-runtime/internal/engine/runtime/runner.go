@@ -382,7 +382,9 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 		case errors.As(err, &gt):
 			// A target is a step, or a whole `parallel` group by its name
 			// (a stage: all its branches run, then the barrier) — never one
-			// branch step of a group.
+			// branch step of a group. A named stage's name enters it at its
+			// first member.
+			gt = &GotoSignal{Target: p.StageTarget(gt.Target)}
 			_, isStage := p.stageByName(gt.Target)
 			if !isStage && !p.hasStep(gt.Target) {
 				return result, fmt.Errorf("runtime: goto target %q is not a step or parallel group of pipeline %q", gt.Target, p.Name)

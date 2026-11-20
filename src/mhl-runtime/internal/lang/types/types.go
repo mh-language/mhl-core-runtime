@@ -240,13 +240,16 @@ var aliases = map[string]Type{
 		"break_reason": Any,
 		"iterations":   Number,
 	}),
-	"StepContext": ObjectOf(map[string]Type{
+	// stage is the named stage the step belongs to (null outside one) —
+	// optional, so a StepContext built by hand without it still checks.
+	"StepContext": ObjectOfOptional(map[string]Type{
 		"pipeline": String,
 		"step":     String,
 		"index":    Number,
 		"total":    Number,
 		"error":    String,
-	}),
+		"stage":    String,
+	}, map[string]bool{"stage": true}),
 	"FailureContext": ObjectOf(map[string]Type{
 		"pipeline": String,
 		"kind":     String,

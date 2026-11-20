@@ -558,6 +558,41 @@ last step of a fragment must end in an unconditional exit, or lint reports a fal
 into another file. Factor what generate/commit pairs repeat into a shared `tool`, keeping
 only the final `goto` in each step.
 
+A fragment is a file; a stage is a phase. A large workflow is best split by phase, with the
+stage on each fragment's header (see Stages).
+
+## Stages
+
+A stage names a phase of a workflow. The steps run exactly as without it: same names, same
+checkpoints, `goto` still names a step. `goto Name` enters the stage at its first member,
+which reads well for "start the phase over". Observers see the stage: `step.stage` in a step
+hook, `stage` in step events and `run/status`, and a box in mhl studio.
+
+A workflow that needs stages is usually big: split it by phase, one `partial` fragment per
+file, and put the stage on each fragment's header. The file is the phase, with no extra
+indentation:
+
+```mh-fragment
+// story/implementation.mh
+partial workflow Story stage Implementation {
+    step Implement {
+        self.attempts = attempts + 1
+    }
+
+    step Review {
+        if (!approved) {
+            goto Implementation
+        }
+
+        goto Consolidation
+    }
+}
+```
+
+A stage needs `partial`. Its name must not repeat a step, group or route name, and fragments
+sharing a stage are imported one right after the other. A fragment without a stage is fine:
+its steps are outside any. See `sample/syntax/stages/` for complete multi-file examples.
+
 ## Review checklist
 
 Before finishing a workflow, confirm each item:
@@ -569,6 +604,7 @@ Before finishing a workflow, confirm each item:
 - No `var` inside a step shadows a pipeline var that step means to write.
 - Every gate pauses before doing work; a gate a person may reach twice is typed
   (`pause(..., decision: T)`), so no old decision answers it.
+- A long workflow is split by phase, each fragment naming its `stage`.
 - `output:` exposes only what callers should see, and `description:` is set.
 - Each branch and terminal state has a test (see `mhl-testing`).
 - Steps use the shared code layout: logical phases and final exits are separated

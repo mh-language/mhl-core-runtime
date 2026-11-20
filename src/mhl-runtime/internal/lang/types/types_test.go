@@ -44,7 +44,7 @@ func TestPipelineHookContextTypesAreBuiltinObjectShapes(t *testing.T) {
 		fields []string
 	}{
 		{"SessionContext", []string{"pipeline", "kind", "session_id", "resumed", "inputs", "vars", "broke", "break_reason", "iterations"}},
-		{"StepContext", []string{"pipeline", "step", "index", "total", "error"}},
+		{"StepContext", []string{"pipeline", "step", "index", "total", "error", "stage"}},
 		{"FailureContext", []string{"pipeline", "kind", "step", "error", "reason"}},
 	}
 	for _, c := range cases {

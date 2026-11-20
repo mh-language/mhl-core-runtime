@@ -158,3 +158,72 @@ describe("layoutWorkflow", () => {
       }
   });
 });
+
+describe("stages", () => {
+  /** Intake → [Build: Compile, Fan(L, R)] → [Ship: Gate → goto Build | Publish] → End */
+  function staged(): Workflow {
+    const nodes = [
+      node("Intake"),
+      node("Compile", { stage: "Build" }),
+      node("Fan", { kind: "parallel", children: ["L", "R"], stage: "Build" }),
+      node("L", { parent: "Fan" }),
+      node("R", { parent: "Fan" }),
+      node("Gate", { stage: "Ship" }),
+      node("Publish", { stage: "Ship" }),
+    ];
+    const edges = [
+      edge(START, "Intake"),
+      edge("Intake", "Compile"),
+      edge("Compile", "Fan"),
+      edge("Fan", "Gate"),
+      edge("Gate", "Build", "goto"),
+      edge("Gate", "Publish"),
+      edge("Publish", END),
+    ];
+    const stage = (name: string, members: string[]) => ({ name, members, span: [0, 0], headerSpan: [0, 0], nameSpan: [0, 0], bodyOpen: 0, bodyClose: 0 }) as const;
+    return {
+      ...branching(),
+      nodes,
+      edges,
+      stages: [stage("Build", ["Compile", "Fan"]), stage("Ship", ["Gate", "Publish"])] as unknown as Workflow["stages"],
+    };
+  }
+
+  it("boxes each stage around its members, a group's branches inside the group", async () => {
+    const { nodes, edges } = await layoutWorkflow(staged());
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    expect(byId.get("Build")?.type).toBe("stage");
+    expect(byId.get("Compile")?.parentId).toBe("Build");
+    expect(byId.get("Fan")?.parentId).toBe("Build");
+    expect(byId.get("L")?.parentId).toBe("Fan");
+    expect(byId.get("Gate")?.parentId).toBe("Ship");
+    expect(byId.get("Intake")?.parentId).toBeUndefined();
+    // A parent comes before its children, as React Flow requires.
+    const at = (id: string) => nodes.findIndex((n) => n.id === id);
+    expect(at("Build")).toBeLessThan(at("Compile"));
+    expect(at("Fan")).toBeLessThan(at("L"));
+    // Every edge is routed, the goto into a stage's box included.
+    for (const e of edges) expect(e.data!.points.length).toBeGreaterThan(1);
+    expect(edges.some((e) => e.target === "Build")).toBe(true);
+    // Edges are in canvas coordinates: one between two boxed nodes leaves the
+    // source's bottom edge where React Flow draws it (box + relative position).
+    const abs = (id: string): { x: number; y: number } => {
+      const n = byId.get(id)!;
+      const p = n.parentId ? abs(n.parentId) : { x: 0, y: 0 };
+      return { x: p.x + n.position.x, y: p.y + n.position.y };
+    };
+    const e = edges.find((x) => x.source === "Compile" && x.target === "Fan")!;
+    const start = e.data!.points[0];
+    const c = abs("Compile");
+    const h = Number(byId.get("Compile")!.style?.height);
+    expect(Math.abs(start.y - (c.y + h))).toBeLessThan(1);
+    expect(start.x).toBeGreaterThanOrEqual(c.x);
+    expect(start.x).toBeLessThanOrEqual(c.x + 236);
+  });
+
+  it("lights the goto into a stage when the run took it", () => {
+    const wf = staged();
+    const taken = takenEdges(wf, ["Intake", "Compile", "L", "R", "Gate", "Compile"], null);
+    expect(taken.has("Gate>Build")).toBe(true);
+  });
+});

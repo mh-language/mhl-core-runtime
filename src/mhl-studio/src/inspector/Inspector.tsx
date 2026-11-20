@@ -86,7 +86,10 @@ function StepInspector({ wf, node, doc }: { wf: Workflow; node: GraphNode; doc: 
   const isPipeline = wf.kind !== "workflow";
   return (
     <div className="inspector-body">
-      <div className="inspector-kind">{node.kind === "parallel" ? "Parallel group" : node.parent ? `Branch of ${node.parent}` : node.choice ? "Choice" : "Step"}</div>
+      <div className="inspector-kind">
+        {node.kind === "parallel" ? "Parallel group" : node.parent ? `Branch of ${node.parent}` : node.choice ? "Choice" : "Step"}
+        {node.stage ? ` · stage ${node.stage}` : ""}
+      </div>
       <Field label="Name" value={node.name} mono onCommit={(v) => void edit((d) => renameNode(d, wf.name, node.id, v.trim()))} />
       <TimeoutField value={node.timeout} onCommit={(v) => void edit((d) => setTimeoutClause(d, wf.name, node.id, v))} />
 

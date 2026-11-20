@@ -69,6 +69,7 @@ export function localGraph(g: Graph): Graph {
         vars: w.vars.filter((x) => !x.file),
         props: w.props.filter((x) => !x.file),
         routes: w.routes.filter((x) => !x.file),
+        stages: w.stages?.filter((x) => !x.file),
       };
     }),
   };
@@ -335,7 +336,7 @@ export function renameNode(doc: Doc, wfName: string, id: string, next: string): 
   if (next === id) return { edits: [] };
   const whole = doc.whole.workflows.find((w) => w.name === wfName);
   const elsewhere = !!whole?.merged && whole.nodes.some((x) => x.file && x.id === next);
-  if (wf.nodes.some((x) => x.id === next) || wf.routes.some((r) => r.name === next) || elsewhere) {
+  if (wf.nodes.some((x) => x.id === next) || wf.routes.some((r) => r.name === next) || wf.stages?.some((x) => x.name === next) || elsewhere) {
     throw new EditError(`${next} already exists in ${wf.name}`);
   }
   doc.assertUnreferenced(wfName, id, "rename");
@@ -405,7 +406,8 @@ export function connect(doc: Doc, wfName: string, from: string, to: string): Edi
     return addArm(doc, wfName, from, nextPattern(decls, wf, n.choice, to), to);
   }
   if (n.parent) throw new EditError("a step inside a parallel group cannot goto; connect the group instead");
-  if (to !== END && to !== FAIL) {
+  // A stage is a target too, by its name: the run enters it at its first member.
+  if (to !== END && to !== FAIL && !wf.stages?.some((x) => x.name === to)) {
     const target = doc.node(wf, to);
     if (target.parent) throw new EditError(`${to} is inside a parallel group; a goto must target a top-level step`);
   }

@@ -15,6 +15,14 @@ section here, and the release workflow uses that section as the release notes.
   open its file; the inspector shows it with **Open file** / **Show in code**.
   Renaming or deleting a step that another fragment's `goto` targets is refused,
   and a name another fragment declares counts as taken.
+- **Stages are boxes.** A stage — the `stage Name` on a `partial` fragment's
+  header — is drawn as a titled box around that fragment's steps and parallel
+  groups (an ELK compound node) in the whole-workflow diagram; a `goto` to the
+  stage lands on the box, which takes its steps' status during a run, and a
+  transition drawn onto it writes `goto <stage>`.
+- **`stage` is highlighted** in the code editor (the shared TextMate grammar of
+  the VS Code extension): the keyword and the stage's name, only in a header's
+  `stage Name {`.
 - **Resume a gate with a form.** A run paused at a typed gate
   (`pause(reason, decision: T)`) shows a decision form built from `T` — a select
   per enum, a checkbox per bool, a field per string/number — and **Resume with

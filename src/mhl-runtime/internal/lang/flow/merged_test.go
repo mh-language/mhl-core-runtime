@@ -122,3 +122,61 @@ workflow W {
 		t.Fatalf("a plain pause has no decision: %v", nodes[1].Decisions)
 	}
 }
+
+func TestStagesOfEveryFragment(t *testing.T) {
+	home := `import "spec.mh"
+partial workflow W {
+    input n: number = 0
+    entry step Intake { goto Spec }
+}`
+	spec := `partial workflow W stage Spec {
+    step A { log("a") }
+    parallel P { step P1 { log(1) } step P2 { log(2) } }
+    step B { if (n < 1) { goto Spec } }
+}`
+	w, err := BuildMerged([]Fragment{fragment(t, "", home), fragment(t, "/abs/spec.mh", spec)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.Stages) != 1 || w.Stages[0].Name != "Spec" || w.Stages[0].File != "/abs/spec.mh" || !slices.Equal(w.Stages[0].Members, []string{"A", "P", "B"}) {
+		t.Fatalf("stages = %+v", w.Stages)
+	}
+	if got := slice(spec, w.Stages[0].NameSpan); got != "Spec" {
+		t.Fatalf("stage name span reads %q", got)
+	}
+	stage := map[string]string{}
+	for _, n := range w.Nodes {
+		stage[n.ID] = n.Stage
+	}
+	if stage["Intake"] != "" || stage["A"] != "Spec" || stage["P"] != "Spec" || stage["P1"] != "" || stage["B"] != "Spec" {
+		t.Fatalf("node stages = %v", stage)
+	}
+	// `goto Spec` targets the stage, which is not an external.
+	if got := edgeList(w); !slices.Contains(got, "Intake->Spec:goto") || !slices.Contains(got, "B->Spec:goto[n < 1]") || len(w.Externals) != 0 {
+		t.Fatalf("edges %v, externals %v", got, w.Externals)
+	}
+}
+
+func TestHeaderStageCoversTheWholeFragment(t *testing.T) {
+	src := `partial workflow Story stage Story {
+    step A { log(1) }
+    parallel P { step P1 { log(1) } step P2 { log(2) } }
+}`
+	w := build(t, src).Workflows[0]
+	if len(w.Stages) != 1 {
+		t.Fatalf("stages = %+v", w.Stages)
+	}
+	st := w.Stages[0]
+	// The stage shares the workflow's name here: its NameSpan is the one after `stage`.
+	if !slices.Equal(st.Members, []string{"A", "P"}) || st.NameSpan[0] < w.NameSpan[1] || slice(src, st.NameSpan) != "Story" {
+		t.Fatalf("header stage = %+v (workflow name at %v)", st, w.NameSpan)
+	}
+	if st.BodyOpen != w.BodyOpen || st.BodyClose != w.BodyClose {
+		t.Fatalf("a header stage's body is the fragment's: %+v vs %d..%d", st, w.BodyOpen, w.BodyClose)
+	}
+	for _, n := range w.Nodes {
+		if n.Parent == "" && n.Stage != "Story" {
+			t.Fatalf("%s is not in the header stage", n.ID)
+		}
+	}
+}

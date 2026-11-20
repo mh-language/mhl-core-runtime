@@ -87,9 +87,16 @@ func gotoTargetItems(path, text string, pos position) []completionItem {
 
 // pipelineStepItems returns a completion item for every step p's own Body
 // declares directly — a plain `step`, a `parallel` group by its name, and
-// each branch of a group.
+// each branch of a group — and the fragment's header stage (goto enters it at its
+// first member).
 func pipelineStepItems(p *ast.Pipeline) []completionItem {
 	var items []completionItem
+	for _, st := range p.Stages {
+		if len(st.Members) == 0 {
+			continue // a header stage on a fragment with no step yet: nothing to enter
+		}
+		items = append(items, completionItem{Label: st.Name, Kind: kindMethod, Detail: "stage (enters at " + st.Members[0] + ")"})
+	}
 	for _, m := range p.Body {
 		switch {
 		case m.Step != nil:
