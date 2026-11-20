@@ -4,6 +4,17 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
+## Unreleased
+
+### Fixed
+
+- **macOS: no more "is damaged and can't be opened".** The app bundle is now
+  ad-hoc signed as a whole (`bundle.macOS.signingIdentity: "-"`), not just its
+  executable by the linker, so Info.plist and resources are sealed. A downloaded
+  copy now gets Gatekeeper's "could not verify" prompt, which System Settings →
+  Privacy & Security → **Open Anyway** clears without a terminal. Still not
+  Developer ID–signed or notarized.
+
 ## 0.3.0
 
 ### Added
