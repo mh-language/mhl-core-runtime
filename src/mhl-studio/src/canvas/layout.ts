@@ -103,6 +103,9 @@ const LAYERED: Record<string, string> = {
   "elk.layered.edgeLabels.sideSelection": "ALWAYS_UP",
 };
 
+/** A fallthrough edge: the cycle breaker reverses another edge of its loop first. */
+const NEXT = { "elk.layered.priority.direction": "10" };
+
 /** Weight on an edge of the main line: ELK draws it straight before others. */
 const STRAIGHT = { "elk.layered.priority.straightness": "10" };
 
@@ -204,6 +207,8 @@ function centerMainLine(root: ElkNode, line: string[]) {
 }
 
 export const STEP_W = 236;
+/** How far a step's ask-again loop reaches out of its right side. */
+const LOOP_W = 22;
 export const STEP_H = 68;
 /** One call box inside a step; at most MAX_BOXES are drawn (then "+N more"). */
 export const BOX_H = 26;
@@ -224,7 +229,8 @@ export interface Point {
   y: number;
 }
 
-export type StepNodeData = { node: GraphNode; workflow: string };
+/** `failsWhen`: the conditions of the step's own `fail(...)`, listed on its ✕ badge. */
+export type StepNodeData = { node: GraphNode; workflow: string; failsWhen?: string[] };
 /** A stage (a fragment's header `stage Name`): a labelled box around its members. */
 export type StageNodeData = { stage: StageGroup; workflow: string; steps: string[] };
 
@@ -236,7 +242,49 @@ export type TerminalNodeData = { role: "start" | "end" | "fail" };
 export type ExternalNodeData = { name: string };
 /** `used`: some step runs `goto Route(x)` — it is in the flow, with edges. */
 export type RouteNodeData = { route: Route; workflow: string; used: boolean };
-export type FlowEdgeData = { edge: GraphEdge; points: Point[]; labelAt?: Point; index: number };
+export type FlowEdgeData = {
+  edge: GraphEdge;
+  points: Point[];
+  labelAt?: Point;
+  index: number;
+  /** The label as drawn — shortened, or a summary (`3 conditions`, `↻`); edge.label is the full one. */
+  text?: string;
+  /** The full condition(s) the drawn label stands for, shown on hover. */
+  title?: string;
+};
+
+/** Labels longer than this are cut, the full text kept for the tooltip. */
+const LABEL_MAX = 34;
+const shorten = (text: string) => (text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX - 1)}…` : text);
+
+/**
+ * The top-level nodes by how many hops a run needs to reach them from Start
+ * (breadth-first, a goto to a stage entering its first member), declaration
+ * order among equals, unreached ones last. A stage moves as one unit, at its
+ * nearest member, its members kept in the order they are written. ELK takes this as its model order,
+ * which also decides which edge of a cycle points back: a step declared early
+ * but only ever reached late (a shared revision step in the entry fragment)
+ * is then drawn after its callers, not above the whole diagram.
+ */
+export function runOrder(wf: Workflow, top: GraphNode[]): GraphNode[] {
+  const parentOf = new Map(wf.nodes.filter((n) => n.parent).map((n) => [n.id, n.parent!]));
+  const entry = new Map((wf.stages ?? []).map((s) => [s.name, s.members[0]]));
+  const norm = (id: string) => parentOf.get(entry.get(id) ?? id) ?? entry.get(id) ?? id;
+  const next = new Map<string, string[]>();
+  for (const e of wf.edges) {
+    const from = norm(e.from);
+    next.set(from, [...(next.get(from) ?? []), norm(e.to)]);
+  }
+  const dist = new Map([[START, 0]]);
+  const queue = [START];
+  for (let i = 0; i < queue.length; i++)
+    for (const to of next.get(queue[i]) ?? [])
+      if (!dist.has(to)) dist.set(to, dist.get(queue[i])! + 1), queue.push(to);
+  const stageHops = new Map<string, number>();
+  for (const n of top) if (n.stage) stageHops.set(n.stage, Math.min(stageHops.get(n.stage) ?? Infinity, dist.get(n.id) ?? Infinity));
+  const hops = (n: GraphNode) => (n.stage ? stageHops.get(n.stage)! : (dist.get(n.id) ?? Infinity));
+  return [...top].sort((a, b) => hops(a) - hops(b)); // stable: declaration order among equals
+}
 
 export interface Layout {
   nodes: Node[];
@@ -268,10 +316,24 @@ export function routeHeight(r: Route, used: boolean): number {
 const ASIDE_GAP = 72;
 
 export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
-  const top = wf.nodes.filter((n) => !n.parent);
+  const top = runOrder(wf, wf.nodes.filter((n) => !n.parent));
   const childrenOf = (id: string) => wf.nodes.filter((n) => n.parent === id);
-  const drawn = drawnEdges(wf);
+  const isTop = new Set(top.map((n) => n.id));
+  const all = drawnEdges(wf);
+  // A step that asks again (`goto` itself) gets a short loop drawn by hand,
+  // and a guard's `fail(...)` no edge at all: the step's ✕ badge already says
+  // it can fail, and lists the conditions on hover. Neither is routed across
+  // the diagram. A match/route arm to Fail is still an edge to the terminal.
+  const loops = new Map<string, GraphEdge[]>();
+  const failsWhen = new Map<string, string[]>();
+  const drawn: GraphEdge[] = [];
+  for (const e of all) {
+    if (e.from === e.to && isTop.has(e.from)) loops.set(e.from, [...(loops.get(e.from) ?? []), e]);
+    else if (e.kind === "fail" && e.to === FAIL) failsWhen.set(e.from, [...(failsWhen.get(e.from) ?? []), e.label || "always"]);
+    else drawn.push(e);
+  }
   const usesFail = drawn.some((e) => e.to === FAIL);
+  const stepData = (n: GraphNode): StepNodeData => ({ node: n, workflow: wf.name, ...(failsWhen.has(n.id) ? { failsWhen: failsWhen.get(n.id) } : {}) });
   const used = usedRoutes(wf);
   const after = routesAfter(wf, top);
   const routeNode = (r: Route): ElkNode => ({ id: routeId(r.name), width: STEP_W, height: ROUTE_H });
@@ -316,13 +378,21 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
 
   const ext = new Set(wf.externals);
   const ref = (id: string) => (ext.has(id) ? `ext:${id}` : id);
+  const textOf = (e: GraphEdge) => {
+    const t = edgeLabel(e);
+    return t ? shorten(t) : t;
+  };
   const edges: ElkExtendedEdge[] = drawn.map((e, i) => {
-    const text = edgeLabel(e);
+    const text = textOf(e);
     return {
       id: edgeId(e, i),
       sources: [ref(e.from)],
       targets: [ref(e.to)],
       labels: text ? [{ text, width: labelWidth(text), height: 18 }] : [],
+      // A fallthrough keeps pointing down: a loop through it is cut on the
+      // goto back instead, inside a stage too (whose box's own cycle breaking
+      // ignores the model order).
+      ...(e.kind === "next" ? { layoutOptions: NEXT } : {}),
     };
   });
 
@@ -418,13 +488,13 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
           parentId: n.id,
           extent: "parent",
           position: { x: k.x ?? 0, y: k.y ?? 0 },
-          data: { node: byId.get(k.id)!, workflow: wf.name } satisfies StepNodeData,
+          data: stepData(byId.get(k.id)!),
           style: { height: k.height },
           draggable: false,
         });
       }
     } else {
-      nodes.push({ id: n.id, type: "step", position: pos, ...inBox, data: { node: n, workflow: wf.name } satisfies StepNodeData, style: { height: c.height }, draggable: false });
+      nodes.push({ id: n.id, type: "step", position: pos, ...inBox, data: stepData(n), style: { height: c.height }, draggable: false });
     }
   };
   for (const c of laidOut) emit(c);
@@ -436,15 +506,58 @@ export async function layoutWorkflow(wf: Workflow): Promise<Layout> {
     const sec = le?.sections?.[0];
     const points: Point[] = sec ? [sec.startPoint, ...(sec.bendPoints ?? []), sec.endPoint] : [];
     const lab = le?.labels?.[0];
+    const full = edgeLabel(e);
+    const text = textOf(e);
     return {
       id,
       source: ref(e.from),
       target: ref(e.to),
       type: "elk",
-      data: { edge: e, points, labelAt: lab && lab.x != null ? { x: lab.x + (lab.width ?? 0) / 2, y: lab.y! + (lab.height ?? 0) / 2 } : undefined, index: i },
+      data: {
+        edge: e,
+        points,
+        labelAt: lab && lab.x != null ? { x: lab.x + (lab.width ?? 0) / 2, y: lab.y! + (lab.height ?? 0) / 2 } : undefined,
+        index: i,
+        text,
+        title: full && full !== text ? full : undefined,
+      },
       deletable: true,
     };
   });
+
+  // Each step that asks again: a short loop on its right side, its
+  // conditions on hover. Positions are absolute: a box's own plus its parents'.
+  const absolute = new Map<string, { x: number; y: number; w: number; h: number }>();
+  const place = (c: ElkNode, ox: number, oy: number) => {
+    const x = ox + (c.x ?? 0);
+    const y = oy + (c.y ?? 0);
+    absolute.set(c.id, { x, y, w: c.width ?? 0, h: c.height ?? 0 });
+    for (const k of c.children ?? []) place(k, x, y);
+  };
+  for (const c of laidOut) place(c, 0, 0);
+  for (const [id, list] of loops) {
+    const r = absolute.get(id);
+    if (!r) continue;
+    const [y1, y2] = [r.y + r.h * 0.3, r.y + r.h * 0.7];
+    const out = r.x + r.w + LOOP_W;
+    const index = flowEdges.length;
+    flowEdges.push({
+      id: `loop:${id}`,
+      source: id,
+      target: id,
+      type: "elk",
+      data: {
+        edge: list[0],
+        points: [{ x: r.x + r.w, y: y1 }, { x: out, y: y1 }, { x: out, y: y2 }, { x: r.x + r.w, y: y2 }],
+        labelAt: { x: out + 10, y: (y1 + y2) / 2 },
+        index,
+        text: list.length === 1 ? "↻" : `↻ ${list.length}`,
+        title: `asks again when:\n${list.map((e) => e.label ?? "always").join("\n")}`,
+      },
+      // Several gotos drawn as one: deleting it would remove only the first.
+      deletable: list.length === 1,
+    });
+  }
   return { nodes, edges: flowEdges };
 }
 

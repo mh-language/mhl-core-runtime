@@ -34,6 +34,18 @@ section here, and the release workflow uses that section as the release notes.
   decision** passes it (`mhl run --resume --decision`). A gate step is labelled
   `Gate · T` on the diagram.
 
+### Changed
+
+- **Big diagrams read better.** Steps are laid out in the order a run reaches
+  them, so a shared step declared early (a revision step in the entry fragment)
+  sits after its callers instead of above the whole diagram, and a stage keeps
+  its steps in the order they are written. A step's guard `fail(...)` no longer
+  draws an edge to Fail: its ✕ badge lists the conditions on hover (a
+  `goto match`/route arm to `fail` still goes to the Fail terminal). A step that
+  asks again (`goto` itself) gets a short `↻` loop on its side, its conditions on
+  hover, and a long condition label is cut with the full text in its tooltip. On
+  the AgileSpec story workflow: 2386 → 775 px wide, 79 → 42 bends.
+
 ## 0.4.0
 
 ### Fixed

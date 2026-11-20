@@ -115,8 +115,10 @@ export const StepNode = memo(function StepNode({ id, data, selected }: NodeProps
       {n.timeout && <TimeoutBadge timeout={n.timeout} />}
       {n.exits.map((x) => {
         const b = EXIT_BADGE[x];
+        // A guard's fail(...) has no edge: its conditions are listed here.
+        const when = x === "fail" && data.failsWhen?.length ? `${b?.title ?? "can fail the run"} when:\n${data.failsWhen.join("\n")}` : b?.title;
         return (
-          <span key={x} className={`badge icon ${b?.cls ?? ""}`} title={b?.title}>
+          <span key={x} className={`badge icon ${b?.cls ?? ""}`} title={when}>
             {b ? <b.Icon size={10} strokeWidth={2.25} aria-label={x} /> : x}
           </span>
         );
