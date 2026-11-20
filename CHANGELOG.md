@@ -10,6 +10,8 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+## 1.13.0 — 2026-11-20
+
 ### Added
 
 - **`mhl graph --merged` shows a `partial` workflow whole.** Every fragment in the file's
