@@ -147,6 +147,8 @@ export interface GraphNode {
   /** A parallel group's `merge (param) { ... }` block, if any. */
   merge?: Merge;
   exits: string[];
+  /** The decision types of the step's gates — `pause(reason, decision: T)` — in source order. */
+  decisions?: string[];
   fallsThrough: boolean;
 }
 
@@ -210,6 +212,14 @@ export interface Graph {
   workflows: Workflow[];
 }
 
+/** A gate a paused run waits at (execsvc.Awaiting): `schema` is its decision type as JSON Schema. */
+export interface Awaiting {
+  step: string;
+  index: number;
+  type: string;
+  schema?: Record<string, unknown>;
+}
+
 export const START = "$start";
 export const END = "$end";
 export const FAIL = "$fail";
@@ -260,6 +270,8 @@ export interface RunResult {
   resumed?: boolean;
   paused?: boolean;
   pause_reason?: unknown;
+  /** The gate a paused run waits at — `pause(..., decision: T)`; resume it with a decision of T. */
+  awaiting?: Awaiting;
   broke?: boolean;
   break_reason?: unknown;
   vars?: Record<string, unknown>;

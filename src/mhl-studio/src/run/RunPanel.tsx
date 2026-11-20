@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { clearRun, inspect } from "../app/controller";
+import { clearRun, inspect, startRun } from "../app/controller";
+import { DecisionForm } from "./DecisionForm";
 import { set, useStore, type RunTab as Tab } from "../app/store";
 import type { RunEvent } from "../lib/types";
 
@@ -93,7 +94,15 @@ export function RunPanel() {
           {tab === "execution" && (
             <div className="execution">
               <div className="execution-summary">
-                {paused && (
+                {paused && res?.awaiting && (
+                  <DecisionForm
+                    key={`${res.awaiting.step}#${res.executed?.length ?? 0}`}
+                    awaiting={res.awaiting}
+                    reason={fmt(res.pause_reason)}
+                    onSubmit={(decision) => void startRun([], { resume: true, decision })}
+                  />
+                )}
+                {paused && !res?.awaiting && (
                   <div className="approval">
                     <h4>Waiting for a decision</h4>
                     <p>{fmt(res?.pause_reason) || "The run paused."}</p>

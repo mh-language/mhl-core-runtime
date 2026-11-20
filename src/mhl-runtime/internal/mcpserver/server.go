@@ -571,6 +571,10 @@ func (s *server) pausedToolResult(w execsvc.Workflow, res *execsvc.Result, r map
 	if step != "" {
 		meta["step"] = step
 	}
+	if res.Awaiting != nil {
+		// A gate: what a run/start-ed run would have to be resumed with.
+		meta["awaiting"] = res.Awaiting
+	}
 	r["_meta"] = map[string]any{"mhl.run": meta}
 	note := fmt.Sprintf("Workflow %q paused", w.Name)
 	if step != "" {

@@ -75,6 +75,8 @@ export function FragmentChip({ file }: { file: string }) {
 
 function kindOf(data: StepNodeData): { kind: BadgeKind; label: string } {
   const n = data.node;
+  // A gate (`pause(..., decision: T)`) is the step's defining trait, even when it also branches on the answer.
+  if (n.decisions?.length) return { kind: "approval", label: `Gate · ${n.decisions.join(", ")}` };
   if (n.choice) return { kind: "choice", label: `Choice · ${n.choice.subject}` };
   if (n.calls.length) return { kind: "task", label: "Task" };
   if (n.exits.includes("pause")) return { kind: "approval", label: "Human approval" };

@@ -2954,3 +2954,15 @@ select {
 .node.foreign .fragment-chip {
   margin-left: auto;
 }
+
+/* The form a run paused at a gate is resumed from (run/DecisionForm.tsx). */
+.decision-form .decision-field {
+  display: grid;
+  grid-template-columns: minmax(90px, max-content) 1fr;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+.decision-form .decision-field input[type="checkbox"] {
+  justify-self: start;
+}

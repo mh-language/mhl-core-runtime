@@ -18,6 +18,18 @@ Per-tag release notes are also generated automatically on the
   A node, input, var, prop or route from another fragment carries that file's absolute path
   in `"file"`, its spans indexing that file.
 
+- **Typed gates: `pause(reason, decision: T)`.** A pause that returns the decision a resume
+  passes. The run reports `awaiting` — the step and `T` (a declared `type`/`enum`, or
+  `string`/`number`/`bool`) as JSON Schema — in `mhl run --format json|jsonl`, `run/status`
+  and a paused `tools/call`. `mhl run --resume --decision '<json>'` and
+  `run/resume {runId, decision}` answer it: checked against `T` before anything runs (a
+  wrong one is refused with the run still paused: `invalid_decision` / `-32602`), then
+  returned by that gate — once, so the next gate reached pauses again and an old approval
+  never answers a later round. In a test, `Name.run(decisions: [...])` answers each gate in
+  turn. `mhl lint` checks `T`, and rejects a gate in a `loop` workflow (not supported yet).
+  A plain `pause(reason)` is unchanged. `mhl graph` lists a step's gate types in
+  `decisions`.
+
 ### Fixed
 
 - **`mhl graph` no longer draws a start edge into a `partial` fragment without the `entry`

@@ -86,7 +86,10 @@ type RunResult struct {
 	BreakReason any
 	Paused      bool
 	PauseReason any
-	FinalVars   map[string]any
+	// PauseGate is set when the pause is a typed one (Gate): the decision the
+	// run now waits for.
+	PauseGate *Gate
+	FinalVars map[string]any
 }
 
 // maxStepVisits caps how many times Run may (re-)enter the same step name,
@@ -140,6 +143,13 @@ type Runner struct {
 	// forceResume downgrades a resume-time definition-digest mismatch from an
 	// error to a logged warning (the operator asserting the edit is safe).
 	forceResume bool
+}
+
+// Checkpoint returns the checkpoint a resume of pipeline would continue
+// from (found false when there is none), without running anything — how a
+// caller checks what a suspended run waits for (its Gate) up front.
+func (r *Runner) Checkpoint(pipeline string) (*Checkpoint, bool, error) {
+	return r.checkpoints().Load(pipeline)
 }
 
 // NewRunner returns a Runner backed by a Store rooted at root. It is
@@ -339,11 +349,12 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 				CompletedSteps: append([]string{}, completedBefore...),
 				Variables:      copyVars(ctx.Vars),
 				TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
+				Gate:           pause.Gate,
 			}
 			if saveErr := r.save(cp); saveErr != nil {
 				return result, saveErr
 			}
-			result.Paused, result.PauseReason = true, pause.Reason
+			result.Paused, result.PauseReason, result.PauseGate = true, pause.Reason, pause.Gate
 			result.FinalVars = copyVars(ctx.Vars)
 			return result, nil
 

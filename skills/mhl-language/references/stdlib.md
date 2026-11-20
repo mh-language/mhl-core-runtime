@@ -11,6 +11,7 @@ table is `src/mhl-runtime/internal/lsp/signatures.go` in the mhl repository.
 | `log(...values)` | null | One space-joined line on stdout |
 | `fail(...values)` | never | Raises a catchable error |
 | `pause(reason?)` | never | Suspends the run at this step |
+| `pause(reason?, decision: T)` | `T` | A gate: suspends until a resume passes a decision of `T`, then returns it — once |
 | `complete()` | never | Ends the run as completed |
 | `env(name, default?)` | string | `""` when unset and no default; see `mhl-tools` for fail-closed positions |
 | `nameof(Name)` | string | A declared top-level name, validated by lint |

@@ -1,0 +1,90 @@
+// A typed gate: `pause(reason, decision: T)` suspends the run until a resume
+// passes a decision of type T, then returns it. Each decision answers the
+// one gate it was given for — here, one review round — so Revise loops back
+// and the next round's gate pauses again, never approved by the old answer.
+//
+//   mhl run typed_gate_review_loop.mh --session s1
+//       → paused at Review, "awaiting": {type: "Review", schema: {...}}
+//   mhl run typed_gate_review_loop.mh --session s1 --resume --decision '{"action": "Revise", "note": "shorter"}'
+//   mhl run typed_gate_review_loop.mh --session s1 --resume --decision '{"action": "Approve"}'
+//
+// A decision of the wrong type (`{"action": "Maybe"}`) is refused before
+// anything runs, and the run stays paused.
+enum Action { Approve, Revise, Reject }
+
+type Review = { action: Action, note?: string }
+
+workflow ReviewLoop {
+    description: "Drafts, then asks a reviewer each round until approved or rejected."
+
+    var drafts = 0
+    var notes = []
+    var status = "drafting"
+
+    output: { status, drafts, notes }
+
+    step Draft {
+        self.drafts = drafts + 1
+    }
+
+    step Review {
+        var d = pause("review draft ${drafts}", decision: Review)
+        // note is optional: read it with a default.
+        var note = d.get("note", "")
+        if (!note.is_empty()) {
+            notes.append(note)
+        }
+
+        goto match d.action {
+            Action.Approve -> Approved
+            Action.Revise -> Draft
+            Action.Reject -> Rejected
+        }
+    }
+
+    step Rejected {
+        self.status = "rejected"
+        complete()
+    }
+
+    step Approved {
+        self.status = "approved"
+    }
+}
+
+test review_loop {
+    describe the_run_reports_the_gate_it_waits_at {
+        var r = ReviewLoop.run()
+        are_equal(r.state, "paused")
+        are_equal(r.awaiting.step, "Review")
+        are_equal(r.awaiting.type, "Review")
+    }
+
+    describe each_decision_answers_one_round {
+        var r = ReviewLoop.run(decisions: [
+            {action: "Revise", note: "shorter"},
+            {action: Action.Revise},
+            {action: "Approve"}
+        ])
+        are_equal(r.state, "completed")
+        are_equal(r.output.status, "approved")
+        are_equal(r.output.drafts, 3)
+        are_equal(r.output.notes, ["shorter"])
+    }
+
+    describe running_out_of_decisions_leaves_it_paused {
+        var r = ReviewLoop.run(decisions: [{action: "Revise"}])
+        are_equal(r.state, "paused")
+        are_equal(r.output, null)
+    }
+
+    describe a_wrong_decision_is_refused {
+        var message = ""
+        try {
+            ReviewLoop.run(decisions: [{action: "Maybe"}])
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("not a variant of enum Action"))
+    }
+}

@@ -80,6 +80,18 @@ func (p Pipeline) OutputSchema() map[string]any {
 	return s
 }
 
+// TypeSchema renders t — a type of this pipeline's program, such as a
+// gate's decision type — as JSON Schema titled title, enum variants filled
+// in at any depth.
+func (p Pipeline) TypeSchema(t types.Type, title string) map[string]any {
+	s := t.JSONSchema()
+	if title != "" {
+		s["title"] = title
+	}
+	p.withEnumVariants(s)
+	return s
+}
+
 // withEnumVariants fills in `"enum": [...]` wherever s — at any depth,
 // through object properties and array items — holds the enum placeholder
 // Type.JSONSchema emits (`{"type":"string","description":"mhl enum X"}`)

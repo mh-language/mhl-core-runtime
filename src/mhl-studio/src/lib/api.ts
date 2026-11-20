@@ -30,6 +30,8 @@ export const api = {
       resume: boolean;
       force: boolean;
       session?: string;
+      /** With resume: the JSON answer to the gate the run paused at. */
+      decision?: string;
     },
     onEvent: (ev: RunEvent) => void,
   ) => {

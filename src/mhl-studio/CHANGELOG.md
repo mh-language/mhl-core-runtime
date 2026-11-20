@@ -15,6 +15,11 @@ section here, and the release workflow uses that section as the release notes.
   open its file; the inspector shows it with **Open file** / **Show in code**.
   Renaming or deleting a step that another fragment's `goto` targets is refused,
   and a name another fragment declares counts as taken.
+- **Resume a gate with a form.** A run paused at a typed gate
+  (`pause(reason, decision: T)`) shows a decision form built from `T` — a select
+  per enum, a checkbox per bool, a field per string/number — and **Resume with
+  decision** passes it (`mhl run --resume --decision`). A gate step is labelled
+  `Gate · T` on the diagram.
 
 ## 0.4.0
 

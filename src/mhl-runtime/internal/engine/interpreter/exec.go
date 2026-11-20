@@ -10,6 +10,7 @@ import (
 
 	"github.com/alecthomas/participle/v2/lexer"
 
+	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
@@ -62,7 +63,8 @@ func RunStep(goctx context.Context, prog *ast.Program, pipelineName, stepName, f
 		}
 		consts[param] = true
 	}
-	ctx := &evalCtx{prog: prog, pipelineName: owner, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: consts}
+	ctx := &evalCtx{prog: prog, pipelineName: owner, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: consts,
+		gates: &gateState{step: stepName, answer: gateAnswerFrom(goctx, stepName)}}
 	// A non-nil spawnSem enables `spawn`/`wait` for this step and confines
 	// them to it: drainAtStepEnd joins whatever the step body left running,
 	// so no spawned goroutine ever outlives the step (and no handle is live
@@ -288,7 +290,19 @@ func (g *gotoSignal) Error() string { return "goto " + g.target }
 // completion — leaving its checkpoint in place so a `run/resume` (or
 // `mhl run --resume`) re-enters the step that paused. The reason value is
 // carried into the run's status for the caller / human operator.
-type pauseSignal struct{ reason any }
+type pauseSignal struct {
+	reason any
+	// gate is set for a typed pause, `pause(reason, decision: T)` (gate.go).
+	gate *runtime.Gate
+}
+
+func pauseSignalOf(err error) *pauseSignal {
+	var sig *pauseSignal
+	if errors.As(err, &sig) {
+		return sig
+	}
+	return nil
+}
 
 func (p *pauseSignal) Error() string { return "pause" }
 

@@ -143,6 +143,8 @@ este índice cobre apenas o que tem exemplo executável aqui.
 ## G
 
 - **`.get(key, default)`** — leitura de objeto sem exceção. → [object_get_with_default.mh](syntax/object_property_access/object_get_with_default.mh)
+- **Gate** (`pause(motivo, decision: T)`) — pausa tipada que devolve a decisão da retomada (`--decision`), uma vez.
+  → [typed_gate_review_loop.mh](syntax/pipeline_vs_workflow/typed_gate_review_loop.mh)
 - **`git.*`** — `status`, `diff`, `log`, `rev_parse`, `add`, `commit`, com `dir:`.
   → [features/git/](features/git/README.md)
 - **`goto`** — salto entre steps (só em `workflow`); `goto nameof(X)`; alvo pode ser um grupo `parallel`.

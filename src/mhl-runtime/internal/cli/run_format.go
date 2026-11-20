@@ -21,17 +21,20 @@ type runJSON struct {
 	File     string `json:"file,omitempty"`
 
 	// success
-	Executed       []string       `json:"executed,omitempty"`
-	Skipped        []string       `json:"skipped,omitempty"`
-	Resumed        bool           `json:"resumed,omitempty"`
-	Paused         bool           `json:"paused,omitempty"`
-	PauseReason    any            `json:"pause_reason,omitempty"`
-	Broke          bool           `json:"broke,omitempty"`
-	BreakReason    any            `json:"break_reason,omitempty"`
-	Loop           bool           `json:"loop,omitempty"`
-	Iterations     int            `json:"iterations,omitempty"`
-	TerminalReason string         `json:"terminal_reason,omitempty"`
-	Vars           map[string]any `json:"vars,omitempty"`
+	Executed    []string `json:"executed,omitempty"`
+	Skipped     []string `json:"skipped,omitempty"`
+	Resumed     bool     `json:"resumed,omitempty"`
+	Paused      bool     `json:"paused,omitempty"`
+	PauseReason any      `json:"pause_reason,omitempty"`
+	// Awaiting is the gate a paused run waits at (`pause(..., decision: T)`):
+	// resume with `--resume --decision <json>` of that type.
+	Awaiting       *execsvc.Awaiting `json:"awaiting,omitempty"`
+	Broke          bool              `json:"broke,omitempty"`
+	BreakReason    any               `json:"break_reason,omitempty"`
+	Loop           bool              `json:"loop,omitempty"`
+	Iterations     int               `json:"iterations,omitempty"`
+	TerminalReason string            `json:"terminal_reason,omitempty"`
+	Vars           map[string]any    `json:"vars,omitempty"`
 
 	// failure
 	Error   string   `json:"error,omitempty"`
@@ -67,6 +70,7 @@ func writeRunJSON(out io.Writer, res *execsvc.Result, runErr error, file, logTex
 		rj.Resumed = res.Resumed
 		rj.Paused = res.Paused
 		rj.PauseReason = runtime.RedactValue(res.PauseReason)
+		rj.Awaiting = res.Awaiting
 		rj.Broke = res.Broke
 		rj.BreakReason = runtime.RedactValue(res.BreakReason)
 		rj.Loop = res.Loop
@@ -111,6 +115,13 @@ func classifyRunError(rj *runJSON, err error) {
 		rj.Kind = "output_contract"
 		rj.Pipeline = contract.Pipeline
 		rj.Hint = "every step ran, but the `output:` projection does not match the declared result type; fix the projection or the type."
+		return
+	}
+
+	var badDecision *execsvc.DecisionError
+	if errors.As(err, &badDecision) {
+		rj.Kind = "invalid_decision"
+		rj.Hint = "a decision answers the gate a paused run waits at (`awaiting` in its result): resume with --decision '<json>' of that type, or without --decision when it is not waiting for one."
 		return
 	}
 

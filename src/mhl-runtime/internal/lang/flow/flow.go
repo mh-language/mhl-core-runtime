@@ -259,6 +259,11 @@ type Node struct {
 	Merge        *Merge   `json:"merge,omitempty"`
 	Exits        []string `json:"exits"`
 	FallsThrough bool     `json:"fallsThrough"`
+	// Decisions are the decision types of the step's gates — `pause(reason,
+	// decision: T)` — in source order; absent when it has none. A gate is a
+	// human-in-the-loop hand-off like a bare pause, but returns the answer
+	// instead of being an exit.
+	Decisions []string `json:"decisions,omitempty"`
 }
 
 // CallSite is one `Receiver.method(...)` call in a step body whose receiver
@@ -765,6 +770,7 @@ func (b *builder) step(st *ast.Step, s Span, parent string) Node {
 	n.CallSites = b.callSites(Span{n.BodyOpen, n.BodyClose})
 	n.Choice = b.choice(st.Body)
 	n.Exits = exits(st.Body)
+	n.Decisions = decisions(st.Body)
 	return n
 }
 

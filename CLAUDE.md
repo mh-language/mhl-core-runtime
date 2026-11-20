@@ -125,7 +125,17 @@ block is optional and only needed to override a field (`ttl`) or opt out entirel
 run parks in `state: "paused"` / `resumable: true` with its subtree kept, then
 `run/resume {runId, arguments}` re-enters that step with the decision merged in; `pause`
 writes its own checkpoint even when the block is disabled, and it is a control signal
-like `break`, not a catchable error like `fail()`). Signal path: `interpreter.pauseSignal`
+like `break`, not a catchable error like `fail()`). A **typed gate**, `var d = pause(reason, decision: T)` (`interpreter/gate.go`), returns
+the decision a resume passes instead: the pause signal carries a `runtime.Gate{Step, Index, Type}`
+(Index = ordinal of the step's gated pauses, counted per step execution), persisted as
+`Checkpoint.Gate` and surfaced as `execsvc.Result.Awaiting` (T as JSON Schema via
+`Pipeline.TypeSchema`) → `awaiting` in `--format json`/jsonl, `run/status`, paused `tools/call`.
+`execsvc.Request.Decision` (`mhl run --resume --decision`, `run/resume {decision}` —
+prevalidated by `execsvc.CheckDecision` so the run stays paused) is checked against the
+checkpoint's gate before any hook runs (`*execsvc.DecisionError`) and handed to that one gate
+via `interpreter.WithGateAnswer` — consumed once, so a later gate pauses again. Test mode:
+`Name.run(decisions: [...])`. `lint/gate.go` checks T and refuses a gate in a `loop`; flow
+lists a step's gate types in `Node.Decisions`. Signal path: `interpreter.pauseSignal`
 → `IsPause` → `runtime.PauseSignal` → `RunResult.Paused` / `LoopResult.TerminalReason
 "pause"` → `execsvc.Result.Paused` → `mcpserver` `state: "paused"`. Via
 `execsvc.Request.{Session,Resume}`; `--state-dir` / `MHL_SERVE_STATE_DIR` makes that run

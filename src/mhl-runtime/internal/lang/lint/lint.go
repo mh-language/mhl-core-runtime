@@ -73,6 +73,7 @@ func source(path, src string, cache *importCache) []Finding {
 	findings = append(findings, checkSpreadLiterals(path, merged)...)
 	findings = append(findings, checkParallelGroups(path, merged)...)
 	findings = append(findings, checkParallelMerges(path, merged)...)
+	findings = append(findings, checkGates(path, merged)...)
 	findings = append(findings, checkDiscardedResults(path, merged)...)
 	findings = append(findings, checkPipelineGoto(path, merged)...)
 	findings = append(findings, checkEntryRoutes(path, merged, aliases)...)

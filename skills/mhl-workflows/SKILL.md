@@ -438,6 +438,72 @@ test deploy {
 Resume with `mhl run deploy.mh --input approved=true --resume`, or `mhl_run_resume` over
 MCP. The decision arrives as an input, so give it a default that means "not yet".
 
+### Typed gates
+
+When a person has to choose between outcomes, or a gate can be reached more than once
+(a review loop), make the pause a **gate**: `pause(reason, decision: T)` returns the
+decision. `T` is a declared `type` or `enum`, or `string`/`number`/`bool`. The run reports
+`awaiting` (the step and `T` as JSON Schema); a resume passes the answer with
+`--decision '<json>'` or `run/resume {runId, decision}`. It is checked against `T` before
+anything runs and answers **that gate once**: the next gate reached pauses again. So an old
+approval can never approve a later round, and no `*_round` inputs are needed. A plain
+`pause(reason)` is unchanged. A gate is not allowed in a `loop` workflow yet.
+
+```mh
+enum Action { Approve, Revise, Reject }
+type Review = { action: Action, feedback?: string }
+
+workflow Publish {
+    description: "Drafts until a reviewer approves or rejects."
+
+    var drafts = 0
+    var status = "drafting"
+
+    step Draft {
+        self.drafts = drafts + 1
+    }
+
+    step Review {
+        var d = pause("review draft ${drafts}", decision: Review)
+
+        goto match d.action {
+            Action.Approve -> Approved
+            Action.Revise -> Draft
+            Action.Reject -> Rejected
+        }
+    }
+
+    step Rejected {
+        self.status = "rejected"
+        complete()
+    }
+
+    step Approved {
+        self.status = "approved after ${drafts}"
+    }
+}
+
+test publish {
+    describe the_gate_reports_what_it_waits_for {
+        var result = Publish.run()
+
+        are_equal(result.state, "paused")
+        are_equal(result.awaiting.type, "Review")
+    }
+
+    describe each_decision_answers_one_round {
+        var result = Publish.run(decisions: [{action: "Revise"}, {action: "Approve"}])
+
+        are_equal(result.state, "completed")
+        are_equal(result.output.status, "approved after 2")
+    }
+}
+```
+
+In a test, `Name.run(decisions: [...])` resumes the run with the next decision each time
+it stops at a gate. Resume a real run with
+`mhl run publish.mh --resume --decision '{"action": "Approve"}'`.
+
 ## Failure and resume
 
 - Checkpointing is on by default. `--resume` continues from the failed step. Declare
@@ -501,7 +567,8 @@ Before finishing a workflow, confirm each item:
 - Every backward `goto` and every `loop` has a bound.
 - Every terminal convergence step calls `complete()`.
 - No `var` inside a step shadows a pipeline var that step means to write.
-- Every gate pauses before doing work.
+- Every gate pauses before doing work; a gate a person may reach twice is typed
+  (`pause(..., decision: T)`), so no old decision answers it.
 - `output:` exposes only what callers should see, and `description:` is set.
 - Each branch and terminal state has a test (see `mhl-testing`).
 - Steps use the shared code layout: logical phases and final exits are separated

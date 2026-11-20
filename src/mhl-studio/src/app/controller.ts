@@ -700,7 +700,7 @@ function onRunEvent(ev: RunEvent) {
   });
 }
 
-export async function startRun(inputs: [string, string][], opts: { resume?: boolean; force?: boolean } = {}) {
+export async function startRun(inputs: [string, string][], opts: { resume?: boolean; force?: boolean; decision?: unknown } = {}) {
   const { root, activePath, workflow, run: prev } = get();
   if (!root || !activePath || prev.running) return;
   await save();
@@ -714,7 +714,16 @@ export async function startRun(inputs: [string, string][], opts: { resume?: bool
   set({ run: { ...base, running: true }, bottomOpen: true });
   try {
     const id = await api.runStart(
-      { cwd: root, path: activePath, workflow, inputs, resume: !!opts.resume, force: !!opts.force, session },
+      {
+        cwd: root,
+        path: activePath,
+        workflow,
+        inputs,
+        resume: !!opts.resume,
+        force: !!opts.force,
+        session,
+        ...(opts.resume && opts.decision !== undefined ? { decision: JSON.stringify(opts.decision) } : {}),
+      },
       onRunEvent,
     );
     set((s) => ({ run: { ...s.run, id: s.run.running ? id : null } }));

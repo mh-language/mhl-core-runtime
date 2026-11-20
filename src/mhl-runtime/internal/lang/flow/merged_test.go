@@ -101,3 +101,24 @@ partial workflow W {
 		t.Fatalf("home header span reads %q", got)
 	}
 }
+
+func TestGateDecisionsOnTheNode(t *testing.T) {
+	g := build(t, `type Review = { ok: bool }
+workflow W {
+    step Ask {
+        var d = pause("review", decision: Review)
+        if (!d.ok) { var again = pause("sure?", decision: bool) }
+    }
+    step Plain { pause("x") }
+}`)
+	nodes := g.Workflows[0].Nodes
+	if got := nodes[0].Decisions; !slices.Equal(got, []string{"Review", "bool"}) {
+		t.Fatalf("Ask decisions = %v", got)
+	}
+	if nodes[0].FallsThrough != true || slices.Contains(nodes[0].Exits, "pause") {
+		t.Fatalf("a gate returns its answer, it is not an exit: %+v", nodes[0])
+	}
+	if nodes[1].Decisions != nil {
+		t.Fatalf("a plain pause has no decision: %v", nodes[1].Decisions)
+	}
+}

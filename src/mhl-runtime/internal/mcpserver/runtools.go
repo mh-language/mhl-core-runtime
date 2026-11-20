@@ -165,11 +165,13 @@ func runControlTools(workflowNames []string) []map[string]any {
 		},
 		{
 			"name": toolRunResume,
-			"description": "Resume a failed or canceled run from its per-step checkpoint. arguments are merged over " +
-				"the original inputs — the place to pass an approval decision a human-in-the-loop gate step reads.",
+			"description": "Resume a paused, failed or canceled run from its checkpoint. arguments are merged over " +
+				"the original inputs. A run paused at a gate reports `awaiting` (its step and the decision's JSON Schema): " +
+				"pass the answer as decision.",
 			"inputSchema": obj(map[string]any{
 				"runId":     runID,
 				"arguments": freeObj("Inputs merged over the original run's arguments."),
+				"decision":  map[string]any{"description": "The answer to the gate the run waits at — a value matching its status's awaiting.schema."},
 			}, "runId"),
 		},
 		{
