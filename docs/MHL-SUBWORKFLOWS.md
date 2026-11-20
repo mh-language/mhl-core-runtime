@@ -1,6 +1,6 @@
 # Nota de design: um workflow chamando outro (subprocesso)
 
-**Status:** proposta, não implementada · **Data:** 2026-11-20
+**Status:** proposta, não implementada · **Data:** 2026-11-20 · inclui `--from <stage>` (seção 6)
 **Contexto:** a fase D do estudo sobre agrupamento e DAG no mhl studio. As fases A (visão do
 workflow `partial` inteiro), B (`stage`) e C (gates tipados, `pause(..., decision: T)`) já
 estão na linguagem. Esta nota registra o que falta decidir antes de escrever código para D.
@@ -101,3 +101,55 @@ essas respostas.
 4. Studio: nó de subprocesso e navegação para o diagrama do filho.
 
 Cada passo pode ser lançado sozinho. Só o passo 3 tem o risco de compatibilidade da seção 3.
+
+---
+
+## 6. Relacionado: retomar a partir de uma fase (`--from <stage>`)
+
+Não depende do subprocesso. Pode sair antes, e é pequeno. Entrou nesta nota porque é a
+outra metade de "fase como unidade": D trata a fase como algo que se chama, e esta seção
+trata a fase como algo que se refaz.
+
+### O que se quer
+
+Hoje o `--resume` só continua de onde o run parou: o step pausado ou que falhou, nunca o
+começo da etapa. O Control-M tem "rerun folder", e o Argo tem "retry from node". O
+equivalente aqui é refazer uma fase inteira de um run parado:
+
+```sh
+mhl run story.mh --session s1 --resume --from Specification
+```
+
+e, no MCP, `run/resume {runId, from: "Specification"}`.
+
+### Semântica proposta
+
+| Tema | Proposta |
+|---|---|
+| Alvo | Só o **nome de um stage**, nunca de um step. Pelo mesmo argumento da regra de `goto` entre etapas: a fase decide por onde começa, e quem chama depende só do nome dela. |
+| Entrada | O primeiro membro do stage (`Pipeline.StageEntry`), como `goto <stage>`. |
+| Que runs | Um run parado (pausado, falhou ou cancelado) que ainda tem checkpoint. Um run concluído não tem checkpoint e não se refaz assim. |
+| Variáveis | As do checkpoint, ou seja, o estado no momento da parada. Não há rollback: o que a fase já escreveu continua lá. Por isso a fase precisa ser re-executável, a mesma regra de "at-least-once" que vale para qualquer step. |
+| Inputs | Mesclados como em qualquer resume (`--input`, `arguments`). |
+| Gate pendente | Descartado (`Checkpoint.Gate` vai para nil): a fase vai rodar de novo e chegará ao gate outra vez. `--from` junto com `--decision` é recusado. |
+| Digest | A mesma checagem do resume. `--force` continua sendo a saída explícita. |
+| Saída | `skipped` lista os steps concluídos antes da fase. A nova perna aparece nos eventos com o `stage` de cada step, como hoje. |
+
+### Implementação (esboço)
+
+- `execsvc.Request.From`: o nome é validado contra `pipeline.StageEntry` antes de qualquer
+  hook, e um nome desconhecido dá `invalid_inputs` (ou um novo `invalid_from`). O checkpoint
+  é lido antes, como já acontece com a decisão do gate (`Runner.Checkpoint`).
+- O `Runner` ganha uma opção para entrar por outro step na retomada (`NextStep` sobrescrito
+  e `Gate` limpo). **Não muda o formato do checkpoint**: a próxima gravação já sai normal.
+- CLI: `--from <stage>`, só com `--resume`. MCP: `from` em `run/resume` e na ferramenta
+  `mhl_run_resume`. O manifest `mhl://workflow/<name>` já lista os stages.
+- Studio: ação "Refazer esta fase" na caixa do stage quando o run está parado.
+
+### Decisão em aberto
+
+**Variáveis do começo da fase, ou da parada?** Restaurar o estado do momento em que a fase
+começou seria mais limpo, porque a fase rodaria de novo sobre a mesma entrada. Mas exigiria
+um snapshot por fase no checkpoint (que cresce) e só valeria para fases que o run já
+atravessou com o recurso ativo. Sugestão: começar com as variáveis da parada, que é o
+comportamento previsível de "resume", e avaliar o snapshot se aparecer um caso real.
