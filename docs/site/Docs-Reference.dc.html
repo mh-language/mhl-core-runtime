@@ -815,7 +815,7 @@ if (result.exit_code != 0) fail(result.stderr)</code></pre>
 
           <p class="block-label">AVAILABLE OPERATIONS</p>
           <div class="native-reference">
-            <article><h3><code>cmd</code></h3><p><code>exec(command_or_argv, timeout:, encoding:)</code></p><p><code>exec_all(commands:, timeout:, encoding:)</code></p></article>
+            <article><h3><code>cmd</code></h3><p><code>exec(command_or_argv, timeout:, encoding:, cwd:)</code></p><p><code>exec_all(commands:, timeout:, encoding:, cwd:)</code></p><p><code>cwd:</code> starts the command in that directory, as <code>cd cwd &amp;&amp; command</code>.</p></article>
             <article><h3><code>fs</code></h3><p><code>read</code> · <code>exists</code> · <code>write</code> · <code>append</code></p><p><code>delete</code> · <code>join</code> · <code>list</code></p></article>
             <article><h3><code>dir</code></h3><p><code>create</code> · <code>exists</code> · <code>list</code> · <code>delete</code></p><p>Directory-specific, non-recursive deletion.</p></article>
             <article><h3><code>git</code></h3><p><code>diff</code> · <code>add</code> · <code>commit</code> · <code>status</code></p><p><code>rev_parse</code> · <code>log</code></p></article>
@@ -829,6 +829,7 @@ if (result.exit_code != 0) fail(result.stderr)</code></pre>
           </div>
           <div class="tip-row"><span>SIGNATURES</span><p>Full parameter names, types, and return shapes for every native operation are in the <a href="Docs-Specification.dc.html#native">specification’s native-operations clause</a>.</p></div>
           <pre class="code-block"><code class="language-mhl">var result = cmd.exec(["git", "status", "--short"], timeout: 30s)
+var tests = cmd.exec(["./gradlew", "test"], cwd: input.repo_dir, timeout: 10m)
 var response = http.post(
     url: "https://api.example.com/jobs",
     headers: {"Authorization": "Bearer " + env("API_TOKEN")},

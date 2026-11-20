@@ -46,10 +46,11 @@ must inspect, **raises** means it fails the step unless caught.
 
 | Call | Returns | Error |
 |---|---|---|
-| `cmd.exec(command, timeout?, encoding?)` | `{stdout, stderr, exit_code}` | value: non-zero exit is returned |
-| `cmd.exec_all(commands, timeout?, encoding?)` | array of the above, input order | value; runs concurrently |
+| `cmd.exec(command, timeout?, encoding?, cwd?)` | `{stdout, stderr, exit_code}` | value: non-zero exit is returned |
+| `cmd.exec_all(commands, timeout?, encoding?, cwd?)` | array of the above, input order | value; runs concurrently |
 
-`command` is an argv array (preferred) or a shell string.
+`command` is an argv array (preferred) or a shell string. `cwd:` starts it in that
+directory, like `cd cwd && command`; a missing directory raises before anything runs.
 
 ### fs and dir
 

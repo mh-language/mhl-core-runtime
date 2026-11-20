@@ -2,6 +2,8 @@ package nativeops_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +12,7 @@ import (
 )
 
 func TestExecCapturesOutputAndExitCode(t *testing.T) {
-	result, err := nativeops.Exec(context.Background(), "echo hello", 0)
+	result, err := nativeops.Exec(context.Background(), "echo hello", "", 0)
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
@@ -27,7 +29,7 @@ func TestExecCapturesOutputAndExitCode(t *testing.T) {
 // not a Go error — matching how an agent.run caller never sees a raw
 // exec.ExitError either.
 func TestExecNonZeroExitIsNotAnError(t *testing.T) {
-	result, err := nativeops.Exec(context.Background(), "false", 0)
+	result, err := nativeops.Exec(context.Background(), "false", "", 0)
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
@@ -37,14 +39,14 @@ func TestExecNonZeroExitIsNotAnError(t *testing.T) {
 }
 
 func TestExecBadBinaryErrors(t *testing.T) {
-	_, err := nativeops.Exec(context.Background(), "definitely-not-a-real-binary-xyz", 0)
+	_, err := nativeops.Exec(context.Background(), "definitely-not-a-real-binary-xyz", "", 0)
 	if err == nil {
 		t.Fatal("expected an error for a binary that does not exist")
 	}
 }
 
 func TestExecEmptyCommandErrors(t *testing.T) {
-	_, err := nativeops.Exec(context.Background(), "   ", 0)
+	_, err := nativeops.Exec(context.Background(), "   ", "", 0)
 	if err == nil || !strings.Contains(err.Error(), "command must not be empty") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -52,7 +54,7 @@ func TestExecEmptyCommandErrors(t *testing.T) {
 
 func TestExecTimeoutErrors(t *testing.T) {
 	started := time.Now()
-	_, err := nativeops.Exec(context.Background(), "sleep 30", 20*time.Millisecond)
+	_, err := nativeops.Exec(context.Background(), "sleep 30", "", 20*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected a timeout error")
 	}
@@ -65,7 +67,7 @@ func TestExecTimeoutErrors(t *testing.T) {
 // whitespace-splitting cannot handle: a single argument (e.g. a git commit
 // message) containing spaces must survive as one argv element.
 func TestExecArgsPreservesSpacesInASingleArgument(t *testing.T) {
-	result, err := nativeops.ExecArgs(context.Background(), []string{"echo", "-n", "hello world"}, 0)
+	result, err := nativeops.ExecArgs(context.Background(), []string{"echo", "-n", "hello world"}, "", 0)
 	if err != nil {
 		t.Fatalf("ExecArgs: %v", err)
 	}
@@ -78,7 +80,7 @@ func TestExecArgsPreservesSpacesInASingleArgument(t *testing.T) {
 }
 
 func TestExecArgsNonZeroExitIsNotAnError(t *testing.T) {
-	result, err := nativeops.ExecArgs(context.Background(), []string{"false"}, 0)
+	result, err := nativeops.ExecArgs(context.Background(), []string{"false"}, "", 0)
 	if err != nil {
 		t.Fatalf("ExecArgs: %v", err)
 	}
@@ -88,7 +90,7 @@ func TestExecArgsNonZeroExitIsNotAnError(t *testing.T) {
 }
 
 func TestExecArgsEmptyArgvErrors(t *testing.T) {
-	_, err := nativeops.ExecArgs(context.Background(), nil, 0)
+	_, err := nativeops.ExecArgs(context.Background(), nil, "", 0)
 	if err == nil || !strings.Contains(err.Error(), "argv must not be empty") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -96,7 +98,7 @@ func TestExecArgsEmptyArgvErrors(t *testing.T) {
 
 func TestExecArgsTimeoutErrors(t *testing.T) {
 	started := time.Now()
-	_, err := nativeops.ExecArgs(context.Background(), []string{"sleep", "30"}, 20*time.Millisecond)
+	_, err := nativeops.ExecArgs(context.Background(), []string{"sleep", "30"}, "", 20*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected a timeout error")
 	}
@@ -115,7 +117,7 @@ func TestExecAllRunsCommandsConcurrently(t *testing.T) {
 		{"sleep", "0.3"},
 		{"sleep", "0.3"},
 		{"sleep", "0.3"},
-	}, 0)
+	}, "", 0)
 	if err != nil {
 		t.Fatalf("ExecAll: %v", err)
 	}
@@ -140,7 +142,7 @@ func TestExecAllPreservesInputOrderNotCompletionOrder(t *testing.T) {
 	results, err := nativeops.ExecAll(context.Background(), [][]string{
 		{"sh", "-c", "sleep 0.2; echo first"},
 		{"echo", "second"},
-	}, 0)
+	}, "", 0)
 	if err != nil {
 		t.Fatalf("ExecAll: %v", err)
 	}
@@ -156,7 +158,7 @@ func TestExecAllNonZeroExitIsNotAnError(t *testing.T) {
 	results, err := nativeops.ExecAll(context.Background(), [][]string{
 		{"true"},
 		{"false"},
-	}, 0)
+	}, "", 0)
 	if err != nil {
 		t.Fatalf("ExecAll: %v", err)
 	}
@@ -172,7 +174,7 @@ func TestExecAllBadBinaryAbortsTheWholeBatch(t *testing.T) {
 	_, err := nativeops.ExecAll(context.Background(), [][]string{
 		{"echo", "ok"},
 		{"definitely-not-a-real-binary-xyz"},
-	}, 0)
+	}, "", 0)
 	if err == nil {
 		t.Fatal("expected an error for a binary that does not exist")
 	}
@@ -182,11 +184,45 @@ func TestExecAllBadBinaryAbortsTheWholeBatch(t *testing.T) {
 }
 
 func TestExecAllEmptyCommandsReturnsEmptyResults(t *testing.T) {
-	results, err := nativeops.ExecAll(context.Background(), nil, 0)
+	results, err := nativeops.ExecAll(context.Background(), nil, "", 0)
 	if err != nil {
 		t.Fatalf("ExecAll: %v", err)
 	}
 	if len(results) != 0 {
 		t.Errorf("got %d results, want 0", len(results))
+	}
+}
+
+func TestResolveDir(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "f.txt")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := nativeops.ResolveDir(""); err != nil || got != "" {
+		t.Errorf(`ResolveDir("") = %q, %v; want "", nil`, got, err)
+	}
+	if got, err := nativeops.ResolveDir("."); err != nil || !filepath.IsAbs(got) {
+		t.Errorf(`ResolveDir(".") = %q, %v; want an absolute path`, got, err)
+	}
+	if _, err := nativeops.ResolveDir(filepath.Join(dir, "missing")); err == nil || !strings.Contains(err.Error(), "cwd not found") {
+		t.Errorf("missing dir: err = %v", err)
+	}
+	if _, err := nativeops.ResolveDir(file); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Errorf("file: err = %v", err)
+	}
+}
+
+func TestExecArgsRunsInDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "marker.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := nativeops.ExecArgs(context.Background(), []string{"ls"}, dir, 0)
+	if err != nil {
+		t.Fatalf("ExecArgs: %v", err)
+	}
+	if !strings.Contains(result["stdout"].(string), "marker.txt") {
+		t.Errorf("stdout = %q, want marker.txt listed", result["stdout"])
 	}
 }

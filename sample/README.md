@@ -71,6 +71,8 @@ este índice cobre apenas o que tem exemplo executável aqui.
   → [claude_cli_calls_the_real_api.mh](features/agents/claude_cli_calls_the_real_api.mh)
 - **`cmd.exec`** — executa um processo com argv seguro, retorna `{stdout, stderr, exit_code}`.
   → [memory_session_mem_value_survives_cmd_exec_argv.mh](features/memory/memory_session_mem_value_survives_cmd_exec_argv.mh)
+- **`cmd.exec(..., cwd:)`** — executa o comando em outro diretório (`cd cwd && comando`).
+  → [cmd_exec_cwd_runs_in_another_directory.mh](features/cmd/cmd_exec_cwd_runs_in_another_directory.mh)
 - **Comparação** (`< > <= >= == !=`). → [syntax/conditional_symbols/](syntax/conditional_symbols/README.md)
 - **`complete()`** — termina o workflow com sucesso a partir de qualquer step.
   → [order_triage.mh](features/graph_and_events/order_triage.mh) ·

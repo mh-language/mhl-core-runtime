@@ -55,14 +55,14 @@ var htmlElementParamDocs = map[string]string{
 
 var nativeSigs = map[string]sig{
 	"cmd.exec": {
-		Label:  "cmd.exec(command: string | string[], timeout?: duration, encoding?: string) -> {stdout: string, stderr: string, exit_code: number}",
-		Params: []string{"command", "timeout", "encoding"},
-		Doc:    "Runs a subprocess. A non-zero `exit_code` is returned, not raised. Prefer the argv-array form. `encoding` (e.g. `\"ibm850\"`, `\"windows-1252\"`) decodes `stdout`/`stderr` to UTF-8.",
+		Label:  "cmd.exec(command: string | string[], timeout?: duration, encoding?: string, cwd?: string) -> {stdout: string, stderr: string, exit_code: number}",
+		Params: []string{"command", "timeout", "encoding", "cwd"},
+		Doc:    "Runs a subprocess. A non-zero `exit_code` is returned, not raised. Prefer the argv-array form. `encoding` (e.g. `\"ibm850\"`, `\"windows-1252\"`) decodes `stdout`/`stderr` to UTF-8. `cwd` is the directory the command starts in, as `cd cwd && command` (a relative command path such as `./gradlew` resolves there; a relative `cwd` against mhl's working directory); a missing or non-directory `cwd` raises before anything runs.",
 	},
 	"cmd.exec_all": {
-		Label:  "cmd.exec_all(commands: (string | string[])[], timeout?: duration, encoding?: string) -> {stdout, stderr, exit_code}[]",
-		Params: []string{"commands", "timeout", "encoding"},
-		Doc:    "Runs each command concurrently; results come back in input order. `timeout` applies per command; `encoding` decodes every `stdout`/`stderr` to UTF-8.",
+		Label:  "cmd.exec_all(commands: (string | string[])[], timeout?: duration, encoding?: string, cwd?: string) -> {stdout, stderr, exit_code}[]",
+		Params: []string{"commands", "timeout", "encoding", "cwd"},
+		Doc:    "Runs each command concurrently; results come back in input order. `timeout` applies per command; `encoding` decodes every `stdout`/`stderr` to UTF-8; `cwd` (as in `cmd.exec`) is shared by every command.",
 	},
 	"git.diff": {
 		Label:  "git.diff(target?: string, dir?: string) -> string",

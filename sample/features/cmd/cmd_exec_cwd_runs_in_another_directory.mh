@@ -1,0 +1,86 @@
+// cmd.exec(..., cwd: dir) starts the command in dir, as `cd dir && command`
+// would: the command sees dir's files, and a relative path in argv (a script,
+// ./gradlew) resolves there. A missing or non-directory cwd raises before any
+// process starts; cwd: "" inherits mhl's working directory. cmd.exec_all
+// applies one cwd to every command it runs.
+tool Checkout {
+    make(): string {
+        var root = fs.join(os.cwd(), ".mhl", "sample-cmd-cwd", uuid.v4())
+        dir.create(root)
+        fs.write(fs.join(root, "marker.txt"), "inside the checkout\n")
+        fs.write(fs.join(root, "build.sh"), "echo built in $(basename \"$PWD\")\n")
+        return root
+    }
+
+    // The project's own test command, run in the project directory — the
+    // shape a harness uses to verify an agent's work on another checkout.
+    verify(repo: string, argv: string[]): any {
+        var result = cmd.exec(argv, cwd: repo, timeout: 30s)
+        return result with { passed: result.exit_code == 0 }
+    }
+}
+
+test cmd_exec_cwd {
+    describe command_sees_the_files_of_its_cwd {
+        var root = Checkout.make()
+
+        var listed = cmd.exec(["ls"], cwd: root, timeout: 10s)
+        are_equal(listed.exit_code, 0)
+        is_true(listed.stdout.contains("marker.txt"))
+
+        var read = cmd.exec("cat marker.txt", cwd: root, timeout: 10s)
+        are_equal(read.stdout, "inside the checkout\n")
+    }
+
+    describe relative_paths_in_argv_resolve_under_cwd {
+        var root = Checkout.make()
+
+        var built = cmd.exec(["sh", "build.sh"], cwd: root, timeout: 10s)
+        are_equal(built.exit_code, 0)
+        is_true(built.stdout.starts_with("built in "))
+    }
+
+    describe empty_cwd_inherits_the_working_directory {
+        var here = cmd.exec(["ls"], cwd: "", timeout: 10s)
+        is_false(here.stdout.contains("marker.txt"))
+    }
+
+    describe a_failing_command_is_still_a_value {
+        var root = Checkout.make()
+
+        var ok = Checkout.verify(root, ["test", "-f", "marker.txt"])
+        is_true(ok.passed)
+
+        var missing = Checkout.verify(root, ["test", "-f", "absent.txt"])
+        is_false(missing.passed)
+        are_equal(missing.exit_code, 1)
+    }
+
+    describe exec_all_shares_one_cwd {
+        var root = Checkout.make()
+
+        var results = cmd.exec_all([["ls"], "cat marker.txt"], cwd: root, timeout: 10s)
+        is_true(results[0].stdout.contains("marker.txt"))
+        are_equal(results[1].stdout, "inside the checkout\n")
+    }
+
+    describe a_bad_cwd_raises_before_anything_runs {
+        var root = Checkout.make()
+        var message = ""
+
+        try {
+            cmd.exec(["ls"], cwd: fs.join(root, "missing"), timeout: 10s)
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("cwd not found"))
+
+        message = ""
+        try {
+            cmd.exec(["ls"], cwd: fs.join(root, "marker.txt"), timeout: 10s)
+        } catch (e) {
+            message = "${e}"
+        }
+        is_true(message.contains("cwd is not a directory"))
+    }
+}

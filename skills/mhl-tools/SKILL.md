@@ -88,6 +88,7 @@ test shell {
 - Strings are UTF-8 inside mhl. Read legacy files with `encoding:`, for example
   `fs.read("a.csv", encoding: "windows-1252")`.
 - Use `git.status(dir: path)` to target another checkout; every `git.*` op takes `dir`.
+  For other commands, pass `cwd:`: `cmd.exec(["go", "test", "./..."], cwd: path, timeout: 5m)`.
 - Datetimes are plain RFC3339 strings, handled through `time.*`.
 - `os.*` describes the host running mhl. Under `mhl serve` that is the server, so keep it
   out of prompts and treat it as never identifying the caller.

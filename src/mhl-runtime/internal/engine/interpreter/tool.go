@@ -180,15 +180,19 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if err := nativeops.ValidateEncoding(enc); err != nil {
 			return nil, fmt.Errorf("cmd.exec: %w", err)
 		}
+		dir, err := args.cmdDir("cmd.exec")
+		if err != nil {
+			return nil, err
+		}
 		var result map[string]any
 		if argv, ok := args.stringSliceAt(0); ok {
-			result, err = nativeops.ExecArgs(goctxOf(ctx), argv, timeout)
+			result, err = nativeops.ExecArgs(goctxOf(ctx), argv, dir, timeout)
 		} else {
 			command, ok := args.stringAt(0)
 			if !ok {
 				return nil, fmt.Errorf("cmd.exec requires a string command, or an array of argv strings, as its first argument")
 			}
-			result, err = nativeops.Exec(goctxOf(ctx), command, timeout)
+			result, err = nativeops.Exec(goctxOf(ctx), command, dir, timeout)
 		}
 		if err != nil {
 			return nil, err
@@ -207,7 +211,11 @@ func nativeOpCall(ctx *evalCtx, namespace, op string, call *ast.Call, depth int)
 		if err := nativeops.ValidateEncoding(enc); err != nil {
 			return nil, fmt.Errorf("cmd.exec_all: %w", err)
 		}
-		results, err := nativeops.ExecAll(goctxOf(ctx), commands, timeout)
+		dir, err := args.cmdDir("cmd.exec_all")
+		if err != nil {
+			return nil, err
+		}
+		results, err := nativeops.ExecAll(goctxOf(ctx), commands, dir, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -962,6 +970,26 @@ func (a callArgs) stringNamed(name string) string {
 		}
 	}
 	return ""
+}
+
+// cmdDir reads cmd.exec/cmd.exec_all's optional named `cwd:` — the working
+// directory the command starts in — and validates it before any process
+// starts (nativeops.ResolveDir). Absent, null or "" inherits mhl's working
+// directory; any other non-string is an error, never silently ignored.
+func (a callArgs) cmdDir(op string) (string, error) {
+	v, ok := a.named["cwd"]
+	if !ok || v == nil {
+		return "", nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("%s: cwd must be a string, got %s", op, typeName(v))
+	}
+	dir, err := nativeops.ResolveDir(s)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+	return dir, nil
 }
 
 func (a callArgs) duration(name string) (time.Duration, bool) {

@@ -12,6 +12,13 @@ Per-tag release notes are also generated automatically on the
 
 ### Added
 
+- **`cmd.exec(..., cwd: dir)` — run a command in another directory.** `cmd.exec` and
+  `cmd.exec_all` take an optional named `cwd:`, the directory the process starts in, as
+  `cd dir && command` would: a relative command path (`./gradlew`) resolves there, and a
+  relative `cwd` against mhl's working directory. A missing or non-directory `cwd` (or a
+  non-string one) raises before any process starts; `""` or `null` inherits mhl's working
+  directory. Previously `cwd:` was silently ignored, so a harness running a project's tests
+  in another checkout needed a wrapper (`sh -c "cd ..."` or a Python `subprocess` adapter).
 - **`entry route` — a workflow can start with a dispatch.**
   `entry route Choose(model: AgentModel) { ... }` is evaluated before any step, its
   parameter bound to the workflow input of the same name, and the run continues at the

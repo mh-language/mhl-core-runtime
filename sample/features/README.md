@@ -14,6 +14,7 @@ how they're wired together at runtime.
 - [uuid/](uuid/README.md) — the `uuid` native namespace: `uuid.v4` (random) and `uuid.v7` (time-ordered)
 - [fs/](fs/README.md) — the `fs` / `dir` native namespaces: `dir.clear` (create-or-empty a directory)
 - [schemas/](schemas/README.md) — `schema Name from "file.json"`: a JSON Schema as `{content, path}`
+- [cmd/](cmd/README.md) — the `cmd` native namespace: `cmd.exec`/`cmd.exec_all` with `timeout:`, `encoding:` and `cwd:`
 - [git/](git/README.md) — the `git` native namespace: `git.status/diff/log/rev_parse/add/commit`
 - [http/](http/README.md) — the `http` native namespace: one op per verb (`get/post/put/patch/delete/head/options`) plus `download`, with `query`, `body`/`text`/`form`, `auth`, `tls` (PEM client certificates), `proxy`, and secret redaction
 - [html/](html/README.md) — the `html` native namespace: `html.parse` into plain `{tag, attrs, text, children}` nodes, `get_element(s)`/`get_element_by_id`/`get_attribute`/`get_text`/`to_html`
