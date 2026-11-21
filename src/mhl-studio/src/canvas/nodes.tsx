@@ -5,6 +5,7 @@ import { importedDeclarations, openFile, revealSpan, startRun } from "../app/con
 import { useStore } from "../app/store";
 import { CALL_ICON, CALL_ICON_FALLBACK, EXIT_BADGE, StateBadge, type BadgeKind } from "../lib/icons";
 import type { CallSite, Declaration } from "../lib/types";
+import { stripMhExt } from "../lib/mhfile";
 import type { ImportOrigin } from "../sync/imports";
 import { useImportOrigins } from "./ImportsCard";
 import { ARM_ROW_H, MAX_BOXES, MERGE_H, STAGE_ROW_H, type BoundaryNodeData, type ExternalNodeData, type RouteNodeData, type StageNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
@@ -24,7 +25,7 @@ function useDeclKinds(): Record<string, Declaration["kind"]> {
 /** One action box: the call a step makes, like a Step Functions task. Click shows it in the code. */
 function CallBox({ call, kind, origin, at }: { call: CallSite; kind?: Declaration["kind"]; origin?: ImportOrigin; at?: string }) {
   const args = call.text.slice(call.receiver.length + 1 + call.method.length);
-  const file = origin?.from.split("/").pop()?.replace(/\.mh$/, "");
+  const file = origin ? stripMhExt(origin.from.split("/").pop()!) : undefined;
   const Icon = CALL_ICON[kind ?? ""] ?? CALL_ICON_FALLBACK;
   return (
     <div
@@ -68,7 +69,7 @@ export function FragmentChip({ file }: { file: string }) {
         void openFile(file);
       }}
     >
-      ↗{base.replace(/\.mh$/, "")}
+      ↗{stripMhExt(base)}
     </button>
   );
 }

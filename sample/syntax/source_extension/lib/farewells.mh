@@ -1,0 +1,4 @@
+// A plain .mh library, imported by a .mhl file.
+export tool Farewells {
+    bye(name: string): string -> "Bye, " + name + "!"
+}

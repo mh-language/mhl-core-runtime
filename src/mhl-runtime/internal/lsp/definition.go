@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/mh-language/mhl-core-runtime/internal/lang/mhfile"
 )
 
 // definitionAt answers textDocument/definition: given the cursor at pos in
@@ -273,7 +275,7 @@ func (c *refCache) siblings(dir string) []string {
 	}
 	out := make([]string, 0, len(entries))
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".mh") {
+		if e.IsDir() || !mhfile.Is(e.Name()) {
 			continue
 		}
 		out = append(out, filepath.Join(dir, e.Name()))

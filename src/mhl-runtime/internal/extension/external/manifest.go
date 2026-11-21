@@ -11,6 +11,7 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/extension"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/mhfile"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
@@ -38,7 +39,7 @@ type Manifest struct {
 	// holding the declarations array — the "portable symbols" form, so the
 	// SDK can regenerate the list without editing the manifest. JSON or
 	// native mhl object/array syntax, chosen by the file's extension
-	// (".mh" routes through the mhl parser; anything else is read as JSON).
+	// (".mh"/".mhl" route through the mhl parser; anything else is read as JSON).
 	DeclarationsFile string      `json:"declarations_file,omitempty"`
 	Perms            Permissions `json:"permissions"`
 }
@@ -53,17 +54,18 @@ type Permissions struct {
 	Filesystem []string `json:"filesystem,omitempty"`
 }
 
-// ManifestFilenames lists the two accepted manifest filenames, in the order
+// ManifestFilenames lists the accepted manifest filenames, in the order
 // callers should prefer to find/scaffold them: "extension.json" (id +
 // permissions, usually paired with a separate declarations sidecar) and
 // "extension.mh" (a single-file `extensible ... { manifest: {...} ... }`
-// declaration carrying both). Both may be passed to LoadManifest directly —
-// it dispatches on the extension.
-var ManifestFilenames = []string{"extension.json", "extension.mh"}
+// declaration carrying both), or "extension.mhl", the same file under the
+// ".mhl" alias extension (mhfile.Extensions). Any may be passed to
+// LoadManifest directly — it dispatches on the extension.
+var ManifestFilenames = []string{"extension.json", "extension.mh", "extension.mhl"}
 
 // FindManifestFile returns the path to whichever of ManifestFilenames exists
-// directly inside dir, preferring "extension.json" when both are present.
-// ok is false when dir has neither.
+// directly inside dir, preferring the earliest when several are present.
+// ok is false when dir has none of them.
 func FindManifestFile(dir string) (path string, ok bool) {
 	for _, name := range ManifestFilenames {
 		p := filepath.Join(dir, name)
@@ -76,11 +78,11 @@ func FindManifestFile(dir string) (path string, ok bool) {
 
 // LoadManifest reads and validates the extension manifest at path: an
 // extension.json (pulling in a sidecar declarations file if it names one),
-// or — when path ends in ".mh" — a single-file `extensible <Name> kind
+// or — when path ends in ".mh" or ".mhl" — a single-file `extensible <Name> kind
 // "<kind>" { manifest: {...} properties: {...} <methods> }` declaration that
 // carries the manifest and its declarations together (see extensible.go).
 func LoadManifest(path string) (*Manifest, error) {
-	if strings.EqualFold(filepath.Ext(path), ".mh") {
+	if mhfile.Is(strings.ToLower(path)) {
 		return loadExtensibleManifest(path)
 	}
 	raw, err := os.ReadFile(path)
@@ -126,7 +128,7 @@ func loadDeclarationsFile(path string) ([]extension.DeclarationSpec, error) {
 	if err != nil {
 		return nil, fmt.Errorf("declarations_file: %w", err)
 	}
-	if strings.EqualFold(filepath.Ext(path), ".mh") {
+	if mhfile.Is(strings.ToLower(path)) {
 		return parseDeclarationsMHL(path, raw)
 	}
 	var specs []extension.DeclarationSpec

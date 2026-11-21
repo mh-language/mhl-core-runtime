@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/mhfile"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
@@ -123,7 +124,7 @@ func partialSiblingStepItems(path string, target *ast.Pipeline) []completionItem
 	}
 	var items []completionItem
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".mh") {
+		if e.IsDir() || !mhfile.Is(e.Name()) {
 			continue
 		}
 		full := filepath.Join(dir, e.Name())

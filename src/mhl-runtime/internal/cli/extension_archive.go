@@ -160,7 +160,7 @@ func fetchArchiveSource(ctx context.Context, as archiveSource, out io.Writer) (d
 }
 
 // manifestRoot returns the directory under tmp that holds a manifest
-// (extension.json or extension.mh): tmp itself, or its single top-level
+// (extension.json, extension.mh or extension.mhl): tmp itself, or its single top-level
 // subdirectory (an archive made with `tar czf x.tgz <name>/` wraps
 // everything in one directory).
 func manifestRoot(tmp string) (string, error) {
@@ -183,7 +183,7 @@ func manifestRoot(tmp string) (string, error) {
 			return inner, nil
 		}
 	}
-	return "", fmt.Errorf("archive has no extension.json or extension.mh at its root or in a single top-level directory")
+	return "", fmt.Errorf("archive has no extension.json, extension.mh or extension.mhl at its root or in a single top-level directory")
 }
 
 // safeJoin resolves an archive entry name under base, rejecting any path that

@@ -1,0 +1,11 @@
+// This file is itself a .mhl: `mhl test`/`mhl lint` on the directory find it
+// like any .mh file, and it imports .mh and .mhl libraries alike.
+import {Farewells} from "lib/farewells.mh"
+import {Greetings} from "lib/greetings.mhl"
+
+test written_as_mhl {
+    describe imports_both_extensions {
+        are_equal(Greetings.hello("mhl"), "Hello, mhl!")
+        are_equal(Farewells.bye("mhl"), "Bye, mhl!")
+    }
+}

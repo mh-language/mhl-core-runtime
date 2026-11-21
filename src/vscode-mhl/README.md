@@ -118,7 +118,8 @@ Install the VSIX with **Extensions → ⋯ → Install from VSIX...**, or run
 VS Code and press `F5` to launch an Extension Development Host. Build the language
 server with `make build` in `src/mhl-runtime`.
 
-To release, set the new version in `package.json` (and the runtime release to
-bundle in `"mhlRuntime"`), add it to `CHANGELOG.md`, and run `./release.sh`, which
-pushes the `extensions-v<version>` tag; the publish workflow builds one VSIX per
+To release, run `./release.sh --bump X.Y.Z [--runtime vA.B.C]` — it sets the version in
+`package.json`/`package-lock.json`, turns `CHANGELOG.md`'s `## Unreleased` into `## X.Y.Z`,
+and with `--runtime` pins the runtime release to bundle (`"mhlRuntime"`) — then commit, push
+and run `./release.sh`, which pushes the `extensions-v<version>` tag; the publish workflow builds one VSIX per
 platform plus a universal fallback.

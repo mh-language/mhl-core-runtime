@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `.mhl` files open as mhl too — highlighting, diagnostics, completion and navigation —
+  as an alias of `.mh`. Cross-file navigation into a `.mhl` sibling needs a bundled
+  runtime (`mhlRuntime`) that includes the alias.
+
 ## 0.9.0
 
 ### Added

@@ -10,6 +10,15 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+### Added
+
+- **`.mhl` is an alias of the `.mh` source extension.** A directory scan picks up both —
+  `mhl lint <dir>`, `mhl test <dir>`, `mhl serve mcp|a2a <dir>`, `mhl pack` — as do the
+  LSP's cross-file lookups (definition, references, symbols, `goto` and `self.`
+  completion); `extension.mhl` / `declarations.mhl` are accepted beside the `.mh` names
+  (`extension.mh` still wins when both exist). `.mh` stays canonical: `mhl init` and every
+  scaffold write it. An explicit path (`mhl run x.mhl`, `import "x.mhl"`) already worked.
+
 ## 1.13.0 — 2026-11-20
 
 ### Added

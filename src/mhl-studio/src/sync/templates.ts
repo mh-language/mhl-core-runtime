@@ -2,6 +2,7 @@
 // step it stands for. Indentation is 4 spaces, like the samples and skills.
 
 import type { Declaration, ToolMethod } from "../lib/types";
+import { isMhPath, MH_EXT, stripMhExt } from "../lib/mhfile";
 import { choiceLines, type ChoiceTemplate } from "./choice";
 
 export type StateKind =
@@ -202,7 +203,8 @@ export const NEW_FILE_ITEMS: NewFileItem[] = [
 
 /** A PascalCase declaration name from a file path: `tools/order_utils.mh` → `OrderUtils`. */
 export function declNameFor(path: string, fallback = "Main"): string {
-  const base = path.split(/[\\/]/).pop()!.replace(/\.mh$/, "");
+  const last = path.split(/[\\/]/).pop()!;
+  const base = stripMhExt(last);
   const name = base.replace(/(^|[^A-Za-z0-9])([a-z])/g, (_, __, c: string) => c.toUpperCase()).replace(/[^A-Za-z0-9_]/g, "");
   if (!name) return fallback;
   return /^[A-Za-z_]/.test(name) ? name : `X${name}`;
@@ -344,7 +346,7 @@ export function newFilePath(rel: string, kind: NewFileKind): string {
   if (kind === "prompt-md") return /\.md$/i.test(rel) ? rel : `${rel.replace(/\.prompt$/, "")}.prompt.md`;
   if (kind === "schema-json") return /\.json$/i.test(rel) ? rel : `${rel.replace(/\.schema$/, "")}.schema.json`;
   if (kind === "env") return isEnvName(rel) ? rel : `${rel}.env`;
-  return rel.endsWith(".mh") ? rel : `${rel}.mh`;
+  return isMhPath(rel) ? rel : `${rel}${MH_EXT}`;
 }
 
 /** A name not in `taken`: base, base2, base3, ... */

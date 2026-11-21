@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"sort"
-	"strings"
 	"sync"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/mhfile"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 )
 
@@ -49,7 +49,7 @@ func ParseDir(dir string) ([]File, error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && strings.HasSuffix(path, ".mh") {
+		if !d.IsDir() && mhfile.Is(path) {
 			paths = append(paths, path)
 		}
 		return nil
@@ -71,7 +71,7 @@ func ParseFS(root string, fsys fs.FS) ([]File, error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && strings.HasSuffix(p, ".mh") {
+		if !d.IsDir() && mhfile.Is(p) {
 			paths = append(paths, filepath.Join(root, filepath.FromSlash(p)))
 		}
 		return nil

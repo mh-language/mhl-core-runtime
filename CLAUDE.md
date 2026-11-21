@@ -241,6 +241,8 @@ The extension ships on its own version and tag, not the runtime's: pushing
 publishes them all to the VS Marketplace via Trusted Publishing (OIDC, no stored PAT) and to Open
 VSX (`OPEN_VSX` secret). `release.yml`'s VSIX (for install.sh) stays universal. The Marketplace
 policy names that workflow file, so renaming it means updating the policy.
+`src/vscode-mhl/release.sh --bump X.Y.Z [--runtime vA.B.C]` sets package.json/lock, renames the
+CHANGELOG's `## Unreleased` to `## X.Y.Z` and optionally pins `mhlRuntime` (no commit); then
 `src/vscode-mhl/release.sh [X.Y.Z] [--dry-run]` cuts that tag: it checks package.json/lock/CHANGELOG
 agree, the tree is clean and in sync with `origin/main`, `mhlRuntime` is a tag on `origin`,
 packages (universal + host target) with the workflow's pinned `vsce`, then pushes the tag — it publishes nothing itself.

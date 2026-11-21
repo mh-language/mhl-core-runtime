@@ -38,6 +38,8 @@ run it with `mhl test sample/syntax/<topic>/<file>.mh`, or a whole topic with
   (`goto`-capable), including `goto match` for static step dispatch
 - [shorthand/](shorthand/README.md) — `{artifact, path}` object fields and `f(name:)`
   named arguments
+- [source_extension/](source_extension/README.md) — `.mh` is the source extension; `.mhl` is
+  an accepted alias
 - [stages/](stages/README.md) — named phases: a `partial` fragment's header
   `stage Name`; `goto Name` enters one at its first member; stages with typed gates
 - [string_methods/](string_methods/README.md) — built-in string methods

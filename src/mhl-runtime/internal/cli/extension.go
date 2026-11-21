@@ -13,6 +13,7 @@ import (
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/interpreter"
 	"github.com/mh-language/mhl-core-runtime/internal/extension/external"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/mhfile"
 )
 
 // runExtension implements the `mhl extension` sub-surface:
@@ -59,7 +60,7 @@ func manifestArg(args []string) (string, error) {
 	}
 	p, ok := external.FindManifestFile(args[0])
 	if !ok {
-		return "", fmt.Errorf("no extension.json or extension.mh in %s", args[0])
+		return "", fmt.Errorf("no extension.json, extension.mh or extension.mhl in %s", args[0])
 	}
 	return p, nil
 }
@@ -72,7 +73,7 @@ func extensionInit(args []string, out io.Writer) error {
 
 	// Never scaffold over existing files. `init` is for a fresh project dir;
 	// pointing it at a populated one (or `.`) must fail, not overwrite.
-	for _, f := range []string{"extension.json", "extension.mh", "declarations.json", "declarations.mh", "README.md"} {
+	for _, f := range []string{"extension.json", "extension.mh", "extension.mhl", "declarations.json", "declarations.mh", "declarations.mhl", "README.md"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
 			return fmt.Errorf("%s already exists in %s — refusing to overwrite; use an empty directory", f, dir)
 		}
@@ -160,7 +161,7 @@ func extensionPackage(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if strings.EqualFold(filepath.Ext(path), ".mh") {
+	if mhfile.Is(strings.ToLower(path)) {
 		return fmt.Errorf("%s declares its capabilities inline (\"properties\"/methods in the \"extensible\" block) — there is no separate declarations sidecar to refresh; edit it directly", path)
 	}
 	m, err := external.LoadManifest(path)
@@ -226,7 +227,7 @@ func extensionInstall(args []string, out io.Writer) error {
 
 	srcManifest, ok := external.FindManifestFile(src)
 	if !ok {
-		return fmt.Errorf("no extension.json or extension.mh in %s", src)
+		return fmt.Errorf("no extension.json, extension.mh or extension.mhl in %s", src)
 	}
 	m, err := external.LoadManifest(srcManifest)
 	if err != nil {
@@ -266,7 +267,7 @@ func extensionInstall(args []string, out io.Writer) error {
 
 	destManifest, ok := external.FindManifestFile(stage)
 	if !ok {
-		return fmt.Errorf("no extension.json or extension.mh in %s after install", dest)
+		return fmt.Errorf("no extension.json, extension.mh or extension.mhl in %s after install", dest)
 	}
 	installed, err := external.LoadManifest(destManifest)
 	if err != nil {
@@ -390,7 +391,7 @@ func installHostBinary(src, dst string, m *external.Manifest, exeRel string) err
 	if err := copyFile(filepath.Join(src, exeRel), filepath.Join(dst, exeRel)); err != nil {
 		return err
 	}
-	meta := []string{"extension.json", "extension.mh", "declarations.json", "declarations.mh", "README.md"}
+	meta := []string{"extension.json", "extension.mh", "extension.mhl", "declarations.json", "declarations.mh", "declarations.mhl", "README.md"}
 	if m.DeclarationsFile != "" {
 		meta = append(meta, m.DeclarationsFile)
 	}

@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
+	"github.com/mh-language/mhl-core-runtime/internal/lang/mhfile"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
@@ -164,7 +164,7 @@ func findMHLFiles(dir string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && strings.HasSuffix(path, ".mh") {
+		if !d.IsDir() && mhfile.Is(path) {
 			files = append(files, path)
 		}
 		return nil

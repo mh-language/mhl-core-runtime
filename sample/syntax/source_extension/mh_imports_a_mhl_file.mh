@@ -1,0 +1,8 @@
+// A .mh file imports a .mhl one by its path, extension included.
+import {Greetings} from "lib/greetings.mhl"
+
+test mh_imports_a_mhl_file {
+    describe the_mhl_library_is_resolved {
+        are_equal(Greetings.hello("mh"), "Hello, mh!")
+    }
+}

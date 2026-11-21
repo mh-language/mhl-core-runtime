@@ -30,6 +30,7 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/features/mcp"
 	"github.com/mh-language/mhl-core-runtime/internal/features/memory"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
+	"github.com/mh-language/mhl-core-runtime/internal/lang/mhfile"
 	"github.com/mh-language/mhl-core-runtime/internal/lang/parser"
 	"github.com/mh-language/mhl-core-runtime/internal/lsp"
 	"github.com/mh-language/mhl-core-runtime/internal/mcpserver"
@@ -579,7 +580,7 @@ func findMHLFiles(dir string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && strings.HasSuffix(path, ".mh") {
+		if !d.IsDir() && mhfile.Is(path) {
 			files = append(files, path)
 		}
 		return nil

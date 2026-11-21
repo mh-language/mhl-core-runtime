@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mh-language/mhl-core-runtime/internal/lang/mhfile"
 )
 
 // referencesAt resolves the symbol under the cursor, then returns only the
@@ -158,7 +160,7 @@ func referenceFiles(path, text string, openDocs map[string]string, workspaceRoot
 			}
 			return nil
 		}
-		if !strings.HasSuffix(d.Name(), ".mh") {
+		if !mhfile.Is(d.Name()) {
 			return nil
 		}
 		p = filepath.Clean(p)

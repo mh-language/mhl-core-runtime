@@ -13,6 +13,7 @@ describe("declNameFor", () => {
     expect(declNameFor("flows/review-loop.mh")).toBe("ReviewLoop");
     expect(declNameFor("2024.mh")).toBe("X2024");
     expect(declNameFor("---.mh")).toBe("Main");
+    expect(declNameFor("tools/order_utils.mhl")).toBe("OrderUtils");
   });
 });
 
@@ -25,6 +26,14 @@ describe("env files", () => {
     expect(newFilePath(".env", "env")).toBe(".env");
     expect(newFilePath(".env.local", "env")).toBe(".env.local");
     expect(newFilePath("deploy/prod", "env")).toBe("deploy/prod.env");
+  });
+});
+
+describe("mhl source files", () => {
+  it("keeps .mh or the .mhl alias, else appends .mh", () => {
+    expect(newFilePath("flows/a.mh", "workflow")).toBe("flows/a.mh");
+    expect(newFilePath("flows/a.mhl", "workflow")).toBe("flows/a.mhl");
+    expect(newFilePath("flows/a", "workflow")).toBe("flows/a.mh");
   });
 });
 

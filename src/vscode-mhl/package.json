@@ -51,7 +51,8 @@
           "mhl"
         ],
         "extensions": [
-          ".mh"
+          ".mh",
+          ".mhl"
         ],
         "configuration": "./language-configuration.json"
       }

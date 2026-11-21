@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Declaration, Graph, Inspection, RunEvent, RunResult } from "../lib/types";
+import { isMhPath } from "../lib/mhfile";
 import { isEnvName } from "../sync/templates";
 
 export type View = "split" | "design" | "code";
@@ -240,7 +241,7 @@ export function isEnv(path: string | null | undefined): boolean {
   return !!path && isEnvName(path);
 }
 
-/** An mhl source file. */
+/** An mhl source file (`.mh`, or its `.mhl` alias). */
 export function isMh(path: string | null | undefined): boolean {
-  return !!path && path.endsWith(".mh");
+  return !!path && isMhPath(path);
 }

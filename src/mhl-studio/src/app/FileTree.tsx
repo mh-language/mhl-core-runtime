@@ -188,7 +188,7 @@ function RenameInput({ rel, onDone }: { rel: string; onDone: (next: string | nul
       spellCheck={false}
       onFocus={(e) => {
         const v = e.target.value;
-        const ext = v.search(/(\.prompt\.md|\.schema\.json|\.mh|\.md|\.json)$/);
+        const ext = v.search(/(\.prompt\.md|\.schema\.json|\.mhl?|\.md|\.json)$/);
         e.target.setSelectionRange(0, ext <= 0 ? v.length : ext);
       }}
       onChange={(e) => setValue(e.target.value)}
@@ -305,7 +305,7 @@ export function FileTree() {
     const leaf = item === "folder" ? "prompts" : isAgentChoice(item) ? `${dir ? "" : "agents/"}${item.template.backend}_${item.template.role}.mh` : item.path;
     const base = (dir ? `${dir}/` : "") + leaf;
     let suggestion = base;
-    for (let i = 2; taken.has(suggestion); i++) suggestion = base.replace(/(\.prompt\.md|\.schema\.json|\.mh|)$/, `_${i}$1`);
+    for (let i = 2; taken.has(suggestion); i++) suggestion = base.replace(/(\.prompt\.md|\.schema\.json|\.mhl?|)$/, `_${i}$1`);
     setName(suggestion);
     if (dir) unfold(dir);
   };
@@ -587,7 +587,7 @@ export function FileTree() {
             value={name}
             onFocus={(e) => {
               const v = e.target.value;
-              const ext = v.search(/(\.prompt\.md|\.schema\.json|\.mh)$/);
+              const ext = v.search(/(\.prompt\.md|\.schema\.json|\.mhl?)$/);
               e.target.setSelectionRange(v.lastIndexOf("/") + 1, ext < 0 ? v.length : ext);
             }}
             onChange={(e) => setName(e.target.value)}

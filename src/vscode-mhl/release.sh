@@ -8,8 +8,10 @@
 # Nothing is published from this machine.
 #
 # The version comes from package.json, so bump it and commit first:
-#   npm version 0.7.1 --no-git-tag-version   # updates package.json + package-lock.json
-#   # add a "## 0.7.1" section to CHANGELOG.md, commit, push main
+#   ./release.sh --bump 0.7.1 [--runtime v1.2.0]
+#       # package.json + package-lock.json say 0.7.1, CHANGELOG.md's "## Unreleased"
+#       # becomes "## 0.7.1", and --runtime pins "mhlRuntime" (no commit, no tag)
+#   # review, commit, push main
 #
 # Usage:
 #   ./release.sh              # releases package.json's version
@@ -30,43 +32,103 @@ info() { printf 'release: %s\n' "$1"; }
 die() { printf 'release: error: %s\n' "$1" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"; }
 
+is_version() { printf '%s' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; }
+is_runtime_tag() { printf '%s' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; }
+# has_section VERSION: CHANGELOG.md has a "## VERSION" (or "## [VERSION]") heading.
+has_section() { grep -Eq "^## \[?$(printf '%s' "$1" | sed 's/\./\\./g')\]?([[:space:]]|$)" CHANGELOG.md; }
+
 expected=""
+bump=""
+runtime=""
 dry_run=0
-for arg in "$@"; do
-  case "$arg" in
+while [ $# -gt 0 ]; do
+  case "$1" in
     --dry-run) dry_run=1 ;;
+    --bump)
+      shift
+      [ $# -gt 0 ] || die "--bump needs a version, e.g. --bump 0.7.1"
+      bump="$1"
+      ;;
+    --runtime)
+      shift
+      [ $# -gt 0 ] || die "--runtime needs a runtime tag, e.g. --runtime v1.2.0"
+      runtime="$1"
+      ;;
     -h|--help)
-      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
-    v*|extensions-v*) die "pass the bare version (e.g. 0.7.1), not a tag: $arg" ;;
-    [0-9]*.*.*) expected="$arg" ;;
-    *) die "unexpected argument: $arg" ;;
+    v*|extensions-v*) die "pass the bare version (e.g. 0.7.1), not a tag: $1" ;;
+    [0-9]*.*.*) expected="$1" ;;
+    *) die "unexpected argument: $1" ;;
   esac
+  shift
 done
 
 need_cmd git
 need_cmd node
 need_cmd npm
-need_cmd go
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 [ -f package.json ] || die "package.json not found next to release.sh"
+
+# --- bump: write the version (and optionally mhlRuntime), then stop ------------
+if [ -n "$bump" ]; then
+  [ -z "$expected" ] || die "--bump takes the version itself; don't also pass $expected"
+  case "$bump" in extensions-v*|v*) die "pass the bare version (e.g. 0.7.1), not a tag: $bump" ;; esac
+  is_version "$bump" || die "version must look like 1.2.3 (got: $bump)"
+  [ -z "$runtime" ] || is_runtime_tag "$runtime" \
+    || die "--runtime must be a runtime release tag like v1.2.0 (got: $runtime)"
+  has_section "$bump" && die "CHANGELOG.md already has a \"## $bump\" section"
+  grep -q '^## Unreleased[[:space:]]*$' CHANGELOG.md || die "CHANGELOG.md has no \"## Unreleased\" section"
+  # Only non-blank lines between "## Unreleased" and the next "## " count.
+  awk '/^## Unreleased[[:space:]]*$/ { f = 1; next } /^## / { f = 0 } f && NF { n++ } END { exit n == 0 }' \
+    CHANGELOG.md || die "\"## Unreleased\" is empty; nothing to release"
+
+  npm version "$bump" --no-git-tag-version --allow-same-version >/dev/null
+  if [ -n "$runtime" ]; then
+    # Replace only the "mhlRuntime" value, keeping the file's formatting.
+    node -e '
+      const fs = require("fs");
+      const src = fs.readFileSync("package.json", "utf8");
+      const out = src.replace(/^(  "mhlRuntime":\s*")[^"]*(")/m, `$1${process.argv[1]}$2`);
+      if (JSON.parse(out).mhlRuntime !== process.argv[1]) throw new Error("could not set mhlRuntime in package.json");
+      fs.writeFileSync("package.json", out);
+    ' "$runtime"
+  fi
+  # The extension's sections carry no date (the Marketplace shows this file).
+  awk -v heading="## $bump" '!done && /^## Unreleased[[:space:]]*$/ { print heading; done = 1; next } { print }' \
+    CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
+
+  info "set $bump in package.json and package-lock.json; CHANGELOG.md's \"## Unreleased\" is now \"## $bump\""
+  pinned="$(node -p "require('./package.json').mhlRuntime || ''")"
+  if [ -n "$runtime" ]; then
+    info "mhlRuntime is now $pinned"
+  else
+    latest="$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n1)"
+    info "mhlRuntime stays $pinned${latest:+ (latest local runtime tag: $latest; pass --runtime $latest to bundle it)}"
+  fi
+  info "review, commit and push, then run ./release.sh $bump"
+  exit 0
+fi
+[ -z "$runtime" ] || die "--runtime only goes with --bump"
+
+need_cmd go
 
 version="$(node -p "require('./package.json').version")"
 lock_version="$(node -p "require('./package-lock.json').version")"
 runtime_tag="$(node -p "require('./package.json').mhlRuntime || ''")"
 tag="extensions-v$version"
 
-printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+is_version "$version" \
   || die "package.json version must look like 1.2.3 (got: $version)"
 if [ -n "$expected" ] && [ "$expected" != "$version" ]; then
-  die "package.json says $version, not $expected — run: npm version $expected --no-git-tag-version"
+  die "package.json says $version, not $expected — run: ./release.sh --bump $expected"
 fi
 [ "$lock_version" = "$version" ] \
   || die "package-lock.json says $lock_version but package.json says $version — run: npm install"
-grep -Eq "^## \[?$(printf '%s' "$version" | sed 's/\./\\./g')\]?([[:space:]]|$)" CHANGELOG.md \
-  || die "CHANGELOG.md has no \"## $version\" section"
+has_section "$version" \
+  || die "CHANGELOG.md has no \"## $version\" section — run: ./release.sh --bump $version"
 
 # --- preflight: the tag must point at what is on origin/main ------------------
 branch="$(git rev-parse --abbrev-ref HEAD)"

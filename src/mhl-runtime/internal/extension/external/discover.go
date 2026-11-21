@@ -135,7 +135,7 @@ func resolveLocked(projectDir, id string, entry LockEntry) (*Manifest, string) {
 		}
 	}
 	if manifestPath == "" {
-		return nil, "locked but not installed (no extension.json or extension.mh in any search dir)"
+		return nil, "locked but not installed (no extension.json, extension.mh or extension.mhl in any search dir)"
 	}
 
 	m, err := LoadManifest(manifestPath)

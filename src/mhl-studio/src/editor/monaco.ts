@@ -9,6 +9,7 @@ import githubDark from "shiki/themes/github-dark-default.mjs";
 import githubLight from "shiki/themes/github-light-default.mjs";
 import grammar from "../../../vscode-mhl/syntaxes/mhl.tmLanguage.json";
 import langConf from "../../../vscode-mhl/language-configuration.json";
+import { MH_EXTENSIONS } from "../lib/mhfile";
 import markdown from "shiki/langs/markdown.mjs";
 import json from "shiki/langs/json.mjs";
 import dotenv from "shiki/langs/dotenv.mjs";
@@ -34,7 +35,7 @@ let ready: Promise<typeof monaco> | null = null;
 export function setupMonaco(): Promise<typeof monaco> {
   if (ready) return ready;
   ready = (async () => {
-    monaco.languages.register({ id: LANG, extensions: [".mh"], aliases: ["MHL", "mhl"] });
+    monaco.languages.register({ id: LANG, extensions: MH_EXTENSIONS, aliases: ["MHL", "mhl"] });
     monaco.languages.register({ id: MD_LANG, extensions: [".md"], aliases: ["Markdown"] });
     monaco.languages.register({ id: JSON_LANG, extensions: [".json"], aliases: ["JSON"] });
     monaco.languages.register({ id: DOTENV_LANG, filenames: [".env"], aliases: ["dotenv"] });

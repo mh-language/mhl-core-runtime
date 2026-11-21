@@ -4,6 +4,14 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
+## Unreleased
+
+### Added
+
+- `.mhl` files — the alias of `.mh` — show in the explorer and open as mhl: highlighting,
+  the diagram, runs, and the explorer's rename/drag treat them like `.mh`. New files are
+  still created as `.mh`.
+
 ## 0.6.0
 
 ### Changed

@@ -236,6 +236,8 @@ este índice cobre apenas o que tem exemplo executável aqui.
 - **`merge`** — junção explícita de um grupo `parallel`.
   → [parallel_merge_workflow_example.mh](features/pipelines/parallel_merge_workflow_example.mh) ·
   [parallel_group_vars_workflow_example.mh](features/pipelines/parallel_group_vars_workflow_example.mh)
+- **`.mhl`** — alias da extensão `.mh`; os dois servem para qualquer arquivo-fonte.
+  → [syntax/source_extension/](syntax/source_extension/README.md)
 
 ## N
 

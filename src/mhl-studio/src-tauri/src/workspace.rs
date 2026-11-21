@@ -1,4 +1,4 @@
-//! The open folder: listing its `.mh`, `.md`, `.json` and `.env` files (and
+//! The open folder: listing its `.mh`/`.mhl`, `.md`, `.json` and `.env` files (and
 //! folders), and reading/writing them.
 
 use std::fs;
@@ -7,10 +7,10 @@ use std::path::{Path, PathBuf};
 /// Directories never worth descending into when looking for `.mh` files.
 const SKIP_DIRS: &[&str] = &["node_modules", "target", "dist", "vendor"];
 
-/// The file kinds the studio shows: mhl source, Markdown (prompt bodies
+/// The file kinds the studio shows: mhl source (`.mh`, or its `.mhl` alias), Markdown (prompt bodies
 /// loaded with `prompt X(...) from "x.md"`, skills, notes) and JSON (JSON
 /// Schemas loaded with `schema X from "x.json"`).
-const EXTENSIONS: &[&str] = &[".mh", ".md", ".json"];
+const EXTENSIONS: &[&str] = &[".mh", ".mhl", ".md", ".json"];
 
 /// An env file `mhl run` can load: `.env`, `.env.local`, `prod.env`, ...
 /// Shown although `.env` is a hidden name (`.envrc` is not one).
@@ -147,6 +147,7 @@ mod tests {
         for f in [
             "a.mh",
             "sub/b.mh",
+            "sub/c.mhl",
             "sub/notes.md",
             "sub/data.json",
             "sub/image.png",
@@ -173,6 +174,7 @@ mod tests {
                 ".env.local",
                 "a.mh",
                 "sub/b.mh",
+                "sub/c.mhl",
                 "sub/data.json",
                 "sub/notes.md",
                 "sub/prod.env"

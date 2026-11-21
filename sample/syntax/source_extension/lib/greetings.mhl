@@ -1,0 +1,5 @@
+// A library written as .mhl — the alias of .mh. It imports and exports like
+// any other source file.
+export tool Greetings {
+    hello(name: string): string -> "Hello, " + name + "!"
+}
