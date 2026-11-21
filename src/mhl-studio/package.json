@@ -1,7 +1,7 @@
 {
   "name": "mhl-studio",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "description": "Visual workflow designer and runner for mhl (.mh)",
   "scripts": {

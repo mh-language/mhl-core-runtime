@@ -4,7 +4,7 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
-## Unreleased
+## 0.6.0
 
 ### Changed
 
