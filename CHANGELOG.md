@@ -10,6 +10,8 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+## 1.14.0 — 2026-11-21
+
 ### Added
 
 - **`.mhl` is an alias of the `.mh` source extension.** A directory scan picks up both —
