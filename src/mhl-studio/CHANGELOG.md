@@ -4,6 +4,38 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
+## Unreleased
+
+### Changed
+
+- **Stages open on their own diagram.** A workflow with stages is drawn as its
+  phases: each stage is one card (its steps listed, with their run status), and
+  the gotos between two stages are merged into one edge, their conditions joined.
+  Click a card to open the stage: its steps in its box, with only the steps,
+  routes and stages they come from or go to drawn around it. A stage declared in
+  another fragment opens that file, so its steps can be edited. The bar over the
+  diagram leads back to the whole workflow (or press Esc), and **All steps** shows
+  every stage expanded, as before.
+- **The phases line up.** The path a run takes when no condition holds — each
+  step's fallthrough or unconditional `goto` — is drawn first and straight, so the
+  stages stand in one column from Start to End and the conditional exits (a
+  rejection, a revision) sit below them, instead of between two phases because
+  their step was declared earlier. A stage card shows its name on a line of its own,
+  its step count and file underneath.
+- **Each edge leaves from the side that fits it.** The main line runs straight
+  down the middle, from the centre of each step's bottom into the centre of the
+  next one's top. A conditional exit off it (a rejection, a revision) leaves the
+  step from the side its target is drawn on — the exits alternate left and right
+  in the order they are declared, so one keeps its side in every view — and a goto
+  back up (`revise_specs`) leaves and enters from the side, climbing beside the
+  diagram instead of over the top. A condition that skips a step runs down its
+  right side. A step's ↻ ask-again loop moved up by its header, out of the way.
+- **An open stage and "All steps" are laid out like the whole workflow.** A stage's
+  steps are laid out with the rest, in a band of layers of their own, and its box
+  is drawn around them afterwards, instead of being laid out apart inside it:
+  what comes before and after the stage lines up with its steps, and with every
+  stage expanded the phases stand in one column, the exits below them.
+
 ## 0.5.0
 
 ### Added

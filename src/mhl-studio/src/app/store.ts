@@ -81,6 +81,10 @@ export interface State {
   stale: boolean;
   diagnostics: Graph["diagnostics"];
   workflow: string | null;
+  /** The stage whose own diagram is shown (canvas/layout.ts StageView.focus); null: the whole workflow. */
+  stageFocus: string | null;
+  /** The whole workflow shows every stage's steps, not one card per stage. */
+  stagesExpanded: boolean;
   selection: string | null;
   /** The step a dragged tool method / agent would be dropped into. */
   dropTarget: string | null;
@@ -128,6 +132,8 @@ export const useStore = create<State>(() => ({
   stale: false,
   diagnostics: [],
   workflow: null,
+  stageFocus: null,
+  stagesExpanded: false,
   selection: null,
   library: [],
   dropTarget: null,
@@ -163,6 +169,8 @@ export function currentWorkflow(s: State) {
 // clears `selection`).
 useStore.subscribe((s, prev) => {
   if (s.selection && s.selection !== prev.selection && s.tool) useStore.setState({ tool: null });
+  // Another workflow is drawn whole.
+  if (s.workflow !== prev.workflow && s.stageFocus) useStore.setState({ stageFocus: null });
 });
 
 export function selectTool(name: string, method: string | null = null) {

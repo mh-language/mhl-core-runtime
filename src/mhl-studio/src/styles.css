@@ -3007,3 +3007,161 @@ select {
 .node.stage .stage-redo {
   margin-left: auto;
 }
+
+/* A collapsed stage (layout.ts stageCardHeight): one card for its steps; click opens them. */
+.node.stage.collapsed {
+  background: var(--node);
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.node.stage.collapsed:hover {
+  border-color: var(--accent);
+}
+.node.stage.collapsed .stage-title {
+  height: 20px;
+  align-items: center;
+}
+.node.stage.collapsed .stage-title .node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node.stage.collapsed .stage-open {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 16px;
+}
+.node.stage.collapsed .stage-redo + .stage-open {
+  margin-left: 0;
+}
+.node.stage.collapsed .stage-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 18px;
+}
+.node.stage.collapsed .stage-sub .node-kind {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.node.stage.collapsed .stage-sub .fragment-chip {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.node.stage .stage-members {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.node.stage .stage-member {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.node.stage .stage-member::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--node-border);
+}
+.node.stage .stage-member.run-running::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.node.stage .stage-member.run-succeeded::before {
+  background: var(--good);
+  border-color: var(--good);
+}
+.node.stage .stage-member.run-failed::before {
+  background: var(--bad);
+  border-color: var(--bad);
+}
+.node.stage .stage-member.run-paused::before {
+  background: var(--warn);
+  border-color: var(--warn);
+}
+.node.stage .stage-member.more {
+  font-style: italic;
+}
+.node.stage .stage-member.more::before {
+  visibility: hidden;
+}
+.node.stage.run-succeeded {
+  border-color: var(--good);
+}
+.node.stage.run-paused {
+  border-color: var(--warn);
+}
+/* Outside the open stage (nodes.tsx BoundaryNode): click goes back to the whole workflow. */
+.node.external.boundary {
+  cursor: pointer;
+}
+.node.external.boundary:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Over a workflow with stages (WorkflowCanvas StageBar): cards or all steps — or the open stage's path back. */
+.stage-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.canvas.stale .stage-bar {
+  top: 42px;
+}
+.stage-bar button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  padding: 3px 9px;
+  border-radius: 5px;
+  font: inherit;
+  cursor: pointer;
+}
+.stage-bar button:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.stage-bar .stage-toggle.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.stage-bar .stage-crumb-sep {
+  color: var(--muted);
+}
+.stage-bar .stage-crumb.current {
+  padding: 3px 9px 3px 4px;
+  font-weight: 600;
+}
+.stage-bar .stage-crumb.current .node-kind {
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 4px;
+}

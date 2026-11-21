@@ -1,10 +1,60 @@
 import { describe, expect, it } from "vitest";
-import { drawnEdges, layoutWorkflow, runOrder, takenEdges, type StepNodeData } from "./layout";
+import { drawnEdges, layoutWorkflow, runOrder, takenEdges, type Layout, type StageNodeData, type StepNodeData } from "./layout";
 import { END, FAIL, START, type GraphEdge, type GraphNode, type Route, type Workflow } from "../lib/types";
 
 const node = (id: string, extra: Partial<GraphNode> = {}): GraphNode =>
   ({ id, kind: "step", name: id, span: [0, 0], headerSpan: [0, 0], nameSpan: [0, 0], bodyOpen: 0, bodyClose: 0, calls: [], callSites: [], exits: [], fallsThrough: false, ...extra }) as GraphNode;
 const edge = (from: string, to: string, kind: GraphEdge["kind"] = "next", label?: string): GraphEdge => ({ from, to, kind, label });
+
+/** Which side of its source (or target, `end: "to"`) each edge (but a step's ask-again loop) leaves (enters), by id. */
+function sides({ nodes, edges }: Layout, end: "from" | "to" = "from"): Record<string, "bottom" | "top" | "left" | "right" | "?"> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const size = (n: Layout["nodes"][number]) => {
+    const st = (n.style ?? {}) as { width?: number; height?: number };
+    const [w, h] = n.type === "terminal" ? [104, 36] : n.type === "boundary" || n.type === "external" ? [170, 44] : [236, n.type === "route" ? 54 : 68];
+    return { w: st.width ?? w, h: st.height ?? h };
+  };
+  const at = (id: string): { x: number; y: number } => {
+    const n = byId.get(id)!;
+    const p = n.parentId ? at(n.parentId) : { x: 0, y: 0 };
+    return { x: p.x + n.position.x, y: p.y + n.position.y };
+  };
+  const out: Record<string, "bottom" | "top" | "left" | "right" | "?"> = {};
+  for (const e of edges.filter((e) => !e.id.startsWith("loop:"))) {
+    const id = end === "from" ? e.source : e.target;
+    const { x, y } = at(id);
+    const { w, h } = size(byId.get(id)!);
+    const pts = e.data!.points;
+    const p = end === "from" ? pts[0] : pts[pts.length - 1];
+    out[e.id] = Math.abs(p.y - (y + h)) < 0.5 ? "bottom" : Math.abs(p.y - y) < 0.5 ? "top" : Math.abs(p.x - x) < 0.5 ? "left" : Math.abs(p.x - (x + w)) < 0.5 ? "right" : "?";
+  }
+  return out;
+}
+
+/** The edges (but a step's ask-again loop) that do not leave their source from the middle of its bottom. */
+function offCentreExits({ nodes, edges }: Layout): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const size = (n: Layout["nodes"][number]) => {
+    const st = (n.style ?? {}) as { width?: number; height?: number };
+    const [w, h] = n.type === "terminal" ? [104, 36] : n.type === "boundary" || n.type === "external" ? [170, 44] : [236, n.type === "route" ? 54 : 68];
+    return { w: st.width ?? w, h: st.height ?? h };
+  };
+  const at = (id: string): { x: number; y: number } => {
+    const n = byId.get(id)!;
+    const p = n.parentId ? at(n.parentId) : { x: 0, y: 0 };
+    return { x: p.x + n.position.x, y: p.y + n.position.y };
+  };
+  return edges
+    .filter((e) => !e.id.startsWith("loop:"))
+    .filter((e) => {
+      const n = byId.get(e.source)!;
+      const { x, y } = at(e.source);
+      const { w, h } = size(n);
+      const p = e.data!.points[0];
+      return Math.abs(p.x - (x + w / 2)) > 0.5 || Math.abs(p.y - (y + h)) > 0.5;
+    })
+    .map((e) => e.id);
+}
 
 /** The shape of a workflow that branches three ways and merges: Choose → (A | B | Fan → Merge | fail) → Done. */
 function branching(): Workflow {
@@ -143,6 +193,14 @@ describe("layoutWorkflow", () => {
     );
   });
 
+  it("leaves every node from the middle of its bottom going down, a choice's branches too", async () => {
+    expect(offCentreExits(await layoutWorkflow(branching()))).toEqual([]);
+    // Retry is drawn below the route it calls: that goto climbs, from its side.
+    const l = await layoutWorkflow(routed());
+    expect(offCentreExits(l)).toEqual(["Retry>route:Choose#2"]);
+    expect(sides(l)["Retry>route:Choose#2"]).toBe("left");
+  });
+
   it("never stacks two nodes of a layer", async () => {
     const l = await layoutWorkflow(branching());
     const top = l.nodes.filter((n) => !n.parentId);
@@ -190,7 +248,7 @@ describe("stages", () => {
   }
 
   it("boxes each stage around its members, a group's branches inside the group", async () => {
-    const { nodes, edges } = await layoutWorkflow(staged());
+    const { nodes, edges } = await layoutWorkflow(staged(), { expanded: true });
     const byId = new Map(nodes.map((n) => [n.id, n]));
     expect(byId.get("Build")?.type).toBe("stage");
     expect(byId.get("Compile")?.parentId).toBe("Build");
@@ -219,6 +277,89 @@ describe("stages", () => {
     expect(Math.abs(start.y - (c.y + h))).toBeLessThan(1);
     expect(start.x).toBeGreaterThanOrEqual(c.x);
     expect(start.x).toBeLessThanOrEqual(c.x + 236);
+  });
+
+  it("draws each stage as one card by default, the edges between stages merged", async () => {
+    const { nodes, edges } = await layoutWorkflow(staged());
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    expect((byId.get("Build")?.data as StageNodeData).collapsed).toBe(true);
+    expect((byId.get("Ship")?.data as StageNodeData).collapsed).toBe(true);
+    for (const id of ["Compile", "Fan", "L", "Gate", "Publish"]) expect(byId.has(id), id).toBe(false);
+    const hops = edges.map((e) => `${e.source}>${e.target}`).sort();
+    expect(hops).toEqual([`${START}>Intake`, "Build>Ship", "Intake>Build", "Ship>Build", `Ship>${END}`].sort());
+    // A hop that stands for code edges between stages is not one of them: not deletable.
+    expect(edges.find((e) => e.source === "Build" && e.target === "Ship")!.deletable).toBe(false);
+    expect(edges.find((e) => e.source === START)!.deletable).toBe(true);
+    for (const e of edges) expect(e.data!.points.length).toBeGreaterThan(1);
+  });
+
+  it("opens one stage: its steps in its box, only what they reach around them", async () => {
+    const { nodes, edges } = await layoutWorkflow(staged(), { focus: "Ship" });
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    expect(byId.get("Ship")?.type).toBe("stage");
+    expect((byId.get("Ship")?.data as StageNodeData).collapsed).toBeUndefined();
+    expect(byId.get("Gate")?.parentId).toBe("Ship");
+    expect(byId.get("Publish")?.parentId).toBe("Ship");
+    // Build is where the run comes from and goes back to: its card.
+    expect((byId.get("Build")?.data as StageNodeData).collapsed).toBe(true);
+    for (const id of ["Intake", "Compile", START]) expect(byId.has(id), id).toBe(false);
+    expect(byId.has(END)).toBe(true);
+    const hops = edges.map((e) => `${e.source}>${e.target}`).sort();
+    expect(hops).toEqual(["Build>Gate", "Gate>Build", "Gate>Publish", `Publish>${END}`].sort());
+  });
+
+  it("draws a plain step outside the open stage as a boundary", async () => {
+    const { nodes } = await layoutWorkflow(staged(), { focus: "Build" });
+    const intake = nodes.find((n) => n.id === "Intake")!;
+    expect(intake.type).toBe("boundary");
+    expect(intake.data).toEqual({ id: "Intake", name: "Intake", kind: "step" });
+    expect(nodes.find((n) => n.id === "L")?.parentId).toBe("Fan");
+  });
+
+  it("keeps the phases in one column, an exit declared before them below the last", async () => {
+    // Reject is declared first and reached as early as Review: still drawn under it.
+    const stage = (name: string, members: string[]) => ({ name, members }) as unknown as NonNullable<Workflow["stages"]>[number];
+    const wf: Workflow = {
+      ...branching(),
+      nodes: [node("Reject"), node("Load"), node("Draft", { stage: "Spec" }), node("Review", { stage: "Check" })],
+      edges: [
+        edge(START, "Load"),
+        edge("Load", "Spec", "goto"),
+        edge("Draft", "Reject", "goto", "bad"),
+        edge("Draft", "Review", "goto"),
+        edge("Review", "Reject", "goto", "bad"),
+        edge("Review", END, "end", "complete"),
+        edge("Reject", END, "end", "break"),
+      ],
+      stages: [stage("Spec", ["Draft"]), stage("Check", ["Review"])],
+    };
+    const { nodes } = await layoutWorkflow(wf);
+    const at = (id: string) => nodes.find((n) => n.id === id)!;
+    const cx = (id: string) => at(id).position.x + Number(at(id).style?.width ?? 236) / 2;
+    expect(cx("Spec")).toBeCloseTo(cx("Check"), 0);
+    expect(cx("Load")).toBeCloseTo(cx("Spec"), 0);
+    expect(at("Reject").position.y).toBeGreaterThan(at("Check").position.y);
+  });
+
+  it("runs the main line down the middle, a goto back to a stage up its side", async () => {
+    for (const view of [{}, { expanded: true }, { focus: "Ship" }]) {
+      const l = await layoutWorkflow(staged(), view);
+      const back = l.edges.filter((e) => e.target === "Build" && (e.source === "Gate" || e.source === "Ship")).map((e) => e.id);
+      expect(back, JSON.stringify(view)).toHaveLength(1);
+      expect(offCentreExits(l), JSON.stringify(view)).toEqual(back);
+      expect(sides(l)[back[0]], JSON.stringify(view)).toBe("left");
+      // Into a stage's side — its card; when its steps are drawn, its first step's.
+      const pts = l.edges.find((e) => e.id === back[0])!.data!.points;
+      const into = l.nodes.find((n) => n.id === ("collapsed" in (l.nodes.find((n) => n.id === "Build")!.data as object) ? "Build" : "Compile"))!;
+      const box = into.parentId ? l.nodes.find((n) => n.id === into.parentId)!.position : { x: 0, y: 0 };
+      expect(pts[pts.length - 1].x, JSON.stringify(view)).toBeCloseTo(box.x + into.position.x, 0);
+    }
+  });
+
+  it("lights the hop between stage cards a run took", () => {
+    const taken = takenEdges(staged(), ["Intake", "Compile", "L", "R", "Gate"], null, {});
+    expect(taken.has("Intake>Build")).toBe(true);
+    expect(taken.has("Build>Ship")).toBe(true);
   });
 
   it("lights the goto into a stage when the run took it", () => {
@@ -281,6 +422,17 @@ describe("readability", () => {
     for (const p of d.points) expect(p.x).toBeGreaterThanOrEqual(r.position.x + 236);
   });
 
+  it("sends a revision off the main line from the side, and back up into that side", async () => {
+    const layout = await layoutWorkflow(review());
+    const id = (from: string, to: string) => layout.edges.find((e) => e.source === from && e.target === to)!.id;
+    // The main line, Check → Review → Done → End, runs straight down the middle.
+    expect(offCentreExits(layout).sort()).toEqual([id("Retry", "Review"), id("Review", "Retry")].sort());
+    // Review → Retry leaves Review's side; Retry → Review climbs back into it.
+    expect(sides(layout)[id("Review", "Retry")]).toBe("left");
+    expect(sides(layout)[id("Retry", "Review")]).toBe("left");
+    expect(sides(layout, "to")[id("Retry", "Review")]).toBe("left");
+  });
+
   it("cuts a long label, keeping the full condition for the tooltip", async () => {
     const { edges } = await layoutWorkflow(review());
     const d = edges.find((e) => e.source === "Review" && e.target === "Retry")!.data!;
@@ -316,9 +468,10 @@ describe("runOrder", () => {
   it("draws a gate below the step that falls into it, though it can send the run back there", async () => {
     const wf = gated();
     wf.edges.push(edge("Approve", "Draft", "goto", "!approved"));
-    const { nodes } = await layoutWorkflow(wf);
+    const { nodes } = await layoutWorkflow(wf, { focus: "S" });
     const y = (id: string) => nodes.find((n) => n.id === id)!.position.y;
     expect(y("Begin")).toBeLessThan(y("Draft"));
     expect(y("Draft")).toBeLessThan(y("Approve"));
   });
 });
+

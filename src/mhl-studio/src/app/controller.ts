@@ -16,7 +16,7 @@ import { ignoreLine, withEnvIgnored } from "../sync/gitignore";
 import { BACKENDS, renderAgent, type Backend, type Companion, type Role } from "../sync/agentTemplates";
 import { LspClient } from "../editor/lsp";
 import { DOTENV_LANG, JSON_LANG, LANG, MD_LANG, monaco, setupMonaco } from "../editor/monaco";
-import { emptyRun, get, isEnv, isJson, isMarkdown, isMh, selectTool, set, type LibraryFile, type NodeRunStatus, type Toast } from "./store";
+import { currentWorkflow, emptyRun, get, isEnv, isJson, isMarkdown, isMh, selectTool, set, type LibraryFile, type NodeRunStatus, type Toast } from "./store";
 import { installZoom } from "./zoom";
 import { installPanels } from "./panels";
 import { installTheme } from "./theme";
@@ -235,9 +235,30 @@ function disposeModel(path: string) {
 export async function openFile(path: string) {
   let model = models.get(path);
   if (!model) model = createModel(path, await api.readFile(path));
-  set({ activePath: path, selection: null, tool: null, graph: null, graphSource: "", stale: false, diagnostics: [], workflow: null, inspection: null, importFocus: null });
+  set({ activePath: path, selection: null, tool: null, graph: null, graphSource: "", stale: false, diagnostics: [], workflow: null, stageFocus: null, inspection: null, importFocus: null });
   // Markdown and JSON have no graph: the code view shows them, the diagram stays away.
   if (isMh(path)) await refreshGraph();
+}
+
+/**
+ * Shows stage `name` of the current workflow on its own diagram. A stage
+ * another fragment declares opens that file first, so its steps are editable.
+ */
+export async function openStage(name: string) {
+  const wf = currentWorkflow(get());
+  const stage = wf?.stages?.find((s) => s.name === name);
+  if (!wf || !stage) return;
+  if (stage.file && stage.file !== get().activePath) {
+    await openFile(stage.file);
+    if (get().activePath !== stage.file) return;
+    if (get().graph?.workflows.some((w) => w.name === wf.name)) set({ workflow: wf.name });
+  }
+  set({ stageFocus: name, selection: null });
+}
+
+/** Back to the whole workflow, `select`ing a step of it when given. */
+export function closeStage(select: string | null = null) {
+  set({ stageFocus: null, selection: select });
 }
 
 function onModelChange(path: string) {

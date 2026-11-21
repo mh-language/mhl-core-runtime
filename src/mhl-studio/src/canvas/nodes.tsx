@@ -7,7 +7,7 @@ import { CALL_ICON, CALL_ICON_FALLBACK, EXIT_BADGE, StateBadge, type BadgeKind }
 import type { CallSite, Declaration } from "../lib/types";
 import type { ImportOrigin } from "../sync/imports";
 import { useImportOrigins } from "./ImportsCard";
-import { ARM_ROW_H, MAX_BOXES, MERGE_H, type ExternalNodeData, type RouteNodeData, type StageNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
+import { ARM_ROW_H, MAX_BOXES, MERGE_H, STAGE_ROW_H, type BoundaryNodeData, type ExternalNodeData, type RouteNodeData, type StageNodeData, type StepNodeData, type TerminalNodeData } from "./layout";
 
 /** Declaration kind by name — this file's and what it imports — to pick each call box's icon. */
 function useDeclKinds(): Record<string, Declaration["kind"]> {
@@ -297,6 +297,55 @@ export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageN
           ? "succeeded"
           : undefined;
   const s = data.stage;
+  const redo = canRedo && (
+    <button
+      className="call-origin stage-redo"
+      title={`Redo stage ${s.name}: resume the stopped run at ${s.members[0]}, with its variables as of the stop (mhl run --resume --from ${s.name})`}
+      onClick={(e) => {
+        e.stopPropagation();
+        void startRun([], { resume: true, from: s.name });
+      }}
+    >
+      ↻ redo
+    </button>
+  );
+  if (data.collapsed) {
+    // One card for the whole stage: its steps listed, a click opens them (WorkflowCanvas).
+    const more = s.members.length - MAX_BOXES;
+    const shown = more > 0 ? s.members.slice(0, MAX_BOXES) : s.members;
+    return (
+      <div
+        className={`node stage collapsed ${status ? `run-${status}` : ""} ${s.file ? "foreign" : ""}`}
+        title={`stage ${s.name}: ${s.members.join(", ")}\ngoto ${s.name} enters it at ${s.members[0]}.\nClick to open its steps${s.file ? ` (in ${s.file.split(/[\\/]/).pop()})` : ""}.`}
+      >
+        <Handle type="target" position={Position.Top} />
+        <div className="stage-title">
+          <span className="node-name">{s.name}</span>
+          {redo}
+          <span className="stage-open" aria-hidden="true">
+            ›
+          </span>
+        </div>
+        <div className="stage-sub">
+          <span className="node-kind">Stage · {s.members.length} {s.members.length === 1 ? "step" : "steps"}</span>
+          {s.file && <FragmentChip file={s.file} />}
+        </div>
+        <div className="stage-members mono">
+          {shown.map((m) => (
+            <div key={m} className={`stage-member ${statuses[m] ? `run-${statuses[m]}` : ""}`} style={{ height: STAGE_ROW_H }}>
+              {m}
+            </div>
+          ))}
+          {more > 0 && (
+            <div className="stage-member more" style={{ height: STAGE_ROW_H }}>
+              +{more} more
+            </div>
+          )}
+        </div>
+        <Handle type="source" position={Position.Bottom} isConnectable={false} />
+      </div>
+    );
+  }
   return (
     <div
       className={`node stage ${status ? `run-${status}` : ""} ${s.file ? "foreign" : ""}`}
@@ -310,22 +359,34 @@ export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageN
       <div className="stage-title">
         <span className="node-kind">Stage</span>
         <span className="node-name">{s.name}</span>
-        {canRedo && (
-          <button
-            className="call-origin stage-redo"
-            title={`Redo stage ${s.name}: resume the stopped run at ${s.members[0]}, with its variables as of the stop (mhl run --resume --from ${s.name})`}
-            onClick={(e) => {
-              e.stopPropagation();
-              void startRun([], { resume: true, from: s.name });
-            }}
-          >
-            ↻ redo
-          </button>
-        )}
+        {redo}
         {s.file && <FragmentChip file={s.file} />}
       </div>
     </div>
   );
 });
 
-export const nodeTypes = { step: StepNode, parallel: ParallelNode, terminal: TerminalNode, external: ExternalNode, route: RouteNode, stage: StageNode };
+/**
+ * Outside the open stage: a step or route its steps come from or go to.
+ * Click goes back to the whole workflow (with the step selected).
+ */
+export const BoundaryNode = memo(function BoundaryNode({ data }: NodeProps<Node<BoundaryNodeData>>) {
+  const status = useStatus(data.kind === "step" ? data.id : "");
+  return (
+    <div className={`node external boundary ${status ? `run-${status}` : ""}`} title={`${data.kind} ${data.name}, outside this stage\nClick to go back to the whole workflow`}>
+      <Handle type="target" position={Position.Top} />
+      {data.kind === "route" ? "◇" : "↗"} {data.name}
+      <Handle type="source" position={Position.Bottom} isConnectable={false} />
+    </div>
+  );
+});
+
+export const nodeTypes = {
+  step: StepNode,
+  parallel: ParallelNode,
+  terminal: TerminalNode,
+  external: ExternalNode,
+  route: RouteNode,
+  stage: StageNode,
+  boundary: BoundaryNode,
+};

@@ -13,12 +13,12 @@ import {
 import "@xyflow/react/dist/style.css";
 import { currentWorkflow, get, set, useStore } from "../app/store";
 import { addAgentCallToStep, addAgentStep, addToolCallStep, addToolCallToStep, hintSchema } from "../app/library";
-import { edit, openFile, toast } from "../app/controller";
+import { closeStage, edit, openFile, openStage, toast } from "../app/controller";
 import { connect, deleteNode, insertState, removeEdge, type Placement } from "../sync/edits";
 import { transitionAllowed } from "../sync/kinds";
 import { END, FAIL, START } from "../lib/types";
 import type { StateKind } from "../sync/templates";
-import { layoutWorkflow, ROUTE_PREFIX, takenEdges, type FlowEdgeData, type Layout } from "./layout";
+import { layoutWorkflow, ROUTE_PREFIX, takenEdges, type BoundaryNodeData, type FlowEdgeData, type Layout, type StageNodeData, type StageView } from "./layout";
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./ElkEdge";
 import { ImportsCard } from "./ImportsCard";
@@ -64,6 +64,11 @@ function Canvas() {
   const result = useStore((s) => s.run.result);
   const runPath = useStore((s) => s.run.path);
   const activePath = useStore((s) => s.activePath);
+  const stageFocus = useStore((s) => s.stageFocus);
+  const stagesExpanded = useStore((s) => s.stagesExpanded);
+  // The focused stage, while the workflow still has it (a rename drops it).
+  const focus = wf?.stages?.some((x) => x.name === stageFocus) ? stageFocus : null;
+  const view: StageView = useMemo(() => ({ focus, expanded: stagesExpanded }), [focus, stagesExpanded]);
   const [layout, setLayout] = useState<Layout>({ nodes: [], edges: [] });
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const flow = useReactFlow();
@@ -117,11 +122,11 @@ function Canvas() {
       return;
     }
     let cancelled = false;
-    layoutWorkflow(wf)
+    layoutWorkflow(wf, view)
       .then((l) => {
         if (cancelled) return;
         setLayout(l);
-        const key = `${activePath}:${wf.name}`;
+        const key = `${activePath}:${wf.name}:${view.focus ?? ""}:${view.expanded}`;
         if (lastFit.current !== key) {
           lastFit.current = key;
           requestAnimationFrame(() => fit(0));
@@ -136,13 +141,13 @@ function Canvas() {
     };
     // graphSource identifies the graph's text; wf is derived from it
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphSource, wf?.name, activePath]);
+  }, [graphSource, wf?.name, activePath, view]);
 
   const taken = useMemo(() => {
     if (!wf || runPath !== activePath) return new Set<string>();
     const ended = result ? (result.ok ? (result.paused ? null : "end") : "fail") : null;
-    return takenEdges(wf, visits, ended);
-  }, [wf, visits, result, runPath, activePath]);
+    return takenEdges(wf, visits, ended, view);
+  }, [wf, visits, result, runPath, activePath, view]);
 
   const nodes: Node[] = useMemo(
     () => layout.nodes.map((n) => ({ ...n, selected: n.id === selection })),
@@ -186,9 +191,14 @@ function Canvas() {
         ev.preventDefault();
         return;
       }
+      if (ev.key === "Escape" && focus) {
+        closeStage();
+        ev.preventDefault();
+        return;
+      }
       if (!wf || (ev.key !== "Delete" && ev.key !== "Backspace")) return;
       if (selectedEdge) {
-        const e = layout.edges.find((x) => x.id === selectedEdge);
+        const e = layout.edges.find((x) => x.id === selectedEdge && x.deletable !== false);
         const from = e ? (e.data as FlowEdgeData).edge.from : undefined;
         const file = foreignFile(from);
         if (file) readOnly(from!, file);
@@ -202,7 +212,7 @@ function Canvas() {
         ev.preventDefault();
       }
     },
-    [wf, selectedEdge, selection, layout.edges, fit, center, foreignFile],
+    [wf, selectedEdge, selection, layout.edges, fit, center, foreignFile, focus],
   );
 
   /** Where a palette state dropped at a screen point goes. */
@@ -315,6 +325,7 @@ function Canvas() {
   return (
     <div className={`canvas ${stale ? "stale" : ""}`} ref={wrapper} tabIndex={0} onKeyDown={onKeyDown}>
       <ImportsCard />
+      {(wf.stages?.length ?? 0) > 0 && <StageBar workflow={wf.name} focus={focus} expanded={stagesExpanded} />}
       {stale && <div className="stale-banner">The code has errors — the diagram shows the last version that parsed.</div>}
       <ReactFlow
         nodes={nodes}
@@ -323,6 +334,16 @@ function Canvas() {
         edgeTypes={edgeTypes}
         onNodeClick={(_, n) => {
           setSelectedEdge(null);
+          // A stage card opens the stage's own diagram; a step outside the focused stage goes back to the whole workflow.
+          if (n.type === "stage" && (n.data as StageNodeData).collapsed) {
+            void openStage((n.data as StageNodeData).stage.name);
+            return;
+          }
+          if (n.type === "boundary") {
+            const b = n.data as BoundaryNodeData;
+            closeStage(b.kind === "step" ? b.id : null);
+            return;
+          }
           // A route is not a step: clicking it shows its declaration (RouteNode).
           const inert = n.id === START || n.id === END || n.id === FAIL || n.id.startsWith("ext:") || n.id.startsWith(ROUTE_PREFIX) || n.type === "stage";
           set({ selection: inert ? null : n.id });
@@ -370,6 +391,40 @@ function Canvas() {
           <ViewportButtons onFit={() => fit()} onCenter={() => center()} keepCentered={keepCentered} onToggle={toggleKeepCentered} />
         </Controls>
       </ReactFlow>
+    </div>
+  );
+}
+
+/**
+ * Over a workflow with stages: the whole workflow (each stage one card, or
+ * every stage's steps) — or, with a stage open, the path back to it.
+ */
+function StageBar({ workflow, focus, expanded }: { workflow: string; focus: string | null; expanded: boolean }) {
+  if (focus) {
+    return (
+      <div className="stage-bar">
+        <button className="stage-crumb" title="Back to the whole workflow (Esc)" onClick={() => closeStage()}>
+          ← {workflow}
+        </button>
+        <span className="stage-crumb-sep">›</span>
+        <span className="stage-crumb current">
+          <span className="node-kind">Stage</span> {focus}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="stage-bar">
+      <button
+        className={`stage-toggle ${expanded ? "" : "on"}`}
+        title="One card per stage: click a stage to open its steps"
+        onClick={() => set({ stagesExpanded: false })}
+      >
+        Stages
+      </button>
+      <button className={`stage-toggle ${expanded ? "on" : ""}`} title="Every stage's steps, each stage a box" onClick={() => set({ stagesExpanded: true })}>
+        All steps
+      </button>
     </div>
   );
 }
