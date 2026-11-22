@@ -430,6 +430,9 @@ func Run(req Request) (*Result, error) {
 	// on entering a stage whose inputs were unbound (InputGate) must now be
 	// given them: checked before anything runs, so it stays paused if not.
 	var answer *interpreter.GateAnswer
+	// The checkpoint a resume continues from, if any: an input refused below
+	// leaves it as it was.
+	var resumeFrom *runtime.Checkpoint
 	if req.Decision != nil || req.From != "" || (req.Resume && !pipeline.Loop && pipeline.Checkpoint.Enabled) {
 		peek := runtime.NewRunner(base).Session(sessionID)
 		if req.StateStore != nil {
@@ -442,6 +445,7 @@ func Run(req Request) (*Result, error) {
 		if !found {
 			cp = nil
 		}
+		resumeFrom = cp
 		if req.From != "" && cp == nil {
 			return nil, &ResumeFromError{Msg: fmt.Sprintf("no stopped run of %q to redo stage %q in", pipeline.Name, req.From)}
 		}
@@ -497,6 +501,13 @@ func Run(req Request) (*Result, error) {
 	coercedInputs, inputErrs := coerceInputs(pipeline, req.Inputs)
 	coercedInputs = pipeline.WithBound(coercedInputs)
 	if len(inputErrs) > 0 {
+		var bad *runtime.InputValueError
+		if errors.As(inputErrs[0], &bad) && resumeFrom != nil {
+			bad.Resumable = true
+			if resumeFrom.InputGate != nil {
+				bad.Stage = resumeFrom.InputGate.Stage
+			}
+		}
 		return nil, inputErrs[0]
 	}
 

@@ -250,6 +250,27 @@ func (e *InvalidInputsError) Error() string {
 	return b.String()
 }
 
+// InputValueError is a supplied input whose value is not of its declared
+// type — a list given as plain text (`--input cmd=ls` for a string[]), a
+// number that isn't one, an enum name that names no variant. Like
+// InvalidInputsError it is caught before anything runs, so a run resuming
+// from a checkpoint is left as it was: Resumable says so, and Stage names
+// the stage it is paused on entering, if any (its inputs are what to give).
+// The message is Err's.
+type InputValueError struct {
+	Pipeline string
+	Input    string
+	// Type is the input's declared type, as written (`string[]`).
+	Type      string
+	Stage     string
+	Resumable bool
+	Err       error
+}
+
+func (e *InputValueError) Error() string { return e.Err.Error() }
+
+func (e *InputValueError) Unwrap() error { return e.Err }
+
 // ValidateInputs enforces the contract InputSchema() advertises: every
 // declared input must be present in args, and args may carry no key the
 // pipeline does not declare. It returns *InvalidInputsError when either rule

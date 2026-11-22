@@ -33,7 +33,7 @@ func coerceInputs(pipeline runtime.Pipeline, inputs map[string]any) (coerced map
 		}
 		cv, err := coerceOne(fmt.Sprintf("input %q", in.Name), in.Type, v, pipeline.Enums)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, &runtime.InputValueError{Pipeline: pipeline.Name, Input: in.Name, Type: in.Type.String(), Err: err})
 			continue
 		}
 		coerced[in.Name] = cv

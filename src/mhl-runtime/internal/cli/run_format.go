@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
 	"github.com/mh-language/mhl-core-runtime/internal/execsvc"
@@ -13,7 +14,7 @@ import (
 
 // runJSON is the machine-readable shape `mhl run --format json` writes exactly
 // once, on success or failure. Consumers key on `ok`; the failure fields
-// (`error`, `kind`, `step`, `hint`, `missing`, `unknown`) are absent on
+// (`error`, `kind`, `step`, `hint`, `missing`, `unknown`, `invalid`) are absent on
 // success and the run fields (`vars`, `executed`, ...) absent on failure.
 type runJSON struct {
 	OK       bool   `json:"ok"`
@@ -50,6 +51,12 @@ type runJSON struct {
 	// give a stage's inputs: the run is still paused there, resumable.
 	Stage   string   `json:"stage,omitempty"`
 	Unknown []string `json:"unknown,omitempty"`
+	// Invalid names the inputs given a value not of their declared type
+	// (runtime.InputValueError).
+	Invalid []string `json:"invalid,omitempty"`
+	// Resumable is set on an invalid_inputs failure of a resume: nothing
+	// ran, so the run is still where it stopped and can be resumed again.
+	Resumable bool `json:"resumable,omitempty"`
 
 	// diagnostics captured off the run's output stream (step / log() lines).
 	Log string `json:"log,omitempty"`
@@ -137,6 +144,26 @@ func classifyRunError(rj *runJSON, err error) {
 	if errors.As(err, &badDecision) {
 		rj.Kind = "invalid_decision"
 		rj.Hint = "a decision answers the gate a paused run waits at (`awaiting` in its result): resume with --decision '<json>' of that type, or without --decision when it is not waiting for one."
+		return
+	}
+
+	var badValue *runtime.InputValueError
+	if errors.As(err, &badValue) {
+		rj.Kind = "invalid_inputs"
+		rj.Pipeline = badValue.Pipeline
+		rj.Invalid = []string{badValue.Input}
+		rj.Stage = badValue.Stage
+		rj.Resumable = badValue.Resumable
+		rj.Hint = fmt.Sprintf("give %q a value of type %s.", badValue.Input, badValue.Type)
+		switch {
+		case strings.HasSuffix(badValue.Type, "[]"):
+			rj.Hint = fmt.Sprintf("give %q a %s value as a JSON list, e.g. --input %s='[\"a\", \"b\"]'.", badValue.Input, badValue.Type, badValue.Input)
+		case strings.HasPrefix(badValue.Type, "{"):
+			rj.Hint = fmt.Sprintf("give %q a %s value as a JSON object.", badValue.Input, badValue.Type)
+		}
+		if badValue.Resumable {
+			rj.Hint += " Nothing ran: resume again with the corrected input."
+		}
 		return
 	}
 

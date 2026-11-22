@@ -12,6 +12,14 @@ Per-tag release notes are also generated automatically on the
 
 ### Added
 
+- **An input of the wrong type fails as `invalid_inputs`, naming it.** Examples are
+  `--input cmd=ls` for a `string[]` (which takes JSON, `cmd='["ls"]'`) or `n=three` for a
+  `number`. The failure is `kind: "invalid_inputs"` with `invalid: ["cmd"]` and a hint on
+  the form the value takes. Before, it was `kind: "other"`. On a resume, nothing ran, so the
+  failure adds `resumable: true`, plus `stage` for a run paused on entering one. The MCP
+  `tools/call` error's `structuredContent` carries the same. The message is unchanged
+  (`runtime.InputValueError` wraps it).
+
 - **An enum input may be given qualified.** `--input mode=SpecificationMode.Draft` is
   accepted like `mode=Draft`, which is how a default or a program writes the variant.
   This holds at any depth and through MCP/A2A arguments. Another enum's qualifier is

@@ -123,7 +123,7 @@ export function RunPanel() {
                     <h4>{res.kind}</h4>
                     {res.kind === "invalid_inputs" && (
                       <button className="btn small" onClick={() => set({ inputsOpen: true })}>
-                        {res.stage ? `Set stage ${res.stage}'s inputs and resume…` : "Fix the inputs…"}
+                        {res.stage ? `Set stage ${res.stage}'s inputs and resume…` : res.invalid?.length ? `Fix ${res.invalid.join(", ")}…` : "Fix the inputs…"}
                       </button>
                     )}
                     <p className="mono small">{res.error}</p>

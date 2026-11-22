@@ -639,7 +639,8 @@ func (s *server) readResource(sess *session, msg rpcMsg) *rpcMsg {
 // toolErrorResult renders a failed run as a CallToolResult: the message
 // redacted, plus — when the cause is a typed runtime.StepError or
 // InvalidInputsError — a structuredContent object a client can branch on
-// ({error, kind, step} / {error, kind, missing, unknown}). A
+// ({error, kind, step} / {error, kind, missing, unknown} / {error, kind,
+// invalid} for an input of the wrong type). A
 // runtime.OutputContractError has no case here: only a tool with a declared
 // result type can raise one, and typedToolResult strips that tool's error
 // structuredContent anyway — the message stays in the text block.
@@ -652,6 +653,10 @@ func toolErrorResult(err error) map[string]any {
 			kind = "step_timeout"
 		}
 		return toolResult(msg, map[string]any{"error": msg, "kind": kind, "step": stepErr.Step}, true)
+	}
+	var badValue *runtime.InputValueError
+	if errors.As(err, &badValue) {
+		return toolResult(msg, map[string]any{"error": msg, "kind": "invalid_inputs", "invalid": []string{badValue.Input}}, true)
 	}
 	var badInputs *runtime.InvalidInputsError
 	if errors.As(err, &badInputs) {

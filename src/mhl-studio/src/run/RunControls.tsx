@@ -98,8 +98,8 @@ export function RunControls() {
   const invalid = useStore((s) => invalidInputs(s).length);
   const split = useRef<HTMLDivElement>(null);
   const res = runState.result;
-  // A resume refused for a stage's missing inputs leaves the run paused there: still resumable.
-  const resumable = !runState.running && !!res && ((res.ok && !!res.paused) || (!res.ok && (res.kind !== "invalid_inputs" || !!res.stage)));
+  // A resume refused for its inputs (a stage's missing ones, a value of the wrong type) ran nothing: still resumable.
+  const resumable = !runState.running && !!res && ((res.ok && !!res.paused) || (!res.ok && (res.kind !== "invalid_inputs" || !!res.stage || !!res.resumable)));
 
   if (runState.running) {
     return (

@@ -323,4 +323,8 @@ export interface RunResult {
   /** On an `invalid_inputs` failure of a resume: the stage the run is still paused at, waiting for its inputs. */
   stage?: string;
   missing?: string[];
+  /** On `invalid_inputs`: the inputs given a value not of their declared type. */
+  invalid?: string[];
+  /** On `invalid_inputs` from a resume: nothing ran, the run can be resumed again. */
+  resumable?: boolean;
 }

@@ -98,6 +98,10 @@ section here, and the release workflow uses that section as the release notes.
 
 ### Fixed
 
+- **A resume refused for an input of the wrong type can be resumed again.** The run panel
+  now offers "Fix cmd…" instead of treating the run as over, and Resume stays available.
+  Before, the refusal showed as "other". The runtime now reports it as `invalid_inputs`
+  with `resumable`.
 - **A run input the run would refuse is caught in the form.** This covers a list typed as
   plain text, a number that isn't one, and a bool other than true/false. The field says what
   it must be. A `string[]` typed as a command line offers its words, e.g. `Use ["ls","-la"]`
