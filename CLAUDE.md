@@ -54,7 +54,9 @@ make verify-release   # release + asserts each binary is non-empty
 
 Each product has its own `release.sh` next to it and its own tag: the language here
 (`vX.Y.Z`), `src/vscode-mhl/release.sh` (`extensions-vX.Y.Z`), `src/mhl-studio/release.sh`
-(`studio-vX.Y.Z`).
+(`studio-vX.Y.Z`). The step-by-step for all three — order, version choice, each bump's
+quirks, verifying, recovering a failed release — is `docs/RELEASING.md`; keep it in sync
+when a `release.sh` or release workflow changes.
 
 Focused iteration:
 

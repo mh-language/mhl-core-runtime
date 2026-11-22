@@ -10,6 +10,8 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+## 1.15.0 — 2026-11-22
+
 ### Added
 
 - **An input of the wrong type fails as `invalid_inputs`, naming it.** Examples are
