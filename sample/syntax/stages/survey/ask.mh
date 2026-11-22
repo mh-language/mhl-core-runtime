@@ -3,7 +3,7 @@
 partial workflow Survey stage Ask {
     parallel Sources {
         step Left {
-            self.round = round + 1
+            base.round = base.round + 1
         }
 
         step Right {
@@ -12,7 +12,7 @@ partial workflow Survey stage Ask {
 
         merge {
             // Agreement only on the second round.
-            self.answers = answers.append(if (round >= 2) "agree" else "differ")
+            base.answers = base.answers.append(if (base.round >= 2) "agree" else "differ")
 
             goto Decide
         }

@@ -82,8 +82,9 @@ var headerRe = []struct {
 	// name and the `{` (sigRe). Only named types (optionally `[]`-suffixed)
 	// are recognized there: an inline `{ ... }` shape in the header opens
 	// braces of its own, which this brace-counting scan can't tell apart.
-	{blockLoopPipeline, regexp.MustCompile(`\b(?:partial\s+)?loop\s+(?:pipeline|workflow)\s+(\w+)` + sigRe + `(?:\s+max\s+\d+)?\s*$`)},
-	{blockPipeline, regexp.MustCompile(`\b(?:partial\s+)?(?:pipeline|workflow)\s+(\w+)` + sigRe + `\s*$`)},
+	// A `partial` fragment may name its stage last: `partial workflow W stage S {`.
+	{blockLoopPipeline, regexp.MustCompile(`\b(?:partial\s+)?loop\s+(?:pipeline|workflow)\s+(\w+)` + sigRe + `(?:\s+max\s+\d+)?(?:\s+stage\s+\w+)?\s*$`)},
+	{blockPipeline, regexp.MustCompile(`\b(?:partial\s+)?(?:pipeline|workflow)\s+(\w+)` + sigRe + `(?:\s+stage\s+\w+)?\s*$`)},
 	{blockTool, regexp.MustCompile(`\btool\s+(\w+)\s*$`)},
 	{blockAgent, regexp.MustCompile(`\bagent\s+\w*\s*$`)}, // \w* (not \w+): an inline `fallback: [agent { ... }]` literal has no name
 	{blockRouter, regexp.MustCompile(`\brouter\s+\w+\s*$`)},

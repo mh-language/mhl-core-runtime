@@ -161,7 +161,7 @@ func checkDiscardedResults(file string, prog *ast.Program) []Finding {
 			return
 		}
 		root := pf.Primary.Ident
-		if root != "self" && (nativeNamespaces[root] || receiverBuiltinNames[root] || declaredNameExists(prog, root)) {
+		if root != "self" && root != "base" && (nativeNamespaces[root] || receiverBuiltinNames[root] || declaredNameExists(prog, root)) {
 			return
 		}
 		last, method := pf.Ops[len(pf.Ops)-1], pf.Ops[len(pf.Ops)-2]

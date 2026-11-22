@@ -38,6 +38,13 @@ func walkShorthand(v reflect.Value) {
 				f.Value = identExpr(name, f.Pos)
 				f.Shorthand = nil
 			}
+			if r := f.ShorthandRef; r != nil {
+				name := r.Member
+				f.KeyIdent = &name
+				f.Value = identExpr(r.Root, f.Pos)
+				ast.BarePostfix(f.Value).Ops = []*ast.Trailer{{Member: r.Member}}
+				f.ShorthandRef = nil
+			}
 		case argumentType:
 			a := v.Interface().(*ast.Argument)
 			if a.Value == nil {

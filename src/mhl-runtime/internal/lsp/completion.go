@@ -339,6 +339,11 @@ func completionAt(path, text string, pos position) []completionItem {
 		if target == "self" {
 			return selfCompletionAt(path, text, pos)
 		}
+		if target == "base" {
+			if items := baseCompletionAt(path, text, pos); items != nil {
+				return items
+			}
+		}
 		if items, ok := hookParamCompletionAt(text, pos, target); ok {
 			return items
 		}

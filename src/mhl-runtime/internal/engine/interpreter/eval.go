@@ -631,10 +631,18 @@ func evalPostfixOps(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 	// member that isn't a call (`self.pending_data.field`,
 	// `self.items[0]`) still works — applyTrailers below applies whatever's
 	// left in p.Ops[1:] on top of the resolved value.
-	if p.Primary.Ident == "self" && len(p.Ops) >= 1 &&
+	//
+	// `base.name` reads the same binding: it is `self.name` with a claim
+	// lint checks — the name is declared in the partial workflow's base
+	// fragment (the one with the entry step). Only while no variable is
+	// itself named `base`: then `base.x` is a field of it, as before.
+	if (p.Primary.Ident == "self" || isBaseRef(ctx, p.Primary.Ident)) && len(p.Ops) >= 1 &&
 		p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[0].Call == nil &&
 		!(len(p.Ops) >= 2 && p.Ops[1].Call != nil) {
 		v, err := evalSelfPipelineRef(ctx, p.Ops[0].Member)
+		if err != nil && p.Primary.Ident == "base" {
+			err = fmt.Errorf("base%s", strings.TrimPrefix(err.Error(), "self"))
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -816,6 +824,13 @@ func evalSelfPipelineRef(ctx *evalCtx, name string) (any, error) {
 // predates log.info/log.warn/log.error (nativeOpCall, tool.go) and keeps
 // printing unprefixed for backward compatibility with existing .mh scripts
 // and their test assertions.
+// isBaseRef reports whether ident heads a `base.name` reference: it is
+// `base`, and no variable named `base` is in scope (that keeps meaning the
+// variable).
+func isBaseRef(ctx *evalCtx, ident string) bool {
+	return ident == "base" && !isBoundVar(ctx, "base")
+}
+
 // isBoundVar reports whether name is a step-local (`var`) or pipeline-level
 // variable currently in scope. When it is, a `name.method(...)` call is an
 // ordinary value-method call on whatever that variable holds — it must NOT

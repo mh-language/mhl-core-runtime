@@ -5,7 +5,7 @@ partial workflow Story stage Consolidation {
     }
 
     step Done {
-        self.status = "done"
+        base.status = "done"
         complete()
     }
 }

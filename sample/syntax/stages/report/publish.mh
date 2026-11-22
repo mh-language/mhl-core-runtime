@@ -2,6 +2,6 @@
 // no stage: Publish is outside any.
 partial pipeline Report {
     step Publish {
-        log(summary)
+        log(base.summary)
     }
 }

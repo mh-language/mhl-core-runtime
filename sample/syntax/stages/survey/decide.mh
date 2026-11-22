@@ -2,7 +2,7 @@
 // `goto Ask` sends the run back to the other file's stage.
 partial workflow Survey stage Decide {
     step Compare {
-        if (answers[answers.size() - 1] != "agree") {
+        if (base.answers[base.answers.size() - 1] != "agree") {
             goto Ask
         }
     }

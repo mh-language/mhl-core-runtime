@@ -17,7 +17,7 @@ import (
 // (internal/engine/interpreter/eval.go). Kept by hand, like
 // hookBuiltinNames: lint does not import the interpreter.
 var receiverBuiltinNames = map[string]bool{
-	"self": true, "context": true, "env": true, "nameof": true,
+	"self": true, "base": true, "context": true, "env": true, "nameof": true,
 	"fail": true, "pause": true, "complete": true,
 	"type_of": true, "is_string": true, "is_number": true, "is_bool": true,
 	"is_array": true, "is_object": true, "is_null": true, "is_enum": true,

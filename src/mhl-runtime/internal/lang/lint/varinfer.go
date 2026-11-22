@@ -46,7 +46,7 @@ func inferExprType(prog *ast.Program, expr *ast.Expr, known map[string]types.Typ
 	// same as the bare `name` case just above: it's the pipeline's own
 	// input/var/mem, just spelled unambiguously. See
 	// interpreter.evalSelfPipelineRef for the runtime read this mirrors.
-	if p := ast.BarePostfix(expr); p != nil && p.Primary != nil && p.Primary.Ident == "self" &&
+	if p := ast.BarePostfix(expr); p != nil && p.Primary != nil && (p.Primary.Ident == "self" || p.Primary.Ident == "base") &&
 		len(p.Ops) == 1 && p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[0].Call == nil {
 		if t, ok := known[p.Ops[0].Member]; ok {
 			return t

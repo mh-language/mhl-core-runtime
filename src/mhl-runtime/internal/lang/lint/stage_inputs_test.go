@@ -15,7 +15,7 @@ func TestStageInputChecks(t *testing.T) {
 }
 partial workflow W stage S {
     input plan: string
-    step B { log(who, plan) }
+    step B { log(base.who, plan) }
 }`, ""},
 		{"an input declared twice across fragments", `partial workflow W {
     input plan: string

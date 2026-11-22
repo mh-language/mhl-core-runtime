@@ -60,6 +60,7 @@ func mergePartials(file string, prog *ast.Program) (*ast.Program, []Finding) {
 		g := groups[name]
 		m, mf := mergePartialGroup(file, name, g.kind, g.frags)
 		findings = append(findings, mf...)
+		findings = append(findings, checkBaseRefs(file, prog, g.frags)...)
 		merged[name] = m
 	}
 

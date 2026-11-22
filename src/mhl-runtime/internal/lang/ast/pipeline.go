@@ -455,14 +455,17 @@ type Statement struct {
 //	var {data, revisao: note} = review   // declares data, note
 //	{tokens_in, tokens_out} = review     // assigns existing names
 //	self.{tokens_in, tokens_out} = review // assigns pipeline vars (self.name)
+//	base.{tokens_in, tokens_out} = review // the base fragment's (base.name)
 //
 // Each entry `field` binds the field of the same name; `field: name` binds
 // it to a different name. The right-hand side is evaluated once. A missing
 // field fails exactly as `review.field` would.
 type DestructureStmt struct {
-	Pos     lexer.Position
-	Var     bool                `parser:"( @'var'"`
-	Self    bool                `parser:"| @'self' '.' )?"`
+	Pos lexer.Position
+	Var bool `parser:"( @'var'"`
+	// Root is "self" or "base" for the `self.{...}` / `base.{...}` forms,
+	// which assign the fields to that pipeline state; "" for the others.
+	Root    string              `parser:"| @( 'self' | 'base' ) '.' )?"`
 	Entries []*DestructureEntry `parser:"'{' @@ ( ',' @@ )* ','? '}' '='"`
 	Value   *Expr               `parser:"@@"`
 }

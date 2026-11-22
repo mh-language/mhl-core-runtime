@@ -33,6 +33,29 @@ Per-tag release notes are also generated automatically on the
   - A2A, which cannot resume a task, requires stage inputs up front.
   - Persisted as `Checkpoint.input_gate`, separate from a typed gate's `gate`.
   - Sample: `sample/syntax/stages/stage_inputs_pause_at_entry.mh`.
+- **`base.name` reads and writes the base fragment's state in a `partial` workflow.** The
+  base fragment is the one holding the `entry step`/`entry route`.
+  - **Meaning.** `base.x` runs exactly like `self.x` and says where `x` is declared. In a
+    stage file, `Specs.same(base.project_folder, base.project)` shows both come from the
+    base.
+  - **Shorthand.** It works in the object shorthand, keyed by the member:
+    `{base.story_id, base.project}` is `{story_id: base.story_id, project: base.project}`.
+    `{self.x}` works too.
+  - **Destructuring.** `base.{plan, cost: price} = offer` assigns `base.plan` and
+    `base.price` from one object, like `self.{...} = ...`.
+  - **Lint.** `mhl lint` checks it:
+    - `base.x` where the base declares no `x`, or `base.x` outside a `partial` workflow, is
+      an error;
+    - another fragment using a base name bare, or as `self.x`, gets a warning suggesting
+      `base.x`. A name the fragment or step declares itself is never flagged.
+  - **Not reserved.** `base` stays usable as a name: with a variable `base` in scope,
+    `base.x` is its field.
+  - **Editor.** `base.` completes the base's names, and hover and go-to-definition on
+    `base.x` lead to its declaration. The VS Code grammar highlights it.
+  - **Samples.** The stage samples now use it.
+- **Fixed: the LSP did not recognize a staged fragment's header.** For
+  `partial workflow W stage S {`, `self.` completion and the other in-step features found
+  no enclosing workflow.
 - **`///` documents an input.** The `///` lines right above an `input` (a workflow's or an
   agent's) are its documentation; a leading `name:` repeating the input's name is dropped.
   - **Where it shows:** the argument's `"description"` in the MCP/A2A `inputSchema`, which

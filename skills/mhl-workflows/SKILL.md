@@ -580,7 +580,7 @@ indentation:
 // story/implementation.mh
 partial workflow Story stage Implementation {
     step Implement {
-        self.attempts = attempts + 1
+        base.attempts = base.attempts + 1
     }
 
     step Review {
@@ -617,6 +617,13 @@ Resume re-enters the step a run stopped at, never a stage's start. To redo a who
 of a stopped run, resume with `--from <stage>` (`mhl_run_resume {runId, from}`): it
 re-enters the stage at its first step with the variables as of the stop, so the phase
 must be safe to run again.
+
+In a stage fragment, write the base's state as `base.name`: `base.attempts`,
+`{base.story_id, base.project}`, `base.{plan, price} = offer`. The base is the fragment with the `entry step`. `base.x`
+runs like `self.x` and says where the name lives, and `mhl lint` checks it: `base.x`
+the base does not declare is an error, and a base name used bare in another fragment is a
+warning. Keep a phase's own state in its own fragment (`var consolidated = {}`), where a
+bare name is fine.
 
 A stage can ask for its own inputs. An `input` in the stage's fragment belongs to that
 stage. The run starts with the workflow's inputs only, and pauses on entering the stage until

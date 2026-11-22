@@ -3,12 +3,12 @@
 // extra indentation — the file is the phase.
 partial workflow Delivery stage Build {
     step Compile {
-        self.builds = builds + 1
-        log_lines.append("build ${builds}")
+        base.builds = base.builds + 1
+        base.log_lines.append("build ${base.builds}")
     }
 
     step Package {
-        log("packaging build ${builds}")
+        log("packaging build ${base.builds}")
 
         goto Ship
     }

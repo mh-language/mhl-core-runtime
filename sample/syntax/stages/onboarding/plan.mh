@@ -5,7 +5,7 @@ partial workflow Onboarding stage Plan {
     input plan: string
 
     step Choose {
-        steps.append("plan ${plan}")
+        base.steps.append("plan ${plan}")
 
         goto Billing
     }

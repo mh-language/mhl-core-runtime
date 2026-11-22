@@ -327,12 +327,25 @@ type Object struct {
 // path}`. The parser expands it right after parsing (parser.expandShorthand),
 // so every consumer — and DefinitionDigest — only ever sees KeyIdent+Value;
 // Shorthand is nil on any parsed AST.
+//
+// The shorthand may also name pipeline state through `base.` or `self.`:
+// `{base.story_id, self.attempt}` is `{story_id: base.story_id, attempt:
+// self.attempt}` — the key is the member's name.
 type ObjectField struct {
-	Pos       lexer.Position
-	KeyStr    *string        `parser:"( ( @String"`
-	KeyIdent  *string        `parser:"  | @Ident ) ':'"`
-	Value     *Expr          `parser:"  @@"`
-	Shorthand *ShorthandName `parser:"| @Ident )" digest:"omitzero"`
+	Pos          lexer.Position
+	KeyStr       *string        `parser:"( ( @String"`
+	KeyIdent     *string        `parser:"  | @Ident ) ':'"`
+	Value        *Expr          `parser:"  @@"`
+	ShorthandRef *ShorthandRef  `parser:"| @@" digest:"omitzero"`
+	Shorthand    *ShorthandName `parser:"| @Ident )" digest:"omitzero"`
+}
+
+// ShorthandRef is a shorthand object field naming pipeline state through
+// `base.` or `self.` (`{base.story_id}`); expanded by the parser like
+// ShorthandName, so nil on any parsed AST.
+type ShorthandRef struct {
+	Root   string `parser:"@( 'base' | 'self' ) '.'"`
+	Member string `parser:"@Ident"`
 }
 
 // ShorthandName is the identifier of a shorthand object field (`{name}`) or

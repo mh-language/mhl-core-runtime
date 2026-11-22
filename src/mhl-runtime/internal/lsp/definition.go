@@ -54,6 +54,11 @@ func definitionAt(path, text string, pos position, cache *refCache) []location {
 
 	// "Receiver.word" with the cursor on word: resolve the member.
 	if start >= 1 && line[start-1] == '.' {
+		if receiver, ok := identEndingAt(line, start-1); ok && receiver == "base" {
+			if loc, found := baseDefinition(path, text, pos, word); found {
+				return []location{loc}
+			}
+		}
 		if receiver, ok := identEndingAt(line, start-1); ok {
 			if loc, found := findMember(path, text, receiver, word, cache); found {
 				return []location{loc}

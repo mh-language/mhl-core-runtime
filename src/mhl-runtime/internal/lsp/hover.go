@@ -20,6 +20,11 @@ func hoverAt(path, text string, pos position) *hover {
 	}
 
 	if start >= 1 && line[start-1] == '.' {
+		if receiver, ok := identEndingAt(line, start-1); ok && receiver == "base" {
+			if h := baseHover(path, text, pos, word); h != nil {
+				return h
+			}
+		}
 		if receiver, ok := identEndingAt(line, start-1); ok {
 			for _, s := range documentSymbols(path, text) {
 				if s.Name != receiver {

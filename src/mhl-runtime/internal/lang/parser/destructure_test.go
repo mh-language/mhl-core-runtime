@@ -43,3 +43,29 @@ pipeline P {
 		t.Fatalf("a single-statement if body should expand in place, got %+v", then)
 	}
 }
+
+// `base.{f} = expr` assigns each field to the base fragment's state:
+// `base.f`, as `self.{f}` assigns `self.f`.
+func TestDestructureToBase(t *testing.T) {
+	prog, err := Parse(`
+partial workflow W {
+    var a = 0
+    var b = 0
+    entry step S {
+        base.{a, x: b} = {a: 1, x: 2}
+    }
+}`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	body := prog.Decls[0].Pipeline.Body[2].Step.Body
+	if len(body) != 3 {
+		t.Fatalf("want temporary + 2 assignments, got %d", len(body))
+	}
+	for i, want := range []string{"a", "b"} {
+		a := body[i+1].Assign
+		if a == nil || a.Target.Primary.Ident != "base" || a.Target.Ops[0].Member != want {
+			t.Fatalf("entry %d should assign base.%s, got %+v", i, want, body[i+1])
+		}
+	}
+}

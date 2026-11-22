@@ -60,6 +60,9 @@ section here, and the release workflow uses that section as the release notes.
     Dockerfile, Makefile, SQL. A binary file or one over 5 MB is not opened, and a message
     says why; there is no silent failure.
 
+- **The code editor highlights `base.`.** It applies to the base fragment's state of a
+  `partial` workflow, including `base.{f} = ...`. Inside a `"${...}"`, `self.` and `base.`
+  are highlighted as outside strings. The grammar is vscode-mhl's.
 - **Inputs show their `///` documentation.** It appears in the run inputs popover, in a
   stage's input form, and on a line under the input in the workflow inspector. The MCP test
   bench shows it in the arguments' Description column, from the `inputSchema`.

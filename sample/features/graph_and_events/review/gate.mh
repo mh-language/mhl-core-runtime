@@ -3,13 +3,13 @@
 // fragment, goes to Review.
 partial workflow ReviewFlow {
     step Review {
-        if (!approved) {
+        if (!base.approved) {
             pause("approve the draft: resume with approved=true")
         }
     }
 
     step Publish {
-        self.status = "published"
+        base.status = "published"
         complete()
     }
 }

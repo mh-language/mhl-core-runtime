@@ -7,7 +7,7 @@ partial workflow Onboarding stage Billing {
     input coupon: string = "none"
 
     step Charge {
-        steps.append("charge ${card}")
+        base.steps.append("charge ${card}")
         complete()
     }
 }

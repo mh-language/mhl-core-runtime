@@ -4,18 +4,18 @@ import {CodeReview, ReviewAction} from "review.mh"
 
 partial workflow Story stage Implementation {
     step Implement {
-        self.attempts = attempts + 1
+        base.attempts = base.attempts + 1
     }
 
     step Verify {
-        log("tests for attempt ${attempts}")
+        log("tests for attempt ${base.attempts}")
     }
 
     step ReviewCode {
-        var d = pause("review attempt ${attempts}", decision: CodeReview)
+        var d = pause("review attempt ${base.attempts}", decision: CodeReview)
         var note = d.get("feedback", "")
         if (!note.is_empty()) {
-            feedback.append(note)
+            base.feedback.append(note)
         }
 
         goto match d.action {

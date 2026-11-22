@@ -710,6 +710,13 @@ func assignTargetBase(p *ast.Postfix) (name string, self bool, ok bool) {
 	if p == nil || p.Primary == nil || p.Primary.Ident == "" {
 		return "", false, false
 	}
+	// `base.name` writes like `self.name` (see isBaseRef): a field of a
+	// variable named `base` was never an assignable target anyway.
+	// `base.name` is a target like `self.name`; a bare `base` (a variable
+	// or const of that name) is an ordinary one, handled below.
+	if p.Primary.Ident == "base" && len(p.Ops) == 1 && p.Ops[0].Member != "" && !p.Ops[0].Optional && p.Ops[0].Call == nil {
+		return p.Ops[0].Member, true, true
+	}
 	if p.Primary.Ident == "self" {
 		if len(p.Ops) != 1 || p.Ops[0].Member == "" || p.Ops[0].Optional || p.Ops[0].Call != nil {
 			return "", false, false

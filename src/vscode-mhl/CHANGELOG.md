@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `base.` in `base.name`, the base fragment's state of a `partial` workflow, is highlighted
+  as a keyword, including `base.{f} = ...` destructuring. It is contextual: a variable
+  named `base` stays a name.
+- `self.` and `base.` are highlighted inside a `"${...}"` interpolation too, as outside
+  strings. Its completion,
+  hover and go-to-definition come from the bundled runtime (`mhlRuntime`) once it includes
+  `base.`.
+
 ## 0.10.0
 
 ### Added

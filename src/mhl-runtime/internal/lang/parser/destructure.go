@@ -21,7 +21,8 @@ var statementSliceType = reflect.TypeOf([]*ast.Statement(nil))
 //	var data = $destructure1.data
 //	var note = $destructure1.revisao
 //
-// (`=` assignments, to `self.name` for the `self.{...}` form, instead of
+// (`=` assignments, to `self.name` / `base.name` for the `self.{...}` /
+// `base.{...}` forms, instead of
 // `var` for the other two forms). The right-hand side is evaluated once, into
 // a temporary whose `$` name no program can spell, so it never collides with
 // or shadows a user name. Like expandShorthand, this runs before anything
@@ -79,8 +80,9 @@ func expandStatements(stmts []*ast.Statement, n *int) []*ast.Statement {
 				continue
 			}
 			target := &ast.Postfix{Primary: &ast.Primary{Ident: e.Target()}}
-			if d.Self {
-				target = &ast.Postfix{Primary: &ast.Primary{Ident: "self"}, Ops: []*ast.Trailer{{Member: e.Target()}}}
+			if d.Root != "" {
+				// `self.{f} = ...` / `base.{f} = ...`: each field to self.f / base.f.
+				target = &ast.Postfix{Primary: &ast.Primary{Ident: d.Root}, Ops: []*ast.Trailer{{Member: e.Target()}}}
 			}
 			out = append(out, &ast.Statement{Pos: s.Pos, Assign: &ast.AssignStmt{Target: target, Op: "=", Value: value}})
 		}

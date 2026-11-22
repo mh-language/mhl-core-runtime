@@ -28,6 +28,10 @@ same order, same checkpoints. A stage adds two things:
   `mhl run --format jsonl` step events (and the stage list on `run_start`), `run/status`,
   the `--dry-run` plan, `mhl graph` (`stages`, `Node.stage`) and a box in mhl studio.
 
+A stage fragment reads and writes the base's state (the fragment with the `entry step`) as
+`base.name` — `base.builds = base.builds + 1` — so its reader sees where each name lives;
+`mhl lint` warns about a base name used bare there. A phase's own `var`s stay bare.
+
 A stage can also declare its own inputs: the run asks for them on entering it, not at the
 start (see `stage_inputs_pause_at_entry.mh` below).
 

@@ -192,6 +192,11 @@
           "match": "\\b(if|else|while|for|in|try|catch|finally|fail|pause|complete|return|mem|var|const|match|goto|break|spawn|wait|self)\\b"
         },
         {
+          "comment": "`base.name` — the partial workflow's base fragment state; contextual: a bare `base` stays an identifier",
+          "name": "keyword.control.mhl",
+          "match": "\\bbase(?=\\s*\\.)"
+        },
+        {
           "comment": "`ref { ... }` / `ref (expr)` — contextual: a bare `ref` stays an identifier",
           "name": "keyword.other.ref.mhl",
           "match": "\\bref(?=\\s*[{(])"
@@ -282,6 +287,11 @@
         },
         {
           "include": "#constants"
+        },
+        {
+          "comment": "`self.x` / `base.x` inside `${...}`: the pipeline's own state, highlighted as outside strings",
+          "name": "keyword.control.mhl",
+          "match": "\\b(self|base)(?=\\s*\\.)"
         },
         {
           "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(\\.)([a-zA-Z_][a-zA-Z0-9_]*)(?=[ \\t]*\\()",
