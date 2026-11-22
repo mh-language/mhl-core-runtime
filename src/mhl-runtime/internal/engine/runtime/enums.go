@@ -13,9 +13,10 @@ import (
 // object fields. A pipeline input arrives as text (a CLI flag, a JSON string
 // from an MCP/A2A caller, a test's `Name.run(inputs: ...)`); without this an
 // enum-typed input stayed a plain string, so it never equalled `Kind.x` and
-// an exhaustive `match` over it failed at run time. A name that is not a
-// variant is rejected listing the valid ones. Anything else is returned
-// unchanged for types.Check to judge.
+// an exhaustive `match` over it failed at run time. The name may also be
+// qualified by the enum, as the program writes it (`Mode.Draft`, the way a
+// default reads). A name that is not a variant is rejected listing the
+// valid ones. Anything else is returned unchanged for types.Check to judge.
 func ConvertEnums(label string, dt types.Type, v any, enums map[string][]string) (any, error) {
 	switch dt.Kind {
 	case types.EnumKind:
@@ -24,9 +25,10 @@ func ConvertEnums(label string, dt types.Type, v any, enums map[string][]string)
 			return v, nil
 		}
 		variants := enums[dt.Name]
+		bare := strings.TrimPrefix(name, dt.Name+".")
 		for _, variant := range variants {
-			if variant == name {
-				return value.Enum{Enum: dt.Name, Variant: name}, nil
+			if variant == bare {
+				return value.Enum{Enum: dt.Name, Variant: bare}, nil
 			}
 		}
 		return nil, fmt.Errorf("%s: %q is not a variant of enum %s (use %s)", label, name, dt.Name, strings.Join(variants, " | "))

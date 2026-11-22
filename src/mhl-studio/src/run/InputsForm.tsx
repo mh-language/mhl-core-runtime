@@ -7,6 +7,18 @@ import { useMemo } from "react";
 import { importedDeclarations, inspect } from "../app/controller";
 import { enumVariants, inputFields, runInputPairs, set, useStore, type InputField, type State } from "../app/store";
 import type { Declaration } from "../lib/types";
+import { inputProblem } from "../lib/inputs";
+
+/**
+ * Inputs whose typed value the run would refuse (lib/inputs.ts inputProblem):
+ * a list given as plain text, a number that isn't one — caught here, where
+ * the field can say what it wants, rather than as the run's error.
+ */
+export function invalidInputs(s: State, names?: string[]): string[] {
+  return inputFields(s)
+    .filter((f) => (!names || names.includes(f.name)) && inputProblem(f.type, s.runInputs[f.name] ?? ""))
+    .map((f) => f.name);
+}
 
 /**
  * Required inputs still left blank: a run would be refused. The dry-run is
@@ -23,12 +35,18 @@ export function missingInputs(s: State): string[] {
     .map((f) => f.name);
 }
 
-/** The enums an input can be typed with: this file's and what it imports. */
+/**
+ * The enums an input can be typed with: this file's and what it imports
+ * first, then any other workspace file's — a partial workflow's input may be
+ * declared in another fragment, which imports its enum itself.
+ */
 export function useInputDecls(): Declaration[] {
   const graph = useStore((s) => s.graph);
   const library = useStore((s) => s.library);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => [...importedDeclarations(graph), ...(graph?.declarations ?? [])], [graph, library]);
+  return useMemo(
+    () => [...importedDeclarations(graph), ...(graph?.declarations ?? []), ...library.flatMap((l) => l.declarations.filter((d) => d.kind === "enum"))],
+    [graph, library],
+  );
 }
 
 /**
@@ -40,6 +58,8 @@ export function InputControl({ field: f, decls, required, autoFocus }: { field: 
   const setValue = (v: string) => set({ runInputs: { ...values, [f.name]: v } });
   const variants = enumVariants(f.type, decls);
   const value = values[f.name] ?? "";
+  const problem = variants ? null : inputProblem(f.type, value);
+  const list = f.type.replace(/\?$/, "").endsWith("[]");
   const control = (
     <label className="field inline" title={f.doc}>
       <span className="mono">
@@ -47,7 +67,8 @@ export function InputControl({ field: f, decls, required, autoFocus }: { field: 
       </span>
       {variants ? (
         <select className="mono" autoFocus={autoFocus} value={value} onChange={(e) => setValue(e.target.value)}>
-          <option value="">{f.def ? `default (${f.def})` : required ? "— required —" : "—"}</option>
+          {/* The default as a variant: `Mode.Existing` in the source is `Existing` here, like the options. */}
+          <option value="">{f.def ? `default (${f.def.replace(`${f.type.replace(/\?$/, "")}.`, "")})` : required ? "— required —" : "—"}</option>
           {variants.map((v) => (
             <option key={v} value={v}>
               {v}
@@ -65,19 +86,35 @@ export function InputControl({ field: f, decls, required, autoFocus }: { field: 
       ) : (
         <input
           autoFocus={autoFocus}
-          className="mono"
-          placeholder={f.def ? `default ${f.def}` : required ? "required" : "optional"}
+          className={`mono ${problem ? "invalid" : ""}`}
+          aria-invalid={!!problem}
+          placeholder={f.def ? `default ${f.def}` : list ? `JSON list${required ? ", required" : ""}, e.g. ["a", "b"]` : required ? "required" : "optional"}
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
       )}
     </label>
   );
+  // What the value must look like, when it doesn't — with a one-click fix when one is likely.
+  const problemRow = problem && (
+    <p className="field-doc field-problem small">
+      Must be {problem.message}.
+      {problem.fix && (
+        <>
+          {" "}
+          <button className="link mono" onClick={() => setValue(problem.fix!)}>
+            Use {problem.fix}
+          </button>
+        </>
+      )}
+    </p>
+  );
   // The input's `///` doc, under its field.
-  return f.doc ? (
+  return f.doc || problemRow ? (
     <div className="field-with-doc">
       {control}
-      <p className="field-doc muted small">{f.doc}</p>
+      {problemRow}
+      {f.doc && <p className="field-doc muted small">{f.doc}</p>}
     </div>
   ) : (
     control

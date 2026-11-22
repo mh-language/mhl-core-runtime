@@ -1535,6 +1535,9 @@ select {
 .field.inline input,
 .field.inline select {
   flex: 1;
+  /* A select is otherwise as wide as its longest option, past the form's edge. */
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 .info-row {
   display: flex;
@@ -3457,4 +3460,15 @@ select {
   display: flex;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* A run input whose value the run would refuse (run/InputsForm.tsx): what it must be, and a fix. */
+.field.inline input.invalid {
+  border-color: var(--danger, #e5534b);
+}
+.field-with-doc .field-problem {
+  color: var(--danger, #e5534b);
+}
+.field-with-doc .field-problem .link {
+  font-size: inherit;
 }

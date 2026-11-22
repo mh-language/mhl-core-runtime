@@ -28,3 +28,39 @@ export function inputJourney(inputs: WfInput[], stages: { name: string }[] = [])
 export function needsValue(i: WfInput): boolean {
   return i.default === undefined;
 }
+
+/** Why a value typed for an input won't be accepted, and the value it most likely meant. */
+export interface InputProblem {
+  message: string;
+  /** A corrected value to offer, e.g. `["python3","-m","pytest"]` for `python3 -m pytest`. */
+  fix?: string;
+}
+
+/**
+ * What the runtime would refuse in `raw` as an `--input` of `type`, before
+ * the run is started: a number or bool that isn't one, and a list or object
+ * (`T[]`, `{...}`) that isn't JSON of that shape — the runtime decodes those
+ * from JSON (types.Coerce). A blank value, a string, an enum and a named type
+ * the form can't see into are left to the runtime. A `string[]` given as
+ * plain text is offered as its words, the argv a command line splits into.
+ */
+export function inputProblem(type: string, raw: string): InputProblem | null {
+  const text = raw.trim();
+  const t = type.replace(/\?$/, "");
+  if (!text) return null;
+  if (t === "number") return Number.isFinite(Number(text)) ? null : { message: "a number" };
+  if (t === "bool") return text === "true" || text === "false" ? null : { message: "true or false" };
+  const list = t.endsWith("[]");
+  if (!list && !t.startsWith("{")) return null;
+  let v: unknown;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    if (t === "string[]") return { message: `a JSON list of strings, e.g. ${JSON.stringify(text.split(/\s+/))}`, fix: JSON.stringify(text.split(/\s+/)) };
+    return { message: list ? "a JSON list, e.g. [1, 2]" : "a JSON object, e.g. {\"key\": \"value\"}" };
+  }
+  if (list && !Array.isArray(v)) return { message: "a JSON list", ...(t === "string[]" && typeof v === "string" ? { fix: JSON.stringify([v]) } : {}) };
+  if (!list && (typeof v !== "object" || v === null || Array.isArray(v))) return { message: "a JSON object" };
+  if (t === "string[]" && (v as unknown[]).some((x) => typeof x !== "string")) return { message: "a JSON list of strings" };
+  return null;
+}

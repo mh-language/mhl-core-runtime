@@ -12,6 +12,11 @@ Per-tag release notes are also generated automatically on the
 
 ### Added
 
+- **An enum input may be given qualified.** `--input mode=SpecificationMode.Draft` is
+  accepted like `mode=Draft`, which is how a default or a program writes the variant.
+  This holds at any depth and through MCP/A2A arguments. Another enum's qualifier is
+  still rejected, listing the variants.
+
 - **`mhl run --no-cache` calls every agent again.** The run does not return a reply from an
   agent's `cache:`. Each fresh reply replaces the cached one, so a later run reuses that.
   Before, starting over after an agent's bad answer got the same answer back until the

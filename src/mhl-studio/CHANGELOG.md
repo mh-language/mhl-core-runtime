@@ -98,6 +98,18 @@ section here, and the release workflow uses that section as the release notes.
 
 ### Fixed
 
+- **A run input the run would refuse is caught in the form.** This covers a list typed as
+  plain text, a number that isn't one, and a bool other than true/false. The field says what
+  it must be. A `string[]` typed as a command line offers its words, e.g. `Use ["ls","-la"]`
+  for `ls -la`. Run, Resume and a stage's Continue wait until it is fixed. Before, the run
+  started and failed with `"Ls" is not valid JSON for a string[] value`.
+- **An enum input from another fragment is a dropdown of its variants.** An input of a
+  partial workflow can be declared in a fragment that imports its enum, such as AgileSpec's
+  `specification_mode`. Its field was free text, with the enum-qualified default as
+  placeholder. That invited values like `SpecificationMode.New`, which the run refused.
+- **A long choice no longer pushes an input's field past the form.** A select was as wide
+  as its longest option and now fits its column. An enum's default shows as its variant,
+  such as `default (Existing)` instead of `default (SpecificationMode.Existing)`.
 - **Run works with a fragment of a partial workflow open.** Run, Resume and the dry-run
   load the file that starts the workflow, the one with the `entry` fragment, as the diagram
   already did. Before, they loaded the open fragment. That fragment has no `entry` and does

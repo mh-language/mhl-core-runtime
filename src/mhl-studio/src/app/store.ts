@@ -213,8 +213,8 @@ export function inputFields(s: State): InputField[] {
 /**
  * The variants an input of `type` can take, when that type is an enum this
  * file declares or imports (`decls`); null for any other type. An optional
- * `T?` counts as `T`. The runtime takes the bare variant name (`All`, not
- * `AgentModel.All`) as an `--input` value and refuses anything else.
+ * `T?` counts as `T`. The form sends the bare variant name (`All`); the
+ * runtime also takes it qualified (`AgentModel.All`).
  */
 export function enumVariants(type: string, decls: Declaration[]): string[] | null {
   const name = type.endsWith("?") ? type.slice(0, -1) : type;

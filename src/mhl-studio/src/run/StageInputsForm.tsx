@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { startRun } from "../app/controller";
 import { inputFields, stageInputPairs, useStore } from "../app/store";
 import type { AwaitingInputs } from "../lib/types";
-import { InputControl, useInputDecls } from "./InputsForm";
+import { InputControl, invalidInputs, useInputDecls } from "./InputsForm";
 
 export function StageInputsForm({ awaiting }: { awaiting: AwaitingInputs }) {
   const inspection = useStore((s) => s.inspection);
@@ -18,8 +18,9 @@ export function StageInputsForm({ awaiting }: { awaiting: AwaitingInputs }) {
   const values = useStore((s) => s.runInputs);
   const decls = useInputDecls();
   const blank = awaiting.inputs.filter((n) => !(values[n] ?? "").trim());
+  const invalid = useStore((s) => invalidInputs(s, awaiting.inputs).length);
   const submit = () => {
-    if (!blank.length) void startRun(stageInputPairs(awaiting.stage, awaiting.inputs), { resume: true });
+    if (!blank.length && !invalid) void startRun(stageInputPairs(awaiting.stage, awaiting.inputs), { resume: true });
   };
   return (
     <div className="approval">
@@ -40,7 +41,7 @@ export function StageInputsForm({ awaiting }: { awaiting: AwaitingInputs }) {
           <InputControl key={f.name} field={f} decls={decls} required autoFocus={i === 0} />
         ))}
       </div>
-      <button className="btn small primary" disabled={!!blank.length} onClick={submit} title={`mhl run --resume ${awaiting.inputs.map((n) => `--input ${n}=…`).join(" ")}`}>
+      <button className="btn small primary" disabled={!!blank.length || !!invalid} onClick={submit} title={`mhl run --resume ${awaiting.inputs.map((n) => `--input ${n}=…`).join(" ")}`}>
         Continue stage {awaiting.stage}
       </button>
     </div>

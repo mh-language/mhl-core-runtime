@@ -681,6 +681,15 @@ workflow W(req: Req) {
 		t.Fatalf("an enum var must survive the checkpoint as an enum, got output %v", out)
 	}
 
+	// The variant may be qualified as the program writes it (`Kind.adr`), at any depth.
+	res, err = execsvc.Run(execsvc.Request{Source: src, BaseDir: t.TempDir(), Inputs: map[string]any{"kind": "Kind.adr", "extra": []any{"Kind.brief"}}})
+	if err != nil || !res.Paused {
+		t.Fatalf("a qualified variant: paused=%v err=%v", res != nil && res.Paused, err)
+	}
+	_, err = execsvc.Run(execsvc.Request{Source: src, BaseDir: t.TempDir(), Inputs: map[string]any{"kind": "Other.adr"}})
+	if err == nil || !strings.Contains(err.Error(), `"Other.adr" is not a variant of enum Kind`) {
+		t.Fatalf("another enum's qualifier must be rejected, got %v", err)
+	}
 	_, err = execsvc.Run(execsvc.Request{Source: src, BaseDir: t.TempDir(), Inputs: map[string]any{"kind": "bogus"}})
 	if err == nil || !strings.Contains(err.Error(), `"bogus" is not a variant of enum Kind (use brief | adr)`) {
 		t.Fatalf("an unknown variant must be rejected listing the valid ones, got %v", err)
