@@ -337,9 +337,9 @@ var routerMethodSigs = map[string]sig{
 
 var pipelineMethodSigs = map[string]sig{
 	"run": {
-		Label:  "run(inputs?: object) -> {ok, state, executed, vars, error, step, break_reason, pause_reason}",
+		Label:  "run(inputs?: object) -> {ok, state, executed, vars, error, step, break_reason, pause_reason, awaiting, awaiting_inputs}",
 		Params: []string{"inputs"},
-		Doc:    "Test-only: runs this pipeline/workflow's steps to completion (or to a break/pause/failure) in an isolated sandbox and reports the outcome — never raises for an outcome the workflow's own steps produced (fail()/break/pause), only for a problem with the call itself (unknown input, a `loop pipeline`/`loop workflow`). `state` is one of \"completed\", \"paused\", \"broke\", \"failed\". Valid only inside a test's describe block.",
+		Doc:    "Test-only: runs this pipeline/workflow's steps to completion (or to a break/pause/failure) in an isolated sandbox and reports the outcome — never raises for an outcome the workflow's own steps produced (fail()/break/pause), only for a problem with the call itself (unknown input, a `loop pipeline`/`loop workflow`). `state` is one of \"completed\", \"paused\", \"broke\", \"failed\"; a run paused on entering a stage whose inputs were not given reports them in `awaiting_inputs` ({stage, step, inputs}). Valid only inside a test's describe block.",
 	},
 }
 

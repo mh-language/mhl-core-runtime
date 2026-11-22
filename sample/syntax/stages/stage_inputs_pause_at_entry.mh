@@ -1,0 +1,64 @@
+// A stage may declare its own inputs: an `input` line inside a
+// `partial workflow X stage S { ... }` fragment belongs to stage S. The run
+// starts with the workflow's own inputs only (here `customer`); on entering
+// a stage whose required inputs are still unbound it pauses — before the
+// stage's first step runs — and reports them as `awaiting_inputs`:
+//
+//   mhl run sample/syntax/stages/stage_inputs_pause_at_entry.mh --input customer=ana
+//     → paused: awaiting inputs for stage "Plan": plan
+//   mhl run ... --resume --input plan=pro
+//     → paused: awaiting inputs for stage "Billing": card
+//   mhl run ... --resume --input card=4242
+//     → completed
+//
+// Each resume passes only that stage's inputs (MCP: `run/resume {runId,
+// arguments}`); a resume still missing one is refused and the run stays
+// paused. Inputs may also all be given up front, as a stock MCP client
+// calling the tool with every argument does: then nothing pauses. A stage
+// input with a default (`coupon`) never pauses — the default is used.
+//
+// A `///` line right above an input documents it: MCP clients show it as the
+// argument's description (inputSchema), and so do `--dry-run`, `mhl graph`,
+// the editor's hover and mhl studio's forms.
+import "onboarding/plan.mh"
+import "onboarding/billing.mh"
+
+partial workflow Onboarding {
+    /// The customer's name, as it appears on the account.
+    input customer: string
+
+    var steps = []
+
+    output: { customer, plan, card, coupon, steps }
+
+    entry step Welcome {
+        steps.append("welcome ${customer}")
+
+        goto Plan
+    }
+}
+
+test stage_inputs_pause_at_entry {
+    describe all_inputs_up_front_run_to_completion {
+        var r = Onboarding.run(inputs: {customer: "ana", plan: "pro", card: "4242"})
+        are_equal(r.state, "completed")
+        are_equal(r.output.steps, ["welcome ana", "plan pro", "charge 4242"])
+        are_equal(r.output.coupon, "none")
+    }
+
+    describe a_stage_input_left_out_pauses_on_entering_its_stage {
+        var r = Onboarding.run(inputs: {customer: "ana"})
+        are_equal(r.state, "paused")
+        are_equal(r.executed, ["Welcome"])
+        are_equal(r.awaiting_inputs.stage, "Plan")
+        are_equal(r.awaiting_inputs.inputs, ["plan"])
+    }
+
+    describe the_next_stage_asks_only_for_its_own {
+        var r = Onboarding.run(inputs: {customer: "ana", plan: "pro"})
+        are_equal(r.state, "paused")
+        are_equal(r.executed, ["Welcome", "Choose"])
+        are_equal(r.awaiting_inputs.stage, "Billing")
+        are_equal(r.awaiting_inputs.inputs, ["card"])
+    }
+}

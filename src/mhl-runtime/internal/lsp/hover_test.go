@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -166,5 +168,42 @@ pipeline P {
 `)
 	if h := hoverAt("main.mh", src, pos); h != nil {
 		t.Errorf("expected nil hover for a plain local variable, got %q", h.Contents.Value)
+	}
+}
+
+// Hovering a workflow input — where it is read — shows its `///` doc and
+// when the run asks for it; one declared in another fragment of a partial
+// workflow is found there.
+func TestHoverOnInputShowsItsDoc(t *testing.T) {
+	src, pos := posAtMarker(t, `
+workflow W {
+    /// The folder to work in.
+    input project_dir: string
+    step S {
+        log(project_§dir)
+    }
+}
+`)
+	h := hoverAt("main.mh", src, pos)
+	if h == nil || !strings.Contains(h.Contents.Value, "input project_dir: string") || !strings.Contains(h.Contents.Value, "The folder to work in.") || !strings.Contains(h.Contents.Value, "when the run of `W` starts") {
+		t.Fatalf("hover = %v", h)
+	}
+
+	dir := t.TempDir()
+	writeFile := func(t *testing.T, path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, dir+"/main.mh", "import \"story/plan.mh\"\npartial workflow W {\n    /// Who the story is for.\n    input who: string\n    entry step A { goto Plan }\n}\n")
+	frag, pos := posAtMarker(t, "partial workflow W stage Plan {\n    /// The plan to pick.\n    input plan: string\n    step B { log(w§ho, plan) }\n}\n")
+	writeFile(t, dir+"/story/plan.mh", frag)
+	h = hoverAt(dir+"/story/plan.mh", frag, pos)
+	if h == nil || !strings.Contains(h.Contents.Value, "Who the story is for.") {
+		t.Fatalf("cross-fragment hover = %v", h)
 	}
 }

@@ -374,6 +374,16 @@ type PipelineInput struct {
 	Name    string         `parser:"@Ident ':'"`
 	Type    *TypeExpr      `parser:"@@"`
 	Default *Expr          `parser:"( '=' @@ )?"`
+	// Stage names the stage of the fragment the input was declared in
+	// (`partial workflow X stage S { input a: T ... }`), set by
+	// parser.expandStages; "" for a workflow-level input (and always for an
+	// agent's). A stage input is not required when the run starts: the run
+	// pauses on entering S until it is supplied (runtime.InputGate).
+	Stage string `parser:"" digest:"omitzero"`
+	// Doc is the input's documentation: the `///` lines right above it,
+	// joined (parser.attachInputDocs). Not part of the definition — editing
+	// it never invalidates a checkpoint. "" when it has none.
+	Doc string `parser:"" digest:"-"`
 }
 
 // Step is a named block of statements. An optional `timeout <duration>`

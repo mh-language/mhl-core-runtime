@@ -28,6 +28,9 @@ same order, same checkpoints. A stage adds two things:
   `mhl run --format jsonl` step events (and the stage list on `run_start`), `run/status`,
   the `--dry-run` plan, `mhl graph` (`stages`, `Node.stage`) and a box in mhl studio.
 
+A stage can also declare its own inputs: the run asks for them on entering it, not at the
+start (see `stage_inputs_pause_at_entry.mh` below).
+
 `mhl lint` rejects a stage on a declaration that is not `partial`, a stage named like a
 step, group or route, and a stage declared on fragments that are not imported one right
 after the other. A fragment without a stage is fine: its steps are outside any.
@@ -47,6 +50,12 @@ after the other. A fragment without a stage is fine: its steps are outside any.
   `pause(..., decision: T)` whose answer says which phase to restart
   (`goto Implementation`, `goto Specification`); Rejected sits in the entry fragment, outside
   every phase. Its tests drive every path with `Story.run(decisions: [...])`.
+- [stage_inputs_pause_at_entry.mh](stage_inputs_pause_at_entry.mh) +
+  [onboarding/](onboarding/plan.mh) — stages with their own inputs. An `input` in a stage's
+  fragment belongs to it: the run starts with `customer` only, pauses on entering Plan until
+  `plan` is given, then on entering Billing until `card` is (`awaiting_inputs`). Each resume
+  passes only that stage's inputs (`--resume --input plan=pro`); giving them all up front
+  runs straight through, and `coupon` (a default) never pauses.
 - [stages_across_fragments.mh](stages_across_fragments.mh) +
   [delivery/build.mh](delivery/build.mh) + [delivery/ship.mh](delivery/ship.mh) — Build and
   Ship fragments handing over by stage name (`goto Build`, `goto Ship`), Ship sending the run

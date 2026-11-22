@@ -68,6 +68,10 @@ export interface WfInput {
   span: Span;
   /** Declared in another fragment of a merged workflow (absolute path); `span` indexes that file. */
   file?: string;
+  /** Declared in a `partial ... stage S` fragment: the run asks for it on entering stage S, not at the start. */
+  stage?: string;
+  /** Its `///` documentation, the lines right above it. */
+  doc?: string;
 }
 
 export interface Arm {
@@ -240,6 +244,17 @@ export interface Awaiting {
   schema?: Record<string, unknown>;
 }
 
+/**
+ * The stage inputs a paused run waits for (execsvc.AwaitingInputs): the run
+ * stopped before `step`, on entering `stage`; resume it with `inputs` as `--input`s.
+ */
+export interface AwaitingInputs {
+  stage: string;
+  step: string;
+  inputs: string[];
+  schema?: Record<string, unknown>;
+}
+
 export const START = "$start";
 export const END = "$end";
 export const FAIL = "$fail";
@@ -253,7 +268,7 @@ export interface Inspection {
   pipeline?: string;
   kind?: string;
   steps?: string[];
-  inputs?: { name: string; type: string; supplied: boolean }[];
+  inputs?: { name: string; type: string; supplied: boolean; stage?: string; doc?: string }[];
   missing_inputs?: string[];
   unknown_inputs?: string[];
   invalid_inputs?: string[];
@@ -292,6 +307,8 @@ export interface RunResult {
   pause_reason?: unknown;
   /** The gate a paused run waits at — `pause(..., decision: T)`; resume it with a decision of T. */
   awaiting?: Awaiting;
+  /** The stage a paused run waits to be given inputs for; resume it with only those. */
+  awaiting_inputs?: AwaitingInputs;
   broke?: boolean;
   break_reason?: unknown;
   vars?: Record<string, unknown>;
@@ -299,5 +316,7 @@ export interface RunResult {
   kind?: string;
   step?: string;
   hint?: string;
+  /** On an `invalid_inputs` failure of a resume: the stage the run is still paused at, waiting for its inputs. */
+  stage?: string;
   missing?: string[];
 }

@@ -1,0 +1,13 @@
+// The Billing stage of Onboarding (see ../stage_inputs_pause_at_entry.mh):
+// `card` is required on entry; `coupon` has a default, so it never pauses.
+partial workflow Onboarding stage Billing {
+    /// The card to charge.
+    input card: string
+    /// A discount coupon; `none` when there is none.
+    input coupon: string = "none"
+
+    step Charge {
+        steps.append("charge ${card}")
+        complete()
+    }
+}

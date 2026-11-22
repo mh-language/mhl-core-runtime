@@ -13,6 +13,20 @@ import { MH_EXTENSIONS } from "../lib/mhfile";
 import markdown from "shiki/langs/markdown.mjs";
 import json from "shiki/langs/json.mjs";
 import dotenv from "shiki/langs/dotenv.mjs";
+// The rest of a workspace's text files (lib/languages.ts picks which one).
+import python from "shiki/langs/python.mjs";
+import shellscript from "shiki/langs/shellscript.mjs";
+import yaml from "shiki/langs/yaml.mjs";
+import toml from "shiki/langs/toml.mjs";
+import javascript from "shiki/langs/javascript.mjs";
+import typescript from "shiki/langs/typescript.mjs";
+import css from "shiki/langs/css.mjs";
+import ini from "shiki/langs/ini.mjs";
+import xml from "shiki/langs/xml.mjs";
+import dockerfile from "shiki/langs/dockerfile.mjs";
+import make from "shiki/langs/make.mjs";
+import sql from "shiki/langs/sql.mjs";
+import { EXTRA_LANGS } from "../lib/languages";
 
 self.MonacoEnvironment = {
   getWorker: () =>
@@ -40,6 +54,7 @@ export function setupMonaco(): Promise<typeof monaco> {
     monaco.languages.register({ id: JSON_LANG, extensions: [".json"], aliases: ["JSON"] });
     monaco.languages.register({ id: DOTENV_LANG, filenames: [".env"], aliases: ["dotenv"] });
     monaco.languages.setLanguageConfiguration(DOTENV_LANG, { comments: { lineComment: "#" } });
+    for (const id of EXTRA_LANGS) monaco.languages.register({ id });
     monaco.languages.setLanguageConfiguration(JSON_LANG, {
       brackets: [["{", "}"], ["[", "]"]],
       autoClosingPairs: [{ open: "{", close: "}" }, { open: "[", close: "]" }, { open: '"', close: '"', notIn: ["string"] }],
@@ -57,7 +72,24 @@ export function setupMonaco(): Promise<typeof monaco> {
     });
     const highlighter = await createHighlighterCore({
       themes: [githubDark, githubLight],
-      langs: [{ ...(grammar as object), name: LANG } as never, ...markdown, ...json, ...dotenv],
+      langs: [
+        { ...(grammar as object), name: LANG } as never,
+        ...markdown,
+        ...json,
+        ...dotenv,
+        ...python,
+        ...shellscript,
+        ...yaml,
+        ...toml,
+        ...javascript,
+        ...typescript,
+        ...css,
+        ...ini,
+        ...xml,
+        ...dockerfile,
+        ...make,
+        ...sql,
+      ],
       engine: createJavaScriptRegexEngine({ forgiving: true }),
     });
     shikiToMonaco(highlighter, monaco);

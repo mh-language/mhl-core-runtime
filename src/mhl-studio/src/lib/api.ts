@@ -4,7 +4,7 @@ import type { Graph, Inspection, RunEvent, RunResult } from "./types";
 
 export const api = {
   /** The workspace's `.mh`/`.md` files and its folders (src-tauri/src/workspace.rs). */
-  listFiles: (root: string) => invoke<{ files: string[]; dirs: string[] }>("list_files", { root }),
+  listFiles: (root: string) => invoke<{ files: string[]; dirs: string[]; unlisted: string[]; truncated: boolean }>("list_files", { root }),
   createDir: (path: string) => invoke<void>("create_dir", { path }),
   /** Moves/renames a file or folder; never overwrites (workspace.rs `rename_path`). */
   renamePath: (from: string, to: string) => invoke<void>("rename_path", { from, to }),

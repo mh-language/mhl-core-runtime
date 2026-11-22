@@ -1,5 +1,10 @@
 package runtime
 
+import (
+	"fmt"
+	"strings"
+)
+
 // BreakSignal is what a StepFunc returns (via cli.go's exec closure, which
 // translates interpreter.IsBreak's result into this) when the step it just
 // ran executed an explicit `break`. Run treats it as a clean early exit, not
@@ -40,6 +45,26 @@ type PauseSignal struct {
 	// Gate is set when the pause is a typed one, `pause(reason, decision: T)`:
 	// the run waits for a decision of type T (see Gate).
 	Gate *Gate
+	// Inputs is set when the runner itself suspends the run on entering a
+	// named stage whose required inputs are unbound (see InputGate).
+	Inputs *InputGate
+}
+
+// InputGate identifies a run suspended on entering named stage Stage — at
+// unit Step, its entry or a goto target inside it — because the stage's
+// required inputs Inputs (in declaration order) are not bound yet. Unlike a
+// Gate it carries no decision type: a resume answers it with inputs
+// (`--resume --input name=value`, run/resume {arguments}), checked by
+// Pipeline.ValidateStageInputs. Persisted as Checkpoint.InputGate.
+type InputGate struct {
+	Step   string   `json:"step"`
+	Stage  string   `json:"stage"`
+	Inputs []string `json:"inputs"`
+}
+
+// reason is the pause reason an InputGate reports (RunResult.PauseReason).
+func (g *InputGate) reason() string {
+	return fmt.Sprintf("awaiting inputs for stage %q: %s", g.Stage, strings.Join(g.Inputs, ", "))
 }
 
 // Gate identifies a typed pause — `pause(reason, decision: T)` — a run is

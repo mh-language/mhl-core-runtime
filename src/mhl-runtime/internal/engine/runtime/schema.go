@@ -33,25 +33,120 @@ func (p Pipeline) InputSchema() map[string]any {
 	props := make(map[string]any, len(p.Inputs))
 	required := make([]string, 0, len(p.Inputs))
 	for _, in := range p.Inputs {
-		s := in.Type.JSONSchema()
-		if len(in.EnumVariants) > 0 {
-			variants := make([]any, len(in.EnumVariants))
-			for i, v := range in.EnumVariants {
-				variants[i] = v
-			}
-			s["enum"] = variants
-		}
-		if in.Default != nil {
-			if dv, ok := ast.LiteralValue(in.Default); ok {
-				s["default"] = dv
-			}
-		}
-		if in.Required() {
+		// A stage input may be supplied up front, but a run never needs it to
+		// start: it is asked for on entering its stage (InputGate).
+		if in.Required() && in.Stage == "" {
 			required = append(required, in.Name)
 		}
-		p.withEnumVariants(s)
-		props[in.Name] = s
+		props[in.Name] = p.inputPropSchema(in)
 	}
+	schema := objectSchema(props, required)
+	p.withJourney(schema)
+	return schema
+}
+
+// withJourney annotates a staged pipeline's input schema with the order a
+// run asks for its inputs — what a client guides a caller through, since a
+// JSON object's properties carry no order:
+//
+//   - "x-mhl-order": every input's name, in declaration order;
+//   - "x-mhl-stages": each named stage in run order, with the inputs it asks
+//     for on entry ([] for none) — the workflow's own inputs are the rest,
+//     asked for when the run starts.
+//
+// A pipeline without named stages gets neither.
+func (p Pipeline) withJourney(schema map[string]any) {
+	named := p.NamedStages()
+	if len(named) == 0 {
+		return
+	}
+	order := make([]string, 0, len(p.Inputs))
+	for _, in := range p.Inputs {
+		order = append(order, in.Name)
+	}
+	stages := make([]any, 0, len(named))
+	for _, st := range named {
+		inputs := []string{}
+		for _, in := range p.StageInputs(st.Name) {
+			inputs = append(inputs, in.Name)
+		}
+		stages = append(stages, map[string]any{"name": st.Name, "inputs": inputs})
+	}
+	schema["x-mhl-order"] = order
+	schema["x-mhl-stages"] = stages
+}
+
+// StageInputSchema renders the inputs named in names (of stage stage) as
+// one closed JSON Schema object, every one required — what a run paused at
+// an InputGate waits for, and a client renders a form from.
+func (p Pipeline) StageInputSchema(stage string, names []string) map[string]any {
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	props := map[string]any{}
+	var required []string
+	for _, in := range p.StageInputs(stage) {
+		if want[in.Name] {
+			props[in.Name] = p.inputPropSchema(in)
+			required = append(required, in.Name)
+		}
+	}
+	s := objectSchema(props, required)
+	s["title"] = stage
+	return s
+}
+
+// inputPropSchema is one input's property schema in InputSchema: its type,
+// enum variants, literal default and — for a stage input — the stage it is
+// asked for in, as "x-mhl-stage".
+func (p Pipeline) inputPropSchema(in PipelineInputSpec) map[string]any {
+	s := in.Type.JSONSchema()
+	if len(in.EnumVariants) > 0 {
+		variants := make([]any, len(in.EnumVariants))
+		for i, v := range in.EnumVariants {
+			variants[i] = v
+		}
+		s["enum"] = variants
+	}
+	if in.Default != nil {
+		if dv, ok := ast.LiteralValue(in.Default); ok {
+			s["default"] = dv
+		} else if v, ok := enumDefault(in); ok {
+			s["default"] = v
+		}
+	}
+	if in.Stage != "" {
+		s["x-mhl-stage"] = in.Stage
+	}
+	p.withEnumVariants(s)
+	// The author's `///` doc is what a client shows beside the field — in
+	// place of an enum's "mhl enum X" marker, whose variants are filled in by now.
+	if in.Doc != "" {
+		s["description"] = in.Doc
+	}
+	return s
+}
+
+// enumDefault reads an enum input's `= Enum.Variant` default as the bare
+// variant name — the value a caller passes for it.
+func enumDefault(in PipelineInputSpec) (string, bool) {
+	if len(in.EnumVariants) == 0 {
+		return "", false
+	}
+	pf := ast.BarePostfix(in.Default)
+	if pf == nil || pf.Primary == nil || pf.Primary.Ident != in.Type.Name || len(pf.Ops) != 1 || pf.Ops[0].Member == "" {
+		return "", false
+	}
+	for _, v := range in.EnumVariants {
+		if v == pf.Ops[0].Member {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+func objectSchema(props map[string]any, required []string) map[string]any {
 	schema := map[string]any{
 		"type":                 "object",
 		"properties":           props,
@@ -125,6 +220,9 @@ func (p Pipeline) withEnumVariants(s map[string]any) {
 // non-zero. Both slices are sorted and at least one is non-empty.
 type InvalidInputsError struct {
 	Pipeline string
+	// Stage is set when the inputs were checked on resuming a run paused at
+	// that stage's InputGate (ValidateStageInputs): Missing are its inputs.
+	Stage    string
 	Missing  []string // declared inputs with no value supplied
 	Unknown  []string // supplied keys the pipeline never declares
 	Declared []string // every input the pipeline does declare (for the message)
@@ -133,6 +231,9 @@ type InvalidInputsError struct {
 func (e *InvalidInputsError) Error() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "invalid inputs for %q", e.Pipeline)
+	if e.Stage != "" {
+		fmt.Fprintf(&b, " stage %q", e.Stage)
+	}
 	sep := ": "
 	if len(e.Missing) > 0 {
 		fmt.Fprintf(&b, "%smissing required input %s", sep, quoteList(e.Missing))
@@ -166,7 +267,7 @@ func (p Pipeline) ValidateInputs(args map[string]any) error {
 	for _, in := range p.Inputs {
 		declared[in.Name] = true
 		declaredList = append(declaredList, in.Name)
-		if in.Required() {
+		if in.Required() && in.Stage == "" {
 			required[in.Name] = true
 		}
 	}
@@ -188,6 +289,38 @@ func (p Pipeline) ValidateInputs(args map[string]any) error {
 	sort.Strings(unknown)
 	sort.Strings(declaredList)
 	return &InvalidInputsError{Pipeline: p.Name, Missing: missing, Unknown: unknown, Declared: declaredList}
+}
+
+// ValidateStageInputs is the admission check for resuming a run paused at
+// stage's InputGate: every required input of the stage must now be bound,
+// either already (vars, the checkpoint's variables) or by args. args may
+// carry no undeclared key, as on a fresh run. It returns *InvalidInputsError
+// (Stage set) when one is still missing, nil otherwise — the run then stays
+// paused, its checkpoint untouched.
+func (p Pipeline) ValidateStageInputs(stage string, args, vars map[string]any) error {
+	declared := make(map[string]bool, len(p.Inputs))
+	declaredList := make([]string, 0, len(p.Inputs))
+	for _, in := range p.Inputs {
+		declared[in.Name] = true
+		declaredList = append(declaredList, in.Name)
+	}
+	var missing, unknown []string
+	for _, name := range p.MissingStageInputs(stage, vars) {
+		if _, ok := args[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	for k := range args {
+		if !declared[k] {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(missing) == 0 && len(unknown) == 0 {
+		return nil
+	}
+	sort.Strings(unknown)
+	sort.Strings(declaredList)
+	return &InvalidInputsError{Pipeline: p.Name, Stage: stage, Missing: missing, Unknown: unknown, Declared: declaredList}
 }
 
 func quoteList(names []string) string {

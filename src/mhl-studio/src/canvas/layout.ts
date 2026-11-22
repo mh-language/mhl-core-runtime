@@ -229,7 +229,11 @@ const endNode = (id: string) => {
 
 /**
  * Which side of its nodes each edge leaves and enters, as ELK ports (one
- * per node, direction and side, centred: edges on the same side meet there).
+ * per node, direction and side, centred: edges on the same side meet there —
+ * except edges leaving by a side, which get a port each: sharing one, two
+ * gotos back up from the same step would climb together and then fork apart
+ * with a jog; with their own, ELK spreads them along the side and each climbs
+ * in its own lane).
  * - the spine (`line`) runs straight down, bottom centre to top centre;
  * - an exit off the spine (a rejection, a revision) leaves a spine node from
  *   the side its target is on — exits alternate left and right in the order
@@ -284,9 +288,9 @@ function assignPorts(children: ElkNode[], edges: ElkExtendedEdge[], line: string
       at--;
     }
   }
-  const port = (id: string, dir: "in" | "out", side: Side) => {
+  const port = (id: string, dir: "in" | "out", side: Side, own?: string) => {
     const n = nodes.get(id)!;
-    const pid = `${id}${PORT}${dir}:${side}`;
+    const pid = `${id}${PORT}${dir}:${side}${own ? `:${own}` : ""}`;
     if (!n.ports?.some((p) => p.id === pid)) {
       n.layoutOptions = { ...n.layoutOptions, "elk.portConstraints": "FIXED_SIDE", "elk.portAlignment.default": "CENTER" };
       n.ports = [...(n.ports ?? []), { id: pid, width: 0, height: 0, layoutOptions: { "elk.port.side": side } }];
@@ -308,7 +312,7 @@ function assignPorts(children: ElkNode[], edges: ElkExtendedEdge[], line: string
         if (onLine.has(t) && sideOf.has(s)) into = sideOf.get(s)!;
       }
     }
-    e.sources = [port(s, "out", out)];
+    e.sources = [port(s, "out", out, out === "WEST" || out === "EAST" ? e.id : undefined)];
     // Into the top, the edge keeps to the node: ELK spreads several along it.
     if (into !== "NORTH") e.targets = [port(t, "in", into)];
   }

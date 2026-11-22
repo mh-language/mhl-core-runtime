@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/mh-language/mhl-core-runtime/internal/engine/runtime"
@@ -28,13 +29,16 @@ type runJSON struct {
 	PauseReason any      `json:"pause_reason,omitempty"`
 	// Awaiting is the gate a paused run waits at (`pause(..., decision: T)`):
 	// resume with `--resume --decision <json>` of that type.
-	Awaiting       *execsvc.Awaiting `json:"awaiting,omitempty"`
-	Broke          bool              `json:"broke,omitempty"`
-	BreakReason    any               `json:"break_reason,omitempty"`
-	Loop           bool              `json:"loop,omitempty"`
-	Iterations     int               `json:"iterations,omitempty"`
-	TerminalReason string            `json:"terminal_reason,omitempty"`
-	Vars           map[string]any    `json:"vars,omitempty"`
+	Awaiting *execsvc.Awaiting `json:"awaiting,omitempty"`
+	// AwaitingInputs is the stage a paused run waits to be given inputs
+	// for: resume with `--resume --input name=value` for each of them.
+	AwaitingInputs *execsvc.AwaitingInputs `json:"awaiting_inputs,omitempty"`
+	Broke          bool                    `json:"broke,omitempty"`
+	BreakReason    any                     `json:"break_reason,omitempty"`
+	Loop           bool                    `json:"loop,omitempty"`
+	Iterations     int                     `json:"iterations,omitempty"`
+	TerminalReason string                  `json:"terminal_reason,omitempty"`
+	Vars           map[string]any          `json:"vars,omitempty"`
 
 	// failure
 	Error   string   `json:"error,omitempty"`
@@ -42,6 +46,9 @@ type runJSON struct {
 	Step    string   `json:"step,omitempty"`
 	Hint    string   `json:"hint,omitempty"`
 	Missing []string `json:"missing,omitempty"`
+	// Stage is set on an invalid_inputs failure of a resume that did not
+	// give a stage's inputs: the run is still paused there, resumable.
+	Stage   string   `json:"stage,omitempty"`
 	Unknown []string `json:"unknown,omitempty"`
 
 	// diagnostics captured off the run's output stream (step / log() lines).
@@ -71,6 +78,7 @@ func writeRunJSON(out io.Writer, res *execsvc.Result, runErr error, file, logTex
 		rj.Paused = res.Paused
 		rj.PauseReason = runtime.RedactValue(res.PauseReason)
 		rj.Awaiting = res.Awaiting
+		rj.AwaitingInputs = res.AwaitingInputs
 		rj.Broke = res.Broke
 		rj.BreakReason = runtime.RedactValue(res.BreakReason)
 		rj.Loop = res.Loop
@@ -139,6 +147,10 @@ func classifyRunError(rj *runJSON, err error) {
 		rj.Missing = badInputs.Missing
 		rj.Unknown = badInputs.Unknown
 		rj.Hint = "pass every declared input with --input key=value and drop any the pipeline does not declare."
+		if badInputs.Stage != "" {
+			rj.Stage = badInputs.Stage
+			rj.Hint = fmt.Sprintf("the run waits for the inputs of stage %q (`awaiting_inputs` in its result): resume with --input key=value for each missing one.", badInputs.Stage)
+		}
 		return
 	}
 

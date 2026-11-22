@@ -159,6 +159,12 @@ type Input struct {
 	// in, set only in a Merged workflow and only when that is another file
 	// than the one graphed — Span then indexes that file, not this one.
 	File string `json:"file,omitempty"`
+	// Stage is the named stage the input belongs to (declared in a
+	// `partial ... stage S` fragment): the run asks for it on entering S.
+	// Absent for a workflow-level input.
+	Stage string `json:"stage,omitempty"`
+	// Doc is the input's `///` documentation, "" when it has none.
+	Doc string `json:"doc,omitempty"`
 }
 
 // Param is a typed signature's single `name: Type` parameter.
@@ -700,7 +706,7 @@ func (b *builder) members(w *Workflow, body []*ast.PipelineMember, file string) 
 		ms := Span{m.Pos.Offset, m.EndPos.Offset}
 		switch {
 		case m.Input != nil:
-			in := Input{Name: m.Input.Name, Type: m.Input.Type.String(), Span: ms, File: file}
+			in := Input{Name: m.Input.Name, Type: m.Input.Type.String(), Span: ms, File: file, Stage: m.Input.Stage, Doc: m.Input.Doc}
 			if m.Input.Default != nil {
 				for i, t := range b.in(ms) {
 					if t.Value == "=" && t.Kind == "Punct" {

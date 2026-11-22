@@ -7,9 +7,9 @@ import { create } from "zustand";
 import { api, errorText, type McpEvent } from "../lib/api";
 import { useStore as useApp } from "../app/store";
 import { HttpConnection, StdioConnection, type Connection, type Transport } from "./connection";
-import { hasRunMethods, isActive, supportsAsync, type McpResource, type McpTool, type RunStatus, type ServerHello } from "./model";
+import { hasRunMethods, isActive, pausePoints, resumeFields, supportsAsync, type McpResource, type McpTool, type RunStatus, type ServerHello } from "./model";
 import { rawParams, type RpcReply, type Traffic, type TrafficEntry } from "./rpc";
-import { buildArguments, schemaFields } from "./schema";
+import { buildArguments, fieldsFor, pausesFor, schemaFields } from "./schema";
 
 export type McpStatus = "stopped" | "starting" | "ready" | "failed";
 /** The request editor's tabs, the response pane's tabs, and how a body is shown. */
@@ -230,7 +230,7 @@ async function withConn<T>(fn: (c: Connection) => Promise<T>): Promise<{ value?:
 
 function toolArgs(name: string): { args: Record<string, unknown>; errors: Record<string, string> } {
   const tool = get().tools.find((t) => t.name === name);
-  return buildArguments(schemaFields(tool?.inputSchema), get().forms[name] ?? {});
+  return buildArguments(fieldsFor(schemaFields(tool?.inputSchema), toolMethod(get(), name)), get().forms[name] ?? {});
 }
 
 export function setFormValue(tool: string, field: string, value: string) {
@@ -258,7 +258,17 @@ export async function callTool(name: string): Promise<void> {
  */
 export function toolMethod(s: Pick<McpState, "methods" | "tools">, name: string): ToolMethod {
   const tool = s.tools.find((t) => t.name === name);
-  return tool && supportsAsync(tool) && s.methods[name] === "run/start" ? "run/start" : "tools/call";
+  if (!tool || !supportsAsync(tool)) return "tools/call";
+  // A workflow that may pause — a gate, or a stage asking for inputs — only
+  // runs with run/start: a tools/call can't resume, so it would stop for good
+  // at the first pause.
+  if (canPause(tool)) return "run/start";
+  return s.methods[name] ?? "tools/call";
+}
+
+/** The tool's run may suspend for a human: a step calls pause(...), or a stage asks for inputs. */
+export function canPause(tool: McpTool): boolean {
+  return !!pausePoints(tool) || schemaFields(tool.inputSchema).some(pausesFor);
 }
 
 /** Sends the tool's request with the method chosen for it. */
@@ -358,17 +368,30 @@ export function setResumeValue(run: string, field: string, value: string) {
   set((s) => ({ resumeForms: { ...s.resumeForms, [run]: { ...s.resumeForms[run], [field]: value } } }));
 }
 
-/** run/resume: continues a paused (or failed, resumable) run with the resume form's arguments merged in. */
-export async function resumeRun(id: string): Promise<void> {
+/**
+ * run/resume's params for a run: `{runId, decision}` answering a typed gate,
+ * else `{runId, arguments}` from the resume form (only a waited-for stage's
+ * inputs, when it stopped on entering one); null while the form has an error.
+ */
+export function resumeParams(status: RunStatus, tool: McpTool | undefined, form: Record<string, string>, decision?: unknown): Record<string, unknown> | null {
+  if (decision !== undefined) return { runId: status.runId, decision };
+  const { args, errors } = buildArguments(resumeFields(schemaFields(tool?.inputSchema), status), form);
+  if (Object.keys(errors).length) return null;
+  return { runId: status.runId, arguments: args };
+}
+
+/**
+ * run/resume: continues a paused (or failed, resumable) run — with the resume
+ * form's arguments merged in, or, for a run waiting at a typed gate, with
+ * `decision` answering it (a decision the server refuses leaves it paused).
+ */
+export async function resumeRun(id: string, decision?: unknown): Promise<void> {
   const run = get().runs[id];
   if (!run) return;
   const tool = get().tools.find((t) => t.name === run.status.tool);
-  const { args, errors } = buildArguments(
-    schemaFields(tool?.inputSchema).map((f) => ({ ...f, required: false })),
-    get().resumeForms[id] ?? {},
-  );
-  if (Object.keys(errors).length) return;
-  const r = await withConn((c) => c.request("run/resume", { runId: id, arguments: args }));
+  const params = resumeParams(run.status, tool, get().resumeForms[id] ?? {}, decision);
+  if (!params) return;
+  const r = await withConn((c) => c.request("run/resume", params));
   if (r.stale) return;
   if (!r.value?.ok) {
     updateRun(id, { error: r.error ?? (r.value && !r.value.ok ? r.value.error.message : "run/resume failed") });

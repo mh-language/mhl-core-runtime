@@ -159,6 +159,10 @@ type Result struct {
 	// Awaiting is set when the pause is a typed one: the gate the run waits
 	// at and the decision a resume must supply (Request.Decision).
 	Awaiting *Awaiting
+	// AwaitingInputs is set when the run paused on entering a named stage
+	// whose required inputs are unbound: the inputs a resume must supply
+	// (Request.Inputs, checked by Pipeline.ValidateStageInputs).
+	AwaitingInputs *AwaitingInputs
 	// Vars is the run's final variable state — the same map persisted as
 	// result.json for a later run's `context:` to read. Populated on a normal
 	// completion and on `break` (a clean early exit keeps its output); on a
@@ -184,6 +188,36 @@ type Awaiting struct {
 	// in), what a client renders a decision form from.
 	Type   string         `json:"type"`
 	Schema map[string]any `json:"schema,omitempty"`
+}
+
+// AwaitingInputs describes the stage inputs a paused run waits for
+// (runtime.InputGate): the stage, the unit it stopped before, the missing
+// inputs in declaration order, and them as one JSON Schema object — what a
+// client renders a form from.
+type AwaitingInputs struct {
+	Stage  string         `json:"stage"`
+	Step   string         `json:"step"`
+	Inputs []string       `json:"inputs"`
+	Schema map[string]any `json:"schema,omitempty"`
+}
+
+// awaitingInputsOf describes gate for the caller; nil for a nil gate.
+func awaitingInputsOf(pipeline runtime.Pipeline, gate *runtime.InputGate) *AwaitingInputs {
+	if gate == nil {
+		return nil
+	}
+	return &AwaitingInputs{
+		Stage:  gate.Stage,
+		Step:   gate.Step,
+		Inputs: append([]string(nil), gate.Inputs...),
+		Schema: pipeline.StageInputSchema(gate.Stage, gate.Inputs),
+	}
+}
+
+// AwaitingInputsFor describes gate for a run of w, as Result.AwaitingInputs
+// does — for a server that knows a run's gate only from its checkpoint.
+func AwaitingInputsFor(w Workflow, gate *runtime.InputGate) *AwaitingInputs {
+	return awaitingInputsOf(w.Pipeline, gate)
 }
 
 // ResumeFromError reports a Request.From that cannot be applied: no such
@@ -377,9 +411,11 @@ func Run(req Request) (*Result, error) {
 	// A decision answers the gate the suspended run waits at: checked
 	// against it here, before anything (a hook included) runs, and handed to
 	// that one gate, which consumes it.
-	// So is a stage to redo: the stopped run must exist.
+	// So is a stage to redo: the stopped run must exist. And a run paused
+	// on entering a stage whose inputs were unbound (InputGate) must now be
+	// given them: checked before anything runs, so it stays paused if not.
 	var answer *interpreter.GateAnswer
-	if req.Decision != nil || req.From != "" {
+	if req.Decision != nil || req.From != "" || (req.Resume && !pipeline.Loop && pipeline.Checkpoint.Enabled) {
 		peek := runtime.NewRunner(base).Session(sessionID)
 		if req.StateStore != nil {
 			peek.WithStateStore(req.StateStore)
@@ -393,6 +429,14 @@ func Run(req Request) (*Result, error) {
 		}
 		if req.From != "" && cp == nil {
 			return nil, &ResumeFromError{Msg: fmt.Sprintf("no stopped run of %q to redo stage %q in", pipeline.Name, req.From)}
+		}
+		if cp != nil && cp.InputGate != nil && req.From == "" {
+			if req.Decision != nil {
+				return nil, &DecisionError{Msg: fmt.Sprintf("the run of %q waits for the inputs of stage %q (%s), not a decision — resume it with them as inputs", pipeline.Name, cp.InputGate.Stage, strings.Join(cp.InputGate.Inputs, ", "))}
+			}
+			if err := pipeline.ValidateStageInputs(cp.InputGate.Stage, req.Inputs, cp.Variables); err != nil {
+				return nil, err
+			}
 		}
 		if req.Decision != nil {
 			if answer, err = gateAnswer(prog, pipeline, cp, req.Decision); err != nil {
@@ -649,7 +693,8 @@ func Run(req Request) (*Result, error) {
 
 	if !pipeline.Loop {
 		runner := runtime.NewRunner(base).Session(sessionID).
-			WithDefinition(defDigest).WithForceResume(req.ForceResume).WithResumeFrom(req.From)
+			WithDefinition(defDigest).WithForceResume(req.ForceResume).WithResumeFrom(req.From).
+			WithInputs(coercedInputs)
 		runner.Out = out
 		resultSink := runtime.StateStore(runner.Store)
 		if req.StateStore != nil {
@@ -684,17 +729,18 @@ func Run(req Request) (*Result, error) {
 			}
 		}
 		return &Result{
-			PipelineName: pipeline.Name,
-			SessionID:    sessionID,
-			Executed:     res.Executed,
-			Skipped:      res.Skipped,
-			Resumed:      res.Resumed,
-			Broke:        res.Broke,
-			BreakReason:  res.BreakReason,
-			Paused:       res.Paused,
-			PauseReason:  res.PauseReason,
-			Awaiting:     awaitingOf(prog, pipeline, res.PauseGate),
-			Vars:         vars,
+			PipelineName:   pipeline.Name,
+			SessionID:      sessionID,
+			Executed:       res.Executed,
+			Skipped:        res.Skipped,
+			Resumed:        res.Resumed,
+			Broke:          res.Broke,
+			BreakReason:    res.BreakReason,
+			Paused:         res.Paused,
+			PauseReason:    res.PauseReason,
+			Awaiting:       awaitingOf(prog, pipeline, res.PauseGate),
+			AwaitingInputs: awaitingInputsOf(pipeline, res.PauseInputs),
+			Vars:           vars,
 		}, nil
 	}
 

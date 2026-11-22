@@ -46,6 +46,12 @@ func hoverAt(path, text string, pos position) *hover {
 	if sg, ok := signatureForBareCall(path, text, word); ok {
 		return sigHover(sg)
 	}
+	// A workflow input, where it is declared or read: its `///` doc.
+	if start == 0 || line[start-1] != '.' {
+		if h := inputHover(path, text, word); h != nil {
+			return h
+		}
+	}
 	return nil
 }
 

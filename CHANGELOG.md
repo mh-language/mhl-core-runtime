@@ -10,6 +10,59 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+### Added
+
+- **A stage can ask for its own inputs.** An `input` line in a `partial workflow X stage S`
+  fragment belongs to stage S. A run is admitted with the workflow's own inputs only. On
+  entering S with a required stage input still unbound (at its first step, or a step a
+  `goto` lands on), the run pauses before that step and reports `awaiting_inputs`
+  (`{stage, step, inputs, schema}`). This appears in `--format json`/`jsonl`, `run/status`,
+  a paused `tools/call` and `X.run(...)` in tests.
+  - Resume with only that stage's inputs: `--resume --input k=v`, or MCP
+    `run/resume {runId, arguments}`.
+  - A resume still missing one is refused before anything runs (`invalid_inputs`, with
+    `stage`), and the run stays paused. So is one that carries a `--decision`.
+  - Inputs given up front never pause. Neither does a stage input with a default.
+  - In `inputSchema` a stage input is optional and marked `"x-mhl-stage"`. A staged
+    workflow's schema also carries the order a run asks for its inputs, so a client can guide
+    a caller through it:
+    - `"x-mhl-order"`: every input, in declaration order;
+    - `"x-mhl-stages"`: each stage in run order, with the inputs it asks for.
+  - `--dry-run`, `mhl graph` (`inputs[].stage`) and the `mhl://workflow` manifest name a stage
+    input's stage.
+  - A2A, which cannot resume a task, requires stage inputs up front.
+  - Persisted as `Checkpoint.input_gate`, separate from a typed gate's `gate`.
+  - Sample: `sample/syntax/stages/stage_inputs_pause_at_entry.mh`.
+- **`///` documents an input.** The `///` lines right above an `input` (a workflow's or an
+  agent's) are its documentation; a leading `name:` repeating the input's name is dropped.
+  - **Where it shows:** the argument's `"description"` in the MCP/A2A `inputSchema`, which
+    an MCP client shows next to the field. It is also in `--dry-run` (`inputs[].doc`),
+    `mhl graph` (`inputs[].doc`), the `mhl://workflow` manifest, and the editor's hover
+    (with the stage it is asked for in) and completion.
+  - **What counts:** a plain `//` stays a private note.
+  - **No effect on runs:** the doc is outside `DefinitionDigest`, so editing it never
+    invalidates a checkpoint.
+  - **In Go:** `ast.PipelineInput.Doc` / `runtime.PipelineInputSpec.Doc`, read by
+    `parser.attachInputDocs`.
+- **`tools/list` says where a workflow may pause.** Over HTTP, each per-workflow entry of a
+  workflow that can suspend for a human carries `_meta["mhl.run"].pauses`:
+  `{"steps": [...], "stages": [...]}`. These are the steps whose body calls `pause(...)`
+  (static, so a conditional pause counts) and the stages whose inputs have no default. A
+  client can then start such a workflow with `run/start` rather than a `tools/call`, which
+  can't resume. The key is absent for one that never pauses. In Go:
+  `runtime.Pipeline.PauseSteps` / `CanPause()`, from `ast.CallsPause`.
+- An enum input's `= Enum.Variant` default now appears in `inputSchema` as `"default"` (the
+  bare variant name). Before, only a literal default did.
+- `mhl lint` reports an input declared twice across a workflow's fragments, a stage input in
+  a `loop` workflow, and a stage input in a stage with no step to enter.
+
+### Changed
+
+- **An `input` in a staged fragment is no longer required when the run starts.** The run asks
+  for it on entering the stage instead. A workflow that declared one there and always passed
+  it up front behaves as before. A run that left it out used to be refused at admission; it
+  now pauses at the stage. Move the input to the entry fragment to keep the old contract.
+
 ## 1.14.0 — 2026-11-21
 
 ### Added

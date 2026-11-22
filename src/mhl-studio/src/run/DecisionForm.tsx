@@ -2,8 +2,21 @@ import { useMemo, useState } from "react";
 import type { Awaiting } from "../lib/types";
 import { buildDecision, decisionFields, initialValue } from "./decision";
 
-/** The form a run paused at a gate (`pause(..., decision: T)`) is resumed from: one field per part of T. */
-export function DecisionForm({ awaiting, reason, onSubmit }: { awaiting: Awaiting; reason: string; onSubmit: (decision: unknown) => void }) {
+/**
+ * The form a run paused at a gate (`pause(..., decision: T)`) is resumed from: one field per part of T.
+ * `submitLabel` names the button (the run panel's "Resume with decision", the MCP bench's run/resume).
+ */
+export function DecisionForm({
+  awaiting,
+  reason,
+  onSubmit,
+  submitLabel = "Resume with decision",
+}: {
+  awaiting: Pick<Awaiting, "step" | "type" | "schema">;
+  reason: string;
+  onSubmit: (decision: unknown) => void;
+  submitLabel?: string;
+}) {
   const fields = useMemo(() => decisionFields(awaiting.schema), [awaiting.schema]);
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.name, initialValue(f)])));
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +64,7 @@ export function DecisionForm({ awaiting, reason, onSubmit }: { awaiting: Awaitin
       {error && <p className="problem small">{error}</p>}
       <p className="muted small">The step resumes with this decision — it answers this gate only; the next gate the run reaches asks again.</p>
       <button className="btn small primary" onClick={submit}>
-        Resume with decision
+        {submitLabel}
       </button>
     </div>
   );

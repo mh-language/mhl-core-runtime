@@ -475,3 +475,34 @@ describe("runOrder", () => {
   });
 });
 
+
+describe("several gotos back up from one step", () => {
+  // AgileSpec's story: a review sends the run to Revise, which goes back to
+  // Spec (the specs change) or to Impl (they don't).
+  function revision(): Workflow {
+    const nodes = ["Load", "Spec", "Impl", "Review", "Revise", "Done"].map((id) => node(id));
+    const edges = [
+      edge(START, "Load"),
+      edge("Load", "Spec"),
+      edge("Spec", "Impl"),
+      edge("Impl", "Review"),
+      edge("Review", "Done", "goto"),
+      edge("Review", "Revise", "goto", "d.action == Revise"),
+      edge("Revise", "Spec", "goto", "revise_specs"),
+      edge("Revise", "Impl", "goto"),
+      edge("Done", END, "end", "complete"),
+    ];
+    return { name: "W", kind: "workflow", span: [0, 0], headerSpan: [0, 0], nameSpan: [0, 0], bodyOpen: 0, bodyClose: 0, inputs: [], vars: [], props: [], routes: [], nodes, edges, externals: [] };
+  }
+
+  it("leave from points of their own, not one shared point that forks", async () => {
+    const l = await layoutWorkflow(revision());
+    const back = l.edges.filter((e) => e.source === "Revise");
+    expect(back).toHaveLength(2);
+    const [a, b] = back.map((e) => e.data!.points[0]);
+    expect(a.x === b.x && a.y === b.y).toBe(false);
+    // Both still climb beside the diagram, from the same side.
+    const s = sides(l);
+    expect(back.map((e) => s[e.id])).toEqual([s[back[0].id], s[back[0].id]]);
+  });
+});

@@ -461,9 +461,13 @@ func (s *server) toolList() []map[string]any {
 			// run/* method, or the mhl_run_start control tool for a client
 			// that speaks only tools/call (see the experimental.mhl.run
 			// capability and runtools.go).
-			entry["_meta"] = map[string]any{
-				"mhl.run": map[string]any{"async": true, "via": "run/start", "tool": toolRunStart},
+			run := map[string]any{"async": true, "via": "run/start", "tool": toolRunStart}
+			if pauses := pausePoints(w.Pipeline); pauses != nil {
+				// Where a run may suspend for a human: a tools/call can't
+				// see such a run through, run/start + run/resume can.
+				run["pauses"] = pauses
 			}
+			entry["_meta"] = map[string]any{"mhl.run": run}
 		}
 		list = append(list, entry)
 	}
@@ -575,6 +579,10 @@ func (s *server) pausedToolResult(w execsvc.Workflow, res *execsvc.Result, r map
 		// A gate: what a run/start-ed run would have to be resumed with.
 		meta["awaiting"] = res.Awaiting
 	}
+	if res.AwaitingInputs != nil {
+		// A stage's inputs: what a run/start-ed run would be resumed with.
+		meta["awaiting_inputs"] = res.AwaitingInputs
+	}
 	r["_meta"] = map[string]any{"mhl.run": meta}
 	note := fmt.Sprintf("Workflow %q paused", w.Name)
 	if step != "" {
@@ -664,4 +672,21 @@ func toolResult(text string, structured any, isError bool) map[string]any {
 		r["structuredContent"] = structured
 	}
 	return r
+}
+
+// pausePoints says where a run of p may suspend for a human — the steps that
+// call pause(...), and the stages whose inputs have no default (asked for on
+// entering them) — or nil when it never does (runtime.Pipeline.CanPause).
+func pausePoints(p runtime.Pipeline) map[string]any {
+	if !p.CanPause() {
+		return nil
+	}
+	steps := append([]string{}, p.PauseSteps...)
+	stages := []string{}
+	for _, st := range p.NamedStages() {
+		if len(p.MissingStageInputs(st.Name, nil)) > 0 {
+			stages = append(stages, st.Name)
+		}
+	}
+	return map[string]any{"steps": steps, "stages": stages}
 }

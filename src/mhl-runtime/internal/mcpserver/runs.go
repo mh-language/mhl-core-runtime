@@ -78,7 +78,10 @@ type asyncRun struct {
 	// nil for a plain pause; decision is the answer run/resume handed the
 	// next leg (consumed when it launches).
 	awaiting *execsvc.Awaiting
-	decision any
+	// awaitingInputs is the stage a paused run waits to be given inputs
+	// for (runtime.InputGate): run/resume must carry them in arguments.
+	awaitingInputs *execsvc.AwaitingInputs
+	decision       any
 	// from is the stage run/resume asked the next leg to redo (consumed
 	// when it launches).
 	from    string
@@ -556,7 +559,29 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 	rn.mu.Lock()
 	paused := rn.state == RunStatePaused
 	awaiting := rn.awaiting
+	awaitingInputs := rn.awaitingInputs
+	var missing []string
+	if awaitingInputs != nil {
+		for _, name := range awaitingInputs.Inputs {
+			_, given := p.Arguments[name]
+			_, had := rn.args[name]
+			if !given && !had {
+				missing = append(missing, name)
+			}
+		}
+	}
 	rn.mu.Unlock()
+	// A run paused on entering a stage waits for that stage's inputs:
+	// refused here, the run left paused, while one is still missing (a
+	// stage redo re-checks them on entry instead).
+	if paused && awaitingInputs != nil && p.From == "" {
+		if p.Decision != nil {
+			return errMsg(msg.ID, -32602, fmt.Sprintf("decision: run %q waits for the inputs of stage %q (%s), not a decision — pass them in arguments", p.RunID, awaitingInputs.Stage, strings.Join(awaitingInputs.Inputs, ", ")))
+		}
+		if len(missing) > 0 {
+			return errMsg(msg.ID, -32602, fmt.Sprintf("invalid inputs: run %q waits for the inputs of stage %q — missing %s in arguments", p.RunID, awaitingInputs.Stage, strings.Join(missing, ", ")))
+		}
+	}
 	// A decision answers a gate: refused here, the run left paused, when the
 	// run is not waiting at one or the value is not of its type.
 	if p.From != "" {
@@ -733,7 +758,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	// The decision run/resume handed this leg answers the gate once.
 	rn.mu.Lock()
 	decision, from := rn.decision, rn.from
-	rn.decision, rn.from, rn.awaiting = nil, "", nil
+	rn.decision, rn.from, rn.awaiting, rn.awaitingInputs = nil, "", nil, nil
 	rn.mu.Unlock()
 	res, runErr := execsvc.Run(execsvc.Request{
 		Context:    ctx,
@@ -788,6 +813,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 			rn.state = RunStatePaused
 			rn.errMsg = pauseReasonText(res.PauseReason)
 			rn.awaiting = res.Awaiting
+			rn.awaitingInputs = res.AwaitingInputs
 			rn.vars = res.Vars
 			if all := append(append([]string{}, res.Skipped...), res.Executed...); len(all) > 0 {
 				rn.reached = all
@@ -1012,6 +1038,10 @@ func (h *httpServer) reconstructRun(id string, ownerK Owner) *asyncRun {
 			// Suspended at a gate: nothing ran past it, so it still waits.
 			rn.state, rn.awaiting = RunStatePaused, execsvc.AwaitingFor(w, cp.Gate)
 		}
+		if cp.InputGate != nil {
+			// Suspended before a stage, waiting for its inputs.
+			rn.state, rn.awaitingInputs = RunStatePaused, execsvc.AwaitingInputsFor(w, cp.InputGate)
+		}
 		// A newer live status (e.g. it is working again on another replica)
 		// overrides the checkpoint-derived snapshot.
 		h.runs.Put(rn)
@@ -1078,6 +1108,9 @@ func (h *httpServer) runView(rn *asyncRun) map[string]any {
 	}
 	if rn.state == RunStatePaused && rn.awaiting != nil {
 		v["awaiting"] = rn.awaiting
+	}
+	if rn.state == RunStatePaused && rn.awaitingInputs != nil {
+		v["awaiting_inputs"] = rn.awaitingInputs
 	}
 	if (rn.state == RunStateCompleted || rn.state == RunStatePaused) && rn.vars != nil {
 		// Redacted here too, so the replica that ran the workflow and a replica

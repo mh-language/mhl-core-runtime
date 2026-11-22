@@ -67,6 +67,9 @@ type Checkpoint struct {
 	// `pause(reason, decision: T)`: the decision a resume must supply.
 	// Absent from every other checkpoint, and from one an older build wrote.
 	Gate *Gate `json:"gate,omitempty"`
+	// InputGate is set when the run is suspended on entering a named stage
+	// whose required inputs were unbound: what a resume must supply.
+	InputGate *InputGate `json:"input_gate,omitempty"`
 }
 
 // ErrCheckpointDefinitionMismatch is returned by a resume whose current

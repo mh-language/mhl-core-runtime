@@ -20,7 +20,7 @@ import { BACKENDS, ROLES, type Backend, type Role } from "../sync/agentTemplates
 import { isEnv, isJson, isMarkdown, isMh, set, useStore, type LibraryFile } from "./store";
 import { AGENT_MIME, DRAG_MIME, PROMPT_MIME, SCHEMA_MIME } from "../canvas/WorkflowCanvas";
 import { PATH_MIME } from "../canvas/mime";
-import { ancestors, buildTree, type TreeNode } from "./tree";
+import { ancestors, buildTree, closedByDefault, type TreeNode } from "./tree";
 import { joinPath } from "../lib/api";
 import { NEW_FILE_ITEMS, type NewFileItem } from "../sync/templates";
 import fileIcon from "../assets/mhl-file.png";
@@ -204,13 +204,33 @@ function RenameInput({ rel, onDone }: { rel: string; onDone: (next: string | nul
 }
 
 const storeKey = (root: string) => `mhl-studio.tree:${root}`;
+/** The folders closed by default (`closedByDefault`) the user opened. */
+const openedKey = (root: string) => `mhl-studio.tree-opened:${root}`;
 
-function loadFolded(root: string): Set<string> {
+function loadSet(key: string): Set<string> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(storeKey(root)) ?? "[]") as string[]);
+    return new Set(JSON.parse(localStorage.getItem(key) ?? "[]") as string[]);
   } catch {
     return new Set();
   }
+}
+
+function saveSet(key: string, set: Set<string>) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...set]));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** A file the studio has no own icon for: a page. */
+function PlainFileIcon() {
+  return (
+    <svg className="tree-icon plain" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.5 1.75h6l3 3v9.5h-9z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M9.5 1.75v3h3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 /** The menu anchor for a button: under it, kept inside the window. */
@@ -238,6 +258,8 @@ export function FileTree() {
   const root = useStore((s) => s.root);
   const files = useStore((s) => s.files);
   const dirs = useStore((s) => s.dirs);
+  const unlisted = useStore((s) => s.unlisted);
+  const truncated = useStore((s) => s.truncated);
   const activePath = useStore((s) => s.activePath);
   const dirty = useStore((s) => s.dirty);
   const library = useStore((s) => s.library);
@@ -249,14 +271,19 @@ export function FileTree() {
   const [selected, setSelected] = useState<Entry | null>(null);
   const [dropDir, setDropDir] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [folded, setFolded] = useState<Set<string>>(() => (root ? loadFolded(root) : new Set()));
+  const [folded, setFolded] = useState<Set<string>>(() => (root ? loadSet(storeKey(root)) : new Set()));
+  const [opened, setOpened] = useState<Set<string>>(() => (root ? loadSet(openedKey(root)) : new Set()));
+  const shut = (dir: string) => closedByDefault(dir, unlisted);
+  const isOpen = (dir: string) => (shut(dir) ? opened.has(dir) : !folded.has(dir));
   const unfoldTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const tree = useMemo(() => buildTree(files, dirs), [files, dirs]);
   const activeRel = useMemo(() => (root && activePath ? files.find((f) => joinPath(root, f) === activePath) ?? null : null), [root, activePath, files]);
 
   useEffect(() => {
-    if (root) setFolded(loadFolded(root));
+    if (!root) return;
+    setFolded(loadSet(storeKey(root)));
+    setOpened(loadSet(openedKey(root)));
   }, [root]);
 
   // The open file's folders always unfold, so it is visible in the tree.
@@ -270,26 +297,29 @@ export function FileTree() {
       up.forEach((d) => next.delete(d));
       return next;
     });
+    setOpened((o) => {
+      const up = ancestors(activeRel).filter((d) => closedByDefault(d, useStore.getState().unlisted) && !o.has(d));
+      return up.length ? new Set([...o, ...up]) : o;
+    });
   }, [activeRel]);
 
   useEffect(() => {
-    if (!root) return;
-    try {
-      localStorage.setItem(storeKey(root), JSON.stringify([...folded]));
-    } catch {
-      /* storage unavailable */
-    }
+    if (root) saveSet(storeKey(root), folded);
   }, [root, folded]);
+  useEffect(() => {
+    if (root) saveSet(openedKey(root), opened);
+  }, [root, opened]);
 
   if (!root) return null;
 
-  const toggle = (dir: string) =>
-    setFolded((f) => {
-      const next = new Set(f);
-      if (!next.delete(dir)) next.add(dir);
-      return next;
-    });
-  const unfold = (dir: string) => setFolded((f) => (f.has(dir) ? new Set([...f].filter((d) => d !== dir)) : f));
+  const flip = (set: Set<string>, dir: string) => {
+    const next = new Set(set);
+    if (!next.delete(dir)) next.add(dir);
+    return next;
+  };
+  const toggle = (dir: string) => (shut(dir) ? setOpened((o) => flip(o, dir)) : setFolded((f) => flip(f, dir)));
+  const unfold = (dir: string) =>
+    shut(dir) ? setOpened((o) => (o.has(dir) ? o : new Set([...o, dir]))) : setFolded((f) => (f.has(dir) ? new Set([...f].filter((d) => d !== dir)) : f));
   const allDirs = (nodes: TreeNode[]): string[] => nodes.flatMap((n) => (n.kind === "dir" ? [n.path, ...allDirs(n.children)] : []));
 
   const startNew = (item: NewEntry, dir: string) => {
@@ -425,7 +455,8 @@ export function FileTree() {
           <span className="tree-name">{n.name}</span>
         );
       if (n.kind === "dir") {
-        const open = !folded.has(n.path);
+        const open = isOpen(n.path);
+        const notListed = unlisted.includes(n.path);
         rows.push(
           <div
             key={`d:${n.path}`}
@@ -459,7 +490,15 @@ export function FileTree() {
             </button>
           </div>,
         );
-        if (open) walk(n.children, depth + 1);
+        if (open && notListed)
+          rows.push(
+            <div key={`u:${n.path}`} className="tree-row tree-unlisted muted small">
+              {indent}
+              <span className="tree-guide" />
+              not listed — dependencies or build output
+            </div>,
+          );
+        else if (open) walk(n.children, depth + 1);
       } else {
         const abs = joinPath(root, n.path);
         const md = isMarkdown(n.path);
@@ -499,7 +538,7 @@ export function FileTree() {
             >
               {indent}
               <span className="tree-chevron" />
-              {md ? <MarkdownIcon /> : json ? <JsonIcon /> : env ? <EnvIcon /> : <img className="tree-icon" src={fileIcon} alt="" />}
+              {md ? <MarkdownIcon /> : json ? <JsonIcon /> : env ? <EnvIcon /> : isMh(n.path) ? <img className="tree-icon" src={fileIcon} alt="" /> : <PlainFileIcon />}
               {label}
               {dirty[abs] && <span className="tree-dirty" title="unsaved changes">●</span>}
             </button>
@@ -530,7 +569,14 @@ export function FileTree() {
           +
         </button>
         {tree.some((n) => n.kind === "dir") && (
-          <button className="icon-btn" title="Collapse all folders" onClick={() => setFolded(new Set(allDirs(tree)))}>
+          <button
+            className="icon-btn"
+            title="Collapse all folders"
+            onClick={() => {
+              setFolded(new Set(allDirs(tree)));
+              setOpened(new Set());
+            }}
+          >
             ⊟
           </button>
         )}
@@ -596,7 +642,7 @@ export function FileTree() {
           />
         </form>
       )}
-      {files.length === 0 && dirs.length === 0 && <p className="muted small pad">No .mh or .md files here yet.</p>}
+      {files.length === 0 && dirs.length === 0 && <p className="muted small pad">This folder is empty.</p>}
       <div
         className={`tree ${dropDir === "" ? "drop-into" : ""}`}
         role="tree"
@@ -608,6 +654,11 @@ export function FileTree() {
       >
         {rows}
       </div>
+      {truncated && (
+        <p className="muted small pad tree-truncated" title="The side bar lists at most 20 000 files and folders">
+          Only part of this folder is listed: it holds too many files.
+        </p>
+      )}
     </div>
   );
 }

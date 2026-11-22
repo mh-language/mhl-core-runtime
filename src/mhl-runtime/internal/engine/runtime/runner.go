@@ -89,7 +89,10 @@ type RunResult struct {
 	// PauseGate is set when the pause is a typed one (Gate): the decision the
 	// run now waits for.
 	PauseGate *Gate
-	FinalVars map[string]any
+	// PauseInputs is set when the run paused on entering a named stage
+	// whose required inputs were still unbound (InputGate).
+	PauseInputs *InputGate
+	FinalVars   map[string]any
 }
 
 // maxStepVisits caps how many times Run may (re-)enter the same step name,
@@ -146,6 +149,40 @@ type Runner struct {
 	// resumeFrom, when set, is a named stage a resume re-enters at its first
 	// member instead of the checkpoint's NextStep (WithResumeFrom).
 	resumeFrom string
+	// inputs are the run's caller-supplied inputs (WithInputs), bound into
+	// each step's vars by the exec closure: a stage input among them is not
+	// missing even before its first step has bound it.
+	inputs map[string]any
+}
+
+// WithInputs tells the runner which inputs the caller supplied this time
+// (a fresh run's, or a resume's `--input`s) — what the exec closure binds
+// before every step. Run pauses on entering a named stage only for a
+// required input of it that is neither in the run's variables nor among
+// these. Returns r for chaining.
+func (r *Runner) WithInputs(inputs map[string]any) *Runner {
+	r.inputs = inputs
+	return r
+}
+
+// missingStageInputs is the InputGate entering unit current would stop at:
+// the required inputs of its named stage bound neither in vars nor by the
+// caller's inputs; nil when there is nothing to wait for.
+func (r *Runner) missingStageInputs(p Pipeline, current string, vars map[string]any) *InputGate {
+	stage := p.StageOf[current]
+	if stage == "" {
+		return nil
+	}
+	var missing []string
+	for _, name := range p.MissingStageInputs(stage, vars) {
+		if _, ok := r.inputs[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return &InputGate{Step: current, Stage: stage, Inputs: missing}
 }
 
 // WithResumeFrom makes a resume re-enter the named stage stage at its first
@@ -158,6 +195,29 @@ type Runner struct {
 func (r *Runner) WithResumeFrom(stage string) *Runner {
 	r.resumeFrom = stage
 	return r
+}
+
+// pauseAt suspends the run at unit current — a pause() inside it, or an
+// InputGate before it — writing a checkpoint whose NextStep is current, so a
+// --resume / run/resume re-enters it. It is written even without per_step:
+// a run is always resumable from a pause.
+func (r *Runner) pauseAt(p Pipeline, current string, completed []string, ctx *RunContext, result *RunResult, pause *PauseSignal) (*RunResult, error) {
+	cp := &Checkpoint{
+		Pipeline:       p.Name,
+		LastStep:       current,
+		NextStep:       current,
+		CompletedSteps: append([]string{}, completed...),
+		Variables:      copyVars(ctx.Vars),
+		TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
+		Gate:           pause.Gate,
+		InputGate:      pause.Inputs,
+	}
+	if saveErr := r.save(cp); saveErr != nil {
+		return result, saveErr
+	}
+	result.Paused, result.PauseReason, result.PauseGate, result.PauseInputs = true, pause.Reason, pause.Gate, pause.Inputs
+	result.FinalVars = copyVars(ctx.Vars)
+	return result, nil
 }
 
 // Checkpoint returns the checkpoint a resume of pipeline would continue
@@ -353,6 +413,13 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 			return result, fmt.Errorf("runtime: pipeline %q has no step or parallel group %q", p.Name, current)
 		}
 
+		// A named stage asks for its own inputs on entry: with one still
+		// unbound, suspend before the unit runs at all, exactly where a
+		// pause() would land — a resume supplying them re-enters it.
+		if gate := r.missingStageInputs(p, current, ctx.Vars); gate != nil {
+			return r.pauseAt(p, current, result.Executed, ctx, result, &PauseSignal{Reason: gate.reason(), Inputs: gate})
+		}
+
 		err, timedOut := r.execStage(runCtx, p, stage, ctx, exec)
 		result.Executed = append(result.Executed, stage.Steps...)
 
@@ -379,21 +446,7 @@ func (r *Runner) Run(runCtx context.Context, p Pipeline, init InitFunc, exec Ste
 			// the human-in-the-loop landing point. Always write it, even
 			// without per_step, so the run is always resumable from a pause.
 			completedBefore := result.Executed[:len(result.Executed)-len(stage.Steps)]
-			cp := &Checkpoint{
-				Pipeline:       p.Name,
-				LastStep:       current,
-				NextStep:       current,
-				CompletedSteps: append([]string{}, completedBefore...),
-				Variables:      copyVars(ctx.Vars),
-				TTLSeconds:     int64(p.Checkpoint.TTL.Seconds()),
-				Gate:           pause.Gate,
-			}
-			if saveErr := r.save(cp); saveErr != nil {
-				return result, saveErr
-			}
-			result.Paused, result.PauseReason, result.PauseGate = true, pause.Reason, pause.Gate
-			result.FinalVars = copyVars(ctx.Vars)
-			return result, nil
+			return r.pauseAt(p, current, completedBefore, ctx, result, pause)
 
 		case errors.As(err, &brk):
 			if perStep {

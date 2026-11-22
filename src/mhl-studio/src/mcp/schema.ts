@@ -14,6 +14,11 @@ export interface SchemaField {
   def?: unknown;
   description?: string;
   variants?: string[];
+  /**
+   * A stage input (`"x-mhl-stage"`): never required by the call — the run asks
+   * for it on entering this stage — but it may be given up front.
+   */
+  stage?: string;
 }
 
 type Schema = {
@@ -24,6 +29,9 @@ type Schema = {
   description?: string;
   properties?: Record<string, Schema>;
   required?: string[];
+  "x-mhl-stage"?: string;
+  "x-mhl-order"?: string[];
+  "x-mhl-stages"?: { name: string; inputs: string[] }[];
 };
 
 function baseType(s: Schema): string | undefined {
@@ -41,7 +49,11 @@ function displayType(s: Schema): string {
 export function schemaFields(schema: unknown): SchemaField[] {
   const s = (schema ?? {}) as Schema;
   const required = new Set(s.required ?? []);
-  return Object.entries(s.properties ?? {}).map(([name, p]) => {
+  // In declaration order when the server says it ("x-mhl-order"); a JSON object's keys carry none.
+  const order = s["x-mhl-order"] ?? [];
+  const rank = (n: string) => (order.includes(n) ? order.indexOf(n) : order.length);
+  const entries = Object.entries(s.properties ?? {}).sort(([a], [b]) => rank(a) - rank(b));
+  return entries.map(([name, p]) => {
     const t = baseType(p);
     let kind: FieldKind = "json";
     if (p.enum && p.enum.every((v) => typeof v === "string")) kind = "enum";
@@ -54,14 +66,52 @@ export function schemaFields(schema: unknown): SchemaField[] {
       def: p.default,
       description: p.description,
       variants: kind === "enum" ? (p.enum as string[]) : undefined,
+      stage: typeof p["x-mhl-stage"] === "string" ? p["x-mhl-stage"] : undefined,
     };
   });
+}
+
+/** A stage input with no default: a run that reaches its stage without it stops there to ask for it. */
+export function pausesFor(f: SchemaField): boolean {
+  return !!f.stage && f.def === undefined;
+}
+
+/** One step of a workflow's journey: the inputs it asks for — at the start, or on entering a stage. */
+export interface JourneyStep {
+  /** The stage; undefined for the start of the run. */
+  stage?: string;
+  fields: SchemaField[];
+}
+
+/**
+ * The order a run asks for its inputs ("x-mhl-stages"): what it needs to
+ * start, then each stage in run order with its own ([] for a stage that asks
+ * for nothing). null for a workflow without stages — its form is flat.
+ */
+export function journeyOf(schema: unknown, fields: SchemaField[] = schemaFields(schema)): JourneyStep[] | null {
+  const stages = ((schema ?? {}) as Schema)["x-mhl-stages"];
+  if (!Array.isArray(stages) || stages.length === 0) return null;
+  return [
+    { fields: fields.filter((f) => !f.stage) },
+    ...stages.map((st) => ({ stage: st.name, fields: fields.filter((f) => f.stage === st.name) })),
+  ];
+}
+
+/**
+ * The fields a request needs, by method. A tools/call can't resume a pause,
+ * so a stage input the run would stop for is required up front; run/start
+ * leaves it to the stage, which asks for it when the run gets there.
+ */
+export function fieldsFor(fields: SchemaField[], method: "tools/call" | "run/start"): SchemaField[] {
+  if (method === "run/start") return fields;
+  return fields.map((f) => (pausesFor(f) ? { ...f, required: true } : f));
 }
 
 /** What a blank field means, as its placeholder. */
 export function placeholder(f: SchemaField): string {
   if (f.def !== undefined) return `default: ${JSON.stringify(f.def)}`;
   if (f.required) return "required";
+  if (f.stage) return `or leave it to ${f.stage}`;
   return f.kind === "json" ? "JSON" : "";
 }
 

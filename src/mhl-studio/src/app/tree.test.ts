@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ancestors, buildTree, type TreeNode } from "./tree";
+import { ancestors, buildTree, closedByDefault, type TreeNode } from "./tree";
 
 const shape = (nodes: TreeNode[]): unknown[] => nodes.map((n) => (n.kind === "dir" ? { [n.name + "/"]: shape(n.children) } : n.name));
 
@@ -24,5 +24,16 @@ describe("buildTree", () => {
   it("lists a file's folders outermost first", () => {
     expect(ancestors("a/b/x.mh")).toEqual(["a", "a/b"]);
     expect(ancestors("x.mh")).toEqual([]);
+  });
+});
+
+describe("closedByDefault", () => {
+  it("folds hidden folders, __pycache__ and folders listed without contents", () => {
+    expect(closedByDefault(".mhl", [])).toBe(true);
+    expect(closedByDefault("sub/.mhl-cache", [])).toBe(true);
+    expect(closedByDefault("__pycache__", [])).toBe(true);
+    expect(closedByDefault("node_modules", ["node_modules"])).toBe(true);
+    expect(closedByDefault("story", [])).toBe(false);
+    expect(closedByDefault("assets", [])).toBe(false);
   });
 });

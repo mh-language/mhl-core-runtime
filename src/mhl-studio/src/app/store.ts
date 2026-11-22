@@ -67,10 +67,14 @@ export interface LibraryFile {
 
 export interface State {
   root: string | null;
-  /** The workspace's `.mh` and `.md` files, relative and "/"-separated. */
+  /** The workspace's files, as on disk (relative, "/"-separated); version-control internals left out. */
   files: string[];
   /** Its folders, empty ones included. */
   dirs: string[];
+  /** Folders listed without their contents: dependencies, build output, a virtualenv. */
+  unlisted: string[];
+  /** The workspace has more entries than are listed. */
+  truncated: boolean;
   /** Absolute path of the open file. */
   activePath: string | null;
   dirty: Record<string, boolean>;
@@ -126,6 +130,8 @@ export const useStore = create<State>(() => ({
   root: null,
   files: [],
   dirs: [],
+  unlisted: [],
+  truncated: false,
   activePath: null,
   dirty: {},
   graph: null,
@@ -178,11 +184,15 @@ export function selectTool(name: string, method: string | null = null) {
   useStore.setState({ tool: { name, method }, selection: null });
 }
 
-/** A run input the form shows: name, type and declared default. */
+/** A run input the form shows: name, type, declared default and — for a stage input — its stage. */
 export interface InputField {
   name: string;
   type: string;
   def?: string;
+  /** The run asks for it on entering this stage, not at the start. */
+  stage?: string;
+  /** Its `///` documentation. */
+  doc?: string;
 }
 
 /**
@@ -192,9 +202,12 @@ export interface InputField {
 export function inputFields(s: State): InputField[] {
   const wf = currentWorkflow(s);
   if (s.inspection?.inputs?.length) {
-    return s.inspection.inputs.map((i) => ({ name: i.name, type: i.type, def: wf?.inputs.find((x) => x.name === i.name)?.default }));
+    return s.inspection.inputs.map((i) => {
+      const g = wf?.inputs.find((x) => x.name === i.name);
+      return { name: i.name, type: i.type, def: g?.default, stage: i.stage ?? g?.stage, doc: i.doc ?? g?.doc };
+    });
   }
-  return (wf?.inputs ?? []).map((i) => ({ name: i.name, type: i.type, def: i.default }));
+  return (wf?.inputs ?? []).map((i) => ({ name: i.name, type: i.type, def: i.default, stage: i.stage, doc: i.doc }));
 }
 
 /**
@@ -214,6 +227,18 @@ export function runInputPairs(s: State = useStore.getState()): [string, string][
   return inputFields(s)
     .filter((f) => s.runInputs[f.name] !== undefined && s.runInputs[f.name] !== "")
     .map((f) => [f.name, s.runInputs[f.name]]);
+}
+
+/**
+ * The filled-in inputs of one stage, as `--input` pairs — what a resume of a
+ * run paused on entering it passes, and nothing else. `names` narrows them to
+ * the ones the run waits for (`awaiting_inputs.inputs`).
+ */
+export function stageInputPairs(stage: string, names?: string[], s: State = useStore.getState()): [string, string][] {
+  return runInputPairs(s).filter(([name]) => {
+    const f = inputFields(s).find((x) => x.name === name);
+    return f?.stage === stage && (!names || names.includes(name));
+  });
 }
 
 /**

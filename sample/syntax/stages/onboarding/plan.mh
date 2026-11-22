@@ -1,0 +1,12 @@
+// The Plan stage of Onboarding (see ../stage_inputs_pause_at_entry.mh): its
+// `plan` input is asked for when the run enters the stage, not at the start.
+partial workflow Onboarding stage Plan {
+    /// The plan the customer picks: `free` or `pro`.
+    input plan: string
+
+    step Choose {
+        steps.append("plan ${plan}")
+
+        goto Billing
+    }
+}

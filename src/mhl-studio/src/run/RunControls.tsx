@@ -4,13 +4,16 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Play, RotateCcw, Square } from "lucide-react";
 import { cancelRun, startRun } from "../app/controller";
-import { inputFields, runInputPairs, set, useStore } from "../app/store";
+import { inputFields, runInputPairs, set, stageInputPairs, useStore } from "../app/store";
 import { ICON } from "../lib/icons";
 import { InputsForm, missingInputs } from "./InputsForm";
 
 function run(resume = false) {
   set({ runTab: "execution", inputsOpen: false });
-  void startRun(runInputPairs(), resume ? { resume: true } : {});
+  // A run paused on entering a stage is resumed with that stage's inputs only.
+  const res = useStore.getState().run.result;
+  const stage = res?.awaiting_inputs?.stage ?? (res?.kind === "invalid_inputs" ? res.stage : undefined);
+  void startRun(resume && stage ? stageInputPairs(stage) : runInputPairs(), resume ? { resume: true } : {});
 }
 
 /** The inputs popover, anchored under the split button's right edge. */
@@ -75,7 +78,8 @@ export function RunControls() {
   const missing = useStore((s) => missingInputs(s).length);
   const split = useRef<HTMLDivElement>(null);
   const res = runState.result;
-  const resumable = !runState.running && !!res && ((res.ok && !!res.paused) || (!res.ok && res.kind !== "invalid_inputs"));
+  // A resume refused for a stage's missing inputs leaves the run paused there: still resumable.
+  const resumable = !runState.running && !!res && ((res.ok && !!res.paused) || (!res.ok && (res.kind !== "invalid_inputs" || !!res.stage)));
 
   if (runState.running) {
     return (

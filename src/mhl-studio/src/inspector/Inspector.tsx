@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { edit, openFile, revealSpan } from "../app/controller";
+import { closeStage, edit, openFile, openStage, revealSpan } from "../app/controller";
 import { currentWorkflow, set, useStore } from "../app/store";
+import { inputJourney, needsValue, type InputGroup } from "../lib/inputs";
 import {
   addInput,
   connect,
@@ -181,6 +182,45 @@ function StepInspector({ wf, node, doc }: { wf: Workflow; node: GraphNode; doc: 
 
 const TYPES = ["string", "number", "bool", "object", "string[]", "number[]"];
 
+/**
+ * A staged workflow's inputs step by step — Start, then each stage in run
+ * order — with the step the inspector shows marked; a click goes to a step
+ * (a stage opens on its own diagram and fragment).
+ */
+function InputJourney({ journey, current }: { journey: InputGroup[]; current?: string }) {
+  const go = (g: InputGroup) => {
+    if (g.stage) return void openStage(g.stage);
+    // Start: the workflow's own inputs, in the fragment that declares them.
+    const file = g.inputs.find((i) => i.file)?.file;
+    if (file) void openFile(file);
+    else closeStage();
+  };
+  return (
+    <ol className="io-journey" aria-label="Inputs, step by step">
+      {journey.map((g, n) => {
+        const here = g.stage === current;
+        const waits = g.inputs.filter(needsValue).map((i) => i.name);
+        const note = !g.inputs.length
+          ? "no inputs"
+          : g.stage
+            ? waits.length
+              ? `asks for ${waits.join(", ")}`
+              : `${g.inputs.map((i) => i.name).join(", ")} · defaults`
+            : g.inputs.map((i) => i.name).join(", ");
+        return (
+          <li key={g.stage ?? "$start"} className={here ? "here" : ""}>
+            <button className="io-journey-step" disabled={here} onClick={() => go(g)} title={here ? "Shown above" : `Show ${g.stage ? `stage ${g.stage}` : "the start"}`}>
+              <span className="io-journey-n">{n + 1}</span>
+              <span className={g.stage ? "mono" : ""}>{g.stage ?? "Start"}</span>
+              <span className="io-journey-note">{note}</span>
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function WorkflowInspector({ wf }: { wf: Workflow }) {
   const [name, setName] = useState("");
   const [type, setType] = useState("string");
@@ -195,6 +235,16 @@ function WorkflowInspector({ wf }: { wf: Workflow }) {
     });
   };
   const diagnostics = useStore((s) => s.diagnostics);
+  // The stage this file's fragment declares (a merged graph's other stages carry `file`).
+  const ownStage = wf.stages?.find((st) => !st.file)?.name;
+  const stageFocus = useStore((s) => s.stageFocus);
+  // A staged workflow's inputs are shown one step at a time: the stage this
+  // view is (the open fragment's, or the focused one), else what the run
+  // needs to start — the other steps listed below as a journey to go to.
+  const staged = !!wf.stages?.length;
+  const viewStage = ownStage ?? (stageFocus && wf.stages?.some((st) => st.name === stageFocus) ? stageFocus : undefined);
+  const journey = inputJourney(wf.inputs, wf.stages ?? []);
+  const shown = staged ? (journey.find((g) => g.stage === viewStage)?.inputs ?? []) : wf.inputs;
   return (
     <div className="inspector-body">
       <div className="inspector-kind">
@@ -208,7 +258,19 @@ function WorkflowInspector({ wf }: { wf: Workflow }) {
       <LoopSection wf={wf} />
 
       <section>
-        <h4>Inputs</h4>
+        <h4>
+          Inputs
+          {staged && <span className="muted small io-heading-sub">{viewStage ? <> · stage <span className="mono">{viewStage}</span></> : " · to start the run"}</span>}
+        </h4>
+        {staged && (
+          <p className="muted small io-note">
+            {viewStage
+              ? shown.some(needsValue)
+                ? `The run stops on entering ${viewStage} until these are given.`
+                : `Asked on entering ${viewStage}; all have defaults, so the run never stops for them.`
+              : "Needed when the run starts. Each stage asks for its own on entering it — see the journey below."}
+          </p>
+        )}
         {wf.param ? (
           <p className="mono small">
             ({wf.param.name}: {wf.param.type}){wf.returns ? `: ${wf.returns}` : ""}
@@ -231,37 +293,51 @@ function WorkflowInspector({ wf }: { wf: Workflow }) {
                 </tr>
               </thead>
               <tbody>
-                {wf.inputs.length === 0 && (
+                {shown.length === 0 && (
                   <tr>
                     <td colSpan={4} className="muted small">
-                      No inputs.
+                      {viewStage ? "This stage asks for no inputs." : "No inputs."}
                     </td>
                   </tr>
                 )}
-                {wf.inputs.map((i) => (
-                  <tr key={i.name}>
-                    <td className="mono" title={i.name}>
-                      {i.name}
-                    </td>
-                    <td className="mono io-muted" title={i.type}>
-                      {i.type}
-                    </td>
-                    <td className="mono" title={i.default ? i.default : "required: no default"}>
-                      {i.default ?? <span className="io-required">required</span>}
-                    </td>
-                    <td>
-                      {i.file ? (
-                        <button className="icon-btn" title={`declared in ${i.file} — click to show it`} onClick={() => void revealSpan(i.span, i.file)}>
-                          ↗
-                        </button>
-                      ) : (
-                        <button className="icon-btn" title={`Remove input ${i.name}`} onClick={() => void edit((d) => removeInput(d, wf.name, i.name))}>
-                          ×
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {shown.flatMap((i) => {
+                  const stage = i.stage;
+                  return [
+                    <tr key={i.name} className={i.doc ? "io-has-doc" : ""}>
+                      <td className="mono" title={i.doc ? `${i.name} — ${i.doc}` : i.name}>
+                        {i.name}
+                      </td>
+                      <td className="mono io-muted" title={i.type}>
+                        {i.type}
+                      </td>
+                      <td
+                        className="mono"
+                        title={i.default ? i.default : stage ? `no default: the run pauses on entering ${stage} until it is given` : "required: no default"}
+                      >
+                        {i.default ?? <span className="io-required">{stage ? "on entry" : "required"}</span>}
+                      </td>
+                      <td>
+                        {i.file ? (
+                          <button className="icon-btn" title={`declared in ${i.file} — click to show it`} onClick={() => void revealSpan(i.span, i.file)}>
+                            ↗
+                          </button>
+                        ) : (
+                          <button className="icon-btn" title={`Remove input ${i.name}`} onClick={() => void edit((d) => removeInput(d, wf.name, i.name))}>
+                            ×
+                          </button>
+                        )}
+                      </td>
+                    </tr>,
+                    // Its `///` doc, on a line of its own under it.
+                    ...(i.doc
+                      ? [
+                          <tr key={`${i.name}:doc`} className="io-doc-row">
+                            <td colSpan={4}>{i.doc}</td>
+                          </tr>,
+                        ]
+                      : []),
+                  ];
+                })}
               </tbody>
               <tfoot>
                 <tr>
@@ -286,6 +362,12 @@ function WorkflowInspector({ wf }: { wf: Workflow }) {
                 </tr>
               </tfoot>
             </table>
+            {ownStage && (
+              <p className="muted small io-note">
+                This fragment is stage <span className="mono">{ownStage}</span>: an input added here is asked for when the run enters it, not at the start.
+              </p>
+            )}
+            {staged && <InputJourney journey={journey} current={viewStage} />}
           </>
         )}
       </section>

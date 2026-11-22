@@ -130,6 +130,7 @@ partial workflow W {
     entry step Intake { goto Spec }
 }`
 	spec := `partial workflow W stage Spec {
+    input depth: number
     step A { log("a") }
     parallel P { step P1 { log(1) } step P2 { log(2) } }
     step B { if (n < 1) { goto Spec } }
@@ -150,6 +151,14 @@ partial workflow W {
 	}
 	if stage["Intake"] != "" || stage["A"] != "Spec" || stage["P"] != "Spec" || stage["P1"] != "" || stage["B"] != "Spec" {
 		t.Fatalf("node stages = %v", stage)
+	}
+	// An input declared in the stage's fragment belongs to the stage.
+	inputStage := map[string]string{}
+	for _, in := range w.Inputs {
+		inputStage[in.Name] = in.Stage
+	}
+	if inputStage["n"] != "" || inputStage["depth"] != "Spec" {
+		t.Fatalf("input stages = %v", inputStage)
 	}
 	// `goto Spec` targets the stage, which is not an external.
 	if got := edgeList(w); !slices.Contains(got, "Intake->Spec:goto") || !slices.Contains(got, "B->Spec:goto[n < 1]") || len(w.Externals) != 0 {

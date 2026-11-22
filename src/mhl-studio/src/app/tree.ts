@@ -53,3 +53,13 @@ export function ancestors(rel: string): string[] {
   const parts = rel.split("/").filter(Boolean);
   return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join("/"));
 }
+
+/**
+ * A folder that starts folded, as in VS Code: a hidden one (`.mhl` run state,
+ * `.mhl-cache`), Python's `__pycache__`, and one listed without its contents
+ * (dependencies, build output). Every other folder starts open.
+ */
+export function closedByDefault(path: string, unlisted: string[]): boolean {
+  const name = path.split("/").pop() ?? path;
+  return name.startsWith(".") || name === "__pycache__" || unlisted.includes(path);
+}

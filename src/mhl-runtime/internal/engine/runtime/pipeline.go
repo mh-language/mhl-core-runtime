@@ -130,6 +130,12 @@ type Pipeline struct {
 	// <stage>` enters it. Both nil without any named stage.
 	StageOf    map[string]string
 	StageEntry map[string]string
+	// PauseSteps are the steps (a parallel group's branch or merge
+	// included) whose body calls `pause(...)`, in declaration order: where a
+	// run may suspend for a human. Static — a conditional pause counts. A
+	// stage input without a default is another such point (InputGate), read
+	// from Inputs, not listed here.
+	PauseSteps []string
 	// StepTimeouts maps a step name — or a `parallel` group name — to the
 	// duration from its optional `timeout <dur>` header clause. Nil when no
 	// clause is declared anywhere (a missing key reads back as 0, i.e. no
@@ -225,10 +231,47 @@ type PipelineInputSpec struct {
 	Default      *ast.Expr
 	EnumVariants []string
 	Optional     bool
+	// Stage is the named stage the input was declared in (ast.PipelineInput
+	// .Stage), "" for a workflow-level one. A stage input is never required
+	// when the run starts — ValidateInputs leaves it out — but Runner.Run
+	// pauses on entering its stage while it is still unbound (InputGate).
+	Stage string
+	// Doc is the input's `///` documentation (ast.PipelineInput.Doc): its
+	// "description" in InputSchema. "" when it has none.
+	Doc string
 }
 
-// Required reports whether a caller must supply this input.
+// Required reports whether a caller must supply this input (when the run
+// starts for a workflow-level input, on entering its stage for a stage one).
 func (in PipelineInputSpec) Required() bool { return in.Default == nil && !in.Optional }
+
+// StageInputs lists the inputs declared in named stage stage, in declaration
+// order; nil when it declares none.
+func (p Pipeline) StageInputs(stage string) []PipelineInputSpec {
+	if stage == "" {
+		return nil
+	}
+	var out []PipelineInputSpec
+	for _, in := range p.Inputs {
+		if in.Stage == stage {
+			out = append(out, in)
+		}
+	}
+	return out
+}
+
+// MissingStageInputs lists, in declaration order, the required inputs of
+// named stage stage that vars does not bind yet — what a run must be given
+// before any member of the stage runs. nil when there are none.
+func (p Pipeline) MissingStageInputs(stage string, vars map[string]any) []string {
+	var missing []string
+	for _, in := range p.StageInputs(stage) {
+		if _, ok := vars[in.Name]; !ok && in.Required() {
+			missing = append(missing, in.Name)
+		}
+	}
+	return missing
+}
 
 // PipelineFromAST projects an ast.Pipeline onto a runtime Pipeline, extracting
 // ordered step names, the checkpoint configuration, and — for a `loop
@@ -307,6 +350,7 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 		switch {
 		case m.Step != nil:
 			out.inNamedStage(m.Step.Stage, m.Step.Name)
+			out.notePause(m.Step)
 			out.Steps = append(out.Steps, m.Step.Name)
 			out.Stages = append(out.Stages, Stage{Name: m.Step.Name, Steps: []string{m.Step.Name}})
 			out.setStepTimeout(m.Step.Name, m.Step.Timeout)
@@ -317,6 +361,10 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 			out.inNamedStage(m.Parallel.Stage, m.Parallel.Name)
 			for _, s := range m.Parallel.Steps {
 				out.inNamedStage(m.Parallel.Stage, s.Name)
+				out.notePause(s)
+			}
+			if ms := m.Parallel.MergeStep(); ms != nil {
+				out.notePause(ms)
 			}
 			if m.Parallel.Merge != nil {
 				out.inNamedStage(m.Parallel.Stage, ast.MergeStepName(m.Parallel.Name))
@@ -370,7 +418,7 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 			if !ok {
 				t = types.Any
 			}
-			spec := PipelineInputSpec{Name: m.Input.Name, Type: t, Default: m.Input.Default}
+			spec := PipelineInputSpec{Name: m.Input.Name, Type: t, Default: m.Input.Default, Stage: m.Input.Stage, Doc: m.Input.Doc}
 			if t.Kind == types.EnumKind {
 				spec.EnumVariants = enumVariants(prog, t.Name)
 			}
@@ -693,6 +741,28 @@ func checkpointFromExpr(e *ast.Expr) CheckpointConfig {
 		}
 	}
 	return cfg
+}
+
+// notePause records step in PauseSteps when its body calls pause(...).
+func (p *Pipeline) notePause(step *ast.Step) {
+	if ast.CallsPause(step.Body) {
+		p.PauseSteps = append(p.PauseSteps, step.Name)
+	}
+}
+
+// CanPause reports whether a run may suspend for a human: a step calls
+// pause(...), or a stage input has no default. A caller that cannot resume a
+// run (MCP tools/call) cannot see such a run through.
+func (p Pipeline) CanPause() bool {
+	if len(p.PauseSteps) > 0 {
+		return true
+	}
+	for _, in := range p.Inputs {
+		if in.Stage != "" && in.Required() {
+			return true
+		}
+	}
+	return false
 }
 
 // inNamedStage records that step (or group) name belongs to named stage

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { clearRun, inspect, startRun } from "../app/controller";
 import { DecisionForm } from "./DecisionForm";
+import { StageInputsForm } from "./StageInputsForm";
 import { set, useStore, type RunTab as Tab } from "../app/store";
 import type { RunEvent } from "../lib/types";
 
@@ -66,6 +67,8 @@ export function RunPanel() {
   let status: { cls: string; text: string } = { cls: "", text: "Not started" };
   if (run.running) status = { cls: "running", text: "Running…" };
   else if (res && !res.ok) status = { cls: "failed", text: `Failed${res.step ? ` at ${res.step}` : ""} — ${res.kind}` };
+  else if (paused && res?.awaiting_inputs)
+    status = { cls: "paused", text: `Paused before ${res.awaiting_inputs.step}: stage ${res.awaiting_inputs.stage} needs ${res.awaiting_inputs.inputs.join(", ")}` };
   else if (paused) status = { cls: "paused", text: `Paused at ${run.visits[run.visits.length - 1] ?? "?"}: ${fmt(res?.pause_reason)}` };
   else if (res?.ok) status = { cls: "succeeded", text: res.broke ? `Stopped by break${res.break_reason ? `: ${fmt(res.break_reason)}` : ""}` : "Succeeded" };
   else if (run.exitCode != null && run.exitCode !== 0) status = { cls: "failed", text: `mhl exited with code ${run.exitCode}` };
@@ -102,7 +105,10 @@ export function RunPanel() {
                     onSubmit={(decision) => void startRun([], { resume: true, decision })}
                   />
                 )}
-                {paused && !res?.awaiting && (
+                {paused && res?.awaiting_inputs && (
+                  <StageInputsForm key={`${res.awaiting_inputs.stage}#${res.executed?.length ?? 0}`} awaiting={res.awaiting_inputs} />
+                )}
+                {paused && !res?.awaiting && !res?.awaiting_inputs && (
                   <div className="approval">
                     <h4>Waiting for a decision</h4>
                     <p>{fmt(res?.pause_reason) || "The run paused."}</p>
@@ -117,7 +123,7 @@ export function RunPanel() {
                     <h4>{res.kind}</h4>
                     {res.kind === "invalid_inputs" && (
                       <button className="btn small" onClick={() => set({ inputsOpen: true })}>
-                        Fix the inputs…
+                        {res.stage ? `Set stage ${res.stage}'s inputs and resume…` : "Fix the inputs…"}
                       </button>
                     )}
                     <p className="mono small">{res.error}</p>

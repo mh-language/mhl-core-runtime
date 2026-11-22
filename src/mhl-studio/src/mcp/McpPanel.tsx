@@ -18,6 +18,7 @@ import {
   runResumable,
   sendRaw,
   sendTool,
+  canPause,
   toolMethod,
   setFormValue,
   setResumeValue,
@@ -30,11 +31,28 @@ import {
   type ResTab,
   type ToolMethod,
 } from "./store";
-import { hasRunMethods, isActive, isControlTool, pausedCall, runProgress, supportsAsync, type CallToolResult, type ContentBlock, type McpTool, type RunState } from "./model";
-import { buildArguments, placeholder, schemaFields, valuesFor, type SchemaField } from "./schema";
+import {
+  hasRunMethods,
+  isActive,
+  pausePoints,
+  isControlTool,
+  pausedCall,
+  resumeFields,
+  runProgress,
+  supportsAsync,
+  type AwaitingDecision,
+  type AwaitingInputs,
+  type CallToolResult,
+  type ContentBlock,
+  type McpTool,
+  type RunState,
+  type RunStatus,
+} from "./model";
+import { buildArguments, fieldsFor, journeyOf, pausesFor, placeholder, schemaFields, valuesFor, type JourneyStep, type SchemaField } from "./schema";
 import { rawParams, type Traffic } from "./rpc";
 import { asTable, byteSize, cellText, decodeEmbedded, formatBytes, parseEmbedded } from "./json";
 import { JsonView } from "./JsonView";
+import { DecisionForm } from "../run/DecisionForm";
 
 const set = useMcp.setState;
 
@@ -324,7 +342,22 @@ function Tabs<T extends string>({ tabs, value, onChange }: { tabs: [T, React.Rea
   );
 }
 
-function Fields({ fields, values, errors, onChange, disabled }: { fields: SchemaField[]; values: Record<string, string>; errors: Record<string, string>; onChange: (name: string, v: string) => void; disabled?: boolean }) {
+function Fields({
+  fields,
+  values,
+  errors,
+  onChange,
+  disabled,
+  stagePills = true,
+}: {
+  fields: SchemaField[];
+  values: Record<string, string>;
+  errors: Record<string, string>;
+  onChange: (name: string, v: string) => void;
+  disabled?: boolean;
+  /** Tag each stage input with its stage — not where the stage is the section's heading. */
+  stagePills?: boolean;
+}) {
   if (fields.length === 0) return <p className="muted small mcp-pad">This tool takes no arguments.</p>;
   return (
     <table className="mcp-kv">
@@ -345,6 +378,11 @@ function Fields({ fields, values, errors, onChange, disabled }: { fields: Schema
               <td className="mono">
                 {f.name}
                 {f.required && <span className="mcp-req-mark" title="required">*</span>}
+                {stagePills && f.stage && (
+                  <span className="mcp-pill mcp-stage-pill" title={`Input of stage ${f.stage}: the run asks for it on entering the stage; give it now to run straight through`}>
+                    {f.stage}
+                  </span>
+                )}
               </td>
               <td>
                 {f.kind === "boolean" || f.kind === "enum" ? (
@@ -368,6 +406,210 @@ function Fields({ fields, values, errors, onChange, disabled }: { fields: Schema
         })}
       </tbody>
     </table>
+  );
+}
+
+/**
+ * A staged workflow's arguments as the run asks for them: what it needs to
+ * start, then each stage in run order. With run/start a stage's inputs wait
+ * for the stage (it asks for them when the run gets there, under Runs) and
+ * are folded away; with tools/call, which can't resume a pause, every input a
+ * stage would stop for is needed now.
+ */
+function Journey(props: {
+  tool: string;
+  steps: JourneyStep[];
+  method: "tools/call" | "run/start";
+  async: boolean;
+  values: Record<string, string>;
+  errors: Record<string, string>;
+  onChange: (name: string, v: string) => void;
+  disabled?: boolean;
+}) {
+  const { tool, steps, method, async, values, errors, onChange, disabled } = props;
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const stages = steps.filter((st) => st.stage);
+  const asking = stages.filter((st) => st.fields.some(pausesFor));
+  const toggle = (stage: string) => setOpened((o) => ({ ...o, [stage]: !o[stage] }));
+  return (
+    <div className="mcp-journey">
+      <p className="small mcp-journey-intro">
+        {method === "run/start" ? (
+          <>
+            This workflow runs in {stages.length} stage{stages.length === 1 ? "" : "s"}
+            {asking.length > 0 && (
+              <>
+                {" "}
+                and asks for inputs as it goes: fill in <b>what it needs to start</b>, then send. When the run reaches{" "}
+                {asking.map((st, i) => (
+                  <span key={st.stage}>
+                    {i > 0 ? (i === asking.length - 1 ? " or " : ", ") : ""}
+                    <span className="mono">{st.stage}</span>
+                  </span>
+                ))}
+                , it pauses and asks for that stage's inputs under Runs
+              </>
+            )}
+            .
+          </>
+        ) : (
+          <>
+            <b>tools/call</b> waits for the whole run and can't resume a pause, so every stage's inputs are needed now.
+            {async && (
+              <>
+                {" "}
+                To give them stage by stage, as the run reaches each one,{" "}
+                <button className="link" onClick={() => set((s) => ({ methods: { ...s.methods, [tool]: "run/start" } }))}>
+                  use run/start
+                </button>
+                .
+              </>
+            )}
+          </>
+        )}
+      </p>
+      <ol className="mcp-journey-steps">
+        {steps.map((st, i) => {
+          const n = i + 1;
+          if (!st.stage)
+            return (
+              <li key="$start" className="mcp-journey-step now">
+                <div className="mcp-journey-head">
+                  <span className="mcp-journey-n">{n}</span>
+                  <b>Start</b>
+                  <span className="muted small">{st.fields.length ? "needed to start the run" : "nothing to provide"}</span>
+                </div>
+                {st.fields.length > 0 && <Fields fields={st.fields} values={values} errors={errors} onChange={onChange} disabled={disabled} stagePills={false} />}
+              </li>
+            );
+          const stage = st.stage;
+          const filled = st.fields.some((f) => (values[f.name] ?? "") !== "");
+          const pauses = st.fields.some(pausesFor);
+          const later = method === "run/start";
+          const open = st.fields.length > 0 && (!later || filled || !!opened[stage]);
+          const note = !st.fields.length
+            ? "asks for nothing"
+            : !later
+              ? "needed now"
+              : pauses
+                ? filled
+                  ? "given now — the run won't stop here"
+                  : "asked when the run reaches it"
+                : "all have defaults — optional";
+          return (
+            <li key={stage} className={`mcp-journey-step ${later && st.fields.length ? "later" : ""} ${st.fields.length ? "" : "empty"}`}>
+              <div className="mcp-journey-head">
+                <span className="mcp-journey-n">{n}</span>
+                <b className="mono">{stage}</b>
+                <span className="muted small">{note}</span>
+                {later && st.fields.length > 0 && !filled && (
+                  <button className="link small" onClick={() => toggle(stage)}>
+                    {opened[stage] ? "hide" : pauses ? "fill in now instead" : "change defaults"}
+                  </button>
+                )}
+              </div>
+              {open && <Fields fields={st.fields} values={values} errors={errors} onChange={onChange} disabled={disabled} stagePills={false} />}
+              {!open && st.fields.length > 0 && <p className="muted small mono mcp-journey-names">{st.fields.map((f) => f.name).join(", ")}</p>}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/** What each way to run a tool does — shown in the picker, and as the fixed method's tooltip. */
+const METHODS: Record<ToolMethod, { text: string }> = {
+  "tools/call": { text: "Waits for the run to finish and returns its result. Can't resume a pause — it is what a stock MCP client sends." },
+  "run/start": { text: "Returns a runId at once; the run is followed under Runs, where a pause is answered and the run resumed." },
+};
+
+/** tools/call or run/start, each with what it does — for a workflow that never pauses, where both work. */
+function MethodPicker({ value, onChange }: { value: ToolMethod; onChange: (m: ToolMethod) => void }) {
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  return (
+    <>
+      <button
+        className={`mcp-method-select mcp-method-picker ${value === "run/start" ? "m-ctrl" : "m-call"}`}
+        aria-haspopup="menu"
+        aria-expanded={!!at}
+        title={METHODS[value].text}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setAt(at ? null : { top: r.bottom + 4, left: r.left });
+        }}
+      >
+        {value} <ChevronDown size={13} />
+      </button>
+      {at && (
+        <>
+          <div className="menu-backdrop" onClick={() => setAt(null)} />
+          <div className="menu mcp-method-menu" role="menu" style={at}>
+            {(["tools/call", "run/start"] as ToolMethod[]).map((m) => (
+              <button
+                key={m}
+                role="menuitemradio"
+                aria-checked={m === value}
+                className={`menu-item ${m === value ? "checked" : ""}`}
+                onClick={() => {
+                  onChange(m);
+                  setAt(null);
+                }}
+              >
+                <span className="menu-icon">{m === value ? "✓" : ""}</span>
+                <span>
+                  <span className={`menu-label mono ${m === "run/start" ? "m-ctrl" : "m-call"}`}>{m}</span>
+                  <span className="menu-hint">{METHODS[m].text}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * Why a workflow that may pause runs with run/start only: where it pauses,
+ * and that a tools/call can't resume. Over stdio — tools/call only — offers to
+ * restart the server on HTTP, where run/start exists.
+ */
+function PauseNote({ tool, async }: { tool: McpTool; async: boolean }) {
+  const p = pausePoints(tool);
+  const stages = [...new Set([...(p?.stages ?? []), ...schemaFields(tool.inputSchema).filter(pausesFor).map((f) => f.stage as string)])];
+  const parts: React.ReactNode[] = [];
+  if (p?.steps.length)
+    parts.push(
+      <span key="steps">
+        at <span className="mono">{p.steps.join(", ")}</span> (a decision)
+      </span>,
+    );
+  if (stages.length)
+    parts.push(
+      <span key="stages">
+        on entering <span className="mono">{stages.join(", ")}</span> (its inputs)
+      </span>,
+    );
+  const where = parts.length ? (
+    <>
+      {" "}
+      {parts.reduce<React.ReactNode[]>((acc, x, i) => (i ? [...acc, " and ", x] : [x]), [])}
+    </>
+  ) : null;
+  return async ? (
+    <p className="small mcp-pause-note">
+      <Pause {...ICON} size={13} /> <b>run/start only.</b> This workflow pauses{where}, and a <span className="mono">tools/call</span> can't resume a paused run
+      — it would stop for good at the first pause. With run/start, each pause is answered under Runs.
+    </p>
+  ) : (
+    <p className="small mcp-pause-note">
+      <Pause {...ICON} size={13} /> This workflow may pause{where}. Over stdio only <span className="mono">tools/call</span> exists, and it can't resume a paused run.{" "}
+      <button className="link" onClick={() => void startServer("http")}>
+        Restart on HTTP
+      </button>{" "}
+      to run it with run/start and answer each pause.
+    </p>
   );
 }
 
@@ -398,12 +640,15 @@ function ToolView({ tool }: { tool: McpTool }) {
   const call = useMcp((s) => s.calls[tool.name]);
   const m: ToolMethod = useMcp((s) => toolMethod(s, tool.name));
   const reqTab = useMcp((s) => s.reqTab);
-  const fields = useMemo(() => schemaFields(tool.inputSchema), [tool.inputSchema]);
+  const all = useMemo(() => schemaFields(tool.inputSchema), [tool.inputSchema]);
+  const fields = useMemo(() => fieldsFor(all, m), [all, m]);
+  const journey = useMemo(() => journeyOf(tool.inputSchema, fields), [tool.inputSchema, fields]);
   const { args, errors } = buildArguments(fields, values);
   const blocked = Object.keys(errors).length > 0;
   const async = supportsAsync(tool);
+  const pauses = canPause(tool);
   return (
-    <div className="mcp-split">
+    <div className={`mcp-split ${call ? "" : "solo"}`}>
       <div className="mcp-req">
         <div className="mcp-title">
           <h2>{tool.name}</h2>
@@ -411,13 +656,12 @@ function ToolView({ tool }: { tool: McpTool }) {
         </div>
         <UrlBar
           method={
-            async ? (
-              <select className={`mcp-method-select ${m === "run/start" ? "m-ctrl" : "m-call"}`} value={m} onChange={(e) => set((s) => ({ methods: { ...s.methods, [tool.name]: e.target.value as ToolMethod } }))}>
-                <option value="tools/call">tools/call</option>
-                <option value="run/start">run/start</option>
-              </select>
+            async && !pauses ? (
+              <MethodPicker value={m} onChange={(v) => set((s) => ({ methods: { ...s.methods, [tool.name]: v } }))} />
             ) : (
-              <span className="mcp-method-fixed m-call">tools/call</span>
+              <span className={`mcp-method-fixed ${m === "run/start" ? "m-ctrl" : "m-call"}`} title={METHODS[m].text}>
+                {m}
+              </span>
             )
           }
           path={
@@ -429,6 +673,7 @@ function ToolView({ tool }: { tool: McpTool }) {
           pending={call?.pending}
           disabled={blocked}
         />
+        {pauses && <PauseNote tool={tool} async={async} />}
         <Tabs<ReqTab>
           tabs={[
             ["arguments", <>Arguments {fields.length > 0 && <span className="muted">{Object.keys(args).length}/{fields.length}</span>}</>, Object.keys(args).length > 0],
@@ -442,7 +687,20 @@ function ToolView({ tool }: { tool: McpTool }) {
         <div className="mcp-req-body">
           {reqTab === "arguments" && (
             <>
-              <Fields fields={fields} values={values} errors={errors} onChange={(n, v) => setFormValue(tool.name, n, v)} disabled={call?.pending} />
+              {journey ? (
+                <Journey
+                  tool={tool.name}
+                  steps={journey}
+                  method={m}
+                  async={async}
+                  values={values}
+                  errors={errors}
+                  onChange={(n, v) => setFormValue(tool.name, n, v)}
+                  disabled={call?.pending}
+                />
+              ) : (
+                <Fields fields={fields} values={values} errors={errors} onChange={(n, v) => setFormValue(tool.name, n, v)} disabled={call?.pending} />
+              )}
               {blocked && <p className="mcp-err small mcp-pad">Fill in: {Object.keys(errors).join(", ")}</p>}
             </>
           )}
@@ -480,7 +738,7 @@ function ResourceView({ uri }: { uri: string }) {
     if (!read) void readResource(uri);
   }, [uri, read]);
   return (
-    <div className="mcp-split">
+    <div className={`mcp-split ${read ? "" : "solo"}`}>
       <div className="mcp-req">
         <div className="mcp-title">
           <h2>{res?.name ?? uri}</h2>
@@ -501,7 +759,7 @@ function RawView() {
   const p = rawParams(raw.params);
   const setRaw = (patch: Partial<typeof raw>) => set((s) => ({ raw: { ...s.raw, ...patch } }));
   return (
-    <div className="mcp-split">
+    <div className={`mcp-split ${raw.call ? "" : "solo"}`}>
       <div className="mcp-req">
         <div className="mcp-title">
           <h2>Raw request</h2>
@@ -634,7 +892,7 @@ function ContentBlocks({ blocks }: { blocks: ContentBlock[] }) {
  * run can't be resumed. Offers to run it again with run/start, whose pause
  * can be approved (restarting the server on HTTP when it is on stdio).
  */
-function PausedNotice({ tool, reason, step }: { tool: string; reason: string; step?: string }) {
+function PausedNotice({ tool, reason, step, awaitingInputs, awaiting }: { tool: string; reason: string; step?: string; awaitingInputs?: AwaitingInputs; awaiting?: AwaitingDecision }) {
   const http = useMcp((s) => hasRunMethods(s.hello));
   const async = useMcp((s) => supportsAsync(s.tools.find((t) => t.name === tool) ?? { name: tool }));
   return (
@@ -642,10 +900,27 @@ function PausedNotice({ tool, reason, step }: { tool: string; reason: string; st
       <div>
         <Pause {...ICON} size={14} /> <b>Paused{step ? <> at <span className="mono">{step}</span></> : null}</b>: {reason}
       </div>
-      <p className="small">
-        The workflow is waiting for a decision. The body below is its state at the pause, not a result. A <span className="mono">tools/call</span> run can't be
-        resumed: to approve it, run it with <span className="mono">run/start</span>, then resume it from Runs.
-      </p>
+      {awaitingInputs ? (
+        <p className="small">
+          It stopped on entering stage <span className="mono">{awaitingInputs.stage}</span>, which asks for{" "}
+          <span className="mono">{awaitingInputs.inputs.join(", ")}</span>. The body below is its state there, not a result. A{" "}
+          <span className="mono">tools/call</span> run can't be resumed: give {awaitingInputs.inputs.length === 1 ? "that input" : "those inputs"} in the arguments to run
+          straight through, or run it with <span className="mono">run/start</span> and pass them when you resume it from Runs.
+        </p>
+      ) : (
+        <p className="small">
+          The workflow is waiting for a decision
+          {awaiting ? (
+            <>
+              {" "}
+              of type <span className="mono">{awaiting.type}</span>
+            </>
+          ) : null}
+          . The body below is its state at the pause, not a result. A <span className="mono">tools/call</span> run can't be resumed: to{" "}
+          {awaiting ? "answer the gate" : "approve it"}, run it with <span className="mono">run/start</span>, then resume it from Runs
+          {awaiting ? " with a decision" : ""}.
+        </p>
+      )}
       <div>
         <button className="btn small mcp-send" onClick={() => void runResumable(tool)} disabled={http && !async}>
           <Play {...ICON} size={13} /> {http ? "Run with run/start" : "Restart on HTTP and run with run/start"}
@@ -657,13 +932,8 @@ function PausedNotice({ tool, reason, step }: { tool: string; reason: string; st
 
 function Response({ call, kind, tool }: { call?: Call; kind: Kind; tool?: string }) {
   const tab = useMcp((s) => s.resTab);
-  if (!call)
-    return (
-      <div className="mcp-res empty">
-        <Send {...ICON} size={28} strokeWidth={1.25} />
-        <p>Click Send to get a response</p>
-      </div>
-    );
+  // Nothing sent yet: no response pane at all — the request gets the whole height.
+  if (!call) return null;
   if (call.pending)
     return (
       <div className="mcp-res empty">
@@ -693,7 +963,7 @@ function Response({ call, kind, tool }: { call?: Call; kind: Kind; tool?: string
         {r && <span className="mcp-meta">{r.ms} ms</span>}
         {r && <span className="mcp-meta">{formatBytes(size)}</span>}
       </div>
-      {paused && tool && <PausedNotice tool={tool} reason={paused.reason} step={paused.step} />}
+      {paused && tool && <PausedNotice tool={tool} reason={paused.reason} step={paused.step} awaitingInputs={paused.awaitingInputs} awaiting={paused.awaiting} />}
       {call.error ? (
         <div className="mcp-res-scroll">
           <pre className="mcp-text mcp-err">{call.error}</pre>
@@ -713,13 +983,64 @@ function Response({ call, kind, tool }: { call?: Call; kind: Kind; tool?: string
 
 // ------------------------------------------------------------------ runs
 
+/**
+ * Where a run of a staged workflow is: Start, then each stage in run order —
+ * done, the one it is in (or paused at, waiting for you), and the ones still
+ * ahead with what each will ask for. null for a workflow without stages.
+ */
+function RunJourney({ status: st, schema }: { status: RunStatus; schema: unknown }) {
+  const steps = useMemo(() => journeyOf(schema), [schema]);
+  if (!steps) return null;
+  const stages = steps.filter((x) => x.stage).map((x) => x.stage as string);
+  const current = st.awaiting_inputs?.stage ?? st.stage;
+  const at = current ? stages.indexOf(current) : -1;
+  const ended = st.state === "completed";
+  return (
+    <ol className="mcp-run-journey" aria-label="Stages">
+      {steps.map((x, i) => {
+        const idx = i - 1; // -1 is Start
+        let cls = "ahead";
+        let note = "";
+        if (ended || (idx >= 0 && idx < at) || (idx === -1 && at >= 0)) cls = "done";
+        else if (idx === at || (idx === -1 && at < 0)) {
+          cls = st.state === "paused" ? "waiting" : st.state === "failed" || st.state === "canceled" ? "stopped" : "current";
+          note =
+            st.state === "paused"
+              ? st.awaiting_inputs
+                ? `needs ${st.awaiting_inputs.inputs.join(", ")}`
+                : st.awaiting
+                  ? `waits for a ${st.awaiting.type} decision`
+                  : "paused"
+              : cls === "stopped"
+                ? st.state
+                : "running";
+        } else {
+          const asks = x.fields.filter(pausesFor).map((f) => f.name);
+          note = asks.length ? `will ask for ${asks.join(", ")}` : "";
+        }
+        return (
+          <li key={x.stage ?? "$start"} className={`mcp-run-stage ${cls}`} title={note || undefined}>
+            <span className="mcp-run-stage-mark">{cls === "done" ? "✓" : cls === "waiting" ? "⏸" : cls === "current" ? "●" : cls === "stopped" ? "✕" : i + 1}</span>
+            <span className={x.stage ? "mono" : ""}>{x.stage ?? "Start"}</span>
+            {note && <span className="mcp-run-stage-note small">{note}</span>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function RunDetail({ id }: { id: string }) {
   const run = useMcp((s) => s.runs[id]);
   const tool = useMcp((s) => s.tools.find((t) => t.name === run?.status.tool));
   const values = useMcp((s) => s.resumeForms[id]) ?? {};
   const [tab, setTab] = useState<"vars" | "logs" | "status">("vars");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fields = useMemo(() => schemaFields(tool?.inputSchema).map((f) => ({ ...f, required: false })), [tool]);
+  const waiting = run?.status.state === "paused" ? run.status.awaiting_inputs : undefined;
+  // A typed gate (`pause(..., decision: T)`): run/resume answers it with a decision, not arguments.
+  const gate = run?.status.state === "paused" ? run.status.awaiting : undefined;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fields = useMemo(() => resumeFields(schemaFields(tool?.inputSchema), run?.status), [tool, run?.status.state, waiting]);
   useEffect(() => {
     if (tab === "logs" && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [run?.logs, tab]);
@@ -748,6 +1069,7 @@ function RunDetail({ id }: { id: string }) {
         <div className="mcp-progress">
           <div className={`mcp-progress-bar ${st.state}`} style={{ width: `${pct}%` }} />
         </div>
+        <RunJourney status={st} schema={tool?.inputSchema} />
         <div className="mcp-steps">
           {(st.reached ?? []).map((s, i) => (
             <span key={i} className="mcp-step">
@@ -774,13 +1096,32 @@ function RunDetail({ id }: { id: string }) {
               <b>{st.state === "paused" ? "Paused" : "Stopped — resumable"}</b>
               {st.reason && <span>: {st.reason}</span>}
             </div>
-            <p className="muted small">run/resume re-enters the step with these arguments merged into its inputs; blank ones keep their value.</p>
-            <Fields fields={fields} values={values} errors={errors} onChange={(n, v) => setResumeValue(id, n, v)} />
-            <div>
-              <button className="btn small mcp-send" disabled={Object.keys(errors).length > 0} onClick={() => void resumeRun(id)}>
-                <Play {...ICON} size={13} /> run/resume
-              </button>
-            </div>
+            {gate ? (
+              <DecisionForm
+                key={`${id}:${gate.step}#${gate.index}:${(st.reached ?? []).length}`}
+                awaiting={gate}
+                reason=""
+                submitLabel="run/resume with decision"
+                onSubmit={(decision) => void resumeRun(id, decision)}
+              />
+            ) : waiting ? (
+              <p className="muted small">
+                The run stopped before <span className="mono">{waiting.step}</span>, on entering stage <span className="mono">{waiting.stage}</span>. run/resume
+                must carry {waiting.inputs.length === 1 ? "its input" : "its inputs"} — only {waiting.inputs.length === 1 ? "it is" : "they are"} sent.
+              </p>
+            ) : (
+              <p className="muted small">run/resume re-enters the step with these arguments merged into its inputs; blank ones keep their value.</p>
+            )}
+            {!gate && (
+              <>
+                <Fields fields={fields} values={values} errors={errors} onChange={(n, v) => setResumeValue(id, n, v)} />
+                <div>
+                  <button className="btn small mcp-send" disabled={Object.keys(errors).length > 0} onClick={() => void resumeRun(id)}>
+                    <Play {...ICON} size={13} /> run/resume
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

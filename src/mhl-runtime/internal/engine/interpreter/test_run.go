@@ -221,7 +221,7 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, decisi
 		}
 		return EvalGroupVars(goctx, ctx.prog, pipeline.Decl, group, ctx.file, out, ctx.store, ctx.jsonStore, rc.Vars, mem, contextView)
 	}
-	runner := runtime.NewRunner(tmpDir).Session(sessionID).WithStateStore(newMemStateStore())
+	runner := runtime.NewRunner(tmpDir).Session(sessionID).WithStateStore(newMemStateStore()).WithInputs(inputs)
 	res, runErr := runner.Run(goctxOf(ctx), pipeline, init, exec, false)
 	executed := append([]string{}, res.Executed...)
 	// Answer each gate the run stops at with the next decision, resuming it
@@ -263,6 +263,9 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, decisi
 		"break_reason": nil,
 		"pause_reason": nil,
 		"awaiting":     nil,
+		// A stage the run stopped on entering because its required
+		// inputs were not among inputs: {stage, step, inputs}.
+		"awaiting_inputs": nil,
 	}
 	if res.FinalVars != nil {
 		out["vars"] = res.FinalVars
@@ -281,6 +284,9 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, decisi
 		out["pause_reason"] = res.PauseReason
 		if g := res.PauseGate; g != nil {
 			out["awaiting"] = map[string]any{"step": g.Step, "index": float64(g.Index), "type": g.Type}
+		}
+		if g := res.PauseInputs; g != nil {
+			out["awaiting_inputs"] = map[string]any{"stage": g.Stage, "step": g.Step, "inputs": stringsToAny(g.Inputs)}
 		}
 	case res.Broke:
 		out["state"] = "broke"

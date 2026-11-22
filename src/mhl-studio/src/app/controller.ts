@@ -16,6 +16,7 @@ import { ignoreLine, withEnvIgnored } from "../sync/gitignore";
 import { BACKENDS, renderAgent, type Backend, type Companion, type Role } from "../sync/agentTemplates";
 import { LspClient } from "../editor/lsp";
 import { DOTENV_LANG, JSON_LANG, LANG, MD_LANG, monaco, setupMonaco } from "../editor/monaco";
+import { languageOf } from "../lib/languages";
 import { currentWorkflow, emptyRun, get, isEnv, isJson, isMarkdown, isMh, selectTool, set, type LibraryFile, type NodeRunStatus, type Toast } from "./store";
 import { installZoom } from "./zoom";
 import { installPanels } from "./panels";
@@ -65,12 +66,12 @@ export async function openFolder() {
 }
 
 export async function loadFolder(root: string) {
-  const { files, dirs } = await api.listFiles(root);
+  const { files, dirs, unlisted, truncated } = await api.listFiles(root);
   for (const m of models.values()) m.dispose();
   models.clear();
   await lsp?.dispose();
   lsp = null;
-  set({ root, files, dirs, activePath: null, dirty: {}, graph: null, graphSource: "", stale: false, diagnostics: [], workflow: null, selection: null, tool: null, library: [], run: emptyRun(), inspection: null });
+  set({ root, files, dirs, unlisted, truncated, activePath: null, dirty: {}, graph: null, graphSource: "", stale: false, diagnostics: [], workflow: null, selection: null, tool: null, library: [], run: emptyRun(), inspection: null });
   try {
     localStorage.setItem(LAST_FOLDER, root);
   } catch {
@@ -214,7 +215,7 @@ export function activeModel(): monaco.editor.ITextModel | null {
 /** The editor buffer of `path`, holding `text`, registered with the language server. */
 function createModel(path: string, text: string): monaco.editor.ITextModel {
   const mh = isMh(path);
-  const lang = mh ? LANG : isMarkdown(path) ? MD_LANG : isJson(path) ? JSON_LANG : isEnv(path) ? DOTENV_LANG : "plaintext";
+  const lang = mh ? LANG : isMarkdown(path) ? MD_LANG : isJson(path) ? JSON_LANG : isEnv(path) ? DOTENV_LANG : languageOf(path, text);
   const model = monaco.editor.createModel(text, lang, monaco.Uri.parse(fileUri(path)));
   model.updateOptions(mh ? { tabSize: 4, insertSpaces: true } : { tabSize: 2, insertSpaces: true });
   models.set(path, model);
@@ -234,7 +235,19 @@ function disposeModel(path: string) {
 
 export async function openFile(path: string) {
   let model = models.get(path);
-  if (!model) model = createModel(path, await api.readFile(path));
+  if (!model) {
+    let text: string;
+    try {
+      text = await api.readFile(path);
+    } catch (e) {
+      // A binary file (an image, a .pyc) or a huge one: say so, stay where we are.
+      const msg = errorText(e);
+      const name = path.split(/[\\/]/).pop();
+      toast("info", msg.startsWith("not a text file") ? `${name} is not a text file — the studio opens text files only.` : msg.startsWith("too large") ? `${name} is too large to open here.` : msg);
+      return;
+    }
+    model = createModel(path, text);
+  }
   set({ activePath: path, selection: null, tool: null, graph: null, graphSource: "", stale: false, diagnostics: [], workflow: null, stageFocus: null, inspection: null, importFocus: null });
   // Markdown and JSON have no graph: the code view shows them, the diagram stays away.
   if (isMh(path)) await refreshGraph();
@@ -708,6 +721,8 @@ function onRunEvent(ev: RunEvent) {
         const statuses = { ...run.statuses };
         for (const step of result.skipped ?? []) if (!statuses[step]) statuses[step] = "skipped";
         if (!result.ok && result.step) statuses[result.step] = "failed";
+        // Paused before a stage's first unit, waiting for its inputs: that unit never started.
+        if (result.awaiting_inputs) statuses[result.awaiting_inputs.step] = "paused";
         run.statuses = statuses;
         break;
       }

@@ -69,6 +69,11 @@ type InspectInput struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"`
 	Supplied bool   `json:"supplied"`
+	// Stage is the named stage a stage input belongs to: the run asks for
+	// it on entering that stage, so it is never in MissingInputs.
+	Stage string `json:"stage,omitempty"`
+	// Doc is the input's `///` documentation.
+	Doc string `json:"doc,omitempty"`
 }
 
 // InspectCheckpoint is the resolved checkpoint policy.
@@ -143,7 +148,7 @@ func Inspect(req Request) (*Inspection, error) {
 	}
 	for _, in := range pipeline.Inputs {
 		_, supplied := req.Inputs[in.Name]
-		ins.Inputs = append(ins.Inputs, InspectInput{Name: in.Name, Type: in.Type.String(), Supplied: supplied})
+		ins.Inputs = append(ins.Inputs, InspectInput{Name: in.Name, Type: in.Type.String(), Supplied: supplied, Stage: in.Stage, Doc: in.Doc})
 	}
 
 	if err := pipeline.ValidateInputs(req.Inputs); err != nil {

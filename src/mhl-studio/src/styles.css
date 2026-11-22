@@ -1658,6 +1658,71 @@ select {
 .io-table .io-muted {
   color: var(--muted);
 }
+/* A staged workflow's inputs, one step at a time (Inspector InputJourney). */
+.io-heading-sub {
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.io-note {
+  margin: 4px 0 6px;
+}
+.io-journey {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.io-journey-step {
+  display: grid;
+  grid-template-columns: 18px auto 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.io-journey-step:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+.io-journey li.here .io-journey-step {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  cursor: default;
+}
+.io-journey-n {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  background: var(--border);
+  color: var(--muted);
+}
+.io-journey li.here .io-journey-n {
+  background: var(--accent);
+  color: #fff;
+}
+.io-journey-note {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.mcp-stage-pill {
+  margin-left: 6px;
+  font-family: var(--sans, inherit);
+}
 .io-table .io-required {
   color: var(--muted);
   font-style: italic;
@@ -2341,6 +2406,11 @@ select {
   display: flex;
   flex-direction: column;
 }
+/* Nothing sent yet: no response pane, the request takes the whole height. */
+.mcp-split.solo .mcp-req {
+  flex: 1;
+  max-height: none;
+}
 .mcp-req {
   flex-shrink: 0;
   max-height: 55%;
@@ -2403,6 +2473,31 @@ select {
   width: 170px;
   cursor: text;
   color: var(--m-rpc);
+}
+/* tools/call or run/start, each with what it does (McpPanel MethodPicker). */
+.mcp-method-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mcp-method-menu {
+  width: 340px;
+}
+.mcp-method-menu .menu-hint {
+  margin-top: 2px;
+  line-height: 1.4;
+}
+/* Why a workflow that may pause runs with run/start only (McpPanel PauseNote). */
+.mcp-pause-note {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--warn-soft);
+  line-height: 1.5;
+}
+.mcp-pause-note svg {
+  vertical-align: -2px;
+  color: var(--warn);
 }
 .mcp-method-fixed {
   padding: 0 12px;
@@ -2821,6 +2916,114 @@ select {
 .mcp-step .current {
   font-weight: 700;
 }
+/* A staged workflow's arguments, as the run asks for them (McpPanel Journey). */
+.mcp-journey {
+  padding: 8px 12px 4px;
+}
+.mcp-journey-intro {
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.mcp-journey-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mcp-journey-step {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.mcp-journey-step.now {
+  border-color: var(--accent);
+}
+.mcp-journey-step.later,
+.mcp-journey-step.empty {
+  background: var(--panel-2);
+}
+.mcp-journey-step.empty {
+  padding: 5px 10px;
+}
+.mcp-journey-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mcp-journey-head .link {
+  margin-left: auto;
+}
+.mcp-journey-n {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.mcp-journey-step.later .mcp-journey-n,
+.mcp-journey-step.empty .mcp-journey-n {
+  background: var(--border);
+  color: var(--muted);
+}
+.mcp-journey-step .mcp-kv {
+  margin-top: 6px;
+}
+.mcp-journey-names {
+  margin: 4px 0 0 26px;
+}
+
+/* Where a run of a staged workflow is (McpPanel RunJourney). */
+.mcp-run-journey {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 0;
+}
+.mcp-run-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+.mcp-run-stage-mark {
+  font-size: 11px;
+}
+.mcp-run-stage.done {
+  color: var(--text);
+}
+.mcp-run-stage.done .mcp-run-stage-mark {
+  color: var(--good);
+}
+.mcp-run-stage.current {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.mcp-run-stage.waiting {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 600;
+}
+.mcp-run-stage.stopped {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+.mcp-run-stage-note {
+  font-weight: normal;
+  opacity: 0.85;
+}
+
 .mcp-callout {
   display: flex;
   flex-direction: column;
@@ -3008,6 +3211,39 @@ select {
   margin-left: auto;
 }
 
+/* A stage's own inputs (asked for on entering it); highlighted while a paused run waits for them. */
+.node.stage .stage-needs {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--muted);
+}
+.node.stage .stage-needs.waiting {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+/* The run form's group of one stage's inputs. */
+.inputs-form .stage-inputs {
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  border-radius: 6px;
+  margin: 6px 0 0;
+  padding: 4px 8px 6px;
+}
+.inputs-form .stage-inputs summary {
+  cursor: pointer;
+  padding: 2px 0;
+}
+.inputs-form .stage-inputs[open] summary {
+  margin-bottom: 4px;
+}
+.inputs-form .stage-inputs-intro {
+  margin: 10px 0 2px;
+}
+
 /* A collapsed stage (layout.ts stageCardHeight): one card for its steps; click opens them. */
 .node.stage.collapsed {
   background: var(--node);
@@ -3164,4 +3400,38 @@ select {
   text-transform: uppercase;
   color: var(--muted);
   margin-right: 4px;
+}
+
+/* The side bar mirrors the workspace (FileTree): any other file is a page,
+   a folder listed without its contents says so, and a huge one is cut short. */
+.tree-icon.plain {
+  color: var(--muted);
+}
+.tree-unlisted {
+  font-style: italic;
+  cursor: default;
+}
+.tree-truncated {
+  border-top: 1px solid var(--border);
+}
+
+/* An input's `///` documentation (InputsForm InputControl, Inspector). */
+.field-with-doc .field-doc {
+  margin: 2px 0 4px 178px;
+  line-height: 1.4;
+}
+.inputs-popover .field-with-doc .field-doc {
+  margin-left: 158px;
+}
+.io-table tr.io-has-doc td {
+  border-bottom: none;
+}
+.io-table tr.io-doc-row td,
+.io-table tr.io-doc-row td:last-child {
+  padding: 0 6px 5px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: normal;
+  line-height: 1.35;
+  text-align: left;
 }

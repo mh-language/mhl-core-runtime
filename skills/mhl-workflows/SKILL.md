@@ -104,6 +104,10 @@ test review_change {
   callers. It is evaluated once at the end, so keep side effects out of it.
 - **`description:`** becomes the MCP tool description. Without it, callers see a generic
   sentence.
+- **`///` above an `input`** documents it: it becomes the argument's `description` in the
+  MCP `inputSchema`, and appears in `--dry-run`, the editor's hover and mhl studio's forms.
+  Say what a caller must pass (`/// The repository to review, an absolute path.`), not the
+  type, which the schema already gives. A plain `//` stays a private note.
 
 ## Step design
 
@@ -613,6 +617,30 @@ Resume re-enters the step a run stopped at, never a stage's start. To redo a who
 of a stopped run, resume with `--from <stage>` (`mhl_run_resume {runId, from}`): it
 re-enters the stage at its first step with the variables as of the stop, so the phase
 must be safe to run again.
+
+A stage can ask for its own inputs. An `input` in the stage's fragment belongs to that
+stage. The run starts with the workflow's inputs only, and pauses on entering the stage until
+its required inputs are given:
+
+```mh-fragment
+// onboarding/plan.mh
+partial workflow Onboarding stage Plan {
+    input plan: string
+
+    step Choose {
+        steps.append("plan ${plan}")
+        goto Billing
+    }
+}
+```
+
+The paused result names them in `awaiting_inputs` (`{stage, step, inputs, schema}`). Resume
+with only those: `--resume --input plan=pro`, or `mhl_run_resume {runId, arguments}`. A
+resume still missing one is refused, and the run stays paused. Giving every input up front
+runs straight through, and an input with a default never pauses. Put an input in a stage
+when only that phase needs it and it is decided later, for example by a person once the
+earlier phases are done. Keep the inputs every phase reads in the entry fragment. A stage
+input is not allowed in a `loop` workflow.
 
 A stage needs `partial`. Its name must not repeat a step, group or route name, and fragments
 sharing a stage are imported one right after the other. A fragment without a stage is fine:

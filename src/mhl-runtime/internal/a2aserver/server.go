@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -264,6 +265,18 @@ func (s *server) rpcMessageSend(w http.ResponseWriter, r *http.Request, req rpcR
 	// task that fails on its first step.
 	if err := wf.Pipeline.ValidateInputs(inputs); err != nil {
 		writeJSON(w, http.StatusOK, rpcErrResp(req.ID, -32602, err.Error()))
+		return
+	}
+	// A task cannot be resumed, so a stage's inputs — which a run would
+	// otherwise pause to ask for on entering it — are required up front.
+	var stageMissing []string
+	for _, in := range wf.Pipeline.Inputs {
+		if _, ok := inputs[in.Name]; !ok && in.Stage != "" && in.Required() {
+			stageMissing = append(stageMissing, fmt.Sprintf("%q (stage %s)", in.Name, in.Stage))
+		}
+	}
+	if len(stageMissing) > 0 {
+		writeJSON(w, http.StatusOK, rpcErrResp(req.ID, -32602, fmt.Sprintf("invalid inputs for %q: an A2A task cannot be resumed, so stage inputs are required up front — missing %s", wf.Name, strings.Join(stageMissing, ", "))))
 		return
 	}
 

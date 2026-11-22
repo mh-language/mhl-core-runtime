@@ -189,7 +189,11 @@ func pipelineMemberItems(p *ast.Pipeline) []completionItem {
 	for _, m := range p.Body {
 		switch {
 		case m.Input != nil:
-			items = append(items, completionItem{Label: m.Input.Name, Kind: kindVariable, Detail: "input"})
+			it := completionItem{Label: m.Input.Name, Kind: kindVariable, Detail: "input"}
+			if m.Input.Doc != "" {
+				it.Documentation = &markupContent{Kind: "markdown", Value: m.Input.Doc}
+			}
+			items = append(items, it)
 		case m.Var != nil:
 			items = append(items, completionItem{Label: m.Var.Name, Kind: kindVariable, Detail: "var"})
 		case m.Mem != nil:

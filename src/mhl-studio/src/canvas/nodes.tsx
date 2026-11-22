@@ -2,7 +2,7 @@ import { memo, useMemo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { Merge, Timer } from "lucide-react";
 import { importedDeclarations, openFile, revealSpan, startRun } from "../app/controller";
-import { useStore } from "../app/store";
+import { stageInputPairs, useStore } from "../app/store";
 import { CALL_ICON, CALL_ICON_FALLBACK, EXIT_BADGE, StateBadge, type BadgeKind } from "../lib/icons";
 import type { CallSite, Declaration } from "../lib/types";
 import { stripMhExt } from "../lib/mhfile";
@@ -287,6 +287,10 @@ export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageN
     const r = s.run;
     return !r.running && !!r.session && r.path === s.activePath && !!r.result && (!!r.result.paused || !r.result.ok);
   });
+  // The inputs this stage declares: the run asks for them on entering it.
+  const wfInputs = useStore((s) => s.graph?.workflows.find((w) => w.name === data.workflow)?.inputs);
+  const needs = useMemo(() => (wfInputs ?? []).filter((i) => i.stage === data.stage.name), [wfInputs, data.stage.name]);
+  const waiting = useStore((s) => (s.run.result?.awaiting_inputs?.stage === data.stage.name ? s.run.result.awaiting_inputs.inputs : null));
   const ks = data.steps.map((k) => statuses[k]).filter(Boolean);
   const status = ks.includes("failed")
     ? "failed"
@@ -304,7 +308,8 @@ export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageN
       title={`Redo stage ${s.name}: resume the stopped run at ${s.members[0]}, with its variables as of the stop (mhl run --resume --from ${s.name})`}
       onClick={(e) => {
         e.stopPropagation();
-        void startRun([], { resume: true, from: s.name });
+        // The stage's own inputs, as set in the form: a redo may change them.
+        void startRun(stageInputPairs(s.name), { resume: true, from: s.name });
       }}
     >
       ↻ redo
@@ -329,6 +334,7 @@ export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageN
         </div>
         <div className="stage-sub">
           <span className="node-kind">Stage · {s.members.length} {s.members.length === 1 ? "step" : "steps"}</span>
+          {needs.length > 0 && <StageNeeds needs={needs.map((i) => i.name)} waiting={waiting} />}
           {s.file && <FragmentChip file={s.file} />}
         </div>
         <div className="stage-members mono">
@@ -361,11 +367,24 @@ export const StageNode = memo(function StageNode({ data }: NodeProps<Node<StageN
         <span className="node-kind">Stage</span>
         <span className="node-name">{s.name}</span>
         {redo}
+        {needs.length > 0 && <StageNeeds needs={needs.map((i) => i.name)} waiting={waiting} />}
         {s.file && <FragmentChip file={s.file} />}
       </div>
     </div>
   );
 });
+
+/** A stage's own inputs, on its card — highlighted while a paused run waits for them. */
+function StageNeeds({ needs, waiting }: { needs: string[]; waiting: string[] | null }) {
+  return (
+    <span
+      className={`stage-needs mono small ${waiting ? "waiting" : ""}`}
+      title={waiting ? `The run waits for ${waiting.join(", ")} to enter this stage` : `Inputs asked for on entering this stage: ${needs.join(", ")}`}
+    >
+      needs {needs.join(", ")}
+    </span>
+  );
+}
 
 /**
  * Outside the open stage: a step or route its steps come from or go to.

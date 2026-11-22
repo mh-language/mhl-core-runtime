@@ -303,6 +303,7 @@ func runPipeline(args []string, out io.Writer) error {
 		if res.Paused {
 			printPauseReason(out, res.PipelineName, res.PauseReason)
 			printAwaiting(out, res.Awaiting)
+			printAwaitingInputs(out, res.AwaitingInputs)
 		}
 		return nil
 	}
@@ -339,6 +340,18 @@ func printAwaiting(out io.Writer, a *execsvc.Awaiting) {
 			fmt.Fprintf(out, "decision schema: %s\n", b)
 		}
 	}
+}
+
+// printAwaitingInputs tells which stage inputs a paused run waits for.
+func printAwaitingInputs(out io.Writer, a *execsvc.AwaitingInputs) {
+	if a == nil {
+		return
+	}
+	flags := make([]string, len(a.Inputs))
+	for i, name := range a.Inputs {
+		flags[i] = "--input " + name + "=<value>"
+	}
+	fmt.Fprintf(out, "awaiting inputs for stage %q: %s — resume with --resume %s\n", a.Stage, strings.Join(a.Inputs, ", "), strings.Join(flags, " "))
 }
 
 func printPauseReason(out io.Writer, name string, reason any) {

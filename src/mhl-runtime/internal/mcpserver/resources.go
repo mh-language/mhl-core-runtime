@@ -118,9 +118,17 @@ func workflowManifest(w execsvc.Workflow) map[string]any {
 
 	inputs := make([]map[string]any, 0, len(p.Inputs))
 	for _, in := range p.Inputs {
-		inputs = append(inputs, map[string]any{
+		entry := map[string]any{
 			"name": in.Name, "type": in.Type.String(), "required": in.Required(),
-		})
+		}
+		if in.Stage != "" {
+			// Asked for on entering that stage, not when the run starts.
+			entry["stage"] = in.Stage
+		}
+		if in.Doc != "" {
+			entry["description"] = in.Doc
+		}
+		inputs = append(inputs, entry)
 	}
 	m["inputs"] = inputs
 	// A typed signature (`workflow X(req: In): Out`) also names its types as
