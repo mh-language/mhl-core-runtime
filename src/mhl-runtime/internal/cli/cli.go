@@ -118,7 +118,7 @@ func runLSP(out io.Writer) error {
 
 // runPipeline implements:
 //
-//	mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--session <id>] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]
+//	mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force]] [--session <id>] [--format text|json|jsonl] [--dry-run] [--no-cache] [--env-file <path> ...]
 //
 // It executes a pipeline from the start, or resumes it from the last saved
 // checkpoint when --resume is given (IF-1). --resume refuses a checkpoint
@@ -144,7 +144,7 @@ func runPipeline(args []string, out io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force] [--decision <json> | --from <stage>]] [--format text|json|jsonl] [--dry-run] [--env-file <path> ...]")
+		return fmt.Errorf("usage: mhl run <pipeline.mh> [--workflow <name>] [--input key=value ...] [--resume [--force] [--decision <json> | --from <stage>]] [--format text|json|jsonl] [--dry-run] [--no-cache] [--env-file <path> ...]")
 	}
 	if err := loadEnvFiles(envFiles); err != nil {
 		return err
@@ -154,6 +154,7 @@ func runPipeline(args []string, out io.Writer) error {
 	resume := false
 	force := false
 	dryRun := false
+	noCache := false
 	format := "text"
 	sessionFlag := ""
 	workflow := ""
@@ -168,6 +169,8 @@ func runPipeline(args []string, out io.Writer) error {
 			force = true
 		case "--dry-run":
 			dryRun = true
+		case "--no-cache":
+			noCache = true
 		case "--format":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--format requires a value (text|json|jsonl)")
@@ -266,6 +269,7 @@ func runPipeline(args []string, out io.Writer) error {
 		Session:     sessionFlag,
 		Resume:      resume,
 		ForceResume: force,
+		NoCache:     noCache,
 		Decision:    decision,
 		From:        from,
 		Out:         runOut,
@@ -335,6 +339,9 @@ func printAwaiting(out io.Writer, a *execsvc.Awaiting) {
 		return
 	}
 	fmt.Fprintf(out, "awaiting a decision of type %s at %q: resume with --resume --decision '<json>'\n", a.Type, a.Step)
+	if a.Name != "" || a.Description != "" {
+		fmt.Fprintf(out, "decision: %s\n", strings.TrimPrefix(strings.TrimSuffix(a.Name+" — "+a.Description, " — "), " — "))
+	}
 	if a.Schema != nil {
 		if b, err := json.Marshal(a.Schema); err == nil {
 			fmt.Fprintf(out, "decision schema: %s\n", b)

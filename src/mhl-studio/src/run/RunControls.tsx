@@ -2,18 +2,24 @@
 // split button: its ▾ opens the inputs popover (store.inputsOpen), whose
 // values (store.runInputs) both Run and Resume use.
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Play, RotateCcw, Square } from "lucide-react";
+import { ChevronDown, Play, RefreshCw, RotateCcw, Square } from "lucide-react";
 import { cancelRun, startRun } from "../app/controller";
 import { inputFields, runInputPairs, set, stageInputPairs, useStore } from "../app/store";
 import { ICON } from "../lib/icons";
 import { InputsForm, missingInputs } from "./InputsForm";
 
-function run(resume = false) {
+/**
+ * Starts the workflow from its first step in a new session, or (`resume`)
+ * continues the last run. `fresh` also calls every agent again instead of
+ * reusing a cached reply (`mhl run --no-cache`) — a run that failed on an
+ * agent's bad answer otherwise gets the same answer back while it is cached.
+ */
+function run(resume = false, fresh = false) {
   set({ runTab: "execution", inputsOpen: false });
   // A run paused on entering a stage is resumed with that stage's inputs only.
   const res = useStore.getState().run.result;
   const stage = res?.awaiting_inputs?.stage ?? (res?.kind === "invalid_inputs" ? res.stage : undefined);
-  void startRun(resume && stage ? stageInputPairs(stage) : runInputPairs(), resume ? { resume: true } : {});
+  void startRun(resume && stage ? stageInputPairs(stage) : runInputPairs(), resume ? { resume: true } : { noCache: fresh });
 }
 
 /** The inputs popover, anchored under the split button's right edge. */
@@ -54,7 +60,16 @@ function InputsPopover({ anchor, resumable }: { anchor: HTMLElement; resumable: 
               Resume
             </button>
           )}
-          <button className="btn small primary" disabled={!!missing} onClick={() => run()}>
+          <button
+            className="btn small"
+            disabled={!!missing}
+            onClick={() => run(false, true)}
+            title="Start over in a new session, calling every agent again instead of reusing cached replies (mhl run --no-cache)"
+          >
+            <RefreshCw {...ICON} size={13} />
+            Run fresh
+          </button>
+          <button className="btn small primary" disabled={!!missing} onClick={() => run()} title="Start over from the first step in a new session">
             <Play {...ICON} size={13} fill="currentColor" />
             Run {workflow}
           </button>
@@ -107,7 +122,7 @@ export function RunControls() {
         <button
           className="btn primary"
           disabled={!can}
-          title={!can ? "This file has no workflow to run" : missing ? `Set the ${missing} required input${missing > 1 ? "s" : ""} first` : `Run ${workflow}`}
+          title={!can ? "This file has no workflow to run" : missing ? `Set the ${missing} required input${missing > 1 ? "s" : ""} first` : `Run ${workflow} from the start, in a new session (▾ for Run fresh: no cached agent replies)`}
           // A run that would be refused for missing inputs opens the form instead.
           onClick={() => (missing ? set({ inputsOpen: true }) : run())}
         >

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ancestors, buildTree, closedByDefault, type TreeNode } from "./tree";
+import { ancestors, buildTree, closedByDefault, pathToCopy, type TreeNode } from "./tree";
 
 const shape = (nodes: TreeNode[]): unknown[] => nodes.map((n) => (n.kind === "dir" ? { [n.name + "/"]: shape(n.children) } : n.name));
 
@@ -35,5 +35,21 @@ describe("closedByDefault", () => {
     expect(closedByDefault("node_modules", ["node_modules"])).toBe(true);
     expect(closedByDefault("story", [])).toBe(false);
     expect(closedByDefault("assets", [])).toBe(false);
+  });
+});
+
+describe("pathToCopy", () => {
+  it("is the absolute path, or the workspace-relative one", () => {
+    expect(pathToCopy("/w/proj", "story/impl.mh", false)).toBe("/w/proj/story/impl.mh");
+    expect(pathToCopy("/w/proj", "story/impl.mh", true)).toBe("story/impl.mh");
+  });
+
+  it("is the root itself for the tree's empty space", () => {
+    expect(pathToCopy("/w/proj", "", false)).toBe("/w/proj");
+    expect(pathToCopy("/w/proj", "", true)).toBe(".");
+  });
+
+  it("uses the root's separator on Windows", () => {
+    expect(pathToCopy("C:\\w\\proj", "story/impl.mh", false)).toBe("C:\\w\\proj\\story\\impl.mh");
   });
 });

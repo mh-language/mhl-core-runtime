@@ -157,3 +157,37 @@ workflow Two {
 		t.Fatalf("after the second answer = %v", done)
 	}
 }
+
+// A gate's decision is named after the variable it is bound to and
+// documented by the `///` lines above that statement: both reach `awaiting`
+// (and the schema's description), survive the checkpoint, and show in text.
+func TestGateDecisionNameAndDoc(t *testing.T) {
+	run := runInDir(t, t.TempDir(), `
+workflow Approval {
+    step Review {
+        /// approved: true publishes the proposal,
+        /// false discards it
+        var approved = pause("review it", decision: bool)
+        log("approved=${approved}")
+    }
+}
+`)
+	first := gateRun(t, run, "--session", "s")
+	awaiting, _ := first["awaiting"].(map[string]any)
+	const doc = "true publishes the proposal, false discards it"
+	if awaiting["name"] != "approved" || awaiting["description"] != doc {
+		t.Fatalf("awaiting = %v", awaiting)
+	}
+	if schema, _ := awaiting["schema"].(map[string]any); schema["description"] != doc {
+		t.Fatalf("schema = %v", schema)
+	}
+	// From the checkpoint: a resume with no decision pauses at the same gate.
+	again := gateRun(t, run, "--session", "s", "--resume")
+	if a, _ := again["awaiting"].(map[string]any); a["name"] != "approved" || a["description"] != doc {
+		t.Fatalf("resumed awaiting = %v", again["awaiting"])
+	}
+	out, _ := run("--session", "t")
+	if !strings.Contains(out, "decision: approved — "+doc) {
+		t.Fatalf("text output lacks the decision's name/doc:\n%s", out)
+	}
+}

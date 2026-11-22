@@ -242,6 +242,10 @@ export interface Awaiting {
   index: number;
   type: string;
   schema?: Record<string, unknown>;
+  /** What the program binds the decision to (`var approved = pause(...)`). */
+  name?: string;
+  /** The `///` doc above that statement: what the decision means. */
+  description?: string;
 }
 
 /**

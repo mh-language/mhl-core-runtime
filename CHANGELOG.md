@@ -12,6 +12,19 @@ Per-tag release notes are also generated automatically on the
 
 ### Added
 
+- **`mhl run --no-cache` calls every agent again.** The run does not return a reply from an
+  agent's `cache:`. Each fresh reply replaces the cached one, so a later run reuses that.
+  Before, starting over after an agent's bad answer got the same answer back until the
+  cache expired. Also `execsvc.Request.NoCache`.
+
+- **A `///` doc above a typed gate documents its decision.** Put it over the statement that
+  binds the gate, e.g. `/// approved: true publishes it` above `var approved = pause(...,
+  decision: bool)`. The bound name becomes `awaiting.name` and the doc becomes
+  `awaiting.description` and the decision schema's `description`. These appear in
+  `--format json`/jsonl, MCP `run/status` and paused `tools/call`, and `Name.run()` in
+  tests. They are kept in the checkpoint. Text output adds a `decision:` line. Like an
+  input's doc, it never changes the definition digest.
+
 - **A stage can ask for its own inputs.** An `input` line in a `partial workflow X stage S`
   fragment belongs to stage S. A run is admitted with the workflow's own inputs only. On
   entering S with a required stage input still unbound (at its first step, or a step a
@@ -85,6 +98,10 @@ Per-tag release notes are also generated automatically on the
   for it on entering the stage instead. A workflow that declared one there and always passed
   it up front behaves as before. A run that left it out used to be refused at admission; it
   now pauses at the stage. Move the input to the entry fragment to keep the old contract.
+- **Running a fragment of a partial workflow on its own explains itself.** `mhl run` on a
+  fragment file still fails with "expected exactly one `entry step` … found 0". The error now
+  adds that you should run the file whose fragment declares the `entry`, since it imports the
+  others.
 
 ## 1.14.0 — 2026-11-21
 

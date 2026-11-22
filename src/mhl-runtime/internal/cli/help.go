@@ -47,6 +47,7 @@ Flags for "run":
   --session <id>             Reuse a named session for durable state
   --format text|json|jsonl   Output format (default "text"); jsonl streams step events
   --dry-run                  Validate and print the static plan without executing
+  --no-cache                 Call every agent again instead of reusing a cached reply
   --env-file <path>          Load env vars from a file (repeatable; default ./.env)
 
 Examples:
@@ -133,6 +134,9 @@ Flags:
                         (run_start, step_start, step_end, log, result)
   --dry-run             Validate (parse, imports, lint, input contract) and print
                         the static plan without executing any step
+  --no-cache            Make every agent call again instead of returning an
+                        agent's cached response (its "cache:"); each fresh
+                        response replaces the cached one
   --env-file <path>     Load environment variables from this file before running
                         (repeatable; a later file wins). Without it, ./.env is
                         loaded when present. Variables already set always win.

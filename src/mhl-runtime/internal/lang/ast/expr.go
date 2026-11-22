@@ -200,6 +200,20 @@ type Slice struct {
 // Call is an argument list applied to the preceding expression.
 type Call struct {
 	Args []*Argument `parser:"'(' ( @@ ( ',' @@ )* )? ')'"`
+	// Gate names and documents the decision of a typed gate this call is —
+	// `pause(reason, decision: T)` whose result a statement binds to a name
+	// (`var approved = pause(...)`), with the `///` lines above that
+	// statement as its doc. Set by the parser (parser.attachGateDocs), nil
+	// for any other call; never part of the definition digest.
+	Gate *GateDoc `parser:"" digest:"-"`
+}
+
+// GateDoc is what a typed gate's decision is called and what it means: the
+// name its result is bound to and that statement's `///` doc (either may be
+// empty). A client labels the decision form with it.
+type GateDoc struct {
+	Name string
+	Doc  string
 }
 
 // Argument is a call argument, optionally named (`name: value`). A named

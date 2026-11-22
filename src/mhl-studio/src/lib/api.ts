@@ -34,6 +34,8 @@ export const api = {
       decision?: string;
       /** With resume: a stage of the stopped run to redo, from its first step. */
       from?: string;
+      /** Call every agent again instead of reusing a cached reply (`--no-cache`). */
+      noCache?: boolean;
     },
     onEvent: (ev: RunEvent) => void,
   ) => {

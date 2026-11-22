@@ -61,13 +61,24 @@ export interface AwaitingDecision {
   index: number;
   type: string;
   schema?: Record<string, unknown>;
+  /** What the program binds the decision to (`var approved = pause(...)`). */
+  name?: string;
+  /** The `///` doc above that statement: what the decision means. */
+  description?: string;
 }
 
 function awaitingOf(v: unknown): AwaitingDecision | undefined {
   const a = v as Partial<AwaitingDecision> | undefined;
   if (!a || typeof a.type !== "string" || typeof a.step !== "string") return undefined;
   const schema = a.schema && typeof a.schema === "object" ? (a.schema as Record<string, unknown>) : undefined;
-  return { step: a.step, index: typeof a.index === "number" ? a.index : 0, type: a.type, schema };
+  return {
+    step: a.step,
+    index: typeof a.index === "number" ? a.index : 0,
+    type: a.type,
+    schema,
+    ...(typeof a.name === "string" && a.name ? { name: a.name } : {}),
+    ...(typeof a.description === "string" && a.description ? { description: a.description } : {}),
+  };
 }
 
 /**

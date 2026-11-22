@@ -373,9 +373,11 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 			Cwd:         cwd,
 		}
 		cacheKey = traffic.RequestKey(engine, promptText, params)
-		if cached, hit := cache.Get(cacheKey); hit {
-			if response, ok := cached.(string); ok {
-				return response, nil
+		if !agentCacheBypassed(goctxOf(ctx)) {
+			if cached, hit := cache.Get(cacheKey); hit {
+				if response, ok := cached.(string); ok {
+					return response, nil
+				}
 			}
 		}
 	}

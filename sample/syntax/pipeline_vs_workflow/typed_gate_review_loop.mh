@@ -10,6 +10,10 @@
 //
 // A decision of the wrong type (`{"action": "Maybe"}`) is refused before
 // anything runs, and the run stays paused.
+//
+// The `///` lines above the gate's statement document the decision: with
+// the name it is bound to (`d`), they are `awaiting.name`/`.description`
+// (and the schema's description), what a client labels its form with.
 enum Action { Approve, Revise, Reject }
 
 type Review = { action: Action, note?: string }
@@ -28,6 +32,8 @@ workflow ReviewLoop {
     }
 
     step Review {
+        /// d: Approve publishes the draft, Revise asks for another one (note says
+        /// what to change), Reject drops it.
         var d = pause("review draft ${drafts}", decision: Review)
         // note is optional: read it with a default.
         var note = d.get("note", "")
@@ -58,6 +64,8 @@ test review_loop {
         are_equal(r.state, "paused")
         are_equal(r.awaiting.step, "Review")
         are_equal(r.awaiting.type, "Review")
+        are_equal(r.awaiting.name, "d")
+        is_true(r.awaiting.description.starts_with("Approve publishes the draft"))
     }
 
     describe each_decision_answers_one_round {

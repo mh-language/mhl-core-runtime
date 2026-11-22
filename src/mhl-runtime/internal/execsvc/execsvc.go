@@ -78,6 +78,10 @@ type Request struct {
 	// with Resume — the most recent in-progress one via the .latest pointer).
 	Session string
 	Resume  bool
+	// NoCache makes every agent call of the run go out again instead of
+	// returning a cached response (`mhl run --no-cache`); each fresh
+	// response replaces the cached one (interpreter.WithoutAgentCache).
+	NoCache bool
 	// Decision answers the typed pause — `pause(reason, decision: T)` — a
 	// suspended run waits at (Result.Awaiting): a JSON value of type T (an
 	// object, or a string/number/bool; a string is also accepted for an
@@ -188,6 +192,11 @@ type Awaiting struct {
 	// in), what a client renders a decision form from.
 	Type   string         `json:"type"`
 	Schema map[string]any `json:"schema,omitempty"`
+	// Name is what the program binds the decision to (`var approved =
+	// pause(...)`), Description its `///` doc — a form's label and help.
+	// The doc is also Schema's "description".
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // AwaitingInputs describes the stage inputs a paused run waits for
@@ -239,9 +248,12 @@ func awaitingOf(prog *ast.Program, pipeline runtime.Pipeline, gate *runtime.Gate
 	if gate == nil {
 		return nil
 	}
-	a := &Awaiting{Step: gate.Step, Index: gate.Index, Type: gate.Type}
+	a := &Awaiting{Step: gate.Step, Index: gate.Index, Type: gate.Type, Name: gate.Name, Description: gate.Doc}
 	if t, ok := interpreter.ResolveDecisionType(prog, gate.Type); ok {
 		a.Schema = pipeline.TypeSchema(t, gate.Type)
+		if a.Schema != nil && a.Description != "" {
+			a.Schema["description"] = a.Description
+		}
 	}
 	return a
 }
@@ -315,6 +327,9 @@ func Run(req Request) (*Result, error) {
 	runCtx := req.Context
 	if runCtx == nil {
 		runCtx = context.Background()
+	}
+	if req.NoCache {
+		runCtx = interpreter.WithoutAgentCache(runCtx)
 	}
 	out := req.Out
 	if out == nil {

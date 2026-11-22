@@ -76,6 +76,11 @@ type Gate struct {
 	Step  string `json:"step"`
 	Index int    `json:"index"`
 	Type  string `json:"type"`
+	// Name and Doc are what the program calls the decision and says it
+	// means: the name the gate's result is bound to and its `///` doc
+	// (ast.GateDoc), for a client to label the decision form with.
+	Name string `json:"name,omitempty"`
+	Doc  string `json:"doc,omitempty"`
 	// Answered are the decisions the step's earlier gates (Index 0 to
 	// Index-1) returned in the execution that paused here. A resume re-enters
 	// the step from its start, so it replays them: each earlier gate returns

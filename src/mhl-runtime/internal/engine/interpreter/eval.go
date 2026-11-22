@@ -556,7 +556,7 @@ func evalPostfixOps(ctx *evalCtx, p *ast.Postfix, depth int) (any, error) {
 		return evalFailCall(ctx, p.Ops[0].Call.Args, depth)
 	}
 	if p.Primary.Ident == "pause" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
-		return evalPauseCall(ctx, p.Ops[0].Call.Args, depth)
+		return evalPauseCall(ctx, p.Ops[0].Call, depth)
 	}
 	if p.Primary.Ident == "complete" && len(p.Ops) == 1 && p.Ops[0].Call != nil {
 		return evalCompleteCall(p.Ops[0].Call.Args)
@@ -931,7 +931,8 @@ func evalFailCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 // run's status. `pause` is only meaningful inside a pipeline/workflow step.
 //
 // With a `decision: T` argument it is a gate instead — see gate.go.
-func evalPauseCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
+func evalPauseCall(ctx *evalCtx, call *ast.Call, depth int) (any, error) {
+	args := call.Args
 	if len(args) == 0 {
 		return nil, &pauseSignal{}
 	}
@@ -940,7 +941,7 @@ func evalPauseCall(ctx *evalCtx, args []*ast.Argument, depth int) (any, error) {
 		return nil, err
 	}
 	if decision != "" {
-		return evalGate(ctx, reasonArgs, decision, depth)
+		return evalGate(ctx, reasonArgs, decision, call.Gate, depth)
 	}
 	values, err := evalLogArgs(ctx, args, depth)
 	if err != nil {

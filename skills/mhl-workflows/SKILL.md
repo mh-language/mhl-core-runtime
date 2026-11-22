@@ -108,6 +108,11 @@ test review_change {
   MCP `inputSchema`, and appears in `--dry-run`, the editor's hover and mhl studio's forms.
   Say what a caller must pass (`/// The repository to review, an absolute path.`), not the
   type, which the schema already gives. A plain `//` stays a private note.
+- **`///` above a gate's statement** (`var approved = pause(..., decision: bool)`) documents
+  the decision: it is `awaiting.description`, with the bound name as `awaiting.name`, and
+  labels mhl studio's decision form. Say what each answer does
+  (`/// approved: true publishes the proposal, false discards it`). This matters most for a
+  `bool` gate, where the type alone says nothing.
 
 ## Step design
 

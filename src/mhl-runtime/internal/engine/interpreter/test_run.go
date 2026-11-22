@@ -283,7 +283,8 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, decisi
 		out["state"] = "paused"
 		out["pause_reason"] = res.PauseReason
 		if g := res.PauseGate; g != nil {
-			out["awaiting"] = map[string]any{"step": g.Step, "index": float64(g.Index), "type": g.Type}
+			// name/description: the bound name and `///` doc (ast.GateDoc), null without.
+			out["awaiting"] = map[string]any{"step": g.Step, "index": float64(g.Index), "type": g.Type, "name": nilIfEmpty(g.Name), "description": nilIfEmpty(g.Doc)}
 		}
 		if g := res.PauseInputs; g != nil {
 			out["awaiting_inputs"] = map[string]any{"stage": g.Stage, "step": g.Step, "inputs": stringsToAny(g.Inputs)}
@@ -382,4 +383,12 @@ func (s *memStateStore) WriteResult(pipeline string, vars map[string]any) error 
 	defer s.mu.Unlock()
 	s.results[pipeline] = vars
 	return nil
+}
+
+// nilIfEmpty is s, or nil when it is empty — a test's `null` for an absent string.
+func nilIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }

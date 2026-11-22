@@ -116,6 +116,7 @@ func Parse(source string) (*ast.Program, error) {
 	expandDestructure(prog)
 	expandStages(prog)
 	attachInputDocs(prog, source)
+	attachGateDocs(prog, source)
 	if err := checkAmbiguousBareReturn(prog); err != nil {
 		return nil, err
 	}

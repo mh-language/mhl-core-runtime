@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { clearRun, inspect, startRun } from "../app/controller";
 import { DecisionForm } from "./DecisionForm";
 import { StageInputsForm } from "./StageInputsForm";
-import { set, useStore, type RunTab as Tab } from "../app/store";
+import { runInputPairs, set, useStore, type RunTab as Tab } from "../app/store";
 import type { RunEvent } from "../lib/types";
 
 function fmt(v: unknown): string {
@@ -128,6 +128,21 @@ export function RunPanel() {
                     )}
                     <p className="mono small">{res.error}</p>
                     {res.hint && <p className="muted small">{res.hint}</p>}
+                    {res.kind !== "invalid_inputs" && (
+                      // Start over: a plain Run would get a cached agent's bad answer back.
+                      <div className="failure-actions">
+                        <button
+                          className="btn small"
+                          onClick={() => void startRun(runInputPairs(), { noCache: true })}
+                          title="Start over in a new session, calling every agent again instead of reusing cached replies (mhl run --no-cache)"
+                        >
+                          Run fresh
+                        </button>
+                        <button className="btn small" onClick={() => set({ inputsOpen: true })}>
+                          Change the inputs…
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {!res && !run.running && (

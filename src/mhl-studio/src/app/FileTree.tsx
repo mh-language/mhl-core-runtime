@@ -4,7 +4,8 @@
 // - Folders fold (remembered per workspace); the open file's folders always
 //   unfold.
 // - + (header, or a folder's) creates a file or folder; right-click any row
-//   for New / Rename / Delete; F2 renames and Delete (⌘⌫) deletes the
+//   for New / Copy Path / Rename / Delete; F2 renames, Delete (⌘⌫) deletes,
+//   ⌥⌘C copies the absolute path and ⇧⌥⌘C the workspace-relative one of the
 //   selected row.
 // - Drag a row onto a folder (or the tree's empty space, for the root) to move
 //   it; references to moved files are rewritten (controller.movePath).
@@ -14,13 +15,13 @@
 //   a JSON file as an agent call's schema (app/schemas.ts). Another .mh file
 //   dropped on the code editor or the diagram's Imports card is imported.
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { deletePath, movePath, newAgentFile, newFile, newFolder, openFile, refreshFiles } from "./controller";
+import { deletePath, movePath, newAgentFile, newFile, newFolder, openFile, refreshFiles, toast } from "./controller";
 import { AgentPicker } from "../palette/AgentPicker";
 import { BACKENDS, ROLES, type Backend, type Role } from "../sync/agentTemplates";
 import { isEnv, isJson, isMarkdown, isMh, set, useStore, type LibraryFile } from "./store";
 import { AGENT_MIME, DRAG_MIME, PROMPT_MIME, SCHEMA_MIME } from "../canvas/WorkflowCanvas";
 import { PATH_MIME } from "../canvas/mime";
-import { ancestors, buildTree, closedByDefault, type TreeNode } from "./tree";
+import { ancestors, buildTree, closedByDefault, pathToCopy, type TreeNode } from "./tree";
 import { joinPath } from "../lib/api";
 import { NEW_FILE_ITEMS, type NewFileItem } from "../sync/templates";
 import fileIcon from "../assets/mhl-file.png";
@@ -89,11 +90,22 @@ function NewFileMenu({ at, title, onPick, onClose }: { at: At; title: string; on
   );
 }
 
+function copyPath(root: string, rel: string, relative: boolean) {
+  const text = pathToCopy(root, rel, relative);
+  const done = navigator.clipboard?.writeText(text);
+  if (!done) return toast("error", "The clipboard is not available");
+  done.then(
+    () => toast("info", `Copied ${text}`),
+    () => toast("error", "Could not copy to the clipboard"),
+  );
+}
+
 /** The right-click menu of a row (or of the tree's empty space: `entry` null). */
 function RowMenu({
   at,
   entry,
   onNew,
+  onCopy,
   onRename,
   onDelete,
   onClose,
@@ -101,6 +113,8 @@ function RowMenu({
   at: At;
   entry: Entry | null;
   onNew: () => void;
+  /** Copies the row's path (the root's, for the empty space): absolute, or workspace-relative. */
+  onCopy: (relative: boolean) => void;
   onRename: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -117,10 +131,17 @@ function RowMenu({
     <>
       <div className="menu-backdrop" onClick={onClose} onContextMenu={(e) => (e.preventDefault(), onClose())} />
       <div className="menu narrow" role="menu" style={at}>
-        {(!entry || entry.dir) && item("New file or folder…", "", onNew)}
+        {(!entry || entry.dir) && (
+          <>
+            {item("New file or folder…", "", onNew)}
+            <div className="menu-sep" />
+          </>
+        )}
+        {item("Copy Path", "⌥⌘C", () => onCopy(false))}
+        {item("Copy Relative Path", "⇧⌥⌘C", () => onCopy(true))}
         {entry && (
           <>
-            {entry.dir && <div className="menu-sep" />}
+            <div className="menu-sep" />
             {item("Rename…", "F2", onRename)}
             {item("Move to Trash", "⌘⌫", onDelete, true)}
           </>
@@ -436,6 +457,10 @@ export function FileTree() {
     if (e.key === "F2") {
       e.preventDefault();
       setRenaming(selected.rel);
+    } else if (e.code === "KeyC" && e.altKey && (e.metaKey || e.ctrlKey)) {
+      // e.code, not e.key: ⌥ turns the key into "ç" on a Mac.
+      e.preventDefault();
+      if (root) copyPath(root, selected.rel, e.shiftKey);
     } else if (e.key === "Delete" || (e.key === "Backspace" && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
       remove(selected);
@@ -603,6 +628,7 @@ export function FileTree() {
           entry={rowMenu.entry}
           onClose={() => setRowMenu(null)}
           onNew={() => setMenu({ at: rowMenu.at, dir: rowMenu.entry?.rel ?? "" })}
+          onCopy={(relative) => root && copyPath(root, rowMenu.entry?.rel ?? "", relative)}
           onRename={() => rowMenu.entry && setRenaming(rowMenu.entry.rel)}
           onDelete={() => rowMenu.entry && remove(rowMenu.entry)}
         />

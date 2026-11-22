@@ -589,7 +589,14 @@ func FindPipeline(prog *ast.Program, name string) (Pipeline, error) {
 		if (name == "" && !d.Pipeline.Internal) || d.Pipeline.Name == name {
 			if d.Pipeline.Partial {
 				if n := d.Pipeline.EntryStepCount(); n != 1 {
-					return Pipeline{}, fmt.Errorf("partial %s %q: expected exactly one `entry step` or `entry route` across its fragments, found %d", d.Pipeline.Kind, d.Pipeline.Name, n)
+					hint := ""
+					if n == 0 {
+						// Typically a fragment file run on its own: it doesn't import
+						// the fragment that declares the `entry`, the file that does
+						// imports it.
+						hint = " — run the file whose fragment declares the `entry` (it imports the others), not a fragment alone"
+					}
+					return Pipeline{}, fmt.Errorf("partial %s %q: expected exactly one `entry step` or `entry route` across its fragments, found %d%s", d.Pipeline.Kind, d.Pipeline.Name, n, hint)
 				}
 			}
 			return PipelineFromAST(d.Pipeline, aliases, prog), nil

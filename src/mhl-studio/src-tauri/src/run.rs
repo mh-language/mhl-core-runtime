@@ -46,6 +46,9 @@ pub struct RunRequest {
     /// With `resume`: a stage of the stopped run to redo (`mhl run --from`).
     #[serde(default)]
     pub from: Option<String>,
+    /// Call every agent again instead of reusing a cached reply (`mhl run --no-cache`).
+    #[serde(default)]
+    pub no_cache: bool,
 }
 
 /// The `mhl` argument list for a run request.
@@ -73,6 +76,9 @@ pub fn run_args(req: &RunRequest) -> Vec<String> {
             args.push("--from".into());
             args.push(stage.to_string());
         }
+    }
+    if req.no_cache {
+        args.push("--no-cache".into());
     }
     if let Some(s) = req.session.as_deref().filter(|s| !s.is_empty()) {
         args.push("--session".into());
@@ -189,6 +195,7 @@ mod tests {
             session: Some("abc".into()),
             decision: None,
             from: None,
+            no_cache: false,
         };
         assert_eq!(
             run_args(&req),
@@ -222,6 +229,7 @@ mod tests {
             session: None,
             decision: Some(r#"{"action":"Approve"}"#.into()),
             from: None,
+            no_cache: false,
         };
         assert_eq!(
             run_args(&req)[4..],
@@ -243,6 +251,7 @@ mod tests {
             session: None,
             decision: None,
             from: Some("Build".into()),
+            no_cache: false,
         };
         assert_eq!(run_args(&req)[4..], ["--resume", "--from", "Build"]);
         req.resume = false;
@@ -257,5 +266,27 @@ mod tests {
         );
         assert_eq!(stdout_event("plain text")["type"], "stdout");
         assert_eq!(stdout_event(r#"{"no":"type"}"#)["type"], "stdout");
+    }
+}
+
+#[cfg(test)]
+mod no_cache_tests {
+    use super::*;
+
+    #[test]
+    fn no_cache_adds_the_flag() {
+        let req = RunRequest {
+            cwd: ".".into(),
+            path: "w.mh".into(),
+            workflow: None,
+            inputs: vec![],
+            resume: false,
+            force: false,
+            session: None,
+            decision: None,
+            from: None,
+            no_cache: true,
+        };
+        assert_eq!(run_args(&req)[4..], ["--no-cache"]);
     }
 }

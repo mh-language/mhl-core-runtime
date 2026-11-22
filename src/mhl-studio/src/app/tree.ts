@@ -1,5 +1,6 @@
 // The workspace's files and folders (relative, "/"-separated paths from
 // list_files) as a folder tree for the side bar.
+import { joinPath } from "../lib/api";
 
 export interface DirNode {
   kind: "dir";
@@ -62,4 +63,14 @@ export function ancestors(rel: string): string[] {
 export function closedByDefault(path: string, unlisted: string[]): boolean {
   const name = path.split("/").pop() ?? path;
   return name.startsWith(".") || name === "__pycache__" || unlisted.includes(path);
+}
+
+/**
+ * What Copy Path puts on the clipboard for `rel` ("" = the workspace root):
+ * its absolute path, or with `relative` its path from the workspace root
+ * ("/"-separated, "." for the root itself).
+ */
+export function pathToCopy(root: string, rel: string, relative: boolean): string {
+  if (relative) return rel || ".";
+  return rel ? joinPath(root, rel) : root;
 }

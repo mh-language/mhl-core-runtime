@@ -675,11 +675,12 @@ export async function evaluate(expr: string): Promise<RunResult | null> {
 }
 
 export async function inspect(inputs: [string, string][]) {
-  const { root, activePath, workflow } = get();
-  if (!root || !activePath) return;
+  const { root, workflow } = get();
+  const target = runTarget();
+  if (!root || !target) return;
   await save();
   try {
-    set({ inspection: await api.inspect(root, activePath, workflow, inputs) });
+    set({ inspection: await api.inspect(root, target, workflow, inputs) });
   } catch (e) {
     toast("error", errorText(e));
   }
@@ -736,9 +737,23 @@ function onRunEvent(ev: RunEvent) {
   });
 }
 
-export async function startRun(inputs: [string, string][], opts: { resume?: boolean; force?: boolean; decision?: unknown; from?: string } = {}) {
+/**
+ * The file `mhl run` (and its dry-run) loads for the open workflow: the open
+ * file, unless it is a fragment of a partial workflow another file starts —
+ * then that file (app/fragments.ts), since a fragment alone has no `entry`
+ * and only the file that starts the workflow imports all of its fragments.
+ */
+export function runTarget(): string | null {
+  const s = get();
+  const wf = currentWorkflow(s);
+  if (!s.activePath || !wf?.partial) return s.activePath;
+  return mergeRoot(s.activePath, wf.name, s.library) ?? s.activePath;
+}
+
+export async function startRun(inputs: [string, string][], opts: { resume?: boolean; force?: boolean; decision?: unknown; from?: string; noCache?: boolean } = {}) {
   const { root, activePath, workflow, run: prev } = get();
-  if (!root || !activePath || prev.running) return;
+  const target = runTarget();
+  if (!root || !activePath || !target || prev.running) return;
   await save();
   const session = opts.resume ? (prev.session ?? undefined) : undefined;
   // A resume continues the same execution: keep what it already showed
@@ -752,7 +767,7 @@ export async function startRun(inputs: [string, string][], opts: { resume?: bool
     const id = await api.runStart(
       {
         cwd: root,
-        path: activePath,
+        path: target,
         workflow,
         inputs,
         resume: !!opts.resume,
@@ -760,6 +775,7 @@ export async function startRun(inputs: [string, string][], opts: { resume?: bool
         session,
         ...(opts.resume && opts.decision !== undefined ? { decision: JSON.stringify(opts.decision) } : {}),
         ...(opts.resume && opts.from ? { from: opts.from } : {}),
+        ...(opts.noCache ? { noCache: true } : {}),
       },
       onRunEvent,
     );

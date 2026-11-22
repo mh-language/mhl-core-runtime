@@ -8,6 +8,21 @@ section here, and the release workflow uses that section as the release notes.
 
 ### Added
 
+- **Run fresh starts over without cached agent replies.** It is in the Run ▾ form and
+  in a failed run's panel, next to "Change the inputs…". It is a new session in which
+  every agent is called again (`mhl run --no-cache`). A plain Run also starts from the
+  first step, but it returns a cached agent's previous reply, bad answers included.
+
+- **Copy a file's or folder's path from the file tree.** Right-click a row and pick Copy
+  Path (⌥⌘C) for the absolute path, or Copy Relative Path (⇧⌥⌘C) for the path from the
+  workspace root. The shortcuts act on the selected row. Right-clicking the tree's empty
+  space copies the workspace folder's own path.
+
+- **The decision form says what it is asking.** A gate's decision is labelled with the
+  name the program binds it to, such as `approved`, instead of its type. Its `///` doc is
+  shown beside it, in the run panel and the MCP bench. A `bool` decision is a labelled
+  checkbox with its description below.
+
 - **Stages ask for their own inputs.** A run is started with the workflow's inputs only.
   When it pauses on entering a stage whose inputs are missing (`awaiting_inputs`):
   - the stage card shows "needs …", highlighted;
@@ -83,6 +98,10 @@ section here, and the release workflow uses that section as the release notes.
 
 ### Fixed
 
+- **Run works with a fragment of a partial workflow open.** Run, Resume and the dry-run
+  load the file that starts the workflow, the one with the `entry` fragment, as the diagram
+  already did. Before, they loaded the open fragment. That fragment has no `entry` and does
+  not import the others, so the run failed with "expected exactly one `entry step` … found 0".
 - **Several gotos back up from one step no longer fork.** Each now leaves the step's side from
   its own point and climbs in its own lane. AgileSpec's PrepareRevision, which goes back to
   Specification or Implementation, is an example. Before, they left from one shared point,

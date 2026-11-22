@@ -3170,8 +3170,24 @@ select {
   gap: 8px;
   margin: 4px 0;
 }
-.decision-form .decision-field input[type="checkbox"] {
-  justify-self: start;
+.decision-form .decision-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 0;
+  cursor: pointer;
+}
+.decision-form .decision-check input {
+  margin-top: 2px;
+}
+.decision-form .decision-check > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.decision-form .decision-doc {
+  margin: 0;
+  white-space: pre-wrap;
 }
 
 /* A stage (a fragment's header `stage Name`): a titled box around its steps (canvas/nodes.tsx StageNode). */
@@ -3434,4 +3450,11 @@ select {
   white-space: normal;
   line-height: 1.35;
   text-align: left;
+}
+
+/* A failed run's way out (run/RunPanel.tsx): start over, or fix the inputs first. */
+.failure .failure-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }

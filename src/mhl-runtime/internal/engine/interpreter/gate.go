@@ -119,7 +119,7 @@ func resolveTypeName(aliases map[string]types.Type, name string) (types.Type, bo
 
 // evalGate is pause(reason..., decision: T): the answer, when the resumed
 // run carries one for this gate, else a pause signal naming the gate.
-func evalGate(ctx *evalCtx, reasonArgs []*ast.Argument, typeName string, depth int) (any, error) {
+func evalGate(ctx *evalCtx, reasonArgs []*ast.Argument, typeName string, doc *ast.GateDoc, depth int) (any, error) {
 	if _, ok := resolveTypeName(ctx.aliasTypes, typeName); !ok {
 		return nil, fmt.Errorf("pause: decision: unknown type %q", typeName)
 	}
@@ -144,6 +144,9 @@ func evalGate(ctx *evalCtx, reasonArgs []*ast.Argument, typeName string, depth i
 		}
 	}
 	sig := &pauseSignal{gate: &runtime.Gate{Step: g.step, Index: index, Type: typeName, Answered: append([]runtime.GateReply(nil), g.answered...)}}
+	if doc != nil {
+		sig.gate.Name, sig.gate.Doc = doc.Name, doc.Doc
+	}
 	switch values, err := evalLogArgs(ctx, reasonArgs, depth); {
 	case err != nil:
 		return nil, err
