@@ -99,6 +99,14 @@ func declHover(path, text string, s symbol) *hover {
 		if sg, ok := promptCallSig(path, text, s.Name); ok {
 			parts = append(parts, "```mhl\n"+sg.Label+"\n```")
 		}
+		if len(s.Targets) > 0 {
+			arms := make([]string, 0, len(s.Targets)+1)
+			arms = append(arms, "`default`")
+			for _, t := range s.Targets {
+				arms = append(arms, "`for \""+t+"\"`")
+			}
+			parts = append(parts, "Variants: "+strings.Join(arms, " · ")+" — an agent picks one with `prompt.target(...)`.")
+		}
 	case symEnum:
 		if len(s.Methods) > 0 {
 			parts = append(parts, "Variants: "+backtickJoin(s.Methods))

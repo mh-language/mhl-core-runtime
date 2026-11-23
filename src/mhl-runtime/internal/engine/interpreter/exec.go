@@ -48,7 +48,7 @@ func RunStep(goctx context.Context, prog *ast.Program, pipelineName, stepName, f
 	if step == nil {
 		// An `entry route` runs as the run's first stage, under its own name.
 		if r := findWorkflowRoute(prog, pipelineName, stepName); r != nil && r.Entry {
-			ctx := &evalCtx{prog: prog, pipelineName: pipelineName, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, pipelineName)}
+			ctx := &evalCtx{prog: prog, pipelineName: pipelineName, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), prompts: rootPrompts(goctx), constNames: pipelineConstNames(prog, pipelineName)}
 			return execEntryRoute(ctx, r)
 		}
 		return fmt.Errorf("pipeline step %q not found", stepName)
@@ -63,7 +63,7 @@ func RunStep(goctx context.Context, prog *ast.Program, pipelineName, stepName, f
 		}
 		consts[param] = true
 	}
-	ctx := &evalCtx{prog: prog, pipelineName: owner, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: consts,
+	ctx := &evalCtx{prog: prog, pipelineName: owner, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), prompts: rootPrompts(goctx), constNames: consts,
 		gates: &gateState{step: stepName, answer: gateAnswerFrom(goctx, stepName)}}
 	// A non-nil spawnSem enables `spawn`/`wait` for this step and confines
 	// them to it: drainAtStepEnd joins whatever the step body left running,
@@ -137,7 +137,7 @@ func EvalGroupVars(goctx context.Context, prog *ast.Program, pipelineName, group
 	if pg == nil {
 		return fmt.Errorf("parallel group %q not found in %s", group, pipelineName)
 	}
-	ctx := &evalCtx{prog: prog, pipelineName: pipelineName, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), constNames: pipelineConstNames(prog, pipelineName)}
+	ctx := &evalCtx{prog: prog, pipelineName: pipelineName, store: store, jsonStore: jsonStore, out: out, env: Env{}, pipelineEnv: pipelineEnv, mem: mem, cctx: cctx, file: file, goctx: goctx, aliasTypes: aliasTypesFor(prog), prompts: rootPrompts(goctx), constNames: pipelineConstNames(prog, pipelineName)}
 	for _, v := range pg.Vars {
 		val, err := evalExpr(ctx, v.Decl.Value)
 		if err != nil {
@@ -192,7 +192,7 @@ func EvalPipelineVars(prog *ast.Program, pipelineName, file string, out io.Write
 	}
 
 	env := Env{}
-	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: env, cctx: cctx, file: file, aliasTypes: aliasTypesFor(prog)}
+	ctx := &evalCtx{prog: prog, store: store, jsonStore: jsonStore, out: out, env: env, cctx: cctx, file: file, aliasTypes: aliasTypesFor(prog), prompts: rootPrompts(nil)}
 	for _, member := range pipeline.Body {
 		switch {
 		case member.Const != nil:

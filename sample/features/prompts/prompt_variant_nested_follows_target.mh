@@ -1,0 +1,11 @@
+import {Review, Wrap, CodexLike, Plain} from "fixtures/variants.mh"
+
+// A variant prompt passed as another prompt's argument is resolved for the
+// same target as the outer one.
+test prompt_variant_nested_follows_target {
+    describe prompt_variant_nested_follows_target {
+        var p = Wrap(inner: Review(file: "d.go"))
+        are_equal(CodexLike.run(prompt: p), "BEGIN codex: review d.go; answer with a list. END")
+        are_equal(Plain.run(prompt: p), "BEGIN Review d.go and list the problems you find. END")
+    }
+}

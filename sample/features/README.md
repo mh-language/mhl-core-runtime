@@ -6,7 +6,7 @@ how they're wired together at runtime.
 - [agents/](agents/README.md) — declaring `agent`s and calling `.run()`
 - [router/](router/README.md) — declaring a `router` over a set of agents and calling `.delegate()`
 - [memory/](memory/README.md) — declaring `memory` stores and reading/writing them
-- [prompts/](prompts/README.md) — declaring and rendering `prompt` templates
+- [prompts/](prompts/README.md) — declaring and rendering `prompt` templates, and their per-harness/model variants
 - [pipelines/](pipelines/README.md) — wiring an agent into a `pipeline` `step`
 - [mcp/](mcp/README.md) — declaring an `extension mcp` and calling it with `.call(...)`
 - [a2a/](a2a/README.md) — declaring an `extension a2a` and calling a remote A2A agent with `.send(...)`/`.agent_card()`/`.get_task(...)`/`.cancel(...)`

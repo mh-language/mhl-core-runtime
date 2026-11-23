@@ -281,6 +281,11 @@ este índice cobre apenas o que tem exemplo executável aqui.
   [syntax/pipeline_vs_workflow/](syntax/pipeline_vs_workflow/README.md)
 - **`prompt`** — template declarado, chamado como função, aninhável.
   → [features/prompts/](features/prompts/README.md)
+- **Variantes de `prompt`** (`default` / `for "<alvo>"`) — corpos por harness/modelo; o agente
+  escolhe com `prompt.target(...)` no próprio `stdin:`/`args`, sem mudar o call site.
+  → [prompt_variant_selected_by_agent_target.mh](features/prompts/prompt_variant_selected_by_agent_target.mh) ·
+  [prompt_variant_target_from_input.mh](features/prompts/prompt_variant_target_from_input.mh) ·
+  [prompt_variant_fallback_picks_own_variant.mh](features/prompts/prompt_variant_fallback_picks_own_variant.mh)
 
 ## Q
 

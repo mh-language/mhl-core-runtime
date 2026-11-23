@@ -178,17 +178,37 @@ func resolveImportsInto(file string, prog *ast.Program, merged *ast.Program, res
 	var present *declIndex
 	for _, decl := range prog.Decls {
 		switch {
-		case decl.Prompt != nil && decl.Prompt.Source != "":
-			fm, text, err := loadPromptSource(dir, decl.Prompt.Source)
-			if err != nil {
-				out.emit(Finding{
-					File: fileAt(file, decl.Prompt.Pos), Line: decl.Prompt.Pos.Line, Column: decl.Prompt.Pos.Column,
-					Message: fmt.Sprintf("prompt %q from %q: %s", decl.Prompt.Name, decl.Prompt.Source, err),
-				})
-				continue
+		case decl.Prompt != nil && (decl.Prompt.Source != "" || len(decl.Prompt.Variants) > 0):
+			p := decl.Prompt
+			if p.Source != "" {
+				fm, text, err := loadPromptSource(dir, p.Source)
+				if err != nil {
+					out.emit(Finding{
+						File: fileAt(file, p.Pos), Line: p.Pos.Line, Column: p.Pos.Column,
+						Message: fmt.Sprintf("prompt %q from %q: %s", p.Name, p.Source, err),
+					})
+				} else {
+					p.Frontmatter = fm
+					p.Body = ast.NewMultilineStringExpr(text)
+				}
 			}
-			decl.Prompt.Frontmatter = fm
-			decl.Prompt.Body = ast.NewMultilineStringExpr(text)
+			// Every variant arm's file is checked, each missing one its
+			// own finding (interpreter.loadPromptSources stops at the first).
+			for _, v := range p.Variants {
+				if v.Source == "" {
+					continue
+				}
+				fm, text, err := loadPromptSource(dir, v.Source)
+				if err != nil {
+					out.emit(Finding{
+						File: fileAt(file, v.Pos), Line: v.Pos.Line, Column: v.Pos.Column,
+						Message: fmt.Sprintf("prompt %q (for %q) from %q: %s", p.Name, v.Pattern, v.Source, err),
+					})
+					continue
+				}
+				v.Frontmatter = fm
+				v.Body = ast.NewMultilineStringExpr(text)
+			}
 		case decl.Skill != nil && decl.Skill.Source != "":
 			fm, content, err := loadSkillSource(dir, decl.Skill.Source)
 			if err != nil {

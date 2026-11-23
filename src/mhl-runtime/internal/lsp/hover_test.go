@@ -207,3 +207,28 @@ workflow W {
 		t.Fatalf("cross-fragment hover = %v", h)
 	}
 }
+
+// TestHoverOnVariantPromptListsVariants covers a prompt with `for` arms: the
+// hover lists every arm an agent can pick.
+func TestHoverOnVariantPromptListsVariants(t *testing.T) {
+	src, pos := posAtMarker(t, `
+prompt Review(file: string) {
+    default         { "Review ${file}." }
+    for "claude/*"  { "<task>${file}</task>" }
+    for "cli/codex" { "codex ${file}" }
+}
+
+pipeline P {
+    step S {
+        var r = Rev§iew(file: "x")
+    }
+}
+`)
+	h := hoverAt("main.mh", src, pos)
+	if h == nil {
+		t.Fatal("expected hover over Review")
+	}
+	if want := "Variants: `default` · `for \"claude/*\"` · `for \"cli/codex\"`"; !strings.Contains(h.Contents.Value, want) {
+		t.Errorf("hover = %q, missing %q", h.Contents.Value, want)
+	}
+}

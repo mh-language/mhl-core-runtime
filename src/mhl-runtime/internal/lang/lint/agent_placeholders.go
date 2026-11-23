@@ -63,6 +63,12 @@ func checkAgentPlaceholders(file, agentName string, a *ast.Agent, p *ast.Propert
 			if !ok || s == "${prompt}" || s == "${schema}" {
 				continue
 			}
+			if arg, isTarget := promptTargetSpanArg(s); isTarget && s == "${prompt.target("+arg+")}" {
+				if f, bad := promptTargetArgFinding(file, agentName, a, "args", arg, p.Pos); bad {
+					findings = append(findings, f)
+				}
+				continue
+			}
 			for _, span := range findPlaceholderSpans(s) {
 				if isInput(span) {
 					continue
@@ -76,11 +82,50 @@ func checkAgentPlaceholders(file, agentName string, a *ast.Agent, p *ast.Propert
 				if span == "${prompt}" || span == "${schema}" || isInput(span) {
 					continue
 				}
+				if arg, isTarget := promptTargetSpanArg(span); isTarget {
+					if f, bad := promptTargetArgFinding(file, agentName, a, "stdin", arg, p.Pos); bad {
+						findings = append(findings, f)
+					}
+					continue
+				}
 				findings = append(findings, agentPlaceholderFinding(file, agentName, "stdin", span, p.Pos))
 			}
 		}
 	}
 	return findings
+}
+
+// promptTargetSpanArg reads X out of a "${prompt.target(X)}" span (the
+// prompt-variant placeholder, interpreter.parsePromptTargetSpan), as written.
+func promptTargetSpanArg(span string) (string, bool) {
+	inner, ok := strings.CutPrefix(span, "${prompt.target(")
+	if !ok {
+		return "", false
+	}
+	inner, ok = strings.CutSuffix(inner, ")}")
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSpace(inner), true
+}
+
+// promptTargetArgFinding reports a "${prompt.target(X)}" whose X is neither
+// one of the agent's declared inputs nor a string literal — the only two
+// forms the literal placeholder accepts (anything else takes the expression
+// form, `stdin: prompt.target(...)`).
+func promptTargetArgFinding(file, agentName string, a *ast.Agent, prop, arg string, pos lexer.Position) (Finding, bool) {
+	if len(arg) >= 2 && arg[0] == '"' && arg[len(arg)-1] == '"' {
+		return Finding{}, false
+	}
+	if _, ok := a.FindInput(arg); ok {
+		return Finding{}, false
+	}
+	return Finding{
+		File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
+		Message: fmt.Sprintf(
+			"agent %q: %s: ${prompt.target(%s)} needs a declared input or a string literal; %q is neither — declare `input %s: string` or use the expression form (%s: prompt.target(...))",
+			agentName, prop, arg, arg, arg, prop),
+	}, true
 }
 
 func agentPlaceholderFinding(file, agentName, prop, span string, pos lexer.Position) Finding {

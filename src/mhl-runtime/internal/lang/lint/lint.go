@@ -106,6 +106,7 @@ func source(path, src string, cache *importCache) []Finding {
 	findings = append(findings, checkPipelineProperties(path, merged)...)
 	findings = append(findings, checkAgentProperties(path, merged, aliases)...)
 	findings = append(findings, checkAgentExprNames(path, merged, aliases)...)
+	findings = append(findings, checkPromptVariants(path, merged)...)
 	findings = append(findings, checkAgentSkillsProperty(path, merged)...)
 	findings = append(findings, checkAgentSystemPromptBody(path, merged, aliases)...)
 	findings = append(findings, checkRouterProperties(path, merged)...)

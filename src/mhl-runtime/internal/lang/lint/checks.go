@@ -2014,10 +2014,22 @@ func renderPromptCallArgs(prog *ast.Program, decl *ast.Prompt, call *ast.Call) (
 		}
 		values[arg.Name] = rendered
 	}
-	for name := range declared {
-		if !supplied[name] {
-			return nil, false, fmt.Errorf("missing value for parameter %q", name)
+	// An omitted parameter falls back to its default, evaluated in the
+	// caller's scope at run time (interpreter.renderPromptCallDynamic): a
+	// string-literal default is a known value, anything else is only known
+	// then. Only a parameter with no default is genuinely missing.
+	for _, p := range decl.Params {
+		if supplied[p.Name] {
+			continue
 		}
+		if p.Default == nil {
+			return nil, false, fmt.Errorf("missing value for parameter %q", p.Name)
+		}
+		if s, ok := ast.StringValue(p.Default); ok {
+			values[p.Name] = s
+			continue
+		}
+		resolved = false
 	}
 	return values, resolved, nil
 }

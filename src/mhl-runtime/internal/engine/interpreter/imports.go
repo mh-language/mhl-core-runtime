@@ -219,13 +219,10 @@ func resolveImports(file string, prog *ast.Program, resolved *moduleSet) error {
 	var present *declIndex
 	for _, decl := range prog.Decls {
 		switch {
-		case decl.Prompt != nil && decl.Prompt.Source != "":
-			fm, text, err := loadPromptSource(resolved.read, dir, decl.Prompt.Source)
-			if err != nil {
-				return fmt.Errorf("prompt %q from %q: %w", decl.Prompt.Name, decl.Prompt.Source, err)
+		case decl.Prompt != nil && (decl.Prompt.Source != "" || len(decl.Prompt.Variants) > 0):
+			if err := loadPromptSources(resolved.read, dir, decl.Prompt); err != nil {
+				return err
 			}
-			decl.Prompt.Frontmatter = fm
-			decl.Prompt.Body = ast.NewMultilineStringExpr(text)
 		case decl.Skill != nil && decl.Skill.Source != "":
 			fm, content, err := loadSkillSource(resolved.read, dir, decl.Skill.Source)
 			if err != nil {
@@ -462,6 +459,32 @@ func loadModule(read func(string) ([]byte, error), dir, path string) (*ast.Progr
 		return nil, fmt.Errorf("parsing %s: %w", full, err)
 	}
 	return module, nil
+}
+
+// loadPromptSources loads every file-sourced body of p: the default (Source)
+// and each `for` variant arm declared `from "path"`, all resolved relative to
+// dir. Each loaded body replaces that arm's Body and fills its Frontmatter.
+func loadPromptSources(read func(string) ([]byte, error), dir string, p *ast.Prompt) error {
+	if p.Source != "" {
+		fm, text, err := loadPromptSource(read, dir, p.Source)
+		if err != nil {
+			return fmt.Errorf("prompt %q from %q: %w", p.Name, p.Source, err)
+		}
+		p.Frontmatter = fm
+		p.Body = ast.NewMultilineStringExpr(text)
+	}
+	for _, v := range p.Variants {
+		if v.Source == "" {
+			continue
+		}
+		fm, text, err := loadPromptSource(read, dir, v.Source)
+		if err != nil {
+			return fmt.Errorf("prompt %q (for %q) from %q: %w", p.Name, v.Pattern, v.Source, err)
+		}
+		v.Frontmatter = fm
+		v.Body = ast.NewMultilineStringExpr(text)
+	}
+	return nil
 }
 
 // loadPromptSource reads the file at path, resolved relative to dir, for a

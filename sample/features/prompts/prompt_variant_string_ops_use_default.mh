@@ -1,0 +1,14 @@
+import {Review, CodexLike} from "fixtures/variants.mh"
+
+// Any string operation on a rendered prompt works on its default text and
+// yields an ordinary string: the variants do not survive concatenation,
+// interpolation or a method like trim(). target() on any other string
+// returns it unchanged.
+test prompt_variant_string_ops_use_default {
+    describe prompt_variant_string_ops_use_default {
+        var p = Review(file: "c.go")
+        are_equal(CodexLike.run(prompt: p + " Be brief."), "Review c.go and list the problems you find. Be brief.")
+        are_equal(p.target("codex/gpt-5"), "codex: review c.go; answer with a list.")
+        are_equal("any text".target("codex/gpt-5"), "any text")
+    }
+}

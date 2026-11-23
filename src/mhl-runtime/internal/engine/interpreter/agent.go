@@ -309,30 +309,52 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 	}
 	engine, _ := agentEngine(agent)
 
+	// The agent's own property expressions (args, stdin, cwd, log, timeout)
+	// see the call's prompt as `prompt`, so a declaration can pick the
+	// prompt variant for its harness/model itself — `stdin:
+	// prompt.target("claude/" + model)` — on every leg, fallbacks included
+	// (prompt_variants.go). picks collects those selections for `trace`.
+	propCtx := ctx
+	var picks []string
+	if ctx != nil {
+		propCtx = withBindings(ctx, map[string]any{"prompt": promptText})
+		propCtx.promptPicks = &picks
+	}
+	placement := agentPromptPlacement(agent)
+
 	var command string
 	var cmdArgs []string
 	var stdinTemplate string
 	var endpoint, model string
 	var temperature *float64
 	var cwd string
+	var stdinText string
 	var logCfg agentLog
 	var hasLog bool
 
 	switch {
 	case engine == "" || strings.HasPrefix(engine, "cli/"):
 		var cfgErr error
-		command, cmdArgs, stdinTemplate, cfgErr = resolveAgentCommand(ctx, agent, depth)
+		command, cmdArgs, stdinTemplate, cfgErr = resolveAgentCommand(propCtx, agent, depth)
 		if cfgErr != nil {
 			return "", cfgErr
+		}
+		if cmdArgs, cfgErr = resolveArgsPromptTargets(propCtx, agent, cmdArgs, promptText, &placement); cfgErr != nil {
+			return "", fmt.Errorf("agent %q: %w", agentName, cfgErr)
 		}
 		// cwd and log are resolved once per leg, before any attempt: a bad
 		// expression or a missing directory is a configuration error, never
 		// something a retry could fix.
-		if cwd, cfgErr = resolveAgentCwd(ctx, agentName, agent, depth); cfgErr != nil {
+		if cwd, cfgErr = resolveAgentCwd(propCtx, agentName, agent, depth); cfgErr != nil {
 			return "", cfgErr
 		}
 		command = commandForCwd(command, cwd)
-		if logCfg, hasLog, cfgErr = resolveAgentLog(ctx, agentName, agent, depth); cfgErr != nil {
+		if logCfg, hasLog, cfgErr = resolveAgentLog(propCtx, agentName, agent, depth); cfgErr != nil {
+			return "", fmt.Errorf("agent %q: %w", agentName, cfgErr)
+		}
+		// stdin is resolved once per leg too — before the cache key, which
+		// must see the variant a `${prompt.target(X)}` span picked.
+		if stdinText, cfgErr = resolveAgentStdin(propCtx, agent, stdinTemplate, promptText, schemaText, &placement); cfgErr != nil {
 			return "", fmt.Errorf("agent %q: %w", agentName, cfgErr)
 		}
 	case strings.HasPrefix(engine, "ollama/"):
@@ -350,6 +372,12 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 		return "", fmt.Errorf("agent %q: engine %q is not supported yet", agentName, engine)
 	}
 
+	if ctx != nil && agentTrace(agent) {
+		for _, pick := range picks {
+			fmt.Fprintf(ctx.out, "agent %s: %s\n", agentName, pick)
+		}
+	}
+
 	cache, ttl, hasCache, err := agentCache(agent)
 	if err != nil {
 		return "", err
@@ -362,10 +390,16 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 		// model or temperature) are distinct requests and must never hit each
 		// other's entry on disk. traffic.RequestKey folds this whole struct
 		// into the SHA-256 alongside engine and prompt.
+		keyStdin := stdinTemplate
+		if placement.stdinTargeted {
+			// The template alone (`${prompt.target(model)}`) would let two
+			// different variants share a key.
+			keyStdin = stdinText
+		}
 		params := agentCacheParams{
 			Command:     command,
 			Args:        cmdArgs,
-			Stdin:       stdinTemplate,
+			Stdin:       keyStdin,
 			Endpoint:    endpoint,
 			Model:       model,
 			Temperature: temperature,
@@ -392,7 +426,7 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 		return "", err
 	}
 
-	deadline, err := agentTimeout(ctx, agentName, agent, depth)
+	deadline, err := agentTimeout(propCtx, agentName, agent, depth)
 	if err != nil {
 		return "", err
 	}
@@ -424,14 +458,9 @@ func runAgentAttemptWith(ctx *evalCtx, agentName string, agent *ast.Agent, promp
 		var result tools.Result
 		var runErr error
 		if engine == "" || strings.HasPrefix(engine, "cli/") {
-			promptViaStdin := strings.Contains(stdinTemplate, "${prompt}")
-			finalArgs, argErr := injectSchemaArg(injectPromptArg(cmdArgs, promptText, promptViaStdin), schemaText)
+			finalArgs, argErr := injectSchemaArg(injectPromptArg(cmdArgs, promptText, placement.placedElsewhere()), schemaText)
 			if argErr != nil {
 				return traffic.Result{}, fmt.Errorf("agent %q: %w", agentName, argErr)
-			}
-			stdinText, stdinErr := resolveStdinText(stdinTemplate, promptText, schemaText)
-			if stdinErr != nil {
-				return traffic.Result{}, fmt.Errorf("agent %q: %w", agentName, stdinErr)
 			}
 			// timeout/kill_grace bound this one attempt: a fresh deadline
 			// per retry, enforced by tools.Cmd itself (SIGTERM to the

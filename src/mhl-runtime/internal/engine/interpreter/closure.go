@@ -102,6 +102,7 @@ func (c *Closure) callCtx(callEnv Env) *evalCtx {
 		aliasTypes:   c.definingCtx.aliasTypes,
 		constNames:   c.definingCtx.constNames,
 		registry:     c.definingCtx.registry,
+		prompts:      promptsOf(c.definingCtx),
 	}
 }
 

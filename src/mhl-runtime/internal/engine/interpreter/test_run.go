@@ -222,7 +222,8 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, decisi
 		return EvalGroupVars(goctx, ctx.prog, pipeline.Decl, group, ctx.file, out, ctx.store, ctx.jsonStore, rc.Vars, mem, contextView)
 	}
 	runner := runtime.NewRunner(tmpDir).Session(sessionID).WithStateStore(newMemStateStore()).WithInputs(inputs)
-	res, runErr := runner.Run(goctxOf(ctx), pipeline, init, exec, false)
+	runGoctx := WithPromptRegistry(goctxOf(ctx))
+	res, runErr := runner.Run(runGoctx, pipeline, init, exec, false)
 	executed := append([]string{}, res.Executed...)
 	// Answer each gate the run stops at with the next decision, resuming it
 	// from its checkpoint as a real resume would.
@@ -247,7 +248,7 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, decisi
 			replay = append(replay, GateReplay{Type: r.Type, Value: r.Decision})
 		}
 		answer = &GateAnswer{Step: gate.Step, Index: gate.Index, Value: v, Replay: replay}
-		res, runErr = runner.Run(goctxOf(ctx), pipeline, init, exec, true)
+		res, runErr = runner.Run(runGoctx, pipeline, init, exec, true)
 		executed = append(executed, res.Executed...)
 	}
 	res.Executed = executed

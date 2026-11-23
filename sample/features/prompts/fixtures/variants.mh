@@ -1,0 +1,38 @@
+// Review has one default body and variants tuned per harness/model. The
+// prompt never decides which one is used: the agent that receives it does,
+// with `prompt.target(...)` in its own declaration.
+export prompt Review(file: string) {
+    default            from "review.prompt.md"
+    for "claude/*"     from "review.claude.prompt.md"
+    for "codex/gpt-5*" { "codex: review ${file}; answer with a list." }
+}
+
+// Wrap composes another prompt; a variant prompt passed to it follows the
+// same target.
+export prompt Wrap(inner: string) { "BEGIN ${inner} END" }
+
+// ClaudeLike picks its variant from the model chosen for this call (an
+// input), the same expression that would build its --model flag. `cat`
+// stands in for the real CLI so the samples can read what it received.
+export agent ClaudeLike {
+    input model: string = "sonnet"
+    command: "sh"
+    args: ["-c", "cat"]
+    stdin: prompt.target("claude/" + model)
+}
+
+// CodexLike uses the literal placeholder form: `${prompt.target(X)}` where
+// X is one of its inputs (or a string literal).
+export agent CodexLike {
+    input model: string = "codex/gpt-5.6"
+    command: "sh"
+    args: ["-c", "cat"]
+    stdin: "${prompt.target(model)}"
+}
+
+// Plain keeps the classic `${prompt}`: always the default text.
+export agent Plain {
+    command: "sh"
+    args: ["-c", "cat"]
+    stdin: "${prompt}"
+}

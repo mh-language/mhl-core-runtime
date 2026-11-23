@@ -417,3 +417,27 @@ func TestDefinitionDigestUnchangedByStages(t *testing.T) {
 		t.Fatal("putting a fragment in a stage must change the digest")
 	}
 }
+
+// Prompt.Variants (prompt variants) is omitzero, and the parser moves a
+// variant body's default arm into Body/Source: prompts without `for` arms
+// hash exactly as before variants existed (the pinned value was computed by
+// the build preceding them), a body that declares only a default hashes like
+// the plain form, and adding or changing a `for` arm changes the digest.
+func TestDefinitionDigestUnchangedByPromptVariants(t *testing.T) {
+	src := "prompt Inline(name: string) { \"hello ${name}\" }\nprompt Multi(a: string, b: string = \"x\") {\n \"\"\"\n ${a} and ${b}\n \"\"\"\n}\nprompt File(a: string) from \"f.prompt.md\"\npipeline P {\n step S { log(Inline(name: \"n\") + Multi(a: \"a\") + File(a: \"z\")) }\n}\n"
+	const want = "2880cc1adf90dd27de539ba2984cdf6c1b811490ddf510792645285be30b1ee6"
+	if got := digestOfPipeline(t, src, "P"); got != want {
+		t.Fatalf("digest = %s, want %s (the pre-variants value)", got, want)
+	}
+	defaultOnly := strings.Replace(src, "{ \"hello ${name}\" }", "{ default { \"hello ${name}\" } }", 1)
+	defaultOnly = strings.Replace(defaultOnly, "from \"f.prompt.md\"", "{ default from \"f.prompt.md\" }", 1)
+	if got := digestOfPipeline(t, defaultOnly, "P"); got != want {
+		t.Fatalf("a default-only variant body must hash like the plain form: %s", got)
+	}
+	withArm := strings.Replace(src, "from \"f.prompt.md\"", "{ default from \"f.prompt.md\" for \"claude/*\" { \"c\" } }", 1)
+	otherArm := strings.Replace(withArm, "{ \"c\" }", "{ \"d\" }", 1)
+	a, b := digestOfPipeline(t, withArm, "P"), digestOfPipeline(t, otherArm, "P")
+	if a == want || b == want || a == b {
+		t.Fatal("adding or changing a `for` arm must change the digest")
+	}
+}

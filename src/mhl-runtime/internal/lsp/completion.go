@@ -125,6 +125,12 @@ var declarationSnippets = map[string][]declarationSnippet{
 			"\t${4:Instructions for the agent.}\n" +
 			"\t\"\"\"\n" +
 			"}\n$0",
+	}, {
+		detail: `prompt Name(param: type) { default ... for "target" ... } — variants per harness/model`,
+		body: "prompt ${1:Name}(${2:param}: ${3:string}) {\n" +
+			"\tdefault { \"${4:Instructions for any agent: \\${param}.}\" }\n" +
+			"\tfor \"${5:claude/*}\" { \"${6:Instructions tuned for this harness: \\${param}.}\" }\n" +
+			"}\n$0",
 	}},
 	"pipeline": {
 		{

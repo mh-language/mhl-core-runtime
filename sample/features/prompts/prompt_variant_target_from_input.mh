@@ -1,0 +1,11 @@
+import {Review, CodexLike} from "fixtures/variants.mh"
+
+// The target can change per call — a model chosen at run time, passed as the
+// agent's input. A target no `for` arm matches falls back to the default.
+test prompt_variant_target_from_input {
+    describe prompt_variant_target_from_input {
+        are_equal(CodexLike.run(prompt: Review(file: "a.go"), model: "codex/gpt-5.5"), "codex: review a.go; answer with a list.")
+        are_equal(CodexLike.run(prompt: Review(file: "a.go"), model: "claude/opus-5"), "<task>Review a.go</task>\n<output>A list of problems.</output>")
+        are_equal(CodexLike.run(prompt: Review(file: "a.go"), model: "ollama/qwen"), "Review a.go and list the problems you find.")
+    }
+}

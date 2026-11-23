@@ -45,6 +45,7 @@ func EvalOutputs(goctx context.Context, prog *ast.Program, expr *ast.Expr, file 
 		file:       file,
 		goctx:      goctx,
 		aliasTypes: aliasTypesFor(prog),
+		prompts:    rootPrompts(goctx),
 	}
 	v, err := evalExpr(ctx, expr)
 	if err != nil {

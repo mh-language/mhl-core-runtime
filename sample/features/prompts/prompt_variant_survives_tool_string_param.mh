@@ -1,0 +1,16 @@
+import {Review, CodexLike} from "fixtures/variants.mh"
+
+// A rendered prompt is still a string — its default text — so it passes
+// through a tool parameter typed `string` untouched, and the agent at the
+// end of the chain still picks its variant.
+tool Writer {
+    generate(prompt: string): string -> CodexLike.run(prompt:)
+}
+
+test prompt_variant_survives_tool_string_param {
+    describe prompt_variant_survives_tool_string_param {
+        var p = Review(file: "b.go")
+        are_equal(p, "Review b.go and list the problems you find.")
+        are_equal(Writer.generate(p), "codex: review b.go; answer with a list.")
+    }
+}

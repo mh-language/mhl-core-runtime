@@ -1,0 +1,12 @@
+import {Review, ClaudeLike, CodexLike, Plain} from "fixtures/variants.mh"
+
+// The same call site, three agents: each one picks the variant for its own
+// harness/model with prompt.target(...); `${prompt}` stays the default.
+test prompt_variant_selected_by_agent_target {
+    describe prompt_variant_selected_by_agent_target {
+        var p = Review(file: "auth.go")
+        are_equal(ClaudeLike.run(prompt: p), "<task>Review auth.go</task>\n<output>A list of problems.</output>")
+        are_equal(CodexLike.run(prompt: p), "codex: review auth.go; answer with a list.")
+        are_equal(Plain.run(prompt: p), "Review auth.go and list the problems you find.")
+    }
+}

@@ -1,0 +1,16 @@
+import {Review, CodexLike} from "fixtures/variants.mh"
+
+// Each fallback leg evaluates its own declaration, so a fallback on another
+// harness receives that harness's variant, not the primary's.
+agent ClaudeDown {
+    command: "sh"
+    args: ["-c", "exit 1"]
+    stdin: prompt.target("claude/sonnet")
+    fallback: [CodexLike]
+}
+
+test prompt_variant_fallback_picks_own_variant {
+    describe prompt_variant_fallback_picks_own_variant {
+        are_equal(ClaudeDown.run(prompt: Review(file: "e.go")), "codex: review e.go; answer with a list.")
+    }
+}

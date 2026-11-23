@@ -77,6 +77,7 @@ type Declaration struct {
 	Schema   string   `json:"schema,omitempty"`
 	Methods  []Method `json:"methods,omitempty"`  // tool methods, `internal` ones included
 	Variants []string `json:"variants,omitempty"` // an enum's variants, in order
+	Targets  []string `json:"targets,omitempty"`  // a prompt's `for` variant patterns, in order (its default is Detail/the body)
 	// The rest is set for a tool only, so an editor can rewrite it in place:
 	// its name, the braces around its members, and every `Name.` call site
 	// in this file (a rename rewrites them too).
@@ -475,6 +476,7 @@ func (b *builder) declarationOf(d *ast.Declaration) (Declaration, bool) {
 		decl.Kind, decl.Name, decl.Detail = "extension", d.Extension.Name, d.Extension.Kind
 	case d.Prompt != nil:
 		decl.Kind, decl.Name, decl.Detail = "prompt", d.Prompt.Name, d.Prompt.Source
+		decl.Targets = d.Prompt.Targets()
 		for _, p := range d.Prompt.Params {
 			if p.Default == nil {
 				decl.Params = append(decl.Params, p.Name)

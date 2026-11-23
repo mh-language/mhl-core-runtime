@@ -92,6 +92,9 @@ type symbol struct {
 	// Internal names the tool methods declared `internal`: still offered
 	// after `self.` inside the tool, never after `Tool.` from outside it.
 	Internal map[string]bool
+	// Targets lists a symPrompt's `for` variant patterns, in declaration
+	// order (hover shows them; never completed after `Name.`).
+	Targets []string
 }
 
 // public is s without its internal methods — what `Tool.` completes to.
@@ -132,7 +135,7 @@ func symbolsFromProgram(path string, prog *ast.Program) []symbol {
 			}
 			syms = append(syms, symbol{Name: decl.Tool.Name, Kind: symTool, Methods: methods, Internal: internal})
 		case decl.Prompt != nil:
-			syms = append(syms, symbol{Name: decl.Prompt.Name, Kind: symPrompt})
+			syms = append(syms, symbol{Name: decl.Prompt.Name, Kind: symPrompt, Targets: decl.Prompt.Targets()})
 		case decl.Schema != nil:
 			syms = append(syms, symbol{Name: decl.Schema.Name, Kind: symSchema, Methods: schemaFields})
 		case decl.Pipeline != nil:
@@ -395,7 +398,7 @@ func kindFromKeyword(kw string) (symbolKind, bool) {
 // in sync by hand the same way nativeSymbols already is, since there's no
 // single source these are generated from either.
 var (
-	stringMethods = []string{"size", "is_empty", "equals", "deep_equal", "contains", "split", "replace", "starts_with", "ends_with", "matches", "trim", "to_upper", "to_lower", "substring", "remove", "remove_content", "extract_content"}
+	stringMethods = []string{"size", "is_empty", "equals", "deep_equal", "contains", "split", "replace", "starts_with", "ends_with", "matches", "trim", "to_upper", "to_lower", "substring", "remove", "remove_content", "extract_content", "target"}
 	arrayMethods  = []string{"size", "is_empty", "equals", "deep_equal", "contains", "get_index", "index_of", "filter", "find", "sort_by", "map", "flat_map", "reduce", "any", "all", "append", "join", "unique", "enumerate"}
 	objectMethods = []string{"size", "is_empty", "equals", "deep_equal", "keys", "values", "get"}
 )

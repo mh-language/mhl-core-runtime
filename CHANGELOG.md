@@ -10,6 +10,39 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+### Added
+
+- **Prompt variants per harness/model.** A `prompt` body may list one `default` arm and any
+  number of `for "<pattern>"` arms, each inline (`{ "..." }`) or `from "file.md"`. The agent
+  that receives the prompt picks the arm in its own declaration, so call sites never change:
+  `stdin: prompt.target("claude/" + model)`, or the literal `"${prompt.target(model)}"`
+  (an input or a string literal). Inside the expressions of an agent's `command`/`args`/
+  `stdin`/`cwd`/`log`/`timeout`, `prompt` is the call's prompt. An exact pattern beats a
+  prefix ending in `*`, and a longer prefix beats a shorter one; with no match the agent gets
+  `default`. `"${prompt}"` is still the default text, so existing agents are unchanged.
+  - A rendered prompt is still a plain string (its default text). It keeps its variants
+    across vars, tool parameters typed `string`, returns and the steps of a run. A string
+    operation gives an ordinary string.
+  - A nested prompt follows the same target. Each `fallback` leg picks its own variant. A
+    router's `select` sees the default.
+  - With `trace: true`, the agent prints the pick
+    (`prompt Review → for "claude/*" (target "claude/sonnet")`), and the cache key tells the
+    variants apart.
+  - The pick is not checkpointed: after a resume, a prompt rendered before the pause gets
+    its default.
+  - New string method `.target(t)`. `mhl lint` checks every arm's placeholders and arm files,
+    and the `${prompt.target(X)}` argument. `mhl graph` lists a prompt's `targets`. The LSP
+    hover lists the variants and offers a variant snippet.
+  - Programs without variants keep their `DefinitionDigest`, so their checkpoints still
+    resume.
+  - Design: `docs/MHL-PROMPT-VARIANTS.md`.
+
+### Fixed
+
+- **`mhl lint` no longer reports a defaulted prompt parameter as missing.** It used to report
+  `Echo.run(prompt: G(name: "a"))`, where `G` declares `lang: string = "en"`, as
+  `missing value for parameter "lang"`, although the runtime fills in the default.
+
 ## 1.15.0 — 2026-11-22
 
 ### Added

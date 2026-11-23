@@ -30,6 +30,8 @@ export interface Declaration {
   methods?: ToolMethod[];
   /** An enum's variants, in order. */
   variants?: string[];
+  /** A prompt's `for` variant patterns, in order (e.g. "claude/*"); the default arm is `detail`/the body. */
+  targets?: string[];
   // Set for a tool only: its name, the braces around its members, and every
   // `Name.` call site in this file.
   nameSpan?: Span;

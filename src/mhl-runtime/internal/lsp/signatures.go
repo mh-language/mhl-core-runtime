@@ -276,6 +276,7 @@ var stringMethodSigs = map[string]sig{
 	"substring":       {Label: "substring(start: number, end: number) -> string", Params: []string{"start", "end"}, Doc: "Byte range `[start, end)`; both bounds must be integers within `[0, size()]`."},
 	"remove":          {Label: "remove(from: number, to: number) -> string", Params: []string{"from", "to"}, Doc: "Removes the byte range `[from, to)`; both bounds must be integers within `[0, size()]`, the complement of substring()."},
 	"remove_content":  {Label: "remove_content(from: string, to: string) -> string", Params: []string{"from", "to"}, Doc: "Removes the first occurrence of `from`, through the end of the first `to` found after it — both markers included. Raises if either marker isn't found."},
+	"target":          {Label: "target(target: string) -> string", Params: []string{"target"}, Doc: "The prompt variant `target` selects (a `for` arm: exact pattern, then longest `prefix*`, then `default`) when the string is a rendered prompt with variants — typically `prompt.target(...)` in an agent's `stdin:`/`args`. Any other string (a literal, a transformed prompt) is returned unchanged."},
 	"extract_content": {Label: "extract_content(from: string, to: string) -> string", Params: []string{"from", "to"}, Doc: "Keeps only the first occurrence of `from`, through the end of the first `to` found after it — both markers included; the complement of remove_content(). Raises if either marker isn't found."},
 }
 

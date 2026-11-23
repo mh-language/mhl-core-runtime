@@ -112,6 +112,9 @@ func Parse(source string) (*ast.Program, error) {
 			}
 		}
 	}
+	if err := normalizePromptVariants(prog); err != nil {
+		return nil, err
+	}
 	expandShorthand(prog)
 	expandDestructure(prog)
 	expandStages(prog)

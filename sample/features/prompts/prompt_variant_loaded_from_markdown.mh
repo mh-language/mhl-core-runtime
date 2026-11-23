@@ -1,0 +1,12 @@
+import {Review} from "fixtures/variants.mh"
+
+// Variant arms load from Markdown like `prompt ... from`, relative to the
+// declaring file, frontmatter stripped. Review.frontmatter is the default
+// arm's (review.prompt.md has none).
+test prompt_variant_loaded_from_markdown {
+    describe prompt_variant_loaded_from_markdown {
+        var p = Review(file: "f.go")
+        are_equal(p.target("claude/opus-5"), "<task>Review f.go</task>\n<output>A list of problems.</output>")
+        are_equal(Review.frontmatter, {})
+    }
+}

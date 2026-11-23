@@ -415,6 +415,17 @@ spread operand, `checkArgsElements` a literal non-string `args` element, and
 `ast.Expr.Spread` (a flag on Expr, not a wrapper type, for the digest), rejected outside an
 array item by `parser/spread.go`'s reflection walk; `evalSpread` refuses `null`; `args`
 spreads go through `resolveArgsSpread`.
+Prompt variants (`docs/MHL-PROMPT-VARIANTS.md`): a prompt body may be `default`/`for "pattern"`
+arms (`ast.PromptVariant`; `parser/promptvariants.go` moves the default into `Body`/`Source`, so
+`Prompt.Variants` holds only `for` arms and a variant-free prompt keeps its digest). A prompt call
+still evaluates to its default **string**; `interpreter/prompt_variants.go` records each rendering
+of a variant prompt in a per-run table (`WithPromptRegistry`, set by `execsvc.Run`/`test_run.go`;
+`evalCtx.prompts`, set at every evaluation root via `rootPrompts` and inherited by tool/closure
+contexts), and `text.target(t)` (intercepted in `applyTrailers`, not `callValueMethod`) looks it up.
+The agent chooses: `runAgentAttemptWith` binds `prompt` in its property expressions (`propCtx`) and
+fills `"${prompt.target(X)}"` (`substitutePromptSpans`, `resolveArgsPromptTargets`;
+`promptPlacement` decides whether the prompt is still appended to argv). Lint mirror:
+`lint/prompt_variants.go`, `agent_placeholders.go`, `agentPropSeesPrompt` in `agent_names.go`.
 There is no declarative tool/extension scope list on an agent: when an agent needs a `tool` or
 `extension`, it is called from a `before`/`after` hook (agent_hooks.go), which are real:
 `before: () -> {...}` runs before the prompt is built — an ordinary zero-param lambda whose body

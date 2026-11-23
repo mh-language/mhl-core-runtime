@@ -143,6 +143,15 @@ type evalCtx struct {
 	// closure) inherits the parent's so an already-bound Instance stays
 	// cached within one evaluation tree.
 	registry *extension.Registry
+	// prompts is the run's table of prompt renderings that have variants
+	// (prompt_variants.go), resolved lazily by promptsOf from goctx and
+	// inherited by derived contexts so `.target(t)` recognizes a prompt
+	// rendered anywhere in the same run.
+	prompts *promptRegistry
+	// promptPicks, when non-nil, collects each `.target(t)` selection made
+	// while evaluating an agent's properties — runAgentAttemptWith prints
+	// them for an agent with `trace: true`.
+	promptPicks *[]string
 }
 
 // extRegistryOf returns the extension registry for this evaluation, building
@@ -1093,7 +1102,13 @@ func applyTrailers(ctx *evalCtx, base any, ops []*ast.Trailer, depth int) (any, 
 			if err != nil {
 				return nil, err
 			}
-			v, err = callValueMethod(v, op.Member, args, depth)
+			if s, isString := v.(string); isString && op.Member == "target" {
+				// `text.target(t)` needs the run's prompt table, which
+				// callValueMethod (context-free) has no access to.
+				v, err = callPromptTarget(ctx, s, args)
+			} else {
+				v, err = callValueMethod(v, op.Member, args, depth)
+			}
 			if err != nil {
 				return nil, err
 			}

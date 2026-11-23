@@ -227,13 +227,60 @@ test prompts {
 }
 ```
 
-- Call with named arguments. Parameter defaults must be strings. Lint rejects an omitted
-  default inside `x = Agent.run(prompt: P(...))` even though the run works, so pass every
-  argument explicitly at that call site.
+- Call with named arguments. Parameter defaults must be strings; an omitted parameter takes
+  its default.
 - Move long prompts to Markdown: `prompt Review(file: string) from "review.prompt.md"`,
   resolved relative to the declaring file. Write `\${NAME}` for a literal placeholder.
 - Keep caller-supplied text clearly delimited as data inside the prompt, separate from the
   instruction.
+
+### Variants per harness or model
+
+When a harness or model wants a different prompting style, give the prompt one `default` arm
+and `for "<pattern>"` arms. The agent picks the arm in its own declaration, so call sites stay
+the same:
+
+```mh
+prompt Review(file: string) {
+    default            { "Review ${file} and list the problems." }
+    for "claude/*"     { "<task>Review ${file}</task>" }
+    for "codex/gpt-5*" { "codex: review ${file}" }
+}
+
+agent Claude {
+    input model: string = "sonnet"
+    command: "sh"
+    args: ["-c", "cat"]
+    stdin: prompt.target("claude/" + model)
+}
+
+agent Codex {
+    input model: string = "codex/gpt-5.6"
+    command: "sh"
+    args: ["-c", "cat"]
+    stdin: "${prompt.target(model)}"
+}
+
+test variants {
+    describe each_agent_picks_its_arm {
+        var p = Review(file: "auth.go")
+        are_equal(Claude.run(prompt: p), "<task>Review auth.go</task>")
+        are_equal(Codex.run(prompt: p), "codex: review auth.go")
+        are_equal(Codex.run(prompt: p, model: "ollama/qwen"), "Review auth.go and list the problems.")
+    }
+}
+```
+
+- In an agent's `command`/`args`/`stdin`/`cwd`/`log`/`timeout` expressions, `prompt` is the
+  call's prompt. The literal form `"${prompt.target(X)}"` takes an input name or a string
+  literal; `"${prompt}"` is always the default.
+- Selection: an exact pattern, then the longest prefix ending in `*`, then `default`.
+- A rendered prompt is a string carrying its variants through vars and tool parameters.
+  Concatenating or otherwise transforming it gives a plain string (the default text). If a
+  harness needs a wrapper, build it inside the agent:
+  `stdin: Wrap.line(prompt.target(...))`.
+- Keep every parameter in the default arm. Two renderings that share a default text but differ
+  in an arm make `.target` fail.
 
 ## Structured output
 

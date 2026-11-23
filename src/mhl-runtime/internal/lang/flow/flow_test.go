@@ -599,3 +599,15 @@ func TestBuildParallelGroupVars(t *testing.T) {
 		t.Fatalf("merge = %+v", g.Merge)
 	}
 }
+
+func TestBuildPromptVariantTargets(t *testing.T) {
+	g := build(t, `prompt Review(code: string) {
+    default            from "./review.md"
+    for "claude/*"     { "c ${code}" }
+    for "cli/codex"    from "./review.codex.md"
+}`)
+	d := g.Declarations[0]
+	if d.Kind != "prompt" || d.Detail != "./review.md" || strings.Join(d.Targets, ",") != "claude/*,cli/codex" {
+		t.Fatalf("prompt decl = %+v, want detail = default's from path and targets claude/*,cli/codex", d)
+	}
+}

@@ -95,7 +95,15 @@ func renderPromptCallDynamic(ctx *evalCtx, name string, call *ast.Call, depth in
 		}
 		args[p.Name] = s
 	}
-	return prompt.Render(decl, args)
+	text, err := prompt.Render(decl, args)
+	if err != nil {
+		return "", err
+	}
+	// The call evaluates to the default text; a prompt with variants (or a
+	// variant prompt among its arguments) is also recorded, so an agent can
+	// later pick an arm with `prompt.target(t)` (prompt_variants.go).
+	recordPromptRendering(ctx, decl, args, text)
+	return text, nil
 }
 
 // promptRefCall recognizes a bare `Name(...)` call expression, e.g. the

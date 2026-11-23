@@ -331,6 +331,9 @@ func Run(req Request) (*Result, error) {
 	if req.NoCache {
 		runCtx = interpreter.WithoutAgentCache(runCtx)
 	}
+	// One prompt-rendering table per run, so an agent's prompt.target(t)
+	// recognizes a variant prompt rendered in any earlier step.
+	runCtx = interpreter.WithPromptRegistry(runCtx)
 	out := req.Out
 	if out == nil {
 		out = io.Discard

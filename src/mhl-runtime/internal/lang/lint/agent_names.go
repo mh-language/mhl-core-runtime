@@ -82,6 +82,13 @@ func (u *undefWalker) agentProp(p *ast.Property, scope map[string]types.Type) {
 	if _, literal := ast.StringValue(p.Value); literal && p.Name != "log" && p.Name != "cwd" {
 		return
 	}
+	if agentPropSeesPrompt(p.Name) {
+		// The call's prompt is bound as `prompt` in these properties
+		// (interpreter.runAgentAttemptWith), so a declaration can pick a
+		// prompt variant: `stdin: prompt.target(model)`.
+		scope = copyScope(scope)
+		scope["prompt"] = types.String
+	}
 	switch p.Name {
 	case "args":
 		if arr := ast.BareArray(p.Value); arr != nil {
@@ -108,4 +115,16 @@ func (u *undefWalker) agentProp(p *ast.Property, scope map[string]types.Type) {
 		return
 	}
 	u.expr(p.Value, scope)
+}
+
+// agentPropSeesPrompt reports whether an agent property's expression is
+// evaluated with the call's prompt bound as `prompt` — the subprocess
+// properties, never the hooks (before runs ahead of the prompt; after and
+// system_prompt get it their own way).
+func agentPropSeesPrompt(name string) bool {
+	switch name {
+	case "command", "args", "stdin", "cwd", "log", "timeout", "kill_grace":
+		return true
+	}
+	return false
 }
