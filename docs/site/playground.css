@@ -26,7 +26,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .brand span { display: grid; line-height: 1.2; }
 .brand strong { font-size: 1.1rem; }
 .brand small { margin-top: 4px; color: var(--muted); font: .75rem DM Mono, monospace; }
-.topbar nav { display: flex; gap: 6px; }
+.topbar nav { display: flex; flex-wrap: wrap; gap: 6px; }
 .topbar nav a { padding: 7px 10px; border-radius: 7px; color: var(--muted); font-size: .875rem; text-decoration: none; }
 .topbar nav a:hover, .topbar nav a[aria-current] { color: var(--ink); background: var(--soft); }
 .icon-button { width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
@@ -146,6 +146,8 @@ summary { cursor: pointer; font-weight: 600; font-size: .875rem; }
 }
 @media (max-width: 480px) {
   .brand small { font-size: .75rem; }
+  .topbar nav { gap: 3px; }
+  .topbar nav a { padding-inline: 6px; font-size: .8125rem; }
   .editor-shell { min-height: 400px; }
   .panel-bar { padding: 8px; }
   #highlight, #editor { padding-left: 10px; }

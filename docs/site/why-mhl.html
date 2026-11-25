@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Why MHL? — Meta-Harness Language</title>
+  <meta name="description" content="How MHL compares with libraries and frameworks for AI orchestration.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Meta-Harness Language">
+  <meta property="og:title" content="Why MHL? — Meta-Harness Language">
+  <meta property="og:description" content="How MHL compares with libraries and frameworks for AI orchestration.">
+  <meta property="og:url" content="https://mh-language.github.io/mhl-core-runtime/why-mhl.html">
+  <meta property="og:image" content="https://mh-language.github.io/mhl-core-runtime/assets/og.png">
+  <meta property="og:image:alt" content="MHL — Control the workflow. Guide the agent.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Why MHL? — Meta-Harness Language">
+  <meta name="twitter:description" content="How MHL compares with libraries and frameworks for AI orchestration.">
+  <meta name="twitter:image" content="https://mh-language.github.io/mhl-core-runtime/assets/og.png">
+  <link rel="icon" href="assets/mhl-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="home.css">
+  <script src="home.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-pt="Ir para o conteúdo">Skip to content</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="index.html" aria-label="MHL — Meta-Harness Language">
+        <img src="assets/mhl-logo.png" alt="" width="36" height="36">
+        <span>MHL<small>Meta-Harness Language</small></span>
+      </a>
+      <nav class="site-menu" aria-label="Main navigation" data-pt-aria-label="Navegação principal">
+        <a href="start.html" data-pt="Começar">Get started</a>
+        <a href="examples.html" data-pt="Exemplos">Examples</a>
+        <a href="docs.html" data-pt="Documentação">Documentation</a>
+        <a href="download.html" data-pt="Download">Download</a>
+      </nav>
+      <div class="header-actions">
+        <button id="lang-toggle" class="icon-button" type="button" aria-label="Mudar para português">PT</button>
+        <button id="theme-toggle" class="icon-button theme-toggle" type="button" aria-label="Switch to dark theme">◐</button>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="why" class="page-intro container">
+      <div class="section-heading comparison-heading">
+        <h1 data-pt="Por que MHL?">Why MHL?</h1>
+        <p data-pt="Com um framework, você compõe uma biblioteca dentro da sua aplicação. Com MHL, o workflow é um programa próprio, com sintaxe e runtime para agentes, prompts e etapas.">With a framework, you compose a library inside your application. With MHL, the workflow is its own program, with syntax and a runtime for agents, prompts and steps.</p>
+      </div>
+      <div class="comparison-scroll" tabindex="0" role="region" aria-label="Comparison between frameworks and MHL" data-pt-aria-label="Comparação entre frameworks e MHL">
+        <table>
+          <caption class="visually-hidden" data-pt="Abordagens para implementar workflows de IA">Approaches to implementing AI workflows</caption>
+          <thead><tr><th scope="col" data-pt="Na prática">In practice</th><th scope="col" data-pt="Com um framework">With a framework</th><th scope="col"><span class="status-dot" aria-hidden="true"></span> MHL</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" data-pt="O que você escreve">What you write</th><td data-pt="Código na linguagem da aplicação, usando as APIs da biblioteca.">Application-language code using the library's APIs.</td><td data-pt="Um arquivo .mh com declarações de agentes, prompts e fluxo.">A .mh file declaring agents, prompts and execution flow.</td></tr>
+            <tr><th scope="row" data-pt="Quem executa">What runs it</th><td data-pt="O runtime da aplicação e as dependências do framework.">The application runtime and framework dependencies.</td><td data-pt="O runtime MHL, via CLI ou servidor MCP/A2A.">The MHL runtime, through the CLI or an MCP/A2A server.</td></tr>
+            <tr><th scope="row" data-pt="Regras de execução">Execution rules</th><td data-pt="Configuradas nas APIs e abstrações de cada framework.">Configured through each framework's APIs and abstractions.</td><td data-pt="workflow, goto, loop/max, fan-out, parallel e pause/resume expressos na linguagem.">workflow, goto, loop/max, fan-out, parallel and pause/resume expressed in the language.</td></tr>
+            <tr><th scope="row" data-pt="Integração">Integration</th><td data-pt="Composição direta com o código e as bibliotecas da aplicação.">Direct composition with application code and libraries.</td><td data-pt="Comandos, ferramentas, HTTP e extensões MCP/A2A nas fronteiras do fluxo.">Commands, tools, HTTP and MCP/A2A extensions at workflow boundaries.</td></tr>
+            <tr><th scope="row" data-pt="Tende a fazer sentido quando…">A good fit when…</th><td data-pt="A orquestração precisa estar profundamente integrada à sua aplicação.">Orchestration needs to be deeply embedded in your application.</td><td data-pt="O workflow precisa ser lido, versionado e executado como uma unidade própria.">The workflow needs to be read, versioned and run as a standalone unit.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="comparison-note"><b data-pt="O diferencial é onde o fluxo vive.">The difference is where the flow lives.</b><p data-pt="Frameworks também podem oferecer testes, persistência e observabilidade. A proposta do MHL é tornar a orquestração parte da linguagem. As regras de execução ficam explícitas; as respostas do modelo continuam variáveis.">Frameworks can also offer testing, persistence and observability. MHL's approach is to make orchestration part of the language. Execution rules are explicit; model responses still vary.</p></div>
+    </section>
+
+  </main>
+  <footer class="container site-footer">
+    <a class="footer-brand" href="index.html">MHL <span>Meta-Harness Language</span></a>
+    <a href="https://github.com/mh-language/mhl-core-runtime">GitHub ↗</a>
+  </footer>
+  <div id="copy-status" class="visually-hidden" role="status"></div>
+</body>
+</html>

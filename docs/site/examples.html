@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Examples — Meta-Harness Language</title>
+  <meta name="description" content="Try local MHL workflow examples and edit lessons in the playground.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Meta-Harness Language">
+  <meta property="og:title" content="Examples — Meta-Harness Language">
+  <meta property="og:description" content="Try local MHL workflow examples and edit lessons in the playground.">
+  <meta property="og:url" content="https://mh-language.github.io/mhl-core-runtime/examples.html">
+  <meta property="og:image" content="https://mh-language.github.io/mhl-core-runtime/assets/og.png">
+  <meta property="og:image:alt" content="MHL — Control the workflow. Guide the agent.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Examples — Meta-Harness Language">
+  <meta name="twitter:description" content="Try local MHL workflow examples and edit lessons in the playground.">
+  <meta name="twitter:image" content="https://mh-language.github.io/mhl-core-runtime/assets/og.png">
+  <link rel="icon" href="assets/mhl-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="home.css">
+  <script src="playground-core.js" defer></script>
+  <script src="home.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-pt="Ir para o conteúdo">Skip to content</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="index.html" aria-label="MHL — Meta-Harness Language">
+        <img src="assets/mhl-logo.png" alt="" width="36" height="36">
+        <span>MHL<small>Meta-Harness Language</small></span>
+      </a>
+      <nav class="site-menu" aria-label="Main navigation" data-pt-aria-label="Navegação principal">
+        <a href="start.html" data-pt="Começar">Get started</a>
+        <a href="examples.html" aria-current="page" data-pt="Exemplos">Examples</a>
+        <a href="docs.html" data-pt="Documentação">Documentation</a>
+        <a href="download.html" data-pt="Download">Download</a>
+      </nav>
+      <div class="header-actions">
+        <button id="lang-toggle" class="icon-button" type="button" aria-label="Mudar para português">PT</button>
+        <button id="theme-toggle" class="icon-button theme-toggle" type="button" aria-label="Switch to dark theme">◐</button>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="examples" class="container page-intro">
+      <h1 data-pt="Exemplos de workflows">Workflow examples</h1>
+      <p class="hero-description" data-pt="Escolha o que quer fazer. Os seis primeiros exemplos rodam localmente com a CLI do MHL, sem chamadas a modelos.">Choose what you want to do. The first six examples run locally with the MHL CLI, without model calls.</p>
+      <nav class="task-links" aria-label="Examples by task" data-pt-aria-label="Exemplos por tarefa">
+        <a id="tab-workflow" href="#panel-workflow" data-pt="Escolha a próxima etapa">Choose the next step</a>
+        <a id="tab-limits" href="#panel-limits" data-pt="Limite o número de rodadas">Limit the number of rounds</a>
+        <a id="tab-fanout" href="#panel-fanout" data-pt="Distribua itens de uma lista entre agentes">Send a list of items to agents</a>
+        <a id="tab-parallel" href="#panel-parallel" data-pt="Execute etapas em paralelo">Run steps in parallel</a>
+        <a id="tab-approval" href="#panel-approval" data-pt="Pause para aprovação e retome">Pause for approval and resume</a>
+        <a id="tab-contracts" href="#panel-contracts" data-pt="Defina e teste um contrato">Define and test a contract</a>
+      </nav>
+    </section>
+    <section class="container playground-entry" aria-labelledby="playground-title">
+      <div>
+        <h2 id="playground-title">Playground</h2>
+        <p data-pt="Edite o código no navegador e leve o arquivo .mh para executar no terminal.">Edit code in your browser, then take the .mh file to your terminal to run it.</p>
+      </div>
+      <a class="button primary" data-playground href="playground-en.html" data-pt="Abrir o playground">Open the playground</a>
+    </section>
+    <div class="container example-list">
+<article id="panel-workflow" class="example-panel" aria-labelledby="tab-workflow-title">
+<div class="example-explanation">
+<h2 id="tab-workflow-title" data-pt="Escolha a próxima etapa">Choose the next step</h2>
+<p data-pt="O enum ArtifactKind define os formatos aceitos. entry route escolhe a primeira etapa conforme a entrada, e os dois caminhos terminam em Done.">The ArtifactKind enum defines the supported formats. An entry route chooses the first step from the input, and both paths end at Done.</p>
+<dl><div><dt>entry route</dt><dd data-pt="Inicia o workflow pela tabela de rotas.">Starts the workflow at the routing table.</dd></div><div><dt>goto</dt><dd data-pt="Salta para uma etapa cujo nome é validado pelo lint.">Jumps to a step whose name is checked by the linter.</dd></div><div><dt>complete()</dt><dd data-pt="Encerra o workflow no estado completed.">Ends the workflow in the completed state.</dd></div></dl>
+<a class="text-link" data-playground href="playground-en.html#retomada"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
+</div>
+<div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>workflow.mh</span><button class="copy-button" type="button" data-copy="workflow-code" data-pt="Copiar">Copy</button></div>
+<pre><code id="workflow-code" class="language-mhl">enum ArtifactKind { Brief, Adr }
+
+workflow CreateArtifact {
+    description: "Choose a brief or an architecture decision record."
+
+    input artifact: ArtifactKind = ArtifactKind.Brief
+
+    entry route Generate(artifact: ArtifactKind) {
+        ArtifactKind.Brief -&gt; Brief
+        ArtifactKind.Adr -&gt; Adr
+    }
+
+    step Brief {
+        log("brief ready")
+
+        goto Done
+    }
+
+    step Adr {
+        log("adr ready")
+
+        goto Done
+    }
+
+    step Done {
+        complete()
+    }
+}</code></pre>
+<div class="terminal-line"><span aria-hidden="true">$</span><code>mhl run workflow.mh --input artifact=Brief</code></div>
+<div class="reference-output"><span data-pt="SAÍDA ESPERADA">EXPECTED OUTPUT</span><samp>brief ready</samp></div>
+</div></article>
+
+<article id="panel-limits" class="example-panel" aria-labelledby="tab-limits-title">
+<div class="example-explanation">
+<h2 id="tab-limits-title" data-pt="Limite o número de rodadas">Limit the number of rounds</h2>
+<p data-pt="loop pipeline repete as etapas na ordem declarada. O exemplo usa mem para acumular revisões e break para encerrar a execução na segunda rodada.">A loop pipeline repeats its steps in declaration order. This example uses mem to accumulate revisions and break to stop the run on the second round.</p>
+<dl><div><dt>max 3</dt><dd data-pt="Define um teto de três iterações.">Sets a ceiling of three iterations.</dd></div><div><dt>mem</dt><dd data-pt="Preserva valores entre iterações e retomadas da mesma sessão.">Retains values across iterations and resumes in the same session.</dd></div><div><dt>break</dt><dd data-pt="Encerra toda a execução antecipadamente.">Ends the entire execution early.</dd></div></dl>
+<p class="requirement" data-pt="Para avaliar uma condição entre rodadas, use repeat com stop_when e max_iterations.">To check a condition between rounds, use repeat with stop_when and max_iterations.</p>
+<a class="text-link" data-playground href="playground-en.html#loop-max"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
+</div>
+<div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>limits.mh</span><button class="copy-button" type="button" data-copy="limits-code" data-pt="Copiar">Copy</button></div>
+<pre><code id="limits-code" class="language-mhl">loop pipeline RevisionRounds max 3 {
+    description: "Run up to three local revision rounds."
+
+    mem round = 0
+    mem draft = "first draft"
+
+    output: { rounds: round, text: draft }
+
+    step Improve {
+        self.round += 1
+        self.draft = "${draft} / revision ${round}"
+    }
+
+    step Evaluate {
+        log("round ${round}")
+
+        if (round == 2) {
+            break "ready"
+        }
+    }
+}</code></pre>
+<div class="terminal-line"><span aria-hidden="true">$</span><code>mhl run limits.mh</code></div>
+<div class="reference-output"><span data-pt="SAÍDA ESPERADA">EXPECTED OUTPUT</span><samp>round 1
+round 2</samp></div>
+</div></article>
+
+<article id="panel-fanout" class="example-panel" aria-labelledby="tab-fanout-title">
+<div class="example-explanation">
+<h2 id="tab-fanout-title" data-pt="Distribua itens de uma lista entre agentes">Send a list of items to agents</h2>
+<p data-pt="spawn … for inicia uma chamada por item. O runtime limita as chamadas em voo e wait reúne seus handles. Echo faz o papel do modelo para executar este exemplo localmente.">spawn … for starts one call per item. The runtime limits calls in flight and wait joins their handles. Echo stands in for a model so this example runs locally.</p>
+<dl><div><dt>spawn … for</dt><dd data-pt="Um handle de tarefa por item da coleção.">One task handle per collection item.</dd></div><div><dt>max_concurrency</dt><dd data-pt="No máximo duas chamadas de agente em voo na execução.">At most two agent calls in flight across the run.</dd></div><div><dt>wait</dt><dd data-pt="Aguarde todas as tarefas; any e N of oferecem outras políticas.">Wait for all tasks; any and N of select other policies.</dd></div></dl>
+<p class="requirement" data-pt="wait any checks retorna no primeiro sucesso; wait 2 of checks aguarda dois sucessos. Ambos cancelam as tarefas restantes: remova on_error: &quot;collect&quot; ao usar essas políticas. collect só se aplica ao wait simples; examine .ok e .error. Requer echo no PATH.">wait any checks returns on the first success; wait 2 of checks waits for two successes. Both cancel remaining tasks: remove on_error: "collect" when using these policies. collect applies only to plain wait; inspect .ok and .error. Requires echo on PATH.</p>
+<a class="text-link" data-playground href="playground-en.html#fan-out"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
+</div>
+<div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>fanout.mh</span><button class="copy-button" type="button" data-copy="fanout-code" data-pt="Copiar">Copy</button></div>
+<pre><code id="fanout-code" class="language-mhl">agent Echo {
+    command: "echo"
+    args: ["${prompt}"]
+}
+
+pipeline ReviewFiles {
+    description: "Check each file with up to two concurrent agent calls."
+
+    spawn: { max_concurrency: 2 }
+
+    step FanOut timeout 5s {
+        const files = ["api.go", "auth.go", "cli.go"]
+
+        spawn checks = Echo.run(prompt: "check ${file}") for file in files
+        wait checks timeout: 2s on_error: "collect"
+
+        for (var check in checks) {
+            if (check.ok) {
+                log(check.result)
+            } else {
+                log.warn("Check ${check.status}:", check.error)
+            }
+        }
+    }
+}</code></pre>
+<div class="terminal-line"><span aria-hidden="true">$</span><code>mhl run fanout.mh</code></div>
+<div class="reference-output"><span data-pt="SAÍDA ESPERADA">EXPECTED OUTPUT</span><samp>check api.go
+check auth.go
+check cli.go</samp></div>
+</div></article>
+
+<article id="panel-parallel" class="example-panel" aria-labelledby="tab-parallel-title">
+<div class="example-explanation">
+<h2 id="tab-parallel-title" data-pt="Execute etapas em paralelo">Run steps in parallel</h2>
+<p data-pt="Cada ramo escreve numa variável do grupo. Depois que todos os ramos terminam, merge reúne os resultados no resumo que Report imprime.">Each branch writes to a group variable. Once both branches finish, merge combines their results into the summary that Report prints.</p>
+<dl><div><dt>parallel</dt><dd data-pt="Executa etapas inteiras em paralelo.">Runs whole steps in parallel.</dd></div><div><dt>timeout 2s</dt><dd data-pt="Um prazo para o grupo inteiro.">A deadline for the entire group.</dd></div><div><dt>merge</dt><dd data-pt="Combina os resultados dos ramos antes da próxima etapa.">Combines branch results before the next step.</dd></div></dl>
+<a class="text-link" data-playground href="playground-en.html#parallel"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
+</div>
+<div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>parallel.mh</span><button class="copy-button" type="button" data-copy="parallel-code" data-pt="Copiar">Copy</button></div>
+<pre><code id="parallel-code" class="language-mhl">pipeline Enrich {
+    description: "Gather documentation and test status in parallel."
+
+    var summary = ""
+
+    output: { summary }
+
+    parallel Gather timeout 2s {
+        var docs = ""
+        var tests = ""
+
+        step Docs {
+            self.docs = "docs ready"
+        }
+
+        step Tests {
+            self.tests = "tests ready"
+        }
+
+        merge {
+            self.summary = "${docs}; ${tests}"
+        }
+    }
+
+    step Report {
+        log(summary)
+    }
+}</code></pre>
+<div class="terminal-line"><span aria-hidden="true">$</span><code>mhl run parallel.mh</code></div>
+<div class="reference-output"><span data-pt="SAÍDA ESPERADA">EXPECTED OUTPUT</span><samp>docs ready; tests ready</samp></div>
+</div></article>
+
+<article id="panel-approval" class="example-panel" aria-labelledby="tab-approval-title">
+<div class="example-explanation">
+<h2 id="tab-approval-title" data-pt="Pause para aprovação e retome">Pause for approval and resume</h2>
+<p data-pt="A execução pausa até receber uma decisão booleana. Na mesma sessão, envie true para aprovar ou false para rejeitar. Cada etapa final imprime o resultado.">The run pauses for a boolean decision. In the same session, pass true to approve or false to reject. Each terminal step logs the outcome.</p>
+<dl><div><dt>pause(…, decision: bool)</dt><dd data-pt="Guarda o checkpoint e aguarda uma decisão tipada.">Saves the checkpoint and waits for a typed decision.</dd></div><div><dt>--resume --decision</dt><dd data-pt="Valida a resposta e a entrega à pausa atual.">Validates the answer and delivers it to the current gate.</dd></div><div><dt>goto match</dt><dd data-pt="Escolhe a etapa final conforme a decisão.">Chooses the terminal step from the decision.</dd></div></dl>
+<p class="requirement" data-pt="A retomada reexecuta Gate desde o início. Separe a aprovação de qualquer efeito externo e mantenha esses efeitos seguros para repetição.">Resuming re-executes Gate from the start. Put external effects in their own steps and keep those effects safe to repeat.</p>
+<a class="text-link" data-playground href="playground-en.html#retomada"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
+</div>
+<div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>approval.mh</span><button class="copy-button" type="button" data-copy="approval-code" data-pt="Copiar">Copy</button></div>
+<pre><code id="approval-code" class="language-mhl">workflow Approval {
+    description: "Wait for a decision and log the outcome."
+
+    checkpoint: { ttl: 7d }
+
+    step Gate {
+        /// true approves the proposal, false rejects it.
+        var approved = pause("Approve this proposal?", decision: bool)
+
+        goto match approved {
+            true -&gt; Publish
+            false -&gt; Reject
+        }
+    }
+
+    step Publish {
+        log("approved")
+
+        complete()
+    }
+
+    step Reject {
+        log("rejected")
+
+        complete()
+    }
+}</code></pre>
+<div class="terminal-line"><span aria-hidden="true">$</span><code>mhl run approval.mh --session demo
+mhl run approval.mh --session demo --resume --decision true</code></div>
+<div class="reference-output"><span data-pt="COMPORTAMENTO ESPERADO">EXPECTED BEHAVIOR</span><samp>First run: paused
+After resume: approved</samp></div>
+</div></article>
+
+<article id="panel-contracts" class="example-panel" aria-labelledby="tab-contracts-title">
+<div class="example-explanation">
+<h2 id="tab-contracts-title" data-pt="Defina e teste um contrato">Define and test a contract</h2>
+<p data-pt="Uma assinatura tipada define entradas e resultados. O prompt monta a saudação, e output define o resultado público. O teste verifica o estado final, as etapas executadas e a saída.">A typed signature defines inputs and results. The prompt renders the greeting, and output defines the public result. The test checks the terminal state, executed steps, and output.</p>
+<dl><div><dt>GreetingInput / GreetingOutput</dt><dd data-pt="Tipos de objeto para entrada e saída.">Input and output object types.</dd></div><div><dt>prompt</dt><dd data-pt="Um template reutilizável com parâmetros tipados.">A reusable template with typed parameters.</dd></div><div><dt>test</dt><dd data-pt="Asserções sobre o resultado da execução local.">Assertions about the local run's outcome.</dd></div></dl>
+<p class="requirement" data-pt="O resultado projetado é verificado ao concluir. Quando servido via MCP, os tipos de entrada e saída são anunciados como schemas para os clientes.">The projected result is checked at completion. When served over MCP, the input and output types are advertised as schemas for clients.</p>
+<a class="text-link" data-playground href="playground-en.html#ferramentas-testes"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
+</div>
+<div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>contract.mh</span><button class="copy-button" type="button" data-copy="contracts-code" data-pt="Copiar">Copy</button></div>
+<pre><code id="contracts-code" class="language-mhl">type GreetingInput = { name: string }
+type GreetingOutput = { message: string }
+
+prompt Greeting(name: string) {
+    "Hello, ${name}!"
+}
+
+pipeline Greet(request: GreetingInput): GreetingOutput {
+    description: "Render a greeting for the requested name."
+
+    var message = ""
+
+    output: { message }
+
+    step Build {
+        self.message = Greeting(name: request.name)
+    }
+}
+
+test greeting {
+    describe greets_by_name {
+        var result = Greet.run(inputs: { name: "Ana" })
+
+        are_equal(result.state, "completed")
+        are_equal(result.executed, ["Build"])
+        are_equal(result.output, { message: "Hello, Ana!" })
+    }
+}</code></pre>
+<div class="terminal-line"><span aria-hidden="true">$</span><code>mhl run contract.mh --input name=Ana
+mhl test contract.mh</code></div>
+</div></article>
+
+      <article id="refine" class="example-panel" aria-labelledby="refine-title">
+        <div class="example-explanation">
+          <h2 id="refine-title" data-pt="Refine um texto com um agente">Refine a draft with an agent</h2>
+          <p data-pt="O agente melhora um rascunho e recebe comentários de duas revisões antes da próxima rodada.">The agent improves a draft and receives feedback from two reviews before the next round.</p>
+        </div>
+      <div class="hero-example">
+        <div class="code-window">
+          <div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>refine.mh</span><button class="copy-button" type="button" data-copy="refine-code" data-pt="Copiar">Copy</button></div>
+          <pre><code id="refine-code" class="language-mhl">agent Writer {
+    command: env("MHL_WRITER_CMD", "claude")
+    args: ["-p", "${prompt}"]
+    timeout: 30s
+    cache: { ttl: 10m, storage: "disk" }
+}
+
+prompt Revise(draft: string, feedback: string) {
+    """
+    Revise the draft using the review notes. Return only the revised draft.
+
+    &lt;draft&gt;
+    ${draft}
+    &lt;/draft&gt;
+
+    &lt;review_notes&gt;
+    ${feedback}
+    &lt;/review_notes&gt;
+    """
+}
+
+prompt Review(draft: string, lens: string) {
+    """
+    Review the draft for ${lens}. Return concise, actionable feedback.
+
+    &lt;draft&gt;
+    ${draft}
+    &lt;/draft&gt;
+    """
+}
+
+loop pipeline Refine max 3 {
+    description: "Refine a draft over at most three rounds of parallel review."
+
+    mem draft = "A first draft."
+    mem feedback = ""
+
+    spawn: { max_concurrency: 2 }
+
+    output: { draft }
+
+    step Improve timeout 45s {
+        self.draft = Writer.run(prompt: Revise(draft: draft, feedback: feedback))
+    }
+
+    step Review timeout 45s {
+        const lenses = ["clarity", "consistency"]
+
+        spawn checks = Writer.run(
+            prompt: Review(draft: draft, lens: lens)
+        ) for lens in lenses
+        wait checks timeout: 40s
+
+        self.feedback = checks.map((check) -&gt; check.result).join("\n")
+    }
+}</code></pre>
+          <div class="terminal-line"><span aria-hidden="true">$</span><code>mhl run refine.mh --format json</code></div>
+        </div>
+        <p class="example-caption"><span data-pt="A execução usa Claude CLI autenticado e guarda as respostas em cache local por 10 minutos. Use --dry-run para inspecionar o plano ou defina MHL_WRITER_CMD como echo para exercitar o fluxo localmente.">The run uses an authenticated Claude CLI and caches responses locally for 10 minutes. Use --dry-run to inspect the plan or set MHL_WRITER_CMD to echo to exercise the flow locally.</span></p>
+      </div>
+      </article>
+    </div>
+  </main>
+  <footer class="container site-footer">
+    <a class="footer-brand" href="index.html">MHL <span>Meta-Harness Language</span></a>
+    <a href="https://github.com/mh-language/mhl-core-runtime">GitHub ↗</a>
+  </footer>
+  <div id="copy-status" class="visually-hidden" role="status"></div>
+</body>
+</html>

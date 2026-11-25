@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Get started — Meta-Harness Language</title>
+  <meta name="description" content="Install the MHL CLI and run your first .mh workflow.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Meta-Harness Language">
+  <meta property="og:title" content="Get started — Meta-Harness Language">
+  <meta property="og:description" content="Install the MHL CLI and run your first .mh workflow.">
+  <meta property="og:url" content="https://mh-language.github.io/mhl-core-runtime/start.html">
+  <meta property="og:image" content="https://mh-language.github.io/mhl-core-runtime/assets/og.png">
+  <meta property="og:image:alt" content="MHL — Control the workflow. Guide the agent.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Get started — Meta-Harness Language">
+  <meta name="twitter:description" content="Install the MHL CLI and run your first .mh workflow.">
+  <meta name="twitter:image" content="https://mh-language.github.io/mhl-core-runtime/assets/og.png">
+  <link rel="icon" href="assets/mhl-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="home.css">
+  <script src="playground-core.js" defer></script>
+  <script src="home.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-pt="Ir para o conteúdo">Skip to content</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="index.html" aria-label="MHL — Meta-Harness Language">
+        <img src="assets/mhl-logo.png" alt="" width="36" height="36">
+        <span>MHL<small>Meta-Harness Language</small></span>
+      </a>
+      <nav class="site-menu" aria-label="Main navigation" data-pt-aria-label="Navegação principal">
+        <a href="start.html" aria-current="page" data-pt="Começar">Get started</a>
+        <a href="examples.html" data-pt="Exemplos">Examples</a>
+        <a href="docs.html" data-pt="Documentação">Documentation</a>
+        <a href="download.html" data-pt="Download">Download</a>
+      </nav>
+      <div class="header-actions">
+        <button id="lang-toggle" class="icon-button" type="button" aria-label="Mudar para português">PT</button>
+        <button id="theme-toggle" class="icon-button theme-toggle" type="button" aria-label="Switch to dark theme">◐</button>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="container page-intro">
+      <h1 data-pt="Seu primeiro workflow">Your first workflow</h1>
+      <p class="hero-description" data-pt="Crie um arquivo .mh, valide o código e veja o resultado no terminal.">Create a .mh file, check the code, and see the result in your terminal.</p>
+    </section>
+    <section id="install" class="start-section">
+      <div class="container start-layout">
+        <div class="start-copy">
+          <h2 data-pt="Do arquivo ao terminal">From file to terminal</h2>
+          <p data-pt="Você só precisa da CLI do MHL. Salve o arquivo em uma pasta e rode os comandos no terminal a partir dela.">You only need the MHL CLI. Save the file in a folder and run the commands from that folder in your terminal.</p>
+        </div>
+        <div class="start-steps">
+          <div class="install-step"><h3><span>1</span><span data-pt="Instale o MHL">Install MHL</span></h3>
+            <div class="install-options">
+              <details open><summary>macOS / Linux</summary><div class="install-command"><button class="copy-button" data-copy="install-unix" type="button" data-pt="Copiar">Copy</button><pre><code id="install-unix">curl -fsSL https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.sh | sh</code></pre></div></details>
+              <details><summary>Windows / PowerShell</summary><div class="install-command"><button class="copy-button" data-copy="install-windows" type="button" data-pt="Copiar">Copy</button><pre><code id="install-windows">irm https://raw.githubusercontent.com/mh-language/mhl-core-runtime/main/install.ps1 | iex</code></pre></div></details>
+            </div>
+            <a class="release-link" href="download.html#cli" data-pt="Instalação manual e verificação da CLI →">Manual installation and CLI verification →</a>
+          </div>
+          <div class="install-step"><h3><span>2</span><span data-pt="Salve como hello.mh">Save as hello.mh</span></h3><div class="install-command"><button class="copy-button" data-copy="hello-code" type="button" data-pt="Copiar">Copy</button><pre><code id="hello-code" class="language-mhl">workflow Hello {
+    step Greet {
+        log("Hello, Ana!")
+    }
+}</code></pre></div></div>
+          <div class="install-step"><h3><span>3</span><span data-pt="Valide e execute">Check and run</span></h3><div class="install-command"><button class="copy-button" data-copy="run-command" type="button" data-pt="Copiar">Copy</button><pre><code id="run-command">mhl lint hello.mh
+mhl run hello.mh</code></pre></div><p class="run-result"><span aria-hidden="true">↳</span> <samp>Hello, Ana!</samp></p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="container page-next">
+      <h2 data-pt="Adicione uma decisão">Add a decision</h2>
+      <p data-pt="Seu primeiro workflow executa uma etapa. Agora use uma entrada para escolher qual etapa executar.">Your first workflow runs one step. Now use an input to choose which step runs.</p>
+      <a class="text-link" href="examples.html#panel-workflow" data-pt="Escolher a primeira etapa com entry route →">Choose the first step with entry route →</a>
+    </section>
+  </main>
+  <footer class="container site-footer">
+    <a class="footer-brand" href="index.html">MHL <span>Meta-Harness Language</span></a>
+    <a href="https://github.com/mh-language/mhl-core-runtime">GitHub ↗</a>
+  </footer>
+  <div id="copy-status" class="visually-hidden" role="status"></div>
+</body>
+</html>

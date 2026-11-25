@@ -1,14 +1,19 @@
 # MHL documentation site
 
-Public, self-contained en-US documentation for the Meta-Harness Language, ready for
+Public documentation for the Meta-Harness Language, ready for
 static publishing. No build step and no backend — every page is a standalone HTML file
 with its own stylesheet.
 
 | File | What it is |
 | --- | --- |
-| `index.html` | First-contact guide: what MHL is for, six runnable workflow examples (routing, loop/max, fan-out, parallel, pause/resume, and typed contracts/tests), a minimal quickstart, a capability catalog, use cases, a balanced framework comparison, installation, and documentation links. |
-| `home.css`, `home.js` | Responsive homepage layout, light/dark themes, en/pt translation, keyboard-accessible example tabs, and copy controls. Reuses the playground tokenizer without its editor UI. |
-| `home.test.cjs` | Homepage link and example-target checks; optional real-runtime checks for routing, loop ceilings, fan-out/wait policies, parallel steps, pause/resume, and typed contracts. Exercises the hero with a local Echo substitute. |
+| `index.html` | Short introduction with an abstract workflow illustration and links to the first run and examples. |
+| `start.html` | CLI installation, a runnable `hello.mh`, and a follow-up example that branches based on input. |
+| `examples.html` | Task links to six local workflows, a model-backed refinement example, and the playground. |
+| `docs.html` | Index of task guides, the language reference, and advanced documentation. |
+| `why-mhl.html` | Comparison with framework-based orchestration. |
+| `home.css`, `home.js` | Responsive layout, light/dark themes, en/pt translation, and copy controls for the introductory pages. Reuses the playground tokenizer without its editor UI. |
+| `home-redirects.js` | Compatibility redirects for links to sections previously hosted on the homepage. |
+| `home.test.cjs` | Checks navigation, links, copy targets and legacy fragments. Optional runtime checks run the first workflow, routing, loop ceilings, fan-out/wait policies, parallel steps, pause/resume, and typed contracts. |
 | `playground.html`, `playground-en.html` | Portuguese and English playgrounds: 18 lessons in four sections, editable MHL, per-lesson drafts, explicit completion, challenges, source links, downloads, and CLI commands. |
 | `playground-lessons.js` | Complete `.mh` programs and teaching notes, from values to loops, deadlines, concurrency, recovery, routing, and MCP/A2A. |
 | `playground-lessons.en.js` | English lesson text, comments, and program messages; preserves the original lesson IDs, filenames, and execution contracts. |
@@ -46,9 +51,9 @@ they are never presented as the result of executing edited code.
 Completion is user-controlled. Drafts, current lesson, and completed lesson IDs are
 stored separately per language: the existing `mhl-playground-v2` key for Portuguese
 and `mhl-playground-v2-en` for English. The language link preserves the current
-lesson's URL fragment; it never translates or overwrites a user's draft. The home
-page links to the playground matching its selected language. The homepage shares the `mhl-lang`
-and `mhl-theme` preferences with the reference pages and stays usable if storage is unavailable.
+lesson's URL fragment; it never translates or overwrites a user's draft. The examples page
+links to the playground matching the selected language. The introductory pages share the
+`mhl-lang` and `mhl-theme` preferences with the reference pages and stay usable if storage is unavailable.
 Unavailable storage keeps editing functional for
 the current tab. Tab moves focus by default; indentation is opt-in and Escape
 restores focus navigation. Each lesson has a stable URL fragment.
@@ -73,9 +78,9 @@ MHL_BIN=/tmp/mhl-playground-check node --test docs/site/home.test.cjs docs/site/
 Integration checks generate files and runtime state in an isolated temporary
 directory and remove them afterward. The MCP/A2A lesson is linted but never
 executed by the tests: its URLs are placeholders and require user configuration.
-The homepage's Claude-based refinement example is linted as shown, then executed
+The Claude-based refinement example is linted as shown, then executed
 with an Echo substitute to verify its three rounds, fan-out and feedback without
-calling a model. The other homepage examples run as copied, including approval
+calling a model. The other examples run as copied, including approval
 in the same session and the assertions embedded in the typed workflow example.
 
 ## Keeping it honest

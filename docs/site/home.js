@@ -1,4 +1,4 @@
-/* Progressive enhancement for the static homepage; no browser-side MHL execution. */
+/* Progressive enhancement for the static introduction, examples and guides. */
 (() => {
   'use strict';
   const read = key => {
@@ -40,10 +40,7 @@
     });
     languageButton.textContent = lang === 'pt' ? 'EN' : 'PT';
     languageButton.setAttribute('aria-label', lang === 'pt' ? 'Switch to English' : 'Mudar para português');
-    document.querySelector('meta[name="description"]').content = lang === 'pt'
-      ? 'Uma linguagem para workflows de IA. Declare agentes, prompts e etapas em um arquivo .mh e execute com a CLI do MHL.'
-      : 'A language for AI workflows. Define agents, prompts and execution steps in a readable .mh file, and run it with the MHL CLI.';
-    status.textContent = '';
+    if (status) status.textContent = '';
     themeLabel();
   }
 
@@ -68,30 +65,6 @@
     if (window.MhlPlayground) code.innerHTML = window.MhlPlayground.highlight(code.dataset.raw);
   });
 
-  const tabs = [...document.querySelectorAll('[role="tab"]')];
-  function selectTab(tab, focus = false) {
-    tabs.forEach(item => {
-      const selected = item === tab;
-      item.setAttribute('aria-selected', String(selected));
-      item.tabIndex = selected ? 0 : -1;
-      document.getElementById(item.getAttribute('aria-controls')).hidden = !selected;
-    });
-    if (focus) tab.focus();
-  }
-  tabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => selectTab(tab));
-    tab.addEventListener('keydown', event => {
-      let next;
-      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-      if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
-      if (event.key === 'Home') next = 0;
-      if (event.key === 'End') next = tabs.length - 1;
-      if (next !== undefined) {
-        event.preventDefault();
-        selectTab(tabs[next], true);
-      }
-    });
-  });
   document.querySelectorAll('[data-copy]').forEach(button => {
     button.addEventListener('click', async () => {
       const code = document.getElementById(button.dataset.copy);

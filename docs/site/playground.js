@@ -10,6 +10,11 @@
   const editor = $("#editor");
   let storage;
   try { storage = window.localStorage; } catch { /* Editing remains available. */ }
+  document.querySelectorAll('.site-menu a, .topbar .brand').forEach(link => {
+    link.addEventListener('click', () => {
+      try { storage.setItem('mhl-lang', english ? 'en' : 'pt'); } catch { /* Links still work. */ }
+    });
+  });
   const state = core.readState(storage, lessons, storageKey);
   let current = lessons.findIndex(lesson => lesson.id === state.current);
   let saveTimer;

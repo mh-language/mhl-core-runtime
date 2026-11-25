@@ -54,21 +54,41 @@ body { font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
 .table-row { overflow:visible; overflow-wrap:anywhere; }
 .grammar-block { font-size:11.5px; line-height:1.85; }
 
-/* --- responsive docs shell (inline styles can't carry media queries) --- */
+.docs-toc { grid-column: 3; grid-row: 1; position: sticky; top: 96px; align-self: start; max-height: calc(100vh - 130px); overflow: auto; }
+.docs-body { grid-column: 2; grid-row: 1; }
+.docs-toc summary { color: var(--ink); font-weight: 700; cursor: pointer; padding: 8px 10px; }
+.docs-toc nav { display: grid; gap: 2px; }
+.docs-header .site-menu { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; color: var(--muted); font-size: 14px; font-weight: 700; }
+.docs-header .site-menu a:hover, .docs-header .site-menu a[aria-current] { color: var(--accent-dark); }
+.docs-header label[for="site-search"] { width: clamp(125px, 15vw, 230px) !important; }
+
 @media (max-width:1200px) {
-  .docs-shell { grid-template-columns:236px minmax(0,1fr) !important; }
-  .docs-toc { display:none !important; }
+  .docs-shell { grid-template-columns: 236px minmax(0, 1fr) !important; row-gap: 14px !important; }
+  .docs-nav { grid-row: 1 / span 2; }
+  .docs-toc { grid-column: 2; grid-row: 1; position: static; max-height: none; border: 1px solid var(--line); border-radius: 6px; }
+  .docs-toc nav { padding: 0 8px 8px; }
+  .docs-body { grid-row: 2; }
+}
+@media (max-width:1000px) {
+  .docs-header { position: static !important; height: auto !important; gap: 10px 16px !important; padding-block: 10px !important; flex-wrap: wrap; }
+  .docs-header .site-menu { order: 1; flex: 1 0 100%; }
+  .docs-header label[for="site-search"] { width: clamp(150px, 32vw, 230px) !important; }
+  .doc-section, .feature { scroll-margin-top: 16px; }
 }
 @media (max-width:900px) {
   .docs-shell { grid-template-columns:minmax(0,1fr) !important; gap:18px !important; padding-top:22px !important; }
   .docs-nav { position:static !important; max-height:none !important; display:flex !important; flex-wrap:nowrap; overflow-x:auto !important; gap:6px !important; padding-bottom:10px; border-bottom:1px solid var(--line); }
   .docs-nav > p, .docs-nav > div { display:none !important; }
   .docs-nav > a { white-space:nowrap; border-left:0 !important; border-radius:7px !important; }
+  .docs-nav, .docs-toc, .docs-body { grid-column: 1; grid-row: auto; }
   .file-example { grid-template-columns:1fr !important; }
 }
 @media (max-width:620px) {
   .doc-section { margin-bottom:72px; }
   .feature { padding-top:44px; }
+  .docs-header .site-menu { justify-content: flex-start; gap: 8px 14px; font-size: 13px; }
+  .docs-header .docs-header-actions { width: 100%; }
+  .docs-header label[for="site-search"] { flex: 1; min-width: 0; }
 }
 
 /* --- grid children must be allowed to shrink (min-width:auto inflates tracks) --- */
@@ -83,11 +103,7 @@ body { font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
 .content pre, .content .code-block, .content .grammar-block { max-width:100%; }
 .content pre, .content .code-block { overflow-x:auto; }
 
-/* --- docs header must not overflow (inline styles carry no media queries) --- */
-header small { white-space:nowrap; flex:0 0 auto; }
-header label[for="site-search"] { flex:0 0 auto; }
-@media (max-width:860px) { header label[for="site-search"] { display:none !important; } }
-@media (max-width:600px) { header { height:auto !important; padding:12px 16px !important; flex-wrap:wrap; } }
+.docs-header small { white-space: nowrap; }
 
 /* --- legibility pass: raise the inherited type scale --- */
 body { font-size:17.5px; line-height:1.65; }

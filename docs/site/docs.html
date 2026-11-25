@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Documentation — Meta-Harness Language</title>
+  <meta name="description" content="Find MHL guides by task, language reference, and the formal specification.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Meta-Harness Language">
+  <meta property="og:title" content="Documentation — Meta-Harness Language">
+  <meta property="og:description" content="Find MHL guides by task, language reference, and the formal specification.">
+  <meta property="og:url" content="https://mh-language.github.io/mhl-core-runtime/docs.html">
+  <meta property="og:image" content="https://mh-language.github.io/mhl-core-runtime/assets/og.png">
+  <meta property="og:image:alt" content="MHL — Control the workflow. Guide the agent.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Documentation — Meta-Harness Language">
+  <meta name="twitter:description" content="Find MHL guides by task, language reference, and the formal specification.">
+  <meta name="twitter:image" content="https://mh-language.github.io/mhl-core-runtime/assets/og.png">
+  <link rel="icon" href="assets/mhl-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="home.css">
+  <script src="home.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-pt="Ir para o conteúdo">Skip to content</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="index.html" aria-label="MHL — Meta-Harness Language">
+        <img src="assets/mhl-logo.png" alt="" width="36" height="36">
+        <span>MHL<small>Meta-Harness Language</small></span>
+      </a>
+      <nav class="site-menu" aria-label="Main navigation" data-pt-aria-label="Navegação principal">
+        <a href="start.html" data-pt="Começar">Get started</a>
+        <a href="examples.html" data-pt="Exemplos">Examples</a>
+        <a href="docs.html" aria-current="page" data-pt="Documentação">Documentation</a>
+        <a href="download.html" data-pt="Download">Download</a>
+      </nav>
+      <div class="header-actions">
+        <button id="lang-toggle" class="icon-button" type="button" aria-label="Mudar para português">PT</button>
+        <button id="theme-toggle" class="icon-button theme-toggle" type="button" aria-label="Switch to dark theme">◐</button>
+        <a class="github-link" href="https://github.com/mh-language/mhl-core-runtime" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="docs" class="container page-intro">
+      <h1 data-pt="Documentação">Documentation</h1>
+      <p class="hero-description" data-pt="Encontre um guia pelo que quer fazer ou consulte a sintaxe e os comandos da MHL.">Find a guide for what you want to do, or look up MHL syntax and commands.</p>
+      <a class="text-link" href="start.html" data-pt="Primeira vez com MHL? Rode seu primeiro workflow →">New to MHL? Run your first workflow →</a>
+    </section>
+    <div class="container documentation-groups">
+      <section id="guides">
+        <h2 data-pt="Guias por tarefa">Guides by task</h2>
+        <ul class="topic-list">
+          <li><a href="examples.html#panel-contracts" data-pt="Testar um workflow">Test a workflow</a><p data-pt="Valide entradas e saídas com mhl test.">Check inputs and outputs with mhl test.</p></li>
+          <li><a href="examples.html#panel-approval" data-pt="Pausar e retomar um workflow">Pause and resume a workflow</a><p data-pt="Use pause() e retome a mesma sessão pelo terminal.">Use pause() and resume the same session from the terminal.</p></li>
+          <li><a href="Docs-Reference.dc.html#mcp" data-pt="Conectar um serviço MCP">Connect to an MCP service</a><p data-pt="Declare uma conexão e chame as ferramentas do serviço no workflow.">Declare a connection and call the service’s tools in a workflow.</p></li>
+          <li><a href="Docs-Servers.dc.html#quickstart" data-pt="Publicar um workflow com mhl serve">Serve a workflow with mhl serve</a><p data-pt="Disponibilize workflows como ferramentas MCP ou skills A2A.">Expose workflows as MCP tools or A2A skills.</p></li>
+          <li><a href="Docs-Studio.dc.html" data-pt="Editar e executar no mhl studio">Edit and run in mhl studio</a><p data-pt="Trabalhe com o diagrama e o código do mesmo workflow.">Work with both the diagram and the code for a workflow.</p></li>
+        </ul>
+      </section>
+      <section id="reference">
+        <h2 data-pt="Referência">Reference</h2>
+        <ul class="topic-list">
+          <li><a href="Docs-Reference.dc.html#syntax" data-pt="Sintaxe e tipos">Syntax and types</a><p data-pt="Valores, coleções, tipos opcionais e aliases.">Values, collections, optional types, and aliases.</p></li>
+          <li><a href="Docs-Reference.dc.html#pipeline" data-pt="Pipelines e workflows">Pipelines and workflows</a><p data-pt="Entradas, etapas, rotas, concorrência e retomada.">Inputs, steps, branching, concurrency, and resume.</p></li>
+          <li><a href="Docs-Reference.dc.html#agent" data-pt="Agentes">Agents</a><p data-pt="Provedores, prompts e políticas de execução.">Providers, prompts, and execution policies.</p></li>
+          <li><a href="Docs-Reference.dc.html#cli" data-pt="Comandos da CLI">CLI commands</a><p data-pt="Comandos para executar, validar, testar e servir.">Commands for running, checking, testing, and serving.</p></li>
+        </ul>
+        <a class="text-link" href="Docs-Reference.dc.html" data-pt="Abrir a referência completa →">Open the full reference →</a>
+      </section>
+      <section id="advanced">
+        <h2 data-pt="Avançado">Advanced</h2>
+        <ul class="topic-list">
+          <li><a href="Docs-Specification.dc.html" data-pt="Especificação formal">Formal specification</a><p data-pt="Gramática, tipos e regras de execução.">Grammar, types, and execution semantics.</p></li>
+          <li><a href="Docs-Extensions.dc.html" data-pt="Desenvolver extensões do runtime">Develop runtime extensions</a><p data-pt="Manifestos, permissões e o protocolo de comunicação com o runtime.">Manifests, permissions, and the protocol for communicating with the runtime.</p></li>
+        </ul>
+      </section>
+    </div>
+  </main>
+  <footer class="container site-footer">
+    <a class="footer-brand" href="index.html">MHL <span>Meta-Harness Language</span></a>
+    <a href="https://github.com/mh-language/mhl-core-runtime">GitHub ↗</a>
+  </footer>
+  <div id="copy-status" class="visually-hidden" role="status"></div>
+</body>
+</html>

@@ -4,7 +4,7 @@
 
 # Meta-Harness Language (mhl)
 
-**mhl** is a declarative language for describing AI agent pipelines: agents, tools, memory, MCP servers, prompts, and the pipelines that wire them together. **[Click here for the full language reference](https://mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html)**.
+**mhl** is a declarative language for describing AI agent pipelines: agents, tools, memory, MCP servers, prompts, and the pipelines that wire them together. **[Run your first MHL workflow](https://mh-language.github.io/mhl-core-runtime/start.html)**.
 
 ## Install
 
@@ -97,7 +97,7 @@ Then install the `.vsix` in VS Code via **Extensions → ⋯ → Install from VS
 
 The v1.4 language profile is in release-candidate stabilization.
 
-The full language reference lives at **[mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html](https://mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html)**.
+Browse **[guides by task](https://mh-language.github.io/mhl-core-runtime/docs.html)** or open the **[full language reference](https://mh-language.github.io/mhl-core-runtime/Docs-Reference.dc.html)**.
 
 
 ## Examples
