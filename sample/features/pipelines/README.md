@@ -16,11 +16,12 @@ not `mhl test` — pipelines aren't assertions, they're programs.
   ```
 - [concurrent_agents_pipeline_example.mh](concurrent_agents_pipeline_example.mh) — `spawn`
   starts an agent call in the background and binds a task handle; `wait` joins them
-  (`wait a, b`, `wait any a, b`, `wait 2 of a, b, c`, `on_error: "collect"`), bounded by a
-  pipeline-wide `spawn: { max_concurrency: N }`. The fan-out form
+  (`wait a, b`, `wait any a, b`, `wait 2 of a, b, c`, `on_error: "collect"`). The fan-out form
   `spawn xs = Agent.run(...) for item in <array>` starts one background call per element
   (each with a distinct prompt) and binds `xs` to an array of handles that `wait xs` joins
-  as a group. Run with:
+  as a group; `spawn xs concurrency N = ...` keeps at most N of them running at once
+  (spawns without the clause share a run-wide limit of 4; the old pipeline-wide
+  `spawn: { max_concurrency: N }` still works but is deprecated). Run with:
   ```
   mhl run sample/features/pipelines/concurrent_agents_pipeline_example.mh --input topic=caching
   ```

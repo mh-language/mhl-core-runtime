@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `concurrency` in `spawn xs concurrency 2 = ...` is highlighted as a keyword. Its
+  completion and diagnostics come from the bundled runtime (`mhlRuntime`) once it includes
+  the clause.
+
 ## 0.11.0
 
 ### Added

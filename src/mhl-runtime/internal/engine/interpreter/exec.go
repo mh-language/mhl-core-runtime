@@ -43,7 +43,7 @@ import (
 // sharing a flow's step names, a workflow and the flow its alias targets — so
 // a step is looked up within that declaration, never just by name. "" falls
 // back to the first pipeline declaring stepName.
-func RunStep(goctx context.Context, prog *ast.Program, pipelineName, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView, spawnSem chan struct{}) (err error) {
+func RunStep(goctx context.Context, prog *ast.Program, pipelineName, stepName, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, pipelineEnv Env, mem *MemContext, cctx *ContextView, spawnSem *SpawnSem) (err error) {
 	step, owner := findStep(prog, pipelineName, stepName)
 	if step == nil {
 		// An `entry route` runs as the run's first stage, under its own name.

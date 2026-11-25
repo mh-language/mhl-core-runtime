@@ -146,7 +146,7 @@ round 2</samp></div>
 <div class="example-explanation">
 <h2 id="tab-fanout-title" data-pt="Distribua itens de uma lista entre agentes">Send a list of items to agents</h2>
 <p data-pt="spawn … for inicia uma chamada por item. O runtime limita as chamadas em voo e wait reúne seus handles. Echo faz o papel do modelo para executar este exemplo localmente.">spawn … for starts one call per item. The runtime limits calls in flight and wait joins their handles. Echo stands in for a model so this example runs locally.</p>
-<dl><div><dt>spawn … for</dt><dd data-pt="Um handle de tarefa por item da coleção.">One task handle per collection item.</dd></div><div><dt>max_concurrency</dt><dd data-pt="No máximo duas chamadas de agente em voo na execução.">At most two agent calls in flight across the run.</dd></div><div><dt>wait</dt><dd data-pt="Aguarde todas as tarefas; any e N of oferecem outras políticas.">Wait for all tasks; any and N of select other policies.</dd></div></dl>
+<dl><div><dt>spawn … for</dt><dd data-pt="Um handle de tarefa por item da coleção.">One task handle per collection item.</dd></div><div><dt>concurrency 2</dt><dd data-pt="No máximo duas chamadas deste fan-out em voo ao mesmo tempo.">At most two calls of this fan-out in flight at once.</dd></div><div><dt>wait</dt><dd data-pt="Aguarde todas as tarefas; any e N of oferecem outras políticas.">Wait for all tasks; any and N of select other policies.</dd></div></dl>
 <p class="requirement" data-pt="wait any checks retorna no primeiro sucesso; wait 2 of checks aguarda dois sucessos. Ambos cancelam as tarefas restantes: remova on_error: &quot;collect&quot; ao usar essas políticas. collect só se aplica ao wait simples; examine .ok e .error. Requer echo no PATH.">wait any checks returns on the first success; wait 2 of checks waits for two successes. Both cancel remaining tasks: remove on_error: "collect" when using these policies. collect applies only to plain wait; inspect .ok and .error. Requires echo on PATH.</p>
 <a class="text-link" data-playground href="playground-en.html#fan-out"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
 </div>
@@ -159,12 +159,10 @@ round 2</samp></div>
 pipeline ReviewFiles {
     description: "Check each file with up to two concurrent agent calls."
 
-    spawn: { max_concurrency: 2 }
-
     step FanOut timeout 5s {
         const files = ["api.go", "auth.go", "cli.go"]
 
-        spawn checks = Echo.run(prompt: "check ${file}") for file in files
+        spawn checks concurrency 2 = Echo.run(prompt: "check ${file}") for file in files
         wait checks timeout: 2s on_error: "collect"
 
         for (var check in checks) {
@@ -350,8 +348,6 @@ loop pipeline Refine max 3 {
     mem draft = "A first draft."
     mem feedback = ""
 
-    spawn: { max_concurrency: 2 }
-
     output: { draft }
 
     step Improve timeout 45s {
@@ -361,7 +357,7 @@ loop pipeline Refine max 3 {
     step Review timeout 45s {
         const lenses = ["clarity", "consistency"]
 
-        spawn checks = Writer.run(
+        spawn checks concurrency 2 = Writer.run(
             prompt: Review(draft: draft, lens: lens)
         ) for lens in lenses
         wait checks timeout: 40s

@@ -185,7 +185,7 @@ type PipelineBodyProperty struct {
 var PipelineBodyProperties = []PipelineBodyProperty{
 	{Name: "description", Doc: `"..." — human-readable summary; surfaced as the MCP tool / A2A skill description by "mhl serve"`},
 	{Name: "checkpoint", Doc: "{ enabled, strategy, storage, ttl } — optional; per-step checkpointing is on by default, declare enabled: false to opt out"},
-	{Name: "spawn", Doc: "{ max_concurrency } — run-wide ceiling on concurrent spawned agent calls"},
+	{Name: "spawn", Doc: "{ max_concurrency } — deprecated: put the limit on the statement instead (`spawn xs concurrency N = ...`); still a run-wide ceiling on concurrent spawned agent calls"},
 	{Name: "context", Doc: "{ source, require } — populate context.vars from a prior run (context.session_id / .started_at / .resumed / .principal need no block)"},
 	{Name: "output", Doc: "{ name: expr, ... } — explicit result projection; with it declared, only these keys are returned to a caller (and over MCP / A2A) instead of every var"},
 	{Name: "repeat", Doc: "{ stop_when, max_iterations } — the `max <N>` header clause is shorthand for just max_iterations", LoopOnly: true},
@@ -544,11 +544,19 @@ type BreakStmt struct {
 // `for (var r in reviews) ...`, `reviews.size()`). `for` and `in` are
 // effectively reserved in this position. EachVar/Iterable are empty for a
 // plain single spawn.
+//
+// An optional `concurrency <N>` clause between the name and `=` caps how
+// many of this statement's calls run at once
+// (`spawn checks concurrency 2 = R.run(prompt: "check ${f}") for f in files`).
+// Concurrency holds the literal as written (validated by lint and by
+// interpreter.execSpawn, like Pipeline.Max); empty means the statement
+// shares the run-wide limit instead (see interpreter.SpawnSem).
 type SpawnStmt struct {
-	Name     string `parser:"'spawn' @Ident '='"`
-	Call     *Expr  `parser:"@@"`
-	EachVar  string `parser:"( 'for' @Ident 'in'"`
-	Iterable *Expr  `parser:"@@ )?"`
+	Name        string `parser:"'spawn' @Ident"`
+	Concurrency string `parser:"( 'concurrency' @Number )? '='" digest:"omitzero"`
+	Call        *Expr  `parser:"@@"`
+	EachVar     string `parser:"( 'for' @Ident 'in'"`
+	Iterable    *Expr  `parser:"@@ )?"`
 }
 
 // WaitStmt joins one or more spawned handles by name. `wait a, b` waits for

@@ -15,7 +15,6 @@ func TestSpawnCleanPipeline(t *testing.T) {
 agent Reviewer { command: "echo" args: ["ok"] }
 
 pipeline P {
-    spawn: { max_concurrency: 2 }
     step S {
         spawn rev = Reviewer.run(prompt: "check this")
         wait rev timeout: 30s
@@ -79,10 +78,9 @@ func TestSpawnFanOutCleanPipeline(t *testing.T) {
 agent Reviewer { command: "echo" args: ["ok"] }
 
 pipeline P {
-    spawn: { max_concurrency: 2 }
     step S {
         var angles = ["a", "b"]
-        spawn reviews = Reviewer.run(prompt: "on ${item}") for item in angles
+        spawn reviews concurrency 2 = Reviewer.run(prompt: "on ${item}") for item in angles
         wait reviews timeout: 30s
         log(reviews.size())
     }
@@ -115,5 +113,69 @@ tool T {
 	}
 	if !found {
 		t.Fatalf("expected a step-only finding, got %+v", findings)
+	}
+}
+
+// The deprecated pipeline-wide `spawn: { max_concurrency }` block still
+// works but is reported as a warning pointing at the statement clause.
+func TestSpawnPipelineBlockIsDeprecated(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.mh")
+	write(t, main, `
+agent Reviewer { command: "echo" args: ["ok"] }
+
+pipeline P {
+    spawn: { max_concurrency: 2 }
+    step S {
+        spawn rev = Reviewer.run(prompt: "check this")
+        wait rev
+    }
+}
+`)
+	findings := lint.File(main)
+	if len(findings) != 1 || findings[0].Severity != lint.SeverityWarning ||
+		!strings.Contains(findings[0].Message, "is deprecated") || !strings.Contains(findings[0].Message, "concurrency N") {
+		t.Fatalf("expected one deprecation warning, got %+v", findings)
+	}
+}
+
+func TestSpawnConcurrencyClause(t *testing.T) {
+	cases := []struct {
+		name     string
+		stmt     string
+		want     string // substring of the only finding; "" = clean
+		severity lint.Severity
+	}{
+		{"fan-out", `spawn xs concurrency 2 = Reviewer.run(prompt: "on ${i}") for i in items`, "", ""},
+		{"zero", `spawn xs concurrency 0 = Reviewer.run(prompt: "on ${i}") for i in items`, `concurrency "0" is not a positive integer`, lint.SeverityError},
+		{"fraction", `spawn xs concurrency 1.5 = Reviewer.run(prompt: "on ${i}") for i in items`, `concurrency "1.5" is not a positive integer`, lint.SeverityError},
+		{"single spawn", `spawn xs concurrency 2 = Reviewer.run(prompt: "once")`, "no effect on a single spawn", lint.SeverityWarning},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			main := filepath.Join(dir, "main.mh")
+			write(t, main, `
+agent Reviewer { command: "echo" args: ["ok"] }
+
+pipeline P {
+    step S {
+        var items = ["a", "b"]
+        `+tc.stmt+`
+        wait xs
+    }
+}
+`)
+			findings := lint.File(main)
+			if tc.want == "" {
+				if len(findings) != 0 {
+					t.Fatalf("expected no findings, got %+v", findings)
+				}
+				return
+			}
+			if len(findings) != 1 || !strings.Contains(findings[0].Message, tc.want) || findings[0].Severity != tc.severity {
+				t.Fatalf("expected one %q finding (%q), got %+v", tc.want, tc.severity, findings)
+			}
+		})
 	}
 }

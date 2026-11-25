@@ -103,6 +103,85 @@ pipeline P {
 	}
 }
 
+// A statement's `concurrency 2` serializes a fan-out of four same-duration
+// calls into two waves.
+func TestSpawnStatementConcurrencyBoundsFanOut(t *testing.T) {
+	src := `
+agent W { command: "sh" args: ["-c", "sleep 0.3; echo done"] }
+
+pipeline P {
+    step S {
+        spawn xs concurrency 2 = W.run(prompt: "${i}") for i in [1, 2, 3, 4]
+        wait xs timeout: 10s
+        log("all ${xs.size()} done")
+    }
+}
+`
+	start := time.Now()
+	out, err := runSpawn(t, src)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "all 4 done") {
+		t.Fatalf("missing completion line:\n%s", out)
+	}
+	// 4 tasks / 2 slots * 0.3s = ~0.6s, vs ~0.3s unbounded and ~1.2s serial.
+	if elapsed < 500*time.Millisecond {
+		t.Fatalf("run finished in %s — concurrency 2 not enforced", elapsed)
+	}
+	if elapsed > 1100*time.Millisecond {
+		t.Fatalf("run took %s — more serial than concurrency 2 implies", elapsed)
+	}
+}
+
+// A statement's own limit is not capped by the default run-wide limit (4)
+// when the pipeline declares no `spawn: { max_concurrency }` block.
+func TestSpawnStatementConcurrencyExceedsDefault(t *testing.T) {
+	src := `
+agent W { command: "sh" args: ["-c", "sleep 0.5; echo done"] }
+
+pipeline P {
+    step S {
+        spawn xs concurrency 8 = W.run(prompt: "${i}") for i in [1, 2, 3, 4, 5, 6, 7, 8]
+        wait xs timeout: 10s
+        log("all ${xs.size()} done")
+    }
+}
+`
+	start := time.Now()
+	out, err := runSpawn(t, src)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "all 8 done") {
+		t.Fatalf("missing completion line:\n%s", out)
+	}
+	// One wave of 0.5s; capped at the default 4 it would take two (~1s).
+	if elapsed > 900*time.Millisecond {
+		t.Fatalf("run took %s — concurrency 8 was capped by the default limit", elapsed)
+	}
+}
+
+// A non-positive literal is refused before anything runs.
+func TestSpawnStatementConcurrencyRejectsZero(t *testing.T) {
+	src := `
+agent W { command: "sh" args: ["-c", "echo done"] }
+
+pipeline P {
+    step S {
+        spawn xs concurrency 0 = W.run(prompt: "${i}") for i in [1, 2]
+        wait xs
+    }
+}
+`
+	out, err := runSpawn(t, src)
+	if err == nil || !strings.Contains(err.Error()+out, `concurrency "0" is not a positive integer`) {
+		t.Fatalf("expected a concurrency error, got err=%v\n%s", err, out)
+	}
+}
+
 // wait-all is fail-fast: the first failing spawn fails the step, naming the
 // agent, and cancels the siblings.
 func TestSpawnWaitAllFailFast(t *testing.T) {

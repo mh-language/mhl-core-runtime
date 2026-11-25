@@ -3,6 +3,7 @@ package lint
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -474,6 +475,10 @@ func checkPipelineProperties(file string, prog *ast.Program) []Finding {
 			continue
 		}
 		for _, m := range decl.Pipeline.Body {
+			if m.Prop != nil && m.Prop.Name == "spawn" {
+				findings = append(findings, Finding{File: fileAt(file, m.Prop.Pos), Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column, Severity: SeverityWarning,
+					Message: fmt.Sprintf("%s %q: `spawn: { max_concurrency }` is deprecated — put the limit on the statement: `spawn xs concurrency N = Agent.run(...) for item in items`", pipelineKind(decl.Pipeline), decl.Pipeline.Name)})
+			}
 			if m.Prop == nil || knownPipelineProperties[m.Prop.Name] {
 				continue
 			}
@@ -1027,6 +1032,15 @@ func checkSpawnStmt(file string, prog *ast.Program, statement *ast.Statement, de
 			Message: fmt.Sprintf("spawn %q: right-hand side must be an <Agent>.run(...) call", statement.Spawn.Name)}}
 	}
 	var findings []Finding
+	if c := statement.Spawn.Concurrency; c != "" {
+		if n, err := strconv.Atoi(c); err != nil || n <= 0 {
+			findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column,
+				Message: fmt.Sprintf("spawn %q: concurrency %q is not a positive integer (e.g. concurrency 2)", statement.Spawn.Name, c)})
+		} else if statement.Spawn.Iterable == nil {
+			findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Severity: SeverityWarning,
+				Message: fmt.Sprintf("spawn %q: concurrency has no effect on a single spawn — it limits a fan-out (`spawn %s concurrency %s = ... for item in items`)", statement.Spawn.Name, statement.Spawn.Name, c)})
+		}
+	}
 	callScope := declared
 	if statement.Spawn.Iterable != nil {
 		// The fan-out `for <var> in <expr>` clause: check the iterable, and

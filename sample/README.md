@@ -78,6 +78,8 @@ este índice cobre apenas o que tem exemplo executável aqui.
   → [order_triage.mh](features/graph_and_events/order_triage.mh) ·
   [goto_parallel_group.mh](syntax/pipeline_vs_workflow/goto_parallel_group.mh)
 - **Concatenação** — `+` entre strings (e string + escalar). → [syntax/concatenation/](syntax/concatenation/README.md)
+- **`concurrency N`** (`spawn xs concurrency N = ... for item in items`) — no máximo N chamadas daquele fan-out ao mesmo tempo.
+  → [concurrent_agents_pipeline_example.mh](features/pipelines/concurrent_agents_pipeline_example.mh)
 - **`const`** — ligação de atribuição única; também no topo de pipelines e dentro de `tool`s.
   → [syntax/const_declaration/](syntax/const_declaration/README.md) ·
   [const_is_available_to_every_method.mh](syntax/tool_scope/const_is_available_to_every_method.mh)
@@ -225,7 +227,7 @@ este índice cobre apenas o que tem exemplo executável aqui.
 - **`.matches()`** — regex RE2 sobre a string inteira. → [matches.mh](syntax/string_methods/matches.mh)
 - **`max <N>`** — teto de iterações no cabeçalho de `loop workflow`.
   → [linear_pipeline_and_branching_workflow.mh](syntax/pipeline_vs_workflow/linear_pipeline_and_branching_workflow.mh)
-- **`max_concurrency`** (`spawn: { ... }`) — limite de chamadas em segundo plano.
+- **`max_concurrency`** (`spawn: { ... }`) — *depreciado*: teto global de chamadas em segundo plano; prefira `spawn xs concurrency N = ...`.
   → [concurrent_agents_pipeline_example.mh](features/pipelines/concurrent_agents_pipeline_example.mh)
 - **`max_iterations`** (`repeat: { ... }`). → [loop_poll_pipeline_example.mh](features/pipelines/loop_poll_pipeline_example.mh)
 - **`mcp`** (extension) — cliente MCP stdio/http: `.call()`, `.list_tools()`, `.discover()`.
@@ -338,7 +340,7 @@ este índice cobre apenas o que tem exemplo executável aqui.
   → [features/skills/](features/skills/README.md)
 - **Slicing** `[a..b]`, `^` (a partir do fim). → [slice_array.mh](syntax/array_statements/slice_array.mh)
 - **`.sort_by()`** — ordena por chave numérica/textual. → [sort_by_number.mh](syntax/higher_order_array/sort_by_number.mh)
-- **`spawn` / `wait`** — chamadas de agent em segundo plano e junção (`wait any`, `wait N of`, fan-out `for`).
+- **`spawn` / `wait`** — chamadas de agent em segundo plano e junção (`wait any`, `wait N of`, fan-out `for`, limite `concurrency N`).
   → [concurrent_agents_pipeline_example.mh](features/pipelines/concurrent_agents_pipeline_example.mh)
 - **`.split()` / `.starts_with()` / `.ends_with()` / `.substring()`**.
   → [syntax/string_methods/](syntax/string_methods/README.md)

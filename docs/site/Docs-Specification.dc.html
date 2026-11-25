@@ -794,7 +794,6 @@ step Retry { goto Generate(artifact) }</code></pre>
 <pre class="code-block"><code class="language-mhl">pipeline Review {
     input diff: string
     input changed_files: string[]
-    spawn: {max_concurrency: 4}
     var docs = ""
     var issues = ""
     step Analyze {
@@ -803,7 +802,7 @@ step Retry { goto Generate(artifact) }</code></pre>
         wait code, security timeout: 90s
         log(code.result, security.result)
 
-        spawn reviews = Reviewer.run(prompt: "review ${file}") for file in changed_files
+        spawn reviews concurrency 2 = Reviewer.run(prompt: "review ${file}") for file in changed_files
         wait reviews timeout: 90s
         for (var r in reviews) log(r.status, r.result)
     }
@@ -813,7 +812,9 @@ step Retry { goto Generate(artifact) }</code></pre>
     }
 }</code></pre>
 <p><code>spawn</code> is valid directly inside a step and only accepts an <code>Agent.run(...)</code> call. It returns a task handle with <code>result</code>, <code>ok</code>, <code>error</code>, <code>status</code>, and <code>duration_ms</code>. <code>wait names</code> waits for all and fails fast; <code>wait any names</code> returns on the first success; <code>wait N of names</code> returns after N successes. The optional <code>timeout:</code> bounds the wait, and <code>on_error: "collect"</code> keeps errors inspectable rather than failing the step. Unjoined handles are drained at step end and cannot outlive a checkpoint.</p>
-<p>A trailing <code>for &lt;var&gt; in &lt;expr&gt;</code> clause makes <code>spawn</code> a fan-out: <code>&lt;expr&gt;</code> is evaluated once and must be an array; the <code>Agent.run(...)</code> call is started once per element with <code>&lt;var&gt;</code> bound to that element while its argument expressions are evaluated, so each call may carry a distinct prompt. The bound name then holds an array of task handles in element order. It indexes and iterates as an ordinary array (<code>xs[0].result</code>, <code>for (var h in xs) …</code>, <code>xs.size()</code>), and a <code>wait</code> naming it — <code>wait xs</code>, <code>wait any xs</code>, <code>wait N of xs</code> — expands it to its elements. A non-array <code>&lt;expr&gt;</code> is a runtime error; an empty array yields an empty handle array on which a plain <code>wait</code> is a no-op. <code>max_concurrency</code> continues to bound the number of concurrent calls.</p>
+<p>A trailing <code>for &lt;var&gt; in &lt;expr&gt;</code> clause makes <code>spawn</code> a fan-out: <code>&lt;expr&gt;</code> is evaluated once and must be an array; the <code>Agent.run(...)</code> call is started once per element with <code>&lt;var&gt;</code> bound to that element while its argument expressions are evaluated, so each call may carry a distinct prompt. The bound name then holds an array of task handles in element order. It indexes and iterates as an ordinary array (<code>xs[0].result</code>, <code>for (var h in xs) …</code>, <code>xs.size()</code>), and a <code>wait</code> naming it — <code>wait xs</code>, <code>wait any xs</code>, <code>wait N of xs</code> — expands it to its elements. A non-array <code>&lt;expr&gt;</code> is a runtime error; an empty array yields an empty handle array on which a plain <code>wait</code> is a no-op.</p>
+<p>An optional <code>concurrency N</code> clause between the bound name and <code>=</code> limits how many calls of that statement run at once: <code>spawn reviews concurrency 2 = R.run(...) for f in files</code> keeps at most two in flight and starts the next as one finishes. <code>N</code> MUST be a positive integer literal; any other value is a static error. The limit applies to each execution of the statement independently. On a spawn without a <code>for</code> clause it has no effect (a lint warning). A spawn without the clause shares a run-wide limit, 4 by default.</p>
+<p>The pipeline body property <code>spawn: {max_concurrency: N}</code> is <em>deprecated</em>; an implementation SHOULD warn on it. It sets the run-wide limit to <code>N</code> and, when declared, additionally bounds every call of a statement that carries its own <code>concurrency</code> clause; when absent, a statement's own <code>concurrency</code> is not capped by the default.</p>
 <p>A named <code>parallel</code> group is a barrier: all branches run concurrently and the pipeline advances only after all complete. A branch that fails does not cancel its siblings — the barrier still waits for every branch, then the run fails with the first branch error; on <code>--resume</code> the whole group re-runs, so branch steps MUST stay idempotent. Each branch receives a copy of shared pipeline variables; conflicting writes fail unless the group declares a merge (below). Reference objects (§5.3) are merged by identity and field: changes by different branches to different fields of the same reference object are all applied to it; the same field set to different values by two branches is a conflict and fails the run. Output is merged in declaration order. A group timeout cancels unfinished branches. <code>goto</code> cannot appear within a group, nor target a branch step of one, and <code>break</code> is not permitted in one. A <code>goto</code> MAY target the group itself by its name: the whole group runs — every branch, then the barrier — exactly as when control falls into it. A group's name therefore shares the step namespace of its pipeline: no step or other group may carry the same name.</p>
 <pre><code class="language-mh">parallel Ask {
     step AskClaude { self.replies = [...self.replies, Claude.run(prompt: question)] }
@@ -1029,7 +1030,7 @@ assignment     ::= lvalue ("=" | "+=") expression
 destructuring  ::= ["var" | "self" "."] "{" destructure-entry ("," destructure-entry)* [","] "}" "=" expression
 destructure-entry ::= Identifier [":" Identifier]
 lvalue         ::= Identifier trailer*
-spawn          ::= "spawn" Identifier "=" expression ["for" Identifier "in" expression]
+spawn          ::= "spawn" Identifier ["concurrency" Number] "=" expression ["for" Identifier "in" expression]
 wait           ::= "wait" ["any" | Number "of"] Identifier ("," Identifier)* wait-option*
 wait-option    ::= ("timeout" | "on_error") ":" expression
 try-statement  ::= "try" block "catch" ["(" Identifier ")"] block ["finally" block]

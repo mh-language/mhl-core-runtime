@@ -16,7 +16,8 @@ import (
 
 // defaultSpawnConcurrency bounds how many spawned agent goroutines may be
 // inside their underlying subprocess/HTTP call at once when a pipeline does
-// not set `spawn: { max_concurrency: N }`.
+// not set `spawn: { max_concurrency: N }` and the statement has no
+// `concurrency N` clause of its own.
 const defaultSpawnConcurrency = 4
 
 // spawnHandle is the value a `spawn name = Agent.run(...)` statement binds:
@@ -107,26 +108,53 @@ func handleField(h *spawnHandle, field string) (any, error) {
 	}
 }
 
-// NewSpawnSem builds the semaphore that bounds concurrent `spawn`ed agent
-// calls for one pipeline run. It is created once (see cli.go) and shared by
-// every step's registry, so `spawn: { max_concurrency: N }` is a
-// whole-pipeline ceiling, not per step. A non-positive maxConcurrency uses
-// defaultSpawnConcurrency.
-func NewSpawnSem(maxConcurrency int) chan struct{} {
+// SpawnSem holds the run-wide limits on concurrent `spawn`ed agent calls for
+// one pipeline run. It is created once per run (NewSpawnSem) and shared by
+// every step's registry.
+//
+// A spawn statement without its own `concurrency N` clause takes a slot in
+// shared — the deprecated `spawn: { max_concurrency: N }` value, else
+// defaultSpawnConcurrency. A statement with the clause is bounded by its own
+// N instead, and additionally by shared only when the pipeline declared
+// `spawn: { max_concurrency }` explicitly (ceiling): the default exists to
+// bound statements that state no limit, not to cap one that does.
+type SpawnSem struct {
+	shared  chan struct{}
+	ceiling bool
+}
+
+// NewSpawnSem builds the run-wide spawn limits. A positive maxConcurrency is
+// the declared `spawn: { max_concurrency: N }` ceiling; a non-positive one
+// means the block is absent and defaultSpawnConcurrency applies to
+// statements that state no limit of their own.
+func NewSpawnSem(maxConcurrency int) *SpawnSem {
 	if maxConcurrency <= 0 {
-		maxConcurrency = defaultSpawnConcurrency
+		return &SpawnSem{shared: make(chan struct{}, defaultSpawnConcurrency)}
 	}
-	return make(chan struct{}, maxConcurrency)
+	return &SpawnSem{shared: make(chan struct{}, maxConcurrency), ceiling: true}
+}
+
+// slots returns the semaphores one call must hold, in acquisition order: the
+// statement's own (local, nil without a `concurrency` clause) first, then the
+// run-wide one when it applies. A fixed order keeps the two from deadlocking.
+func (s *SpawnSem) slots(local chan struct{}) []chan struct{} {
+	if local == nil {
+		return []chan struct{}{s.shared}
+	}
+	if s.ceiling {
+		return []chan struct{}{local, s.shared}
+	}
+	return []chan struct{}{local}
 }
 
 // spawnRegistry tracks every handle created in one step execution and shares
-// the run-wide concurrency semaphore. It lives on evalCtx.spawns, set only
-// by RunStep, which is what confines `spawn` to a step body.
+// the run-wide concurrency limits. It lives on evalCtx.spawns, set only by
+// RunStep, which is what confines `spawn` to a step body.
 type spawnRegistry struct {
 	mu      sync.Mutex
 	handles []*spawnHandle
 	lastID  int
-	sem     chan struct{}
+	sem     *SpawnSem
 }
 
 func (r *spawnRegistry) register(h *spawnHandle) {
@@ -141,8 +169,9 @@ func (r *spawnRegistry) register(h *spawnHandle) {
 // returns its handle immediately. The parent env is deep-copied at this
 // point so the goroutine never races the step's later assignments; the
 // goroutine gets a cancellable context so `wait` timeout / fail-fast can
-// abort the subprocess.
-func (r *spawnRegistry) spawn(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, depth int) *spawnHandle {
+// abort the subprocess. local is the statement's own `concurrency N`
+// semaphore, nil when it has none.
+func (r *spawnRegistry) spawn(ctx *evalCtx, agentName string, agent *ast.Agent, call *ast.Call, depth int, local chan struct{}) *spawnHandle {
 	snapshot := deepCopyEnv(ctx.env)
 	for k, v := range ctx.pipelineEnv {
 		if _, shadowed := snapshot[k]; !shadowed {
@@ -176,12 +205,14 @@ func (r *spawnRegistry) spawn(ctx *evalCtx, agentName string, agent *ast.Agent, 
 			}
 		}()
 
-		select {
-		case r.sem <- struct{}{}:
-			defer func() { <-r.sem }()
-		case <-childCtx.Done():
-			h.finish("", childCtx.Err())
-			return
+		for _, sem := range r.sem.slots(local) {
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-childCtx.Done():
+				h.finish("", childCtx.Err())
+				return
+			}
 		}
 		if err := childCtx.Err(); err != nil {
 			h.finish("", err)
@@ -221,8 +252,9 @@ func (r *spawnRegistry) drainAtStepEnd(out io.Writer, cancelPending bool) {
 	}
 }
 
-// execSpawn runs a `spawn name = Agent.run(...)` statement: it validates the
-// context and target, starts the background call, and binds the handle. With
+// execSpawn runs a `spawn name [concurrency N] = Agent.run(...)` statement:
+// it validates the context and target, starts the background call, and binds
+// the handle. With
 // a trailing `for <var> in <expr>` clause it fans out — one background call
 // per element of the array <expr>, with <var> bound to that element while the
 // call's arguments are built — and binds name to an []any of the handles in
@@ -239,8 +271,19 @@ func execSpawn(ctx *evalCtx, stmt *ast.SpawnStmt) error {
 		return fmt.Errorf("spawn %q: right-hand side must be an <Agent>.run(...) call", stmt.Name)
 	}
 
+	var local chan struct{}
+	if stmt.Concurrency != "" {
+		n, err := strconv.Atoi(stmt.Concurrency)
+		if err != nil || n <= 0 {
+			return fmt.Errorf("spawn %q: concurrency %q is not a positive integer (e.g. concurrency 2)", stmt.Name, stmt.Concurrency)
+		}
+		// One semaphore per execution of the statement: the limit bounds
+		// this statement's calls, not every statement of the step.
+		local = make(chan struct{}, n)
+	}
+
 	if stmt.Iterable == nil {
-		ctx.env[stmt.Name] = ctx.spawns.spawn(ctx, name, agent, call, 0)
+		ctx.env[stmt.Name] = ctx.spawns.spawn(ctx, name, agent, call, 0, local)
 		return nil
 	}
 
@@ -260,7 +303,7 @@ func execSpawn(ctx *evalCtx, stmt *ast.SpawnStmt) error {
 	handles := make([]any, len(items))
 	for i, it := range items {
 		ctx.env[stmt.EachVar] = it
-		handles[i] = ctx.spawns.spawn(ctx, name, agent, call, 0)
+		handles[i] = ctx.spawns.spawn(ctx, name, agent, call, 0, local)
 	}
 	if had {
 		ctx.env[stmt.EachVar] = prev

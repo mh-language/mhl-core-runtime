@@ -232,6 +232,7 @@ loop workflow PollBuild {
 |---|---|
 | Several agent calls inside one step | `spawn` + `wait` |
 | One agent over a list | `spawn xs = A.run(prompt: "${item}") for item in items` |
+| ...with at most N calls in flight | `spawn xs concurrency N = A.run(prompt: "${item}") for item in items` |
 | Several whole steps at once | `parallel Name { step A {...} step B {...} }` |
 | Branches that hand results to a join | `parallel Name { var a = "" ... step A {...} merge { ... } }` |
 | Branches that fill one var | `parallel Name { ... merge (branches) { ... } }` |
@@ -244,14 +245,13 @@ agent Checker {
 
 pipeline FanOut {
     input files: string[] = ["a.go", "b.go"]
-    spawn: { max_concurrency: 2 }
 
     var results = []
     var left = ""
     var right = ""
 
     step Check timeout 2m {
-        spawn checks = Checker.run(prompt: "check ${item}") for item in files
+        spawn checks concurrency 2 = Checker.run(prompt: "check ${item}") for item in files
         wait checks timeout: 90s
 
         self.results = checks.map((handle) -> handle.result)
@@ -283,6 +283,9 @@ test fan_out {
 ```
 
 - `spawn` accepts only `<Agent>.run(...)`, not a router or a tool.
+- `concurrency N` goes between the handle name and `=`, and only limits a fan-out (`for ...`).
+  N is a positive integer literal. A spawn without it shares a run-wide limit of 4. Do not
+  write `spawn: { max_concurrency: N }` in a pipeline body: it is deprecated (a lint warning).
 - `wait a, b` fails fast. `wait any a, b` takes the first success. `wait 2 of a, b, c` is a
   quorum. `on_error: "collect"` keeps the step alive; then read `.ok`, `.error`, `.status`.
 - `parallel` branches get copies of the pipeline vars, merged at the barrier. Two branches

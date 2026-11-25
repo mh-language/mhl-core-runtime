@@ -117,3 +117,25 @@ pipeline P {
 		t.Fatalf("Parse: %v", err)
 	}
 }
+
+func TestSpawnConcurrencyClauseParses(t *testing.T) {
+	cases := []struct {
+		src, name, concurrency, each string
+	}{
+		{`spawn checks concurrency 2 = Echo.run(prompt: "check ${f}") for f in files`, "checks", "2", "f"},
+		{`spawn checks = Echo.run(prompt: "check ${f}") for f in files`, "checks", "", "f"},
+		{`spawn one concurrency 3 = Echo.run(prompt: "x")`, "one", "3", ""},
+		// `concurrency` stays usable as a handle name.
+		{`spawn concurrency = Echo.run(prompt: "x")`, "concurrency", "", ""},
+	}
+	for _, tc := range cases {
+		prog, err := Parse("pipeline P {\n    step S {\n        " + tc.src + "\n    }\n}\n")
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", tc.src, err)
+		}
+		sp := prog.Decls[0].Pipeline.Body[0].Step.Body[0].Spawn
+		if sp == nil || sp.Name != tc.name || sp.Concurrency != tc.concurrency || sp.EachVar != tc.each {
+			t.Fatalf("Parse(%q) = %+v, want name %q concurrency %q each %q", tc.src, sp, tc.name, tc.concurrency, tc.each)
+		}
+	}
+}

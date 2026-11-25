@@ -1,6 +1,7 @@
 // Concurrent sub-agents inside one step: `spawn` starts an agent call in the
-// background and binds a task handle; `wait` joins the handles. The whole run
-// is capped at `max_concurrency` agent calls in flight at once. Run with:
+// background and binds a task handle; `wait` joins the handles. A fan-out can
+// cap its own calls in flight with `concurrency N`; spawns without the clause
+// share a run-wide limit of 4. Run with:
 //
 //   mhl run sample/features/pipelines/concurrent_agents_pipeline_example.mh --input topic=caching
 //
@@ -25,8 +26,6 @@ agent Flaky {
 pipeline ConcurrentReview {
     input topic: string
 
-    spawn: { max_concurrency: 2 }
-
     // wait-all: every handle is joined in spawn order; a failing agent would
     // fail the step (fail-fast) unless `on_error: "collect"` is given.
     step FanOut {
@@ -45,10 +44,12 @@ pipeline ConcurrentReview {
     // starts one background call per element, binding `item` while each call's
     // arguments are built (so every prompt differs), and binds `xs` to an
     // array of handles that `wait` joins as a group and that indexes /
-    // iterates like any array.
+    // iterates like any array. `concurrency 2` (between the name and `=`)
+    // keeps at most two of these calls running at once; the third starts
+    // when one finishes.
     step SameAgentFanOut {
         var items = ["readme", "changelog", "license"]
-        spawn checks = Fast.run(prompt: "check ${item}") for item in items
+        spawn checks concurrency 2 = Fast.run(prompt: "check ${item}") for item in items
         wait checks timeout: 10s
         log("checked ${checks.size()} file(s)")
         for (var c in checks) {

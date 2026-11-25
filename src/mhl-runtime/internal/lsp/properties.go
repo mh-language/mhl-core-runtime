@@ -31,7 +31,7 @@ var pipelinePropertyItems, loopPipelineExtraPropertyItems = func() (base, loopOn
 
 // spawnFieldItems mirrors runtime.spawnConfigFromExpr's field switch.
 var spawnFieldItems = []completionItem{
-	propertyItem("max_concurrency", "integer > 0; default 4"),
+	propertyItem("max_concurrency", "deprecated — prefer `spawn xs concurrency N = ...`; integer > 0, run-wide ceiling (default 4)"),
 }
 
 // checkpointFieldItems mirrors runtime.checkpointFromExpr's field switch.

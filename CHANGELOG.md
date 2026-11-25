@@ -36,6 +36,23 @@ Per-tag release notes are also generated automatically on the
   - Programs without variants keep their `DefinitionDigest`, so their checkpoints still
     resume.
   - Design: `docs/MHL-PROMPT-VARIANTS.md`.
+- **A concurrency limit on the `spawn` statement.** `spawn checks concurrency 2 =
+  Echo.run(prompt: "check ${file}") for file in files` keeps at most two of that fan-out's
+  calls running at once and starts the next one when a call finishes. `N` is a positive
+  integer literal. Each run of the statement gets its own limit.
+  - A spawn without the clause still shares the run-wide limit of 4. A statement's own
+    `concurrency` is not capped by that default, so `concurrency 8` runs 8 at once.
+  - `mhl lint` reports a non-positive or fractional `N` as an error. The clause on a single
+    spawn (no `for`) is a warning, because it has no effect there.
+  - `concurrency` is a keyword only in this position, so a handle may still be named
+    `concurrency`. Programs that don't use the clause keep their `DefinitionDigest`.
+
+### Deprecated
+
+- **`spawn: { max_concurrency: N }` in a pipeline/workflow body.** Put the limit on the
+  statement instead: `spawn xs concurrency N = ...`. `mhl lint` and the editor report the
+  block as a warning. It still works as before: it sets the run-wide limit, and when it is
+  declared it also caps statements that have their own `concurrency`.
 
 ### Fixed
 

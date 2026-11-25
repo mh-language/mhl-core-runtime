@@ -12,7 +12,7 @@ var keywords = []string{
 	"agent", "router", "memory", "tool", "prompt", "schema", "internal", "pipeline", "workflow", "extension", "extensible", "loop", "partial",
 	"import", "from", "as", "export", "input", "step", "entry", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
-	"return", "break", "goto", "route", "spawn", "wait", "parallel", "merge", "stage", "timeout", "max", "ref", "with", "true", "false", "null",
+	"return", "break", "goto", "route", "spawn", "concurrency", "wait", "parallel", "merge", "stage", "timeout", "max", "ref", "with", "true", "false", "null",
 	"kind", "manifest", "properties",
 }
 
