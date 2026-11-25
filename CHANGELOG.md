@@ -10,6 +10,8 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+## 1.16.0 — 2026-11-25
+
 ### Added
 
 - **Prompt variants per harness/model.** A `prompt` body may list one `default` arm and any
