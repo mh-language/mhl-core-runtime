@@ -4,9 +4,9 @@
 
 ### Added
 
-- `concurrency` in `spawn xs concurrency 2 = ...` is highlighted as a keyword. Its
-  completion and diagnostics come from the bundled runtime (`mhlRuntime`) once it includes
-  the clause.
+- `concurrency` in `spawn xs concurrency 2 = ...` and `collect` in `wait xs collect` are
+  highlighted as keywords. Their completion and diagnostics come from the bundled runtime
+  (`mhlRuntime`) once it includes them.
 
 ## 0.11.0
 

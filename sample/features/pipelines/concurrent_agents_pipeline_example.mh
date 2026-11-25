@@ -27,13 +27,13 @@ pipeline ConcurrentReview {
     input topic: string
 
     // wait-all: every handle is joined in spawn order; a failing agent would
-    // fail the step (fail-fast) unless `on_error: "collect"` is given.
+    // fail the step (fail-fast) unless `collect` is given.
     step FanOut {
         spawn a = Fast.run(prompt: "angle one: ${topic}")
         spawn b = Fast.run(prompt: "angle two: ${topic}")
         spawn c = Slow.run(prompt: "angle three: ${topic}")
 
-        wait a, b, c timeout: 10s
+        wait a, b, c timeout 10s
 
         log("a => ${a.result} (${a.status})")
         log("b => ${b.result}")
@@ -50,19 +50,19 @@ pipeline ConcurrentReview {
     step SameAgentFanOut {
         var items = ["readme", "changelog", "license"]
         spawn checks concurrency 2 = Fast.run(prompt: "check ${item}") for item in items
-        wait checks timeout: 10s
+        wait checks timeout 10s
         log("checked ${checks.size()} file(s)")
         for (var c in checks) {
             log("- ${c.result} (${c.status})")
         }
     }
 
-    // `on_error: "collect"` keeps the step green and leaves the outcome on
+    // `collect` keeps the step green and leaves the outcome on
     // each handle; `wait any` returns as soon as one succeeds.
     step Tolerant {
         spawn ok = Fast.run(prompt: "${topic}")
         spawn bad = Flaky.run(prompt: "${topic}")
-        wait ok, bad on_error: "collect"
+        wait ok, bad collect
         log("ok.status=${ok.status} bad.status=${bad.status} bad.error=${bad.error}")
 
         spawn q1 = Slow.run(prompt: "${topic}")

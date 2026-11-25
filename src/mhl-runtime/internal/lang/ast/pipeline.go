@@ -562,9 +562,8 @@ type SpawnStmt struct {
 // WaitStmt joins one or more spawned handles by name. `wait a, b` waits for
 // all of them, failing the step on the first error (and cancelling the
 // rest); `wait any a, b` returns as soon as one succeeds; `wait 2 of a, b, c`
-// returns once that many have succeeded. Trailing `timeout: <duration>` and
-// `on_error: "collect"` options reuse the `key: value` shape of the config
-// blocks rather than introducing a braced options block. `any` and `of` are
+// returns once that many have succeeded. Trailing options are clauses like a
+// step's `timeout <dur>`: `wait xs timeout 30s collect`. `any` and `of` are
 // effectively reserved in this position — a spawn handle should not be named
 // either.
 type WaitStmt struct {
@@ -574,12 +573,21 @@ type WaitStmt struct {
 	Opts   []*WaitOpt `parser:"@@*"`
 }
 
-// WaitOpt is one trailing `timeout: 30s` / `on_error: "collect"` option on a
-// WaitStmt. Key is restricted to those two literals so the repetition stops
-// cleanly at the next statement.
+// WaitOpt is one trailing option on a WaitStmt: `timeout 30s`, or the bare
+// word `collect` (never fail the step; leave each outcome on its handle).
+//
+// The older `key: value` spellings — `timeout: 30s`, `on_error: "collect"` —
+// still parse (Colon records the `:`, for lint's deprecation warning) and
+// mean the same. A bare `collect` is an option only when the next token
+// cannot continue an expression statement, so `collect = 1` / `collect.x()`
+// on the line after a `wait` still start a statement of their own (the
+// lexer elides newlines). Collect is `digest:"omitzero"` and Colon
+// `digest:"-"`, so a wait that uses neither keeps its DefinitionDigest.
 type WaitOpt struct {
-	Key   string `parser:"@( 'timeout' | 'on_error' ) ':'"`
-	Value *Expr  `parser:"@@"`
+	Collect bool   `parser:"( @'collect' (?! '=' | '+=' | '.' | '?.' | '(' | '[' )" digest:"omitzero"`
+	Key     string `parser:"| @( 'timeout' | 'on_error' )"`
+	Colon   bool   `parser:"@':'?" digest:"-"`
+	Value   *Expr  `parser:"@@ )"`
 }
 
 // GotoStmt transfers control to another named step in the same declaration,

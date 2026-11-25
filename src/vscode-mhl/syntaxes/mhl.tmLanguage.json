@@ -140,7 +140,7 @@
         },
         {
           "name": "storage.type.declaration.mhl",
-          "match": "\\b(from|import|as|export|extension|extensible|agent|router|memory|tool|loop|partial|pipeline|workflow|prompt|parallel|merge|step|route|timeout|concurrency|input|test|describe|type|enum)\\b"
+          "match": "\\b(from|import|as|export|extension|extensible|agent|router|memory|tool|loop|partial|pipeline|workflow|prompt|parallel|merge|step|route|timeout|concurrency|collect|input|test|describe|type|enum)\\b"
         },
         {
           "comment": "`internal` modifier — only before a pipeline/workflow declaration or a tool method name, so an identifier named `internal` is not highlighted",

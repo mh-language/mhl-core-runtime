@@ -46,6 +46,13 @@ Per-tag release notes are also generated automatically on the
     spawn (no `for`) is a warning, because it has no effect there.
   - `concurrency` is a keyword only in this position, so a handle may still be named
     `concurrency`. Programs that don't use the clause keep their `DefinitionDigest`.
+- **`wait` options are clauses, without a colon.** `wait checks timeout 2s collect` is the
+  new spelling of `wait checks timeout: 2s on_error: "collect"`, the same shape as a step's
+  `timeout 3m`. `collect` keeps the step green and leaves each outcome on its handle.
+  - `collect` is an option only when the next token can't continue a statement, so
+    `collect = 1` on the line after a `wait` is still its own statement.
+  - `mhl lint` now checks the options as the runtime does: `timeout` takes a duration
+    literal, and `collect` only works on a plain `wait` (not `wait any` / `wait N of`).
 
 ### Deprecated
 
@@ -53,6 +60,9 @@ Per-tag release notes are also generated automatically on the
   statement instead: `spawn xs concurrency N = ...`. `mhl lint` and the editor report the
   block as a warning. It still works as before: it sets the run-wide limit, and when it is
   declared it also caps statements that have their own `concurrency`.
+- **`timeout: <duration>` and `on_error: "collect"` on `wait`.** Write `timeout 30s` and
+  `collect`. Both old spellings still work and keep the `DefinitionDigest`, and `mhl lint`
+  reports them as warnings.
 
 ### Fixed
 

@@ -131,7 +131,7 @@ test('site programs lint and demonstrate routing, max, fan-out, parallel, resume
       for (const policy of ['any', '2 of']) {
         fs.writeFileSync(file('wait-policy'), examples.get('fanout-code')
           .replace('wait checks', 'wait ' + policy + ' checks')
-          .replace(' on_error: "collect"', ''));
+          .replace(' collect', ''));
         assert.match(success(['run', file('wait-policy')]), /check (api|auth|cli)\.go/);
       }
       fs.writeFileSync(path.join(directory, 'check.cjs'), `

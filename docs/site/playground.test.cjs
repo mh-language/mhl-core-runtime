@@ -40,7 +40,7 @@ test("diagnostics and draft storage support both languages without overwriting e
 });
 
 test("highlight preserves source and isolates comments, strings, durations and markup", () => {
-  const source = '// wait 30s <img>\nvar s = "https://example.com/if?x=1&y=2"\nwait tasks timeout: 500ms';
+  const source = '// wait 30s <img>\nvar s = "https://example.com/if?x=1&y=2"\nwait tasks timeout 500ms';
   const tokens = core.tokenize(source);
   assert.equal(tokens.map(token => token.value).join(""), source);
   assert.equal(tokens[0].kind, "comment");

@@ -1081,6 +1081,42 @@ func checkWaitStmt(file string, statement *ast.Statement, declared map[string]ty
 				Message: fmt.Sprintf("wait: %q is not a spawned handle in this step", name)})
 		}
 	}
+	return append(findings, checkWaitOpts(file, statement)...)
+}
+
+// checkWaitOpts mirrors interpreter.execWait's option rules — a duration
+// literal for `timeout`, `collect` only on a plain wait-all — and warns on
+// the deprecated `key: value` spellings (`timeout: 30s`, `on_error:
+// "collect"`) in favour of the clause forms (`timeout 30s`, `collect`).
+func checkWaitOpts(file string, statement *ast.Statement) []Finding {
+	pos := statement.Pos
+	w := statement.Wait
+	var findings []Finding
+	add := func(sev Severity, format string, args ...any) {
+		findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Severity: sev,
+			Message: fmt.Sprintf(format, args...)})
+	}
+	for _, o := range w.Opts {
+		collect := o.Collect
+		switch o.Key {
+		case "timeout":
+			if _, ok := ast.DurationValue(o.Value); !ok {
+				add(SeverityError, "wait: timeout must be a duration literal (e.g. timeout 30s)")
+			} else if o.Colon {
+				add(SeverityWarning, "wait: `timeout: <duration>` is deprecated — drop the colon (`timeout 30s`)")
+			}
+		case "on_error":
+			if s, ok := ast.StringValue(o.Value); !ok || s != "collect" {
+				add(SeverityError, "wait: on_error only accepts \"collect\" — write the `collect` clause instead")
+			} else {
+				collect = true
+				add(SeverityWarning, "wait: `on_error: \"collect\"` is deprecated — write the `collect` clause: `wait %s collect`", strings.Join(w.Names, ", "))
+			}
+		}
+		if collect && (w.Any || w.Quorum != "") {
+			add(SeverityError, "wait: collect only applies to a plain `wait`, not `wait any` / `wait N of`")
+		}
+	}
 	return findings
 }
 

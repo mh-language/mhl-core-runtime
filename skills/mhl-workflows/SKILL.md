@@ -252,7 +252,7 @@ pipeline FanOut {
 
     step Check timeout 2m {
         spawn checks concurrency 2 = Checker.run(prompt: "check ${item}") for item in files
-        wait checks timeout: 90s
+        wait checks timeout 90s
 
         self.results = checks.map((handle) -> handle.result)
     }
@@ -287,7 +287,9 @@ test fan_out {
   N is a positive integer literal. A spawn without it shares a run-wide limit of 4. Do not
   write `spawn: { max_concurrency: N }` in a pipeline body: it is deprecated (a lint warning).
 - `wait a, b` fails fast. `wait any a, b` takes the first success. `wait 2 of a, b, c` is a
-  quorum. `on_error: "collect"` keeps the step alive; then read `.ok`, `.error`, `.status`.
+  quorum. Options are clauses after the names, without a colon: `wait xs timeout 90s collect`.
+  `collect` keeps the step alive; then read `.ok`, `.error`, `.status`. Do not write
+  `timeout: 90s` or `on_error: "collect"`: both are deprecated (a lint warning).
 - `parallel` branches get copies of the pipeline vars, merged at the barrier. Two branches
   assigning the same var different values is a run failure: give each branch its own var, or
   end the group with a `merge` (below). `goto` and `break` are not allowed inside a group,

@@ -238,7 +238,7 @@
 
   lesson("spawn-wait", "Concorrência e limites", "spawn, wait e concorrência",
     "Dispare chamadas concorrentes dentro de um passo e aguarde os resultados com um prazo explícito.",
-    "spawn · wait · timeout: · task", [
+    "spawn · wait · timeout · task", [
       'agent Echo { command: "echo" }',
       '',
       'pipeline ConcurrentReview {',
@@ -246,7 +246,7 @@
       '        spawn docs = Echo.run(prompt: "docs ready")',
       '        spawn tests = Echo.run(prompt: "tests ready")',
       '        spawn security = Echo.run(prompt: "security ready")',
-      '        wait docs, tests, security timeout: 2s',
+      '        wait docs, tests, security timeout 2s',
       '',
       '        log(docs.result)',
       '        log(tests.result)',
@@ -254,29 +254,29 @@
       '    }',
       '}'
     ], "docs ready\ntests ready\nsecurity ready\n\nAs 3 chamadas rodam em segundo plano; wait aguarda as 3.",
-    ["Spawns sem limite próprio compartilham um teto de 4 chamadas em voo na execução. wait timeout: limita a espera; step timeout limita o passo inteiro.", "Handles expõem .result, .status, .ok e .error. Chamadas não aguardadas são reunidas ao terminar o passo."],
+    ["Spawns sem limite próprio compartilham um teto de 4 chamadas em voo na execução. wait timeout limita a espera; step timeout limita o passo inteiro.", "Handles expõem .result, .status, .ok e .error. Chamadas não aguardadas são reunidas ao terminar o passo."],
     "Para limitar as chamadas em voo, use um fan-out com concurrency N (próxima lição): com concurrency 1 elas ficam serializadas.",
     "sample/features/pipelines/concurrent_agents_pipeline_example.mh", { requirements: "Runtime MHL e echo no PATH." });
 
   lesson("fan-out", "Concorrência e limites", "Fan-out e políticas de espera",
     "Inicie uma chamada por item e escolha entre esperar todas, o primeiro sucesso ou um quórum.",
-    "spawn for · concurrency · wait any · wait N of · on_error", [
+    "spawn for · concurrency · wait any · wait N of · collect", [
       'agent Echo { command: "echo" }',
       '',
       'pipeline CheckFiles {',
       '    step Check timeout 5s {',
       '        var files = ["api.go", "auth.go", "main.go"]',
       '        spawn checks concurrency 2 = Echo.run(prompt: "check ${item}") for item in files',
-      '        wait checks timeout: 2s on_error: "collect"',
+      '        wait checks timeout 2s collect',
       '        for (var task in checks) {',
       '            log("${task.status}: ${task.result}")',
       '        }',
       '        // Alternativas ao wait acima:',
-      '        // wait any checks timeout: 2s',
-      '        // wait 2 of checks timeout: 2s',
+      '        // wait any checks timeout 2s',
+      '        // wait 2 of checks timeout 2s',
       '    }',
       '}'
-    ], "3 handles, um por arquivo; no máximo 2 em voo.\nwait checks: aguarda todos.\nwait any: primeiro sucesso.\nwait 2 of: dois sucessos.\non_error: \"collect\": examine .ok e .error de cada handle.",
+    ], "3 handles, um por arquivo; no máximo 2 em voo.\nwait checks: aguarda todos.\nwait any: primeiro sucesso.\nwait 2 of: dois sucessos.\ncollect: examine .ok e .error de cada handle.",
     ["concurrency 2 mantém no máximo duas chamadas em voo; a terceira começa quando uma termina.", "any e quórum encerram a espera ao obter sucessos suficientes e cancelam tarefas restantes.", "collect permite inspecionar falhas individuais. Não garante que todos os agentes tenham sucesso."],
     "Substitua o wait ativo por wait any. Trate .ok antes de usar .result das tarefas canceladas.",
     "sample/features/pipelines/concurrent_agents_pipeline_example.mh", { requirements: "Runtime MHL e echo no PATH." });

@@ -397,23 +397,29 @@ func execWait(ctx *evalCtx, stmt *ast.WaitStmt) error {
 	}
 
 	for _, o := range stmt.Opts {
-		switch o.Key {
-		case "timeout":
+		switch {
+		case o.Collect:
+			if opts.mode != waitAll {
+				return fmt.Errorf("wait: collect only applies to a plain `wait`")
+			}
+			opts.collect = true
+		case o.Key == "timeout":
 			d, ok := ast.DurationValue(o.Value)
 			if !ok {
-				return fmt.Errorf("wait: timeout: must be a duration literal (e.g. 30s)")
+				return fmt.Errorf("wait: timeout must be a duration literal (e.g. timeout 30s)")
 			}
 			opts.timeout = d
-		case "on_error":
+		case o.Key == "on_error":
+			// The deprecated spelling of `collect`.
 			s, ok := ast.StringValue(o.Value)
 			if !ok {
 				return fmt.Errorf("wait: on_error: must be a string")
 			}
 			if s != "collect" {
-				return fmt.Errorf("wait: on_error: only \"collect\" is supported")
+				return fmt.Errorf("wait: on_error: only \"collect\" is supported (write `collect`)")
 			}
 			if opts.mode != waitAll {
-				return fmt.Errorf("wait: on_error: \"collect\" only applies to a plain `wait`")
+				return fmt.Errorf("wait: collect only applies to a plain `wait`")
 			}
 			opts.collect = true
 		}

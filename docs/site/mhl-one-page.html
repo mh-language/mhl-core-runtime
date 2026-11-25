@@ -386,7 +386,7 @@
 <span class="code-line"><span class="line-number">16</span>  <span class="tok-key">step</span> <span class="tok-name">Fanout</span> <span class="tok-key">timeout</span> <span class="tok-number">4m</span> <span class="tok-punct">{</span></span>
 <span class="code-line"><span class="line-number">17</span>    <span class="tok-key">spawn</span> reviews <span class="tok-punct">=</span> <span class="tok-name">SenpaiAgent</span><span class="tok-punct">.</span><span class="tok-fn">run</span><span class="tok-punct">(</span><span class="tok-prop">prompt:</span> <span class="tok-string">"review ${item}"</span><span class="tok-punct">)</span></span>
 <span class="code-line"><span class="line-number">18</span>      <span class="tok-key">for</span> item <span class="tok-key">in</span> artifacts</span>
-<span class="code-line"><span class="line-number">19</span>    <span class="tok-key">wait</span> reviews <span class="tok-key">timeout:</span> <span class="tok-number">3m</span></span>
+<span class="code-line"><span class="line-number">19</span>    <span class="tok-key">wait</span> reviews <span class="tok-key">timeout</span> <span class="tok-number">3m</span></span>
 <span class="code-line"><span class="line-number">20</span>  <span class="tok-punct">}</span></span>
 <span class="code-line"><span class="line-number">21</span></span>
 <span class="code-line"><span class="line-number">22</span>  <span class="tok-key">step</span> <span class="tok-name">Approval</span> <span class="tok-key">timeout</span> <span class="tok-number">1m</span> <span class="tok-punct">{</span></span>

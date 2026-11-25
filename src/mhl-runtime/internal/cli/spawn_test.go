@@ -50,7 +50,7 @@ pipeline P {
     step S {
         spawn a = Slow.run(prompt: "x")
         spawn b = Fast.run(prompt: "x")
-        wait a, b timeout: 5s
+        wait a, b timeout 5s
         log("a=${a.result}")
         log("b=${b.result}")
     }
@@ -79,7 +79,7 @@ pipeline P {
         spawn b = W.run(prompt: "x")
         spawn c = W.run(prompt: "x")
         spawn d = W.run(prompt: "x")
-        wait a, b, c, d timeout: 10s
+        wait a, b, c, d timeout 10s
         log("all done")
     }
 }
@@ -112,7 +112,7 @@ agent W { command: "sh" args: ["-c", "sleep 0.3; echo done"] }
 pipeline P {
     step S {
         spawn xs concurrency 2 = W.run(prompt: "${i}") for i in [1, 2, 3, 4]
-        wait xs timeout: 10s
+        wait xs timeout 10s
         log("all ${xs.size()} done")
     }
 }
@@ -144,7 +144,7 @@ agent W { command: "sh" args: ["-c", "sleep 0.5; echo done"] }
 pipeline P {
     step S {
         spawn xs concurrency 8 = W.run(prompt: "${i}") for i in [1, 2, 3, 4, 5, 6, 7, 8]
-        wait xs timeout: 10s
+        wait xs timeout 10s
         log("all ${xs.size()} done")
     }
 }
@@ -193,7 +193,7 @@ pipeline P {
     step S {
         spawn a = Ok.run(prompt: "x")
         spawn b = Bad.run(prompt: "x")
-        wait a, b timeout: 5s
+        wait a, b timeout 5s
         log("unreachable")
     }
 }
@@ -221,7 +221,7 @@ pipeline P {
     step S {
         spawn a = Ok.run(prompt: "x")
         spawn b = Bad.run(prompt: "x")
-        wait a, b on_error: "collect"
+        wait a, b collect
         log("a.ok=${a.ok} b.ok=${b.ok} b.status=${b.status}")
     }
 }
@@ -247,7 +247,7 @@ pipeline P {
         spawn a = A.run(prompt: "x")
         spawn b = B.run(prompt: "x")
         spawn c = C.run(prompt: "x")
-        wait 2 of a, b, c timeout: 10s
+        wait 2 of a, b, c timeout 10s
         log("a=${a.status} b=${b.status} c=${c.status}")
     }
 }
@@ -301,7 +301,7 @@ agent Slow { command: "sh" args: ["-c", "sleep 30; echo slow"] }
 pipeline P {
     step S {
         spawn a = Slow.run(prompt: "x")
-        wait a timeout: 200ms
+        wait a timeout 200ms
         log("unreachable")
     }
 }
@@ -331,7 +331,7 @@ pipeline P {
     step S {
         var angles = ["clarity", "risk", "cost"]
         spawn reviews = Echo.run(prompt: "on ${item}") for item in angles
-        wait reviews timeout: 5s
+        wait reviews timeout 5s
         log("count=${reviews.size()}")
         for (var r in reviews) log("- ${r.result} (${r.status})")
     }
@@ -366,7 +366,7 @@ pipeline P {
     step S {
         var kinds = ["a", "b", "c"]
         spawn probes = Fast.run(prompt: "${item}") for item in kinds
-        wait 2 of probes timeout: 10s
+        wait 2 of probes timeout 10s
         var oks = 0
         for (var p in probes) { if (p.ok) oks = oks + 1 }
         log("size=${probes.size()} oks=${oks}")
@@ -394,7 +394,7 @@ pipeline P {
     step S {
         var kinds = ["a", "b"]
         spawn probes = Bad.run(prompt: "${item}") for item in kinds
-        wait 2 of probes timeout: 10s
+        wait 2 of probes timeout 10s
         log("unreachable")
     }
 }
@@ -469,5 +469,30 @@ pipeline P {
 	}
 	if !strings.Contains(out, "was not awaited") {
 		t.Fatalf("expected a drain warning:\n%s", out)
+	}
+}
+
+// The deprecated `timeout: <dur>` / `on_error: "collect"` spellings still
+// behave exactly like the `timeout <dur>` / `collect` clauses.
+func TestSpawnWaitDeprecatedOptionSpellings(t *testing.T) {
+	src := `
+agent Ok { command: "sh" args: ["-c", "echo fine"] }
+agent Bad { command: "sh" args: ["-c", "exit 3"] }
+
+pipeline P {
+    step S {
+        spawn a = Ok.run(prompt: "x")
+        spawn b = Bad.run(prompt: "x")
+        wait a, b timeout: 5s on_error: "collect"
+        log("a=${a.status} b=${b.status}")
+    }
+}
+`
+	out, err := runSpawn(t, src)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "a=done b=failed") {
+		t.Fatalf("expected collected outcomes, got:\n%s", out)
 	}
 }

@@ -73,6 +73,8 @@ este índice cobre apenas o que tem exemplo executável aqui.
   → [memory_session_mem_value_survives_cmd_exec_argv.mh](features/memory/memory_session_mem_value_survives_cmd_exec_argv.mh)
 - **`cmd.exec(..., cwd:)`** — executa o comando em outro diretório (`cd cwd && comando`).
   → [cmd_exec_cwd_runs_in_another_directory.mh](features/cmd/cmd_exec_cwd_runs_in_another_directory.mh)
+- **`collect`** (`wait xs collect`) — o `wait` não falha o step; cada handle guarda `.ok`/`.error`.
+  → [concurrent_agents_pipeline_example.mh](features/pipelines/concurrent_agents_pipeline_example.mh)
 - **Comparação** (`< > <= >= == !=`). → [syntax/conditional_symbols/](syntax/conditional_symbols/README.md)
 - **`complete()`** — termina o workflow com sucesso a partir de qualquer step.
   → [order_triage.mh](features/graph_and_events/order_triage.mh) ·
@@ -389,7 +391,7 @@ este índice cobre apenas o que tem exemplo executável aqui.
 
 ## W
 
-- **`wait`** — ver [`spawn`](#s).
+- **`wait`** — ver [`spawn`](#s); opções `timeout 30s` e `collect`, sem `:`.
 - **`while`** — laço condicional. → [const_holds_a_single_value.mh](syntax/const_declaration/const_holds_a_single_value.mh)
 - **`with`** — `obj with { campo: valor }` copia e sobrescreve; `workflow A = B with { ... }` cria um alias.
   → [with_copies_and_overrides_fields.mh](syntax/value_vs_ref/with_copies_and_overrides_fields.mh) ·

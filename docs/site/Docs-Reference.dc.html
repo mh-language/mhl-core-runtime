@@ -1029,7 +1029,7 @@ var stopped = Translator.cancel(reply.task_id)</code></pre></div>
           <div class="tip-row"><span>STATELESS</span><p>Every method is one or more independent requests with no session between them; a blocking <code>.send</code> that polls keeps no state beyond the task id. A credential that fails to resolve aborts the call before any request. Streaming (<code>message/stream</code>) and push notifications are not implemented yet.</p></div>
         </section>
 
-        <section class="feature doc-section" id="pipeline" data-title="pipeline workflow input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout on_error concurrency max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in for item in each spawn over collection array of handles session_start session_end step_start step_end stop_failure lifecycle hooks">
+        <section class="feature doc-section" id="pipeline" data-title="pipeline workflow input var const step checkpoint resume session context source require loop repeat stop when max iterations goto break spawn wait any of timeout collect on_error concurrency max_concurrency sub-agent concurrent parallel group barrier fan-out fan-in for item in each spawn over collection array of handles session_start session_end step_start step_end stop_failure lifecycle hooks">
           <div class="feature-head"><h2><span class="feature-num">14</span><code>pipeline</code> and <code>workflow</code></h2><span class="status status-full">Executable</span></div>
           <p class="feature-lede">The executable unit. Inputs arrive through the CLI, pipeline variables are shared across steps, and steps run in declared order. <code>pipeline</code> keeps that order — <code>goto</code> is a lint error. <code>workflow</code> is the same in every other way but allows <code>goto &lt;step&gt;</code>, forward or backward, so its steps form an explicitly branching state machine. Either takes the <code>loop</code> prefix.</p>
 
@@ -1276,10 +1276,10 @@ workflow ReviewPullRequest(req: ReviewInput): ReviewOutput {
         spawn tests = Tester.run(prompt: "run the tests for:\n${diff}")
         spawn sec   = Security.run(prompt: "security pass:\n${diff}")
 
-        wait rev, tests, sec timeout: 90s        // wait-all, fail-fast
+        wait rev, tests, sec timeout 90s         // wait-all, fail-fast
         // wait any rev, tests, sec              // first success, cancels the rest
         // wait 2 of rev, tests, sec             // first N successes (quorum)
-        // wait rev, tests on_error: "collect"   // never fails the step; read .ok / .error
+        // wait rev, tests collect               // never fails the step; read .ok / .error
 
         log(rev.result)
         if (!tests.ok) log("tests failed: ${tests.error}")
@@ -1291,7 +1291,7 @@ workflow ReviewPullRequest(req: ReviewInput): ReviewOutput {
         // handles — `wait` joins it as a group; it indexes and iterates.
         // `concurrency 2` keeps at most two of these calls in flight.
         spawn reviews concurrency 2 = Reviewer.run(prompt: "review file ${item}") for item in changed_files
-        wait reviews timeout: 90s                // or `wait any reviews` / `wait 2 of reviews`
+        wait reviews timeout 90s                 // or `wait any reviews` / `wait 2 of reviews`
         for (var r in reviews) log("${r.status}: ${r.result}")
     }
 }</code></pre>
@@ -1327,7 +1327,7 @@ workflow ReviewPullRequest(req: ReviewInput): ReviewOutput {
             <div><b><code>break</code></b><span>clean early stop with an optional reason; keeps the run's results (exit 0)</span></div>
             <div><b><code>pause</code></b><span>suspend for a human-in-the-loop resume; keeps the checkpoint, re-enters this step on <code>--resume</code></span></div>
             <div><b><code>spawn</code></b><span>start an <code>Agent.run(...)</code> in the background; binds a <code>task</code> handle (<code>.result</code>, <code>.ok</code>, <code>.error</code>, <code>.status</code>, <code>.duration_ms</code>). A trailing <code>for &lt;item&gt; in &lt;array&gt;</code> fans out — one call per element, each with its own prompt — and binds an <em>array</em> of handles; <code>spawn xs concurrency N = …</code> caps how many of those calls run at once</span></div>
-            <div><b><code>wait</code></b><span>join handles — all (fail-fast), <code>any</code> (first success), or <code>N of</code> (quorum); a fan-out array name expands to its elements; options <code>timeout:</code> and <code>on_error: "collect"</code></span></div>
+            <div><b><code>wait</code></b><span>join handles — all (fail-fast), <code>any</code> (first success), or <code>N of</code> (quorum); a fan-out array name expands to its elements; trailing clauses <code>timeout &lt;duration&gt;</code> (bounds the wait) and <code>collect</code> (never fails the step; read <code>.ok</code> / <code>.error</code>) — <code>wait xs timeout 30s collect</code>. The older <code>timeout: 30s</code> / <code>on_error: "collect"</code> spellings still work but are deprecated (a <code>mhl lint</code> warning)</span></div>
           </div>
           <div class="tip-row"><span>LIMITS</span><p>For loops, always prefer an observable <code>stop_when</code> plus <code>max_iterations</code> as a safety ceiling. Step-local variables are not visible to <code>stop_when</code>; use <code>mem</code> or <code>memory</code>.</p></div>
           <div class="tip-row"><span>TIMEOUT</span><p>A <code>step &lt;Name&gt; timeout &lt;duration&gt; { … }</code> clause caps how long that step may run — <code>step Build timeout 3m { … }</code>. The runtime wraps the step's context with that deadline, so every blocking call it makes (an agent, <code>http</code>, <code>cmd</code>, an extension) is aborted when it elapses; the step then fails exactly as an explicit <code>fail()</code> would, so <code>--resume</code> / <code>run/resume</code> can still re-enter the step (unless the workflow set <code>checkpoint: { enabled: false }</code>) — with a <em>fresh</em> budget (the duration is per attempt, never persisted). The same clause on a <code>parallel &lt;Name&gt; timeout &lt;duration&gt; { … }</code> group bounds the whole barrier and cancels every still-running branch; a branch may also carry its own <code>timeout</code>, and the earliest deadline wins. A purely non-blocking runaway (a spinning <code>while</code>) is still bounded by <code>max_iterations</code> / the interpreter's loop cap, not by this.</p></div>

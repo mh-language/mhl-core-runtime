@@ -139,3 +139,48 @@ func TestSpawnConcurrencyClauseParses(t *testing.T) {
 		}
 	}
 }
+
+// The clause forms (`timeout 30s`, `collect`) and the deprecated `key:
+// value` ones parse to the same options; Colon records which one was used.
+func TestWaitOptionClausesParse(t *testing.T) {
+	cases := []struct {
+		src      string
+		keys     []string // "collect" for a bare collect, else the Key
+		colons   []bool
+		nextStmt bool // a statement follows the wait
+	}{
+		{`wait xs timeout 30s collect`, []string{"timeout", "collect"}, []bool{false, false}, false},
+		{`wait xs collect timeout 30s`, []string{"collect", "timeout"}, []bool{false, false}, false},
+		{`wait xs timeout: 30s on_error: "collect"`, []string{"timeout", "on_error"}, []bool{true, true}, false},
+		// A statement starting with `collect` / `timeout` is not swallowed.
+		{"wait xs\n        collect = 1", nil, nil, true},
+		{"wait xs collect\n        collect.append(1)", []string{"collect"}, []bool{false}, true},
+		{"wait xs\n        timeout = 1", nil, nil, true},
+	}
+	for _, tc := range cases {
+		prog, err := Parse("pipeline P {\n    step S {\n        " + tc.src + "\n    }\n}\n")
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", tc.src, err)
+		}
+		body := prog.Decls[0].Pipeline.Body[0].Step.Body
+		w := body[0].Wait
+		if w == nil {
+			t.Fatalf("Parse(%q): first statement is not a wait: %+v", tc.src, body[0])
+		}
+		if len(w.Opts) != len(tc.keys) {
+			t.Fatalf("Parse(%q): %d opts, want %d", tc.src, len(w.Opts), len(tc.keys))
+		}
+		for i, o := range w.Opts {
+			key := o.Key
+			if o.Collect {
+				key = "collect"
+			}
+			if key != tc.keys[i] || o.Colon != tc.colons[i] {
+				t.Errorf("Parse(%q) opt %d = {key %q colon %v}, want {%q %v}", tc.src, i, key, o.Colon, tc.keys[i], tc.colons[i])
+			}
+		}
+		if tc.nextStmt && len(body) != 2 {
+			t.Errorf("Parse(%q): %d statements, want the wait plus one", tc.src, len(body))
+		}
+	}
+}

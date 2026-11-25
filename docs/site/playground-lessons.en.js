@@ -105,13 +105,13 @@
       title: "spawn, wait and concurrency",
       description: "Start concurrent calls within a step and wait for their results with an explicit deadline.",
       result: "docs ready\ntests ready\nsecurity ready\n\nThe 3 calls run in the background; wait joins all 3.",
-      notes: ["Spawns without a limit of their own share a ceiling of 4 in-flight calls across the run. wait timeout: limits the wait; step timeout bounds the entire step.", "Handles expose .result, .status, .ok and .error. Calls that have not been awaited are joined when the step ends."],
+      notes: ["Spawns without a limit of their own share a ceiling of 4 in-flight calls across the run. wait timeout limits the wait; step timeout bounds the entire step.", "Handles expose .result, .status, .ok and .error. Calls that have not been awaited are joined when the step ends."],
       challenge: "To cap in-flight calls, use a fan-out with concurrency N (next lesson): with concurrency 1 they run one at a time."
     },
     "fan-out": {
       title: "Fan-out and wait policies",
       description: "Start one call per item and choose whether to wait for all results, the first success, or a quorum.",
-      result: '3 handles, one per file; at most 2 in flight.\nwait checks: joins all.\nwait any: first success.\nwait 2 of: two successes.\non_error: "collect": inspect each handle’s .ok and .error.',
+      result: '3 handles, one per file; at most 2 in flight.\nwait checks: joins all.\nwait any: first success.\nwait 2 of: two successes.\ncollect: inspect each handle’s .ok and .error.',
       notes: ["concurrency 2 keeps at most two calls in flight; the third starts when one finishes.", "any and quorum stop waiting once enough calls succeed and cancel the remaining tasks.", "collect lets you inspect individual failures. It does not guarantee that every agent succeeds."],
       challenge: "Replace the active wait with wait any. Check .ok before using .result from cancelled tasks.",
       replacements: [["Alternativas ao wait acima:", "Alternatives to the wait above:"]]

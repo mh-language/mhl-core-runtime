@@ -102,7 +102,7 @@ type evalCtx struct {
 	// EvalCondition) and on the nil *evalCtx agent_test.go passes straight
 	// into runAgentAttempt; goctxOf normalizes that to context.Background().
 	// A spawned agent goroutine (spawn.go) swaps in a cancellable child so a
-	// `wait ... timeout:` or a fail-fast sibling cancellation can abort the
+	// `wait ... timeout <dur>` or a fail-fast sibling cancellation can abort the
 	// underlying subprocess.
 	goctx context.Context
 	// spawns is the registry of background agent handles created by `spawn`

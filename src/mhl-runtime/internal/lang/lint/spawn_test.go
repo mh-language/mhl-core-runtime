@@ -17,7 +17,7 @@ agent Reviewer { command: "echo" args: ["ok"] }
 pipeline P {
     step S {
         spawn rev = Reviewer.run(prompt: "check this")
-        wait rev timeout: 30s
+        wait rev timeout 30s
         log(rev.result)
     }
 }
@@ -81,7 +81,7 @@ pipeline P {
     step S {
         var angles = ["a", "b"]
         spawn reviews concurrency 2 = Reviewer.run(prompt: "on ${item}") for item in angles
-        wait reviews timeout: 30s
+        wait reviews timeout 30s
         log(reviews.size())
     }
 }
@@ -163,6 +163,49 @@ pipeline P {
         var items = ["a", "b"]
         `+tc.stmt+`
         wait xs
+    }
+}
+`)
+			findings := lint.File(main)
+			if tc.want == "" {
+				if len(findings) != 0 {
+					t.Fatalf("expected no findings, got %+v", findings)
+				}
+				return
+			}
+			if len(findings) != 1 || !strings.Contains(findings[0].Message, tc.want) || findings[0].Severity != tc.severity {
+				t.Fatalf("expected one %q finding (%q), got %+v", tc.want, tc.severity, findings)
+			}
+		})
+	}
+}
+
+func TestWaitOptions(t *testing.T) {
+	cases := []struct {
+		name     string
+		wait     string
+		want     string // substring of the only finding; "" = clean
+		severity lint.Severity
+	}{
+		{"clauses", `wait xs timeout 30s collect`, "", ""},
+		{"timeout colon", `wait xs timeout: 30s`, "`timeout: <duration>` is deprecated", lint.SeverityWarning},
+		{"on_error", `wait xs on_error: "collect"`, "`on_error: \"collect\"` is deprecated", lint.SeverityWarning},
+		{"on_error value", `wait xs on_error: "ignore"`, `on_error only accepts "collect"`, lint.SeverityError},
+		{"timeout not a duration", `wait xs timeout "soon"`, "timeout must be a duration literal", lint.SeverityError},
+		{"collect with any", `wait any xs collect`, "collect only applies to a plain `wait`", lint.SeverityError},
+		{"collect with quorum", `wait 1 of xs collect`, "collect only applies to a plain `wait`", lint.SeverityError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			main := filepath.Join(dir, "main.mh")
+			write(t, main, `
+agent Reviewer { command: "echo" args: ["ok"] }
+
+pipeline P {
+    step S {
+        spawn xs = Reviewer.run(prompt: "on ${i}") for i in ["a", "b"]
+        `+tc.wait+`
     }
 }
 `)
