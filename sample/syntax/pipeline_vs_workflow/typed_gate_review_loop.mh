@@ -18,9 +18,8 @@ enum Action { Approve, Revise, Reject }
 
 type Review = { action: Action, note?: string }
 
+/// Drafts, then asks a reviewer each round until approved or rejected.
 workflow ReviewLoop {
-    description: "Drafts, then asks a reviewer each round until approved or rejected."
-
     var drafts = 0
     var notes = []
     var status = "drafting"

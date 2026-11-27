@@ -116,7 +116,7 @@ tool Api {
 | Need | Use |
 |---|---|
 | Passed between steps of one run | pipeline `var` |
-| Read by `stop_when`, or carried across loop iterations and runs | `mem x = init` |
+| Carried across loop iterations and a `--resume` (one run) | `mem x = init` |
 | Named store with keys, or a file another tool reads | `memory` declaration |
 | Audit trail | `memory` with `type: "append_log"` or `"jsonl"` |
 

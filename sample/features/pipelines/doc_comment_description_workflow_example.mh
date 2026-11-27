@@ -1,0 +1,47 @@
+// A workflow's description is the `///` lines right above it. `mhl serve`
+// publishes it as the MCP tool / A2A skill description, `mhl graph` reports
+// it, and the editor shows it on hover — so it is what another agent reads
+// when it decides whether to call this workflow.
+//
+//   - lines of one paragraph are joined with a space; an empty `///` line
+//     starts a new paragraph, kept as a blank line in the published text;
+//   - the block must touch the declaration: a blank line or a plain `//`
+//     line in between detaches it (the file comment you are reading is not
+//     part of any description);
+//   - it is documentation, not definition: editing it never makes
+//     `--resume` refuse a checkpoint.
+//
+// (The older `description: "..."` body property still works, with a
+// `mhl lint` warning; writing both is an error.)
+//
+// See the description the tool gets:
+//
+//   mhl graph sample/features/pipelines/doc_comment_description_workflow_example.mh
+//   mhl run sample/features/pipelines/doc_comment_description_workflow_example.mh --input branch=main
+
+/// Checks whether a branch is ready to merge and says why.
+///
+/// Read-only: it never pushes or merges. Pass `branch`; the result has
+/// `ready` and a one-line `reason`.
+workflow MergeReadiness {
+    /// The branch to check, e.g. "main" or "feature/login".
+    input branch: string
+
+    var ready = false
+    var reason = ""
+
+    output: { ready: ready, reason: reason }
+
+    step Check {
+        self.ready = branch != ""
+        self.reason = if (ready) "branch ${branch} has no blockers" else "no branch given"
+    }
+}
+
+test doc_comment_description {
+    describe the_doc_comment_does_not_change_what_runs {
+        var result = MergeReadiness.run(inputs: {branch: "main"})
+        is_true(result.output.ready)
+        are_equal(result.output.reason, "branch main has no blockers")
+    }
+}

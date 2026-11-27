@@ -57,9 +57,8 @@ tool Text {
     slug(value: string): string -> value.trim().to_lower().replace(" ", "-")
 }
 
+/// Writes a greeting and logs its slug.
 pipeline Main {
-    description: "Writes a greeting and logs its slug."
-
     input name: string
 
     var reply = ""
@@ -140,7 +139,7 @@ tool Documents {
 | `input x: T = default` | pipeline body | whole run, read-only |
 | `var x = e` | pipeline body | shared by every step, survives `goto`, `pause` and `--resume`; reset on each `loop` iteration |
 | `const x = e` | pipeline, step, tool | single assignment |
-| `mem x = e` | pipeline body only | persisted to disk: survives `loop` iterations, `--resume`, and separate `mhl run`s until `x.reset()` |
+| `mem x = e` | pipeline body only | saved in the run's checkpoint: survives `loop` iterations and `--resume`; a new `mhl run` starts from `e` |
 | `var x = e` | step, tool method, lambda | that block only |
 
 Write pipeline state with a bare `x = value` or, better, `self.x = value`, which always

@@ -97,15 +97,23 @@ var headerRe = []struct {
 	{blockRetry, regexp.MustCompile(`\bretry\s*:\s*$`)},
 	{blockCache, regexp.MustCompile(`\bcache\s*:\s*$`)},
 	{blockRateLimit, regexp.MustCompile(`\brate_limit\s*:\s*$`)},
+	// Each hook has two headers: the `on <event>(param)` handler (its
+	// parameter optional — none gives Name "", so no field completion) and
+	// the deprecated `<event>: (param) ->` property.
 	// (?:\s*:\s*\w+)? tolerates an explicit (and unenforced — see
 	// PipelineBodyProperty.ParamType's doc comment) `(session: SessionContext)
 	// -> ...` type annotation without capturing it: the parameter's own name
 	// is always group 1, whichever form was written.
 	{blockSessionStartHook, regexp.MustCompile(`\bsession_start\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
+	{blockSessionStartHook, regexp.MustCompile(`\bon\s+session_start(?:\s*\(\s*(\w*)(?:\s*:\s*\w+)?\s*\))?\s*$`)},
 	{blockSessionEndHook, regexp.MustCompile(`\bsession_end\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
+	{blockSessionEndHook, regexp.MustCompile(`\bon\s+session_end(?:\s*\(\s*(\w*)(?:\s*:\s*\w+)?\s*\))?\s*$`)},
 	{blockStepStartHook, regexp.MustCompile(`\bstep_start\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
+	{blockStepStartHook, regexp.MustCompile(`\bon\s+step_start(?:\s*\(\s*(\w*)(?:\s*:\s*\w+)?\s*\))?\s*$`)},
 	{blockStepEndHook, regexp.MustCompile(`\bstep_end\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
+	{blockStepEndHook, regexp.MustCompile(`\bon\s+step_end(?:\s*\(\s*(\w*)(?:\s*:\s*\w+)?\s*\))?\s*$`)},
 	{blockStopFailureHook, regexp.MustCompile(`\bstop_failure\s*:\s*\(\s*(\w+)(?:\s*:\s*\w+)?\s*\)\s*->\s*$`)},
+	{blockStopFailureHook, regexp.MustCompile(`\bon\s+stop_failure(?:\s*\(\s*(\w*)(?:\s*:\s*\w+)?\s*\))?\s*$`)},
 }
 
 // extHeaderRe recognises an `extension <kind> <Name> [from "<id>"]` header

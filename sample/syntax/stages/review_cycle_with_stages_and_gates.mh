@@ -18,9 +18,8 @@ import "story/specification.mh"
 import "story/implementation.mh"
 import "story/consolidation.mh"
 
+/// Specifies, implements and consolidates one story, with a human gate per phase.
 partial workflow Story {
-    description: "Specifies, implements and consolidates one story, with a human gate per phase."
-
     var spec_rounds = 0
     var attempts = 0
     var feedback = []

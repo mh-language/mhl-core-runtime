@@ -318,7 +318,7 @@ npm run tauri build   # an installer for this machine</code></pre>
           </div>
           <div class="reference-table studio-table-2">
             <div class="table-row table-head"><span>Selected</span><span>You can edit</span></div>
-            <div class="table-row"><span>Nothing (the workflow)</span><span>name, description, <strong>Loop</strong> (run the steps again after the last one), inputs — name, type, default; add or remove — routes, properties such as <code>output:</code>, and the file's problems</span></div>
+            <div class="table-row"><span>Nothing (the workflow)</span><span>name, description (written as the <code>///</code> lines above the workflow; an old <code>description:</code> property is moved there), <strong>Loop</strong> (run the steps again after the last one), inputs — name, type, default; add or remove — routes, properties such as <code>output:</code>, and the file's problems</span></div>
             <div class="table-row"><span>A step</span><span>name, timeout (h / m / s / ms), the calls it makes, transitions (add, remove), <strong>Up</strong>/<strong>Down</strong> to reorder, <strong>Show code</strong>, <strong>Delete</strong></span></div>
             <div class="table-row"><span>A Choice</span><span>everything a step has, plus the expression it branches on and its rules: pattern → target, an <em>otherwise</em> arm, <strong>+ Rule</strong>, ↗ to select a target</span></div>
             <div class="table-row"><span>A parallel group</span><span>name, timeout, branches (<strong>+ Add branch</strong>), group vars with initial values, its merge (<strong>Show in code</strong>, <strong>Remove merge</strong>) and transitions</span></div>
@@ -419,9 +419,8 @@ npm run tauri build   # an installer for this machine</code></pre>
             <pre class="code-block"><code class="language-mhl">import { Drafter, Reviewer } from "./agents/assistants.mh"
 import { Tickets } from "./tools/tickets.mh"
 
+/// Triages a support ticket, drafts replies with two agents and asks a human before sending urgent ones.
 workflow SupportTriage {
-    description: "Triages a support ticket, drafts replies with two agents and asks a human before sending urgent ones."
-
     input ticket: string = "URGENT: my invoice was charged twice, please refund"
     input approved: bool = false
 

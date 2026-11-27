@@ -236,6 +236,12 @@ func walkStatements(v reflect.Value, fn func(*ast.Statement)) {
 // walkPostfixes calls fn for every ast.Postfix reachable from body, with the
 // position of the nearest enclosing node that carries one.
 func walkPostfixes(body []*ast.Statement, start lexer.Position, fn func(*ast.Postfix, lexer.Position)) {
+	walkPostfixesIn(reflect.ValueOf(body), start, fn)
+}
+
+// walkPostfixesIn is walkPostfixes over any AST value (a whole pipeline
+// declaration, a property's expression, ...).
+func walkPostfixesIn(root reflect.Value, start lexer.Position, fn func(*ast.Postfix, lexer.Position)) {
 	postfix := reflect.TypeOf(ast.Postfix{})
 	posType := reflect.TypeOf(lexer.Position{})
 	var walk func(v reflect.Value, pos lexer.Position)
@@ -265,7 +271,7 @@ func walkPostfixes(body []*ast.Statement, start lexer.Position, fn func(*ast.Pos
 			}
 		}
 	}
-	walk(reflect.ValueOf(body), start)
+	walk(root, start)
 }
 
 // appendSugarTarget is the receiver of a bare `recv.append(x)` statement

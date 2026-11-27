@@ -25,7 +25,8 @@ promise to the reader that it runs top to bottom.
 
 ## Anatomy
 
-Keep this order: `description`, inputs, `const`/`var`/`mem`, hooks, `output`, steps.
+Keep this order: the `///` description above the header, then inside the body inputs,
+`const`/`var`/`mem`, hooks, `output`, steps.
 Apply the [code layout conventions](../mhl-language/SKILL.md#code-layout) inside
 steps as well: expand conditional bodies and separate guards, data preparation,
 agent/tool calls, result validation, artifact writes, and the final control-flow
@@ -46,9 +47,8 @@ tool Verdict {
     is_clean(review: string): bool -> !review.contains("BLOCKER")
 }
 
+/// Reviews a diff and reports whether it can merge.
 workflow ReviewChange(req: ReviewInput): ReviewOutput {
-    description: "Reviews a diff and reports whether it can merge."
-
     var review = ""
     var approved = false
 
@@ -102,8 +102,12 @@ test review_change {
   signature, declare `input x: T` per line. The two forms do not mix.
 - **`output:`** lists exactly what a caller receives. Without it, every var leaks to
   callers. It is evaluated once at the end, so keep side effects out of it.
-- **`description:`** becomes the MCP tool description. Without it, callers see a generic
-  sentence.
+- **`///` above the declaration** is its description: the MCP tool / A2A skill
+  description, `mhl graph`'s and the editor's hover. Without it, callers see a generic
+  sentence. Say what the workflow does and what it never does (`/// Read-only: never
+  merges.`); an empty `///` line starts a new paragraph. It must touch the header: a blank
+  or `//` line in between detaches it. The `description: "..."` property is deprecated (a
+  lint warning), and writing both is an error.
 - **`///` above an `input`** documents it: it becomes the argument's `description` in the
   MCP `inputSchema`, and appears in `--dry-run`, the editor's hover and mhl studio's forms.
   Say what a caller must pass (`/// The repository to review, an absolute path.`), not the
@@ -194,37 +198,38 @@ test triage {
 ## Loops
 
 ```mh
-loop workflow PollBuild {
-    description: "Polls until the build reports done."
-
+/// Polls until the build reports done.
+loop workflow PollBuild max 5 {
     mem checks = 0
-    mem status = "pending"
-
-    repeat: {
-        stop_when: status == "done"
-        max_iterations: 5
-    }
 
     step Check timeout 30s {
         checks = checks + 1
-        status = if (checks >= 3) "done" else "pending"
+        var status = if (checks >= 3) "done" else "pending"
 
-        if (status == "failed") {
-            break "build failed"
+        if (status == "done") {
+            break "build done"
         }
     }
 }
 ```
 
-- `stop_when` reads `mem` and `memory` only. A pipeline `var` is invisible there and
-  resets every iteration, so anything carried between iterations must be `mem`.
-- `mem` also outlives the run: a second `mhl run` starts from the stored value. Call
-  `x.reset()` in a step when each run must start fresh, or scope a `memory` path with
-  `${context.session_id}`.
-- Always set a ceiling. `max_iterations` reached is a soft stop that fires `session_end`,
-  not `stop_failure`, so check `stop_when`'s condition if the outcome matters.
-- `loop workflow Refine max 3 { ... }` is the short form when the ceiling is the whole
-  policy. It cannot be combined with `repeat { max_iterations }`.
+- A step ends the loop with `break "reason"`; `max N` in the header is the ceiling.
+  Always set it: a loop with neither `max N` nor a `break` never stops (a lint
+  warning). Do not write `repeat: { stop_when, max_iterations }`: it is deprecated.
+- `complete()` does **not** end a loop: there it only ends the current iteration, and
+  the next one starts.
+- A pipeline `var` resets every iteration, so anything carried between iterations
+  must be `mem`.
+- `mem` is the run's state, saved in its checkpoint with the `var`s: it survives loop
+  iterations and `--resume`, but a new `mhl run` starts again from the initializer.
+  Nothing is shared between runs. A step that fails after writing a `mem` loses the
+  write (the resume redoes the step). `x.reset()` re-initializes it within the run.
+- `memory` stores are local to one process, so replicas of `mhl serve` don't share them.
+  For state the run needs, use `mem`; for data shared across runs or replicas, call an
+  `extension` backed by a database.
+- Reaching `max N` is a soft stop that fires `session_end`, not `stop_failure`. The
+  result's `terminal_reason` tells them apart: `"break"` (with `break_reason`) or
+  `"max_iterations"`. Check it if the outcome matters.
 
 ## Concurrency
 
@@ -409,9 +414,8 @@ from its first line** with the merged inputs, and pipeline vars keep what was al
 written. So a gate does nothing before its `pause`, or it does that work twice.
 
 ```mh
+/// Prepares a release, waits for approval, then applies it.
 workflow Deploy {
-    description: "Prepares a release, waits for approval, then applies it."
-
     input approved: bool = false
 
     var plan = ""
@@ -467,9 +471,8 @@ approval can never approve a later round, and no `*_round` inputs are needed. A 
 enum Action { Approve, Revise, Reject }
 type Review = { action: Action, feedback?: string }
 
+/// Drafts until a reviewer approves or rejects.
 workflow Publish {
-    description: "Drafts until a reviewer approves or rejects."
-
     var drafts = 0
     var status = "drafting"
 
@@ -520,9 +523,10 @@ it stops at a gate. Resume a real run with
 
 ## Failure and resume
 
-- Checkpointing is on by default. `--resume` continues from the failed step. Declare
-  `checkpoint: { ttl: 30d }` only to tune it, and `checkpoint: { enabled: false }` only
-  for a flow that must never half-replay.
+- Every run is checkpointed after each step; there is nothing to declare. `--resume`
+  continues a stopped run from the step that failed, for up to 30 days. Do not write a
+  `checkpoint: { ... }` block: it is deprecated and ignored, `enabled: false` included.
+  A flow that must never half-replay is simply never run with `--resume`.
 - A step that fails or dies is re-run whole. Make external effects **idempotent**: pass
   your own idempotency key, check before acting, or give a repeated agent call a `cache`.
 - Editing the workflow invalidates its checkpoints: `--resume` is refused with a
@@ -532,8 +536,25 @@ it stops at a gate. Resume a real run with
 
 ## Lifecycle hooks
 
-`session_start`, `session_end`, `step_start`, `step_end` and `stop_failure` take one
-parameter and exist to **observe** a run: logging, audit, metrics. Returning a value is a
+Write each hook as an event handler in the workflow body. The parameter is optional:
+
+```mh
+workflow Release {
+    on session_start(session) { log("start ${session.pipeline}") }
+    on step_end(step) {
+        if (step.error != null) { log("${step.step} failed: ${step.error}") }
+    }
+    on stop_failure(failure) { log("failed at ${failure.step}: ${failure.reason}") }
+    on session_end { log("done") }
+
+    step Build { log("built") }
+}
+```
+
+The events are `session_start`, `session_end`, `step_start`, `step_end` and
+`stop_failure`, with at most one handler each. The parameter is a `SessionContext`,
+`StepContext` or `FailureContext`. Do not write the older `step_end: (step) -> { ... }`
+form: it is deprecated. Hooks exist to **observe** a run: logging, audit, metrics. Returning a value is a
 runtime error, an error inside one aborts the run (except in `stop_failure`, where it is
 only logged), and none of them can change the flow. `session_end` does not fire on
 `pause()` or on a failure. Hooks do not fire under `Name.run()` in tests.
@@ -675,7 +696,7 @@ Before finishing a workflow, confirm each item:
 - Every gate pauses before doing work; a gate a person may reach twice is typed
   (`pause(..., decision: T)`), so no old decision answers it.
 - A long workflow is split by phase, each fragment naming its `stage`.
-- `output:` exposes only what callers should see, and `description:` is set.
+- `output:` exposes only what callers should see, and a `///` description is written.
 - Each branch and terminal state has a test (see `mhl-testing`).
 - Steps use the shared code layout: logical phases and final exits are separated
   by blank lines, and sibling steps and parallel branches are visually distinct.

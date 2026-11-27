@@ -203,7 +203,7 @@ func TestAgentRunArgumentsCheckedEverywhere(t *testing.T) {
     before: () -> { return { draft: CopilotCoder.run(prompt: "p", repo: "r", modelo: "x") } }
 }`},
 		{"pipeline hook", `workflow W {
-    session_start: (s) -> { CopilotCoder.run(prompt: "p", repo: "r", modelo: "x") }
+    on session_start(s) { CopilotCoder.run(prompt: "p", repo: "r", modelo: "x") }
     step a { log("x") }
 }`},
 	}

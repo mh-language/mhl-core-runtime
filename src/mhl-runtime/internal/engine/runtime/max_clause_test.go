@@ -70,7 +70,7 @@ func TestMaxClauseStopsLoop(t *testing.T) {
 	lr := runtime.NewLoopRunner(t.TempDir())
 	res, err := lr.Run(context.Background(), p, nil,
 		func(_ context.Context, _ string, _ *runtime.RunContext) error { return nil },
-		func(string) (bool, error) { return false, nil }, false)
+		func(map[string]any) (bool, error) { return false, nil }, false)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}

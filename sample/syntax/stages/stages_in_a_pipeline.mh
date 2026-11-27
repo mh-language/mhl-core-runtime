@@ -9,9 +9,8 @@ import "report/collect.mh"
 import "report/analyse.mh"
 import "report/publish.mh"
 
+/// Collects, analyses and publishes a report in named phases.
 partial pipeline Report {
-    description: "Collects, analyses and publishes a report in named phases."
-
     var rows = []
     var summary = ""
 

@@ -416,8 +416,41 @@ func (s *extStateStore) WriteResult(pipeline string, vars map[string]any) error 
 	return s.kv.Put(context.Background(), runKey(s.runID, "result"), runtime.RedactVars(vars))
 }
 
+// extLoopStateStore is the runtime.LoopStateStore of a `loop` workflow's
+// run (execsvc.Request.LoopStateStore): its per-iteration LoopCheckpoint —
+// which iteration is next, and the `mem` values the loop carries between
+// iterations — under run/<id>/loop/<name>, beside the per-step checkpoints
+// and fenced on the same execution lease. Without it a loop's progress and
+// its `mem` stayed on the local disk of the replica that ran it.
+type extLoopStateStore struct{ *extStateStore }
+
+func (s extLoopStateStore) key(loop string) string {
+	return runKey(s.runID, "loop/"+loop)
+}
+
+func (s extLoopStateStore) Load(loop string) (*runtime.LoopCheckpoint, bool, error) {
+	raw, found, err := s.kv.Get(context.Background(), s.key(loop))
+	if err != nil || !found {
+		return nil, false, err
+	}
+	var cp runtime.LoopCheckpoint
+	if err := json.Unmarshal(raw, &cp); err != nil {
+		return nil, false, err
+	}
+	if err := cp.Rehydrate(); err != nil {
+		return nil, false, err
+	}
+	return &cp, true, nil
+}
+
+func (s extLoopStateStore) Save(cp *runtime.LoopCheckpoint) error {
+	cp.SavedAt = time.Now()
+	return s.fencedPut(s.key(cp.Loop), cp.Redacted())
+}
+
 var (
-	_ SessionStore       = (*extSessionStore)(nil)
-	_ CheckpointStore    = (*extCheckpointStore)(nil)
-	_ runtime.StateStore = (*extStateStore)(nil)
+	_ runtime.LoopStateStore = extLoopStateStore{}
+	_ SessionStore           = (*extSessionStore)(nil)
+	_ CheckpointStore        = (*extCheckpointStore)(nil)
+	_ runtime.StateStore     = (*extStateStore)(nil)
 )

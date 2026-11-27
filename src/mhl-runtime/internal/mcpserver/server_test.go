@@ -34,8 +34,8 @@ func decodeLines(t *testing.T, s string) []map[string]any {
 func TestServeInitializeListCall(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(`
+/// Greets someone by name.
 pipeline Greet {
-    description: "Greets someone by name."
     input name: string
     var greeting = ""
     step Build { greeting = "hello " + name }
@@ -454,9 +454,8 @@ agent Writer { engine: "cli/echo" }
 pipeline Greet {
     description: "Greets someone by name."
     input name: string
-    checkpoint: { enabled: true, strategy: "per_step", ttl: 7d }
     var greeting = ""
-    step Build { greeting = "hello " + name }
+    step Build timeout 90s { greeting = "hello " + name }
     step Emit { log(greeting) }
 }
 `), 0o644); err != nil {
@@ -507,8 +506,12 @@ pipeline Greet {
 	if manifest["resumable"] != true {
 		t.Errorf("manifest omitted resumable despite a per_step checkpoint: %v", manifest)
 	}
-	if cp, _ := manifest["checkpoint"].(map[string]any); cp["strategy"] != "per_step" {
-		t.Errorf("manifest checkpoint = %v", manifest["checkpoint"])
+	// The checkpoint is fixed by the language; its TTL reads as written in .mh.
+	if cp, _ := manifest["checkpoint"].(map[string]any); cp["strategy"] != "per_step" || cp["ttl"] != "30d" {
+		t.Errorf("manifest checkpoint = %v, want per_step with ttl 30d", manifest["checkpoint"])
+	}
+	if to, _ := manifest["stepTimeouts"].(map[string]any); to["Build"] != "90s" {
+		t.Errorf("manifest stepTimeouts = %v, want Build: 90s", manifest["stepTimeouts"])
 	}
 	if decl, _ := manifest["declared"].(map[string]any); decl == nil || len(decl["agents"].([]any)) != 1 {
 		t.Errorf("manifest declared block = %v", manifest["declared"])
@@ -530,5 +533,38 @@ pipeline Greet {
 	// Unknown workflow → -32602.
 	if code := msgs[4]["error"].(map[string]any)["code"].(float64); code != -32602 {
 		t.Errorf("unknown resource code = %v, want -32602", code)
+	}
+}
+
+// A synchronous tools/call runs in its own session: a `mem` value written by
+// one call is not seen by the next.
+func TestServeMemIsNotSharedBetweenCalls(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "wf.mh"), []byte(`
+workflow Counter {
+    mem n = 0
+    output: { n: n }
+    step Bump { n = n + 1 }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	in := strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Counter","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"Counter","arguments":{}}}`,
+	}, "\n") + "\n")
+	var out bytes.Buffer
+	if err := mcpserver.Serve(context.Background(), dir, in, &out, io.Discard); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	for _, m := range decodeLines(t, out.String())[1:] {
+		sc, _ := m["result"].(map[string]any)["structuredContent"].(map[string]any)
+		if sc["n"] != float64(1) {
+			t.Errorf("call %v: n = %v, want 1 (a fresh mem per call)", m["id"], sc["n"])
+		}
+	}
+	if _, err := os.Stat(filepath.Join(".mhl", "state", "mem")); err == nil {
+		t.Errorf("mem was written under the process working directory")
 	}
 }

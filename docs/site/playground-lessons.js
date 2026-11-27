@@ -193,29 +193,25 @@
       '    }',
       '}'
     ], "rodada 1\nrodada 2\nrodada 3",
-    ["max 3 equivale a repeat: { max_iterations: 3 }. Use uma das formas.", "Esse limite conta iterações completas. break encerra antecipadamente a execução, pulando os passos restantes e novas iterações."],
+    ["max 3 é o teto: no máximo três iterações completas.", "Esse limite conta iterações completas. break encerra antecipadamente a execução, pulando os passos restantes e novas iterações."],
     "Mude max 3 para max 2 e acrescente um segundo step. Quantos passos executarão?",
     "sample/syntax/pipeline_vs_workflow/linear_pipeline_and_branching_workflow.mh");
 
   lesson("loop-condicao", "Orquestração", "Loop até uma condição",
-    "Use uma condição observável junto com um teto de segurança, em vez de depender apenas de um número fixo de repetições.",
-    "repeat · stop_when · max_iterations · mem", [
-      'loop pipeline Poll {',
+    "Encerre o loop a partir de um passo quando a condição for atendida, com um teto de segurança, em vez de depender apenas de um número fixo de repetições.",
+    "loop · max · break · mem", [
+      'loop pipeline Poll max 5 {',
       '    mem checks = 0',
-      '    mem status = "pending"',
-      '    repeat: {',
-      '        stop_when: status == "done"',
-      '        max_iterations: 5',
-      '    }',
       '',
       '    step Check {',
       '        checks += 1',
-      '        status = if (checks >= 3) "done" else "pending"',
+      '        var status = if (checks >= 3) "done" else "pending"',
       '        log("check ${checks}: ${status}")',
+      '        if (status == "done") break "pronto"',
       '    }',
       '}'
     ], "check 1: pending\ncheck 2: pending\ncheck 3: done",
-    ["stop_when pode ler mem ou um store memory. Variáveis locais do passo não estão no seu escopo.", "O runtime encerra o loop quando a condição é satisfeita ou o teto é atingido."],
+    ["break encerra o loop inteiro e registra o motivo; complete() só encerra a iteração atual.", "O loop termina no break ou no teto max 5, o que vier primeiro. Uma var reinicia a cada iteração; o que precisa atravessar iterações vai em mem."],
     "Troque checks >= 3 por checks >= 8. O teto de 5 impede uma sexta iteração.",
     "sample/features/pipelines/loop_poll_pipeline_example.mh");
 
@@ -335,7 +331,6 @@
       'workflow Approval {',
       '    input approved: bool',
       '    input artifact: string',
-      '    checkpoint: { ttl: 7d }',
       '',
       '    step Gate {',
       '        if (!approved) pause("Aguardando aprovação")',

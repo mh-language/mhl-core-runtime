@@ -20,15 +20,17 @@ import (
 // numbers, bools, arrays and objects, not just strings.
 type RunContext struct {
 	Vars map[string]any
-	// InstanceID identifies which run of this pipeline is executing, for
-	// cli.go's `mem` support (interpreter.MemContext) to namespace a
-	// pipeline's persistent variables by. Set from Pipeline.InstanceID
-	// (below) when Run allocates ctx — "default" for a plain pipeline
-	// (Pipeline.InstanceID is only ever populated by LoopRunner), or a
-	// loop's per-run/per-resume id for a `loop pipeline`, so a `mem` var
-	// stays isolated between two independent (non-resumed) runs of the same
-	// loop but shared across all iterations of one run — see LoopRunner.Run.
+	// InstanceID identifies which run of this pipeline is executing. Set
+	// from Pipeline.InstanceID when Run allocates ctx — "default" for a plain
+	// pipeline (Pipeline.InstanceID is only ever populated by LoopRunner), or
+	// a loop's per-run/per-resume id for a `loop pipeline`, recorded in its
+	// LoopCheckpoint. (A `mem` value no longer needs it: it lives in Vars,
+	// under MemVarPrefix.)
 	InstanceID string
+	// Branch is true for the context of one branch of a `parallel` group —
+	// a copy of the run's Vars that runParallelStage merges back after the
+	// barrier — and false for the run's own context.
+	Branch bool
 	// SessionID is the per-execution id of the directory this run's
 	// checkpoints live under (Runner.SessionID / Store.Session). Empty for an
 	// unscoped runner. cli.go exposes it to a pipeline's `context:` element as
@@ -661,6 +663,7 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 			InstanceID: ctx.InstanceID,
 			SessionID:  ctx.SessionID,
 			Out:        buf,
+			Branch:     true,
 		}
 		bctxs[i] = bctx
 		branchCtxs[i] = runCtx
@@ -709,8 +712,8 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 	conflicts := map[string][2]int{}
 	for i, bctx := range bctxs {
 		for k, v := range bctx.Vars {
-			if strings.HasPrefix(k, "__") {
-				continue // interpreter bookkeeping (e.g. __last_step)
+			if bookkeepingKey(k) {
+				continue // interpreter bookkeeping (e.g. __last_step); a mem merges like a var
 			}
 			if value.Equal(base[k], v) {
 				continue
@@ -718,8 +721,9 @@ func (r *Runner) runParallelStage(runCtx context.Context, p Pipeline, stage Stag
 			if prev, ok := writtenBy[k]; ok {
 				if !value.Equal(bctxs[prev].Vars[k], v) {
 					if stage.Merge == "" {
-						return fmt.Errorf("parallel group %q: steps %q and %q both assigned pipeline var %q — give each branch its own var, or combine them in a `merge (branches) { ... }` block at the end of the group",
-							stage.Name, stage.Steps[prev], stage.Steps[i], k)
+						label, _ := varLabel(k)
+						return fmt.Errorf("parallel group %q: steps %q and %q both assigned %s — give each branch its own var, or combine them in a `merge (branches) { ... }` block at the end of the group",
+							stage.Name, stage.Steps[prev], stage.Steps[i], label)
 					}
 					if _, seen := conflicts[k]; !seen {
 						conflicts[k] = [2]int{prev, i}
@@ -777,14 +781,16 @@ func runMerge(runCtx context.Context, stage Stage, ctx *RunContext, bctxs []*Run
 		}
 		vars := make(map[string]any, len(bctx.Vars))
 		for k, v := range bctx.Vars {
-			if strings.HasPrefix(k, "__") || k == stage.MergeParam {
+			if bookkeepingKey(k) || k == stage.MergeParam {
 				continue
 			}
+			// A branch's mem is shown under its own name, like its vars.
+			_, name := varLabel(k)
 			m, err := value.Materialize(v)
 			if err != nil {
-				return fmt.Errorf("parallel group %q: merge: branch %q var %q: %w", stage.Name, stage.Steps[i], k, err)
+				return fmt.Errorf("parallel group %q: merge: branch %q var %q: %w", stage.Name, stage.Steps[i], name, err)
 			}
-			vars[k] = m
+			vars[name] = m
 		}
 		branches[stage.Steps[i]] = vars
 	}
@@ -832,8 +838,9 @@ func runMerge(runCtx context.Context, stage Stage, ctx *RunContext, bctxs []*Run
 	for _, k := range keys {
 		if value.Equal(before[k], ctx.Vars[k]) {
 			c := conflicts[k]
-			return fmt.Errorf("parallel group %q: steps %q and %q both assigned pipeline var %q, and its merge did not assign it — combine them there (e.g. self.%s = ...)",
-				stage.Name, stage.Steps[c[0]], stage.Steps[c[1]], k, k)
+			label, name := varLabel(k)
+			return fmt.Errorf("parallel group %q: steps %q and %q both assigned %s, and its merge did not assign it — combine them there (e.g. self.%s = ...)",
+				stage.Name, stage.Steps[c[0]], stage.Steps[c[1]], label, name)
 		}
 	}
 	return signal

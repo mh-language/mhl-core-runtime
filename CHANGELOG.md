@@ -10,6 +10,106 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+### Added
+
+- **Lifecycle hooks as event handlers: `on <event>(param) { ... }`.** A pipeline/workflow
+  hook is now written `on step_end(step) { ... }`. The parameter is optional:
+  `on session_end { log("done") }`. The five events are unchanged (`session_start`,
+  `session_end`, `step_start`, `step_end`, `stop_failure`), and so is what each one
+  receives and does. `mhl lint` reports `on` with something that isn't an event (a typo,
+  `on description`), more than one parameter, and an event handled twice. Before, two
+  handlers of one event were accepted and only the last one ran. In the editor, the
+  workflow body offers an `on <event>` snippet for each hook, and `session.`, `step.` and
+  `failure.` complete inside it as before.
+- **A workflow's description is the `///` lines right above it.** The same doc comment
+  that already documents an `input` now describes a `pipeline`, `workflow` or workflow
+  alias: `mhl serve` publishes it as the MCP tool / A2A skill description, and `mhl graph`
+  (`description`, plus `docSpan` for the lines), the `mhl://workflow` manifest and the
+  editor's hover show it. An empty `///` line starts a new paragraph, kept as a blank line
+  in the published text. The block must touch the declaration (above `export`/`internal`/
+  `partial`/`loop` too): a blank line or a plain `//` line detaches it. It is not part of
+  the definition, so editing it never makes `--resume` refuse a checkpoint. `mhl lint`
+  reports a declaration described both ways and a `partial` workflow described above more
+  than one fragment. An alias without its own `///` keeps publishing its target's
+  description. The editor's hover no longer shows a stray `/` for a `///` comment above
+  any declaration.
+- **`mhl lint` warns on a loop that never stops.** A `loop pipeline`/`loop workflow` with
+  no `max N` in its header and no `break` in its steps runs until it is cancelled. It is
+  now a warning. `complete()` doesn't count as a way out: inside a loop it only ends the
+  current iteration.
+
+### Changed
+
+- **Checkpointing is always on and expires after 30 days.** Every run is checkpointed after
+  each step. A run that stops (failure, timeout, cancel, `pause()`) can be continued with
+  `--resume` for 30 days; after that its checkpoint expires and is cleaned up. Resuming is
+  still explicit: running the program again without `--resume` starts fresh.
+  - A program that declared `checkpoint: { enabled: false }` is now checkpointed. If it
+    keeps a closure or a spawn handle in a pipeline-scoped `var`, the run now fails at the
+    end of that step ("pipeline variable is not checkpointable"). Move that value into a
+    step-local `var`.
+  - A `ttl:` in the block no longer applies. Checkpoints saved without a TTL, including
+    ones from earlier versions, now expire 30 days after they were saved.
+  - Durations in the MCP workflow manifest (`mhl://workflow/<name>`) and in
+    `mhl run --dry-run` are written as `.mh` literals: `"ttl": "30d"` (was `720h0m0s`), a
+    step's `timeout 90s` as `"90s"` (was `1m30s`), `timeout 3m` as `"3m"` (was `3m0s`).
+- **`mem` is part of the run's state.** A `mem` value is now saved in the run's checkpoint
+  with its `var`s, instead of in a file of its own. It survives loop iterations and
+  `--resume`, and it is stored wherever the checkpoint is: the session's directory, or the
+  `extension state` that `mhl serve` replicas share. A run resumed on another replica now
+  continues with the same `mem`. Before, `mem` stayed on the disk of the replica that ran
+  it; a plain (non-loop) pipeline's `mem` also kept its value from one `mhl run` to the
+  next, and every synchronous MCP `tools/call` and every client of `mhl serve` shared it.
+  - A program that counted across runs with `mem` now starts over every run, including
+    when it names a finished run's `--session`. Only a `--resume` of a run that stopped
+    continues its `mem`.
+  - A step that fails after writing a `mem` no longer keeps the write. The resume runs the
+    step again from the last completed step's value, so an increment happens once instead
+    of twice.
+  - Two branches of a `parallel` group that set one `mem` to different values are now a
+    conflict, the same as for a `var`. Assign it in the group's `merge` block, where
+    `branches.<Step>.<name>` has each branch's value. Before, the last branch to write won.
+  - A `mem` written in `session_start`, `session_end` or `stop_failure` is not kept. In
+    `step_start`/`step_end` it is.
+  - `mhl serve` with an `extension state` now also stores a loop workflow's iteration
+    checkpoint there, under `run/<id>/loop/<name>`. Before, it stayed on the local disk.
+  - Values in a `mem` file from an earlier version are not read.
+- **`memory` stores are local to one process.** This is unchanged, and the reference now
+  says so. A `kv` store with `store: "memory"` lives in the process, and a `json`, `jsonl`
+  or `append_log` store lives in the file at its `path:`, so replicas of `mhl serve` don't
+  see each other's. For data that replicas or runs share on purpose, call an extension
+  that talks to your database.
+
+### Deprecated
+
+- **The `checkpoint: { ... }` block in a pipeline/workflow body.** It is ignored (`enabled`,
+  `strategy`, `storage` and `ttl` alike). `mhl lint` and the editor report it as a
+  warning; delete the block.
+
+- **`description: "..."` in a pipeline/workflow body, and in an alias's `{ ... }`.** Write
+  the text as `///` lines right above the declaration; the `mhl lint` warning shows the
+  line to write. The property still works and the editor shows it struck through. Moving
+  the text from the property to a `///` comment changes the definition digest once (the
+  property was part of it), so finish or discard a stopped run before rewriting it. An
+  agent's `description:` is unchanged: it feeds a router's decision prompt.
+
+- **A lifecycle hook written as a body property, `step_end: (step) -> { ... }`.** Write
+  `on step_end(step) { ... }` instead. The old spelling still works, with a `mhl lint`
+  warning, and the editor shows it struck through. Both spellings have the same
+  definition digest, so rewriting a hook from one to the other keeps a stopped run
+  resumable.
+- **`repeat: { stop_when, max_iterations }` in a loop.** Write the ceiling in the header
+  (`loop workflow Refine max 5 { ... }`) and end the loop from a step with `break`
+  (`step Check { if (done) break "converged" }`). Unlike `stop_when`, a step sees every
+  variable, not only `mem`, and `break` records why the loop stopped (`terminal_reason:
+  "break"`, `break_reason`). The block still works, with a `mhl lint` warning; the editor
+  shows it struck through.
+- **`context: { source, require }` and `context.vars`.** A run doesn't read another run's
+  state any more: keep what a run needs in `mem` (see "Changed"). `mhl lint` warns on the
+  block and on every `context.vars` read; both still work. The run metadata
+  (`context.session_id`, `.started_at`, `.resumed`, `.principal`) is unchanged and never
+  needed the block.
+
 ## 1.16.0 — 2026-11-25
 
 ### Added

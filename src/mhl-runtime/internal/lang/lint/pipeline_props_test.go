@@ -69,3 +69,21 @@ loop workflow W {
 		}
 	}
 }
+
+// The `checkpoint: { ... }` block is deprecated and ignored; `enabled: false`
+// gets its own message, since that is the spelling whose meaning changed.
+func TestCheckpointBlockIsDeprecated(t *testing.T) {
+	cases := []struct{ block, want string }{
+		{`checkpoint: { ttl: 7d }`, "`checkpoint: { ... }` is deprecated and ignored"},
+		{`checkpoint: { enabled: false }`, "`checkpoint: { enabled: false }` no longer turns checkpointing off"},
+	}
+	for _, tc := range cases {
+		dir := t.TempDir()
+		main := filepath.Join(dir, "main.mh")
+		write(t, main, "workflow W {\n    "+tc.block+"\n    step S { var x = 1 }\n}\n")
+		findings := lint.File(main)
+		if len(findings) != 1 || findings[0].Severity != lint.SeverityWarning || !strings.Contains(findings[0].Message, tc.want) {
+			t.Errorf("%s: want one %q warning, got %+v", tc.block, tc.want, findings)
+		}
+	}
+}

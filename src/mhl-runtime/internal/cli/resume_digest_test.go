@@ -100,3 +100,34 @@ func TestRunForceRequiresResume(t *testing.T) {
 		t.Fatalf("want a --force/--resume error, got: %v", err)
 	}
 }
+
+// `checkpoint: { enabled: false }` is deprecated and ignored: the run is
+// still checkpointed per step, so --resume skips the step that finished.
+func TestRunResumeIgnoresCheckpointEnabledFalse(t *testing.T) {
+	chdirTemp(t)
+	src := `
+pipeline Migrate {
+    checkpoint: { enabled: false }
+    step One { log("one ran") }
+    step Two { fail("stop before finish") }
+}
+`
+	if err := os.WriteFile("pipeline.mh", []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	var first bytes.Buffer
+	if err := cli.Run([]string{"run", "pipeline.mh"}, &first); err == nil {
+		t.Fatalf("expected the first run to fail at step Two:\n%s", first.String())
+	}
+	if !strings.Contains(first.String(), "one ran") {
+		t.Fatalf("first run did not run step One:\n%s", first.String())
+	}
+	var second bytes.Buffer
+	err := cli.Run([]string{"run", "pipeline.mh", "--resume"}, &second)
+	if err == nil || !strings.Contains(err.Error(), "stop before finish") {
+		t.Fatalf("expected the resume to re-run step Two and fail there, got err=%v\n%s", err, second.String())
+	}
+	if strings.Contains(second.String(), "one ran") {
+		t.Fatalf("--resume re-ran step One — the checkpoint was not written:\n%s", second.String())
+	}
+}

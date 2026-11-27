@@ -1,44 +1,31 @@
-// A `context:` block opts a pipeline into the read-only `context` accessor
-// its steps can read: this run's own session metadata, plus the variable
-// state left behind by the previous completed run of the same pipeline. Run
-// it twice to see the carry-over:
+// The read-only `context` object: this run's own metadata, readable from any
+// step with nothing to declare. Run it twice:
 //
 //   mhl run sample/features/pipelines/context_pipeline_example.mh
 //   mhl run sample/features/pipelines/context_pipeline_example.mh
 //
 // Each run prints its own `session: <id>` line and gets its own directory
 // under .mhl/state/<id>/, so two concurrent runs never clobber each other's
-// checkpoint. `context.vars` is empty on the very first run — a run has to
-// complete once (writing .mhl/state/<id>/result.json) before the next run
-// has anything to read. `--session <id>` pins the directory name; a bare
-// `--resume` follows the .latest pointer.
+// checkpoint. Both runs print "build 1": a `mem` variable is saved in the
+// run's checkpoint with its `var`s — it survives loop iterations and
+// `--resume`, but a new run starts from the initializer. Nothing is shared
+// between runs. `--session <id>` pins the directory name; a bare `--resume`
+// follows the .latest pointer. Every run is checkpointed after each step, so
+// a run that stops midway resumes with `--resume` for up to 30 days.
+//
+// (The `context: { source, require }` block and `context.vars` — the previous
+// run's variables — are deprecated: a run does not read another run's state.)
 
 pipeline BuildCounter {
-    checkpoint: {
-        enabled: true
-        strategy: "per_step"
-        ttl: 7d
-    }
-
-    // source: "latest" (the default) reads the most recent completed run.
-    // require: false lets the first run proceed with an empty context.vars.
-    context: {
-        source: "latest"
-        require: false
-    }
-
-    var build = 1
+    // get-or-init: 0 at the start of every session.
+    mem build = 0
 
     step Report {
         log.info("[ctx] session id: ${context.session_id}")
+        log.info("[ctx] started at: ${context.started_at}")
         log.info("[ctx] resumed:    ${context.resumed}")
 
-        if (context.vars.keys().contains("build")) {
-            var previous = context.vars["build"]
-            build = previous + 1
-            log.info("[ctx] previous build was ${previous}; this is build ${build}")
-        } else {
-            log.info("[ctx] no previous run; starting at build ${build}")
-        }
+        build = build + 1
+        log.info("[ctx] this is build ${build}")
     }
 }

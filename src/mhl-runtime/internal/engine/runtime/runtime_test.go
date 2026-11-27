@@ -54,44 +54,32 @@ func TestPipelineConfigFromAST(t *testing.T) {
 	if len(p.Steps) != 2 || p.Steps[0] != "AuditWithSkill" || p.Steps[1] != "RefinementLoop" {
 		t.Fatalf("steps = %v", p.Steps)
 	}
-	if !p.Checkpoint.Enabled || p.Checkpoint.Strategy != "per_step" || p.Checkpoint.Storage != "file" {
-		t.Errorf("checkpoint config = %+v", p.Checkpoint)
-	}
-	if p.Checkpoint.TTL != 7*24*time.Hour {
-		t.Errorf("ttl = %v, want 168h", p.Checkpoint.TTL)
+	// The source still declares the deprecated `checkpoint: { ... }` block
+	// (storage "file", ttl 7d): it is ignored.
+	if p.Checkpoint != runtime.DefaultCheckpointConfig() {
+		t.Errorf("checkpoint config = %+v, want the default", p.Checkpoint)
 	}
 }
 
-// The `checkpoint { ... }` block is optional: a pipeline that omits it, or
-// declares an empty one, is still projected with per-step checkpointing on so
-// an interrupted run stays resumable. A partial block tunes fields without
-// losing that default; only `enabled: false` opts out.
-func TestPipelineCheckpointDefaultsWhenBlockOmittedOrPartial(t *testing.T) {
+// Checkpointing is not configurable from .mh: every pipeline is projected
+// with per-step checkpoints expiring after runtime.CheckpointTTL, and the
+// deprecated `checkpoint { ... }` block — `enabled: false` included — is
+// ignored.
+func TestPipelineCheckpointIsAlwaysTheDefault(t *testing.T) {
+	want := runtime.CheckpointConfig{Enabled: true, Strategy: "per_step", TTL: 30 * 24 * time.Hour}
+	if got := runtime.DefaultCheckpointConfig(); got != want {
+		t.Fatalf("DefaultCheckpointConfig() = %+v, want %+v", got, want)
+	}
 	cases := []struct {
 		name string
 		body string
 		want runtime.CheckpointConfig
 	}{
-		{
-			name: "no block",
-			body: "step S { var x = 1 }",
-			want: runtime.DefaultCheckpointConfig(),
-		},
-		{
-			name: "empty block",
-			body: "checkpoint: {}\n    step S { var x = 1 }",
-			want: runtime.DefaultCheckpointConfig(),
-		},
-		{
-			name: "ttl only keeps per_step",
-			body: "checkpoint: { ttl: 30d }\n    step S { var x = 1 }",
-			want: runtime.CheckpointConfig{Enabled: true, Strategy: "per_step", TTL: 30 * 24 * time.Hour},
-		},
-		{
-			name: "enabled false opts out",
-			body: "checkpoint: { enabled: false }\n    step S { var x = 1 }",
-			want: runtime.CheckpointConfig{Enabled: false, Strategy: "per_step"},
-		},
+		{name: "no block", body: "step S { var x = 1 }", want: want},
+		{name: "empty block", body: "checkpoint: {}\n    step S { var x = 1 }", want: want},
+		{name: "ttl ignored", body: "checkpoint: { ttl: 7d }\n    step S { var x = 1 }", want: want},
+		{name: "enabled false ignored", body: "checkpoint: { enabled: false }\n    step S { var x = 1 }", want: want},
+		{name: "strategy ignored", body: `checkpoint: { strategy: "manual", storage: "s3" }` + "\n    step S { var x = 1 }", want: want},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -149,7 +137,35 @@ pipeline WithContext {
 	}
 }
 
-// The optional `description: "..."` body property is projected onto
+// The `///` lines above the declaration are Pipeline.Description, and win
+// over the deprecated property; a doc edit leaves the definition digest as
+// it was, so it never invalidates a checkpoint.
+func TestPipelineDescriptionFromDocComment(t *testing.T) {
+	digest := func(src string) (string, string) {
+		t.Helper()
+		prog, err := parser.Parse(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := runtime.FindPipeline(prog, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p.Description, runtime.DefinitionDigest(prog, p.Name)
+	}
+	desc, d1 := digest("/// Does a useful thing.\nworkflow W {\n    step S { var x = 1 }\n}")
+	if desc != "Does a useful thing." {
+		t.Errorf("Description = %q, want the doc comment", desc)
+	}
+	if _, d2 := digest("/// Does something else.\nworkflow W {\n    step S { var x = 1 }\n}"); d1 != d2 {
+		t.Errorf("editing the doc changed the definition digest")
+	}
+	if desc, _ := digest("/// From the doc.\nworkflow W {\n    description: \"From the property.\"\n    step S { }\n}"); desc != "From the doc." {
+		t.Errorf("Description = %q, want the doc to win", desc)
+	}
+}
+
+// The deprecated `description: "..."` body property is still projected onto
 // Pipeline.Description; absent leaves it empty.
 func TestPipelineDescriptionFromAST(t *testing.T) {
 	prog, _ := parser.Parse(`workflow W {

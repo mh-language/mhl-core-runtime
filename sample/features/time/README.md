@@ -22,4 +22,4 @@ already uses for its `"ts"` field.
   `time.compare(a, b)` returns -1/0/1, since mhl's `<`/`>` operators don't support strings
 - [time_checkpoint_expiry_uses_add_and_compare.mh](time_checkpoint_expiry_uses_add_and_compare.mh)
   — composing `time.add` + `time.compare` to reason about staleness, illustrating the
-  same idea `checkpoint { ttl: 7d }` applies internally
+  same idea the runtime's fixed 30-day checkpoint expiry applies internally

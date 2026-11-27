@@ -17,7 +17,8 @@ workflow Flow {
 }
 workflow Typed(req: Req) { step A { log("t") } }
 pipeline P { step A { log("p") } }
-workflow Ok1 = Flow with { level: Level.delivery, n: 2 } { description: "fine" }
+/// fine
+workflow Ok1 = Flow with { level: Level.delivery, n: 2 }
 workflow Ok2 = Flow with { level: "discovery" }
 workflow Ok3 = Typed with { level: Level.delivery }
 workflow A1 = Flow with { level: Level.nope }

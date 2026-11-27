@@ -146,7 +146,7 @@ func leadingComment(src string, line int) string {
 		if !strings.HasPrefix(trimmed, "//") {
 			break
 		}
-		collected = append(collected, strings.TrimSpace(strings.TrimPrefix(trimmed, "//")))
+		collected = append(collected, strings.TrimSpace(strings.TrimLeft(trimmed, "/"))) // `//` and `///` alike
 	}
 	if len(collected) == 0 {
 		return ""

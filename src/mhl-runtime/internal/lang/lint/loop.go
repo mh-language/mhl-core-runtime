@@ -2,7 +2,9 @@ package lint
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
@@ -285,4 +287,57 @@ func walkPrimary(p *ast.Primary, fn func(string)) {
 	case p.Sub != nil:
 		walkExprIdents(p.Sub, fn)
 	}
+}
+
+// repeatDeprecation is the warning for the deprecated `repeat: { ... }`
+// block, naming the replacement for each field it actually sets.
+func repeatDeprecation(e *ast.Expr) string {
+	var fixes []string
+	if n := repeatMaxIterationsExpr(e); n != nil {
+		fixes = append(fixes, "write the ceiling in the header (`loop workflow X max N`)")
+	}
+	if repeatStopWhenExpr(e) != nil {
+		fixes = append(fixes, "end the loop from a step with `break` (`step Check { if (done) break \"reason\" }`)")
+	}
+	if len(fixes) == 0 {
+		return "`repeat: { ... }` is deprecated — remove it"
+	}
+	return "`repeat: { ... }` is deprecated — " + strings.Join(fixes, ", and ")
+}
+
+// checkLoopExit warns on a `loop pipeline`/`loop workflow` that has no way
+// to stop on its own: no `max N` header clause, no `repeat` ceiling or
+// stop_when (deprecated, but still honoured), and no `break` in any of its
+// steps. runtime.LoopRunner has no built-in iteration cap, so such a loop
+// runs until it is cancelled or a step fails. (`complete()` does not count:
+// inside a loop it only ends the current iteration.) A `partial` declaration
+// is skipped, since the fragment being linted may not hold the one with the
+// `break`.
+func checkLoopExit(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		p := decl.Pipeline
+		if p == nil || !p.Loop || p.Partial || p.Max != "" {
+			continue
+		}
+		exits := false
+		for _, m := range p.Body {
+			if m.Prop != nil && m.Prop.Name == "repeat" &&
+				(repeatMaxIterationsExpr(m.Prop.Value) != nil || repeatStopWhenExpr(m.Prop.Value) != nil) {
+				exits = true
+			}
+		}
+		if !exits {
+			walkStatements(reflect.ValueOf(p.Body), func(st *ast.Statement) {
+				if st.Break != nil {
+					exits = true
+				}
+			})
+		}
+		if !exits {
+			findings = append(findings, Finding{File: fileAt(file, p.Pos), Line: p.Pos.Line, Column: p.Pos.Column, Severity: SeverityWarning,
+				Message: fmt.Sprintf("loop %s %q has no way to stop: no `max N` in its header and no `break` in its steps — it runs until cancelled (`complete()` only ends one iteration)", p.Kind, p.Name)})
+		}
+	}
+	return findings
 }

@@ -115,10 +115,12 @@ func Parse(source string) (*ast.Program, error) {
 	if err := normalizePromptVariants(prog); err != nil {
 		return nil, err
 	}
+	expandHooks(prog)
 	expandShorthand(prog)
 	expandDestructure(prog)
 	expandStages(prog)
 	attachInputDocs(prog, source)
+	attachDeclDocs(prog, source)
 	attachGateDocs(prog, source)
 	if err := checkAmbiguousBareReturn(prog); err != nil {
 		return nil, err

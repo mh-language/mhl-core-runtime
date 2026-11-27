@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `on` in a workflow's `on step_end(step) { ... }` lifecycle hook is highlighted as a
+  keyword. Its completion and diagnostics come from the bundled runtime (`mhlRuntime`)
+  once it includes it.
+
 ## 0.12.0
 
 ### Added

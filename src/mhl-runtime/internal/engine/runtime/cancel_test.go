@@ -61,7 +61,7 @@ func TestLoopRunStopsBetweenIterationsOnCancel(t *testing.T) {
 			cancel()
 			return nil
 		},
-		func(string) (bool, error) { return false, nil },
+		func(map[string]any) (bool, error) { return false, nil },
 		false)
 
 	if !errors.Is(err, context.Canceled) {

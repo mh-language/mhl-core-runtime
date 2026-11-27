@@ -712,7 +712,7 @@ function ToolView({ tool }: { tool: McpTool }) {
           )}
           {reqTab === "docs" && (
             <div className="mcp-pad mcp-docs">
-              <p>{tool.description || <span className="muted">No description. Add one with `description: "…"` in the workflow.</span>}</p>
+              <p>{tool.description || <span className="muted">No description. Add one as `///` lines right above the workflow.</span>}</p>
               <p className="muted small">
                 <b>tools/call</b> waits for the whole run and returns its final variables.
                 {async && (

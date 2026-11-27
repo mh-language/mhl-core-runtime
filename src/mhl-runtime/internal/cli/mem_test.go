@@ -227,48 +227,72 @@ pipeline Counter {
 }
 `
 
-// A plain (non-loop) pipeline's `mem` uses the fixed "default" instance
-// (runtime.Runner.Run's fallback for Pipeline.InstanceID) — so, unlike a
-// loop pipeline's independent runs, two separate `mhl run` invocations of
-// the same non-loop pipeline DO share state: that's the whole value of
-// `mem` over `var` for a pipeline that only ever runs once per invocation.
-func TestRunMemPersistsAcrossSeparateRunsOfPlainPipeline(t *testing.T) {
+// `mem` is the run's own state, like a `var`: two separate `mhl run`
+// invocations of the same pipeline each start from the initializer, and so
+// does a new run that names a finished run's session with `--session` — the
+// mem ended with that run (its checkpoint was cleared). Only a `--resume` of
+// a run that stopped continues it (TestRunMemRollsBackWithAFailedStep).
+func TestRunMemBelongsToTheRun(t *testing.T) {
 	chdirTemp(t)
 	if err := os.WriteFile("pipeline.mh", []byte(memPlainPipelineFile), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
+	run := func(args ...string) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := cli.Run(append([]string{"run", "pipeline.mh"}, args...), &buf); err != nil {
+			t.Fatalf("run %v: %v", args, err)
+		}
+		return buf.String()
+	}
 
-	var first bytes.Buffer
-	if err := cli.Run([]string{"run", "pipeline.mh"}, &first); err != nil {
-		t.Fatalf("first run: %v", err)
+	for i := 1; i <= 2; i++ {
+		if out := run(); !strings.Contains(out, "visits=1") {
+			t.Fatalf("independent run %d: expected a fresh mem (visits=1), got:\n%s", i, out)
+		}
 	}
-	if !strings.Contains(first.String(), "visits=1") {
-		t.Fatalf("expected visits=1 on the first run, got:\n%s", first.String())
-	}
-
-	var second bytes.Buffer
-	if err := cli.Run([]string{"run", "pipeline.mh"}, &second); err != nil {
-		t.Fatalf("second run: %v", err)
-	}
-	if !strings.Contains(second.String(), "visits=2") {
-		t.Fatalf("expected visits=2 on the second run (mem persisted from the first), got:\n%s", second.String())
+	for i := 1; i <= 2; i++ {
+		if out := run("--session", "fixed"); !strings.Contains(out, "visits=1") {
+			t.Fatalf("run %d of session fixed: expected visits=1 (the previous run finished), got:\n%s", i, out)
+		}
 	}
 }
 
-// mem's backing file lives under .mhl/state/mem/<pipeline>/<instance>.json,
-// alongside (never colliding with) the checkpoint/loop-checkpoint files
-// Store/LoopStore already keep directly under .mhl/state.
-func TestRunMemBackingFileLocation(t *testing.T) {
+const memRollbackFile = `
+pipeline Counter {
+    input crash: bool = false
+    mem visits = 0
+
+    step Bump {
+        visits = visits + 1
+        log("visits=${visits}")
+        if (crash) { fail("simulated crash after the write") }
+    }
+}
+`
+
+// A mem lives in the checkpoint with the vars, so a step that fails after
+// writing one leaves no trace of the write: the resume runs the step again
+// from the last completed step's value, and the write happens once. (When
+// mem had a file of its own, written on every assignment, the resumed step
+// incremented it a second time.) Nothing but the checkpoint is written.
+func TestRunMemRollsBackWithAFailedStep(t *testing.T) {
 	dir := chdirTemp(t)
-	if err := os.WriteFile("pipeline.mh", []byte(memPlainPipelineFile), 0o644); err != nil {
+	if err := os.WriteFile("pipeline.mh", []byte(memRollbackFile), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	var buf bytes.Buffer
-	if err := cli.Run([]string{"run", "pipeline.mh"}, &buf); err != nil {
-		t.Fatalf("run: %v", err)
+	var first bytes.Buffer
+	if err := cli.Run([]string{"run", "pipeline.mh", "--session", "s1", "--input", "crash=true"}, &first); err == nil {
+		t.Fatalf("expected the simulated crash, got:\n%s", first.String())
 	}
-	want := filepath.Join(dir, ".mhl", "state", "mem", "Counter", "default.json")
-	if _, err := os.Stat(want); err != nil {
-		t.Errorf("expected mem file at %s: %v", want, err)
+	var second bytes.Buffer
+	if err := cli.Run([]string{"run", "pipeline.mh", "--session", "s1", "--resume", "--input", "crash=false"}, &second); err != nil {
+		t.Fatalf("resume: %v\n%s", err, second.String())
+	}
+	if !strings.Contains(second.String(), "visits=1") {
+		t.Errorf("resumed step should count once (visits=1), got:\n%s", second.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".mhl", "state", "s1", "mem")); !os.IsNotExist(err) {
+		t.Errorf("a separate mem directory was written (err=%v)", err)
 	}
 }

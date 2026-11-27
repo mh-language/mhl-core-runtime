@@ -20,7 +20,8 @@ import (
 // checkLoopStopWhen (internal/lang/lint/loop.go), which flags a `var`
 // reference here at lint time. mem (may be nil) is the one exception: a
 // pipeline's `mem` declarations ARE visible here, since surviving
-// stop_when's own re-checks across iterations is `mem`'s entire purpose.
+// stop_when's own re-checks across iterations is `mem`'s entire purpose —
+// the caller binds it to the finished iteration's vars (MemContext.Bind).
 // cctx (may be nil) is likewise visible here, so a stop_when can read
 // `context.*` — see ContextView.
 func EvalCondition(prog *ast.Program, expr *ast.Expr, file string, out io.Writer, store *memory.KVStore, jsonStore *memory.JSONStore, mem *MemContext, cctx *ContextView) (bool, error) {

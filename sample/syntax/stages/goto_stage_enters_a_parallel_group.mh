@@ -5,9 +5,8 @@
 import "survey/ask.mh"
 import "survey/decide.mh"
 
+/// Asks two sources in parallel until their answers agree.
 partial workflow Survey {
-    description: "Asks two sources in parallel until their answers agree."
-
     var round = 0
     var answers = []
 

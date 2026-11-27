@@ -83,16 +83,17 @@
       title: "Execution limits",
       description: "Repeat the entire pipeline with an explicit iteration ceiling. mem retains its value between iterations.",
       result: "round 1\nround 2\nround 3",
-      notes: ["max 3 is equivalent to repeat: { max_iterations: 3 }. Use one form.", "This limit counts complete iterations. break ends execution early, skipping remaining steps and further iterations."],
+      notes: ["max 3 is the ceiling: at most three complete iterations.", "This limit counts complete iterations. break ends execution early, skipping remaining steps and further iterations."],
       challenge: "Change max 3 to max 2 and add a second step. How many steps will run?",
       replacements: [["rodada ", "round "], ['"suficiente"', '"enough"']]
     },
     "loop-condicao": {
       title: "Loop until a condition",
-      description: "Use an observable condition together with a safety ceiling, rather than relying only on a fixed repetition count.",
+      description: "End the loop from a step once the condition holds, with a safety ceiling, rather than relying only on a fixed repetition count.",
       result: "check 1: pending\ncheck 2: pending\ncheck 3: done",
-      notes: ["stop_when can read mem or a memory store. Step-local variables are outside its scope.", "The runtime ends the loop when the condition is satisfied or the ceiling is reached."],
-      challenge: "Replace checks >= 3 with checks >= 8. The ceiling of 5 prevents a sixth iteration."
+      notes: ["break ends the whole loop and records why; complete() only ends the current iteration.", "The loop ends at the break or at the max 5 ceiling, whichever comes first. A var resets every iteration; what must cross iterations goes in mem."],
+      challenge: "Replace checks >= 3 with checks >= 8. The ceiling of 5 prevents a sixth iteration.",
+      replacements: [['"pronto"', '"ready"']]
     },
     timeout: {
       title: "Step timeout",

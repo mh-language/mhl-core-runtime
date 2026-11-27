@@ -238,7 +238,7 @@ func TestLoopResumeChecksDefinitionDigest(t *testing.T) {
 			}
 			return nil
 		},
-		func(string) (bool, error) { return false, nil }, false)
+		func(map[string]any) (bool, error) { return false, nil }, false)
 	if err != nil {
 		t.Fatalf("leg1: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestLoopResumeChecksDefinitionDigest(t *testing.T) {
 	// Resume with a different digest → refused.
 	_, err = newLoop("edited").Run(context.Background(), loopP, nil,
 		func(context.Context, string, *runtime.RunContext) error { return nil },
-		func(string) (bool, error) { return true, nil }, true)
+		func(map[string]any) (bool, error) { return true, nil }, true)
 	if !errors.Is(err, runtime.ErrCheckpointDefinitionMismatch) {
 		t.Fatalf("want ErrCheckpointDefinitionMismatch on loop resume, got %v", err)
 	}
@@ -258,7 +258,7 @@ func TestLoopResumeChecksDefinitionDigest(t *testing.T) {
 	lr.Runner.Out = &log
 	res, err := lr.Run(context.Background(), loopP, nil,
 		func(context.Context, string, *runtime.RunContext) error { return nil },
-		func(string) (bool, error) { return true, nil }, true)
+		func(map[string]any) (bool, error) { return true, nil }, true)
 	if err != nil {
 		t.Fatalf("forced loop resume should proceed: %v", err)
 	}
@@ -439,5 +439,24 @@ func TestDefinitionDigestUnchangedByPromptVariants(t *testing.T) {
 	a, b := digestOfPipeline(t, withArm, "P"), digestOfPipeline(t, otherArm, "P")
 	if a == want || b == want || a == b {
 		t.Fatal("adding or changing a `for` arm must change the digest")
+	}
+}
+
+// A lifecycle hook written `on step_end(step) { ... }` hashes exactly like
+// `step_end: (step) -> { ... }`, so rewriting a hook from one spelling to the
+// other keeps a stopped run resumable.
+func TestDefinitionDigestSameForBothHookSpellings(t *testing.T) {
+	digest := func(src string) string {
+		t.Helper()
+		prog, err := parser.Parse(src)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		return runtime.DefinitionDigest(prog, "P")
+	}
+	old := digest("workflow P {\n    step_end: (step) -> { log(step.step) }\n    step One { }\n}")
+	on := digest("workflow P {\n    on step_end(step) { log(step.step) }\n    step One { }\n}")
+	if old != on {
+		t.Errorf("digest changed between spellings: %s vs %s", old, on)
 	}
 }

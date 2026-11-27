@@ -1,7 +1,7 @@
 // A `memory` block's `path:` is interpolated for `${...}` spans the same way
-// an agent's `log:` path is — so `${context.session_id}` (available once the
-// pipeline declares a `context:` block) gives every run its own file, and two
-// concurrent runs never write to the same store.
+// an agent's `log:` path is — so `${context.session_id}` (always available,
+// no block to declare) gives every run its own file, and two concurrent runs
+// never write to the same store.
 //
 //   mhl run sample/features/pipelines/session_scoped_memory_pipeline_example.mh
 //   mhl run sample/features/pipelines/session_scoped_memory_pipeline_example.mh
@@ -22,11 +22,6 @@ memory RunLog {
 }
 
 workflow SessionScopedMemory {
-    context: {
-        source: "latest"
-        require: false
-    }
-
     step Record {
         RunState.set("started_at", context.started_at)
         RunState.set("resumed", context.resumed)

@@ -151,9 +151,8 @@ export function uniqueName(prefix: string, taken: Iterable<string>): string {
 }
 
 export function newWorkflowSource(name: string): string {
-  return `workflow ${name} {
-    description: "TODO: what this workflow does"
-
+  return `/// TODO: what this workflow does
+workflow ${name} {
     input topic: string = "world"
 
     step Start {

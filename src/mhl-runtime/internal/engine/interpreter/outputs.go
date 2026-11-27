@@ -40,7 +40,7 @@ func EvalOutputs(goctx context.Context, prog *ast.Program, expr *ast.Expr, file 
 		jsonStore:  jsonStore,
 		out:        out,
 		env:        env,
-		mem:        mem,
+		mem:        mem.Bind(vars),
 		cctx:       cctx,
 		file:       file,
 		goctx:      goctx,

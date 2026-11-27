@@ -527,20 +527,39 @@ export function removeInput(doc: Doc, wfName: string, name: string): EditResult 
   return { edits: [{ start, end, text: "" }] };
 }
 
+/**
+ * Sets a workflow's description — the `///` lines right above its
+ * declaration — replacing the block it has, or writing one; "" removes it.
+ * An older `description: "..."` property is dropped either way, so the
+ * description ends up spelled once, the current way.
+ */
 export function setDescription(doc: Doc, wfName: string, text: string): EditResult {
   const wf = doc.workflow(wfName);
   const prop = wf.props.find((p) => p.name === "description");
-  const line = `description: ${JSON.stringify(text)}`;
+  if (!wf.docSpan && !prop && wf.description) {
+    throw new EditError(`${wf.name}'s description is written above another of its fragments — edit it there`);
+  }
+  const edits: TextEdit[] = [];
   if (prop) {
     const [s, e] = doc.span(prop.span);
-    if (!text) {
-      const [start, end] = doc.lineRange(s, e);
-      return { edits: [{ start, end, text: "" }] };
-    }
-    return { edits: [{ start: s, end: e, text: line }] };
+    const [start, end] = doc.lineRange(s, e);
+    edits.push({ start, end, text: "" });
   }
-  if (!text) return { edits: [] };
-  return { edits: [insertMember(doc, wf, line)] };
+  const indent = doc.indentAt(doc.at(wf.span[0]));
+  const block = text
+    .split("\n")
+    .map((l) => (l.trim() ? `${indent}/// ${l.trim()}` : `${indent}///`))
+    .join("\n");
+  if (wf.docSpan) {
+    const [s, e] = doc.span(wf.docSpan);
+    const start = doc.lineStart(s);
+    if (text) edits.push({ start, end: e, text: block });
+    else edits.push({ start, end: Math.min(doc.lineEnd(e) + 1, doc.src.length), text: "" });
+  } else if (text) {
+    const start = doc.lineStart(doc.at(wf.span[0]));
+    edits.push({ start, end: start, text: `${block}\n` });
+  }
+  return { edits };
 }
 
 /** Appends a new workflow declaration to the end of the file. */

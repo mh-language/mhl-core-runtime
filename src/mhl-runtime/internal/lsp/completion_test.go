@@ -735,3 +735,25 @@ func TestCompletionHidesInternalToolMethods(t *testing.T) {
 		t.Errorf("self.: want clean, got %+v", items)
 	}
 }
+
+// A deprecated pipeline body property (checkpoint, spawn) is still offered,
+// tagged Deprecated so the editor strikes it through, and sorted last.
+func TestDeprecatedPipelinePropertiesAreTagged(t *testing.T) {
+	deprecated := map[string]bool{}
+	for _, it := range append(append([]completionItem{}, pipelinePropertyItems...), loopPipelineExtraPropertyItems...) {
+		if len(it.Tags) == 1 && it.Tags[0] == completionTagDeprecated {
+			deprecated[it.Label] = true
+			if it.SortText != "~"+it.Label {
+				t.Errorf("%s: SortText = %q, want it sorted last", it.Label, it.SortText)
+			}
+		}
+	}
+	for _, name := range []string{"checkpoint", "spawn", "repeat", "context", "description"} {
+		if !deprecated[name] {
+			t.Errorf("%s is not tagged deprecated", name)
+		}
+	}
+	if deprecated["output"] {
+		t.Errorf("a live property is tagged deprecated: %v", deprecated)
+	}
+}

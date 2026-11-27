@@ -9,8 +9,8 @@ not `mhl test` — pipelines aren't assertions, they're programs.
   mhl run sample/features/pipelines/agent_pipeline_example.mh --input name=World
   ```
 - [loop_poll_pipeline_example.mh](loop_poll_pipeline_example.mh) — a `loop pipeline` that
-  repeats a `step` until a `memory`-backed `stop_when` condition is met, or a
-  `max_iterations` ceiling is hit. Run with:
+  repeats a `step` until it ends the loop with `break "reason"`, or a
+  `max 5` ceiling is hit. Run with:
   ```
   mhl run sample/features/pipelines/loop_poll_pipeline_example.mh
   ```
@@ -50,14 +50,45 @@ not `mhl test` — pipelines aren't assertions, they're programs.
   ```
   mhl run sample/features/pipelines/parallel_group_vars_workflow_example.mh --input question=caching
   ```
-- [context_pipeline_example.mh](context_pipeline_example.mh) — a `context: { source, require }`
-  block exposes the read-only `context` accessor (`context.session_id`, `context.started_at`,
-  `context.resumed`, `context.vars`) to every step, carrying the previous completed run's
-  variable state forward. Each run gets its own `.mhl/state/<session-id>/` directory;
+- [context_pipeline_example.mh](context_pipeline_example.mh) — the read-only `context`
+  object (`context.session_id`, `context.started_at`, `context.resumed`) needs nothing
+  declared, and a `mem` counter saved in the run's checkpoint: every new run starts it
+  again, a `--resume` continues it. (The old `context: { source, require }` block and
+  `context.vars` are deprecated: a run does not read another run's state.) Each run gets
+  its own `.mhl/state/<session-id>/` directory;
   `--session <id>` pins it, a bare `--resume` follows the `.latest` pointer. Run it twice:
   ```
   mhl run sample/features/pipelines/context_pipeline_example.mh
   mhl run sample/features/pipelines/context_pipeline_example.mh
+  ```
+- [doc_comment_description_workflow_example.mh](doc_comment_description_workflow_example.mh) —
+  a workflow's description is the `///` lines right above it: what `mhl serve` publishes as
+  the MCP tool / A2A skill description, what `mhl graph` reports and the editor shows on
+  hover. An empty `///` line separates paragraphs; a blank line or a plain `//` line detaches
+  the block. Editing it never invalidates a checkpoint. The older `description: "..."`
+  property still works with a lint warning:
+  ```
+  mhl graph sample/features/pipelines/doc_comment_description_workflow_example.mh
+  mhl run sample/features/pipelines/doc_comment_description_workflow_example.mh --input branch=main
+  ```
+- [lifecycle_hooks_workflow_example.mh](lifecycle_hooks_workflow_example.mh) — the five
+  lifecycle hooks as event handlers, `on <event>(param) { ... }`, the parameter optional
+  (`on step_start { ... }`). They observe the run — logging, a `mem` step counter written
+  from `on step_end` — and can't change it. Run it, then make Build fail to see
+  `on stop_failure`:
+  ```
+  mhl run sample/features/pipelines/lifecycle_hooks_workflow_example.mh
+  mhl run sample/features/pipelines/lifecycle_hooks_workflow_example.mh --input broken=true
+  ```
+- [mem_run_state_workflow_example.mh](mem_run_state_workflow_example.mh) — a `mem` is saved
+  in the run's checkpoint with its `var`s, so it goes wherever the checkpoint goes (including
+  an `extension state` shared by `mhl serve` replicas). A step that fails after writing one
+  leaves no trace (the resume prints `visit 1` again, not `visit 2`), and `parallel` branches
+  merge it like a `var`, with `merge` reconciling one `mem` two branches set. `memory` stores,
+  by contrast, are local to one process. Crash it, then resume:
+  ```
+  mhl run sample/features/pipelines/mem_run_state_workflow_example.mh --input crash=true
+  mhl run sample/features/pipelines/mem_run_state_workflow_example.mh --resume
   ```
 - [session_scoped_memory_pipeline_example.mh](session_scoped_memory_pipeline_example.mh) — a
   `memory` block's `path:` is interpolated for `${...}` spans (like an agent's `log:` path), so

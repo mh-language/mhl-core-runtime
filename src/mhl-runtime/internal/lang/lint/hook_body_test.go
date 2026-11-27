@@ -17,7 +17,7 @@ func TestHookBodyFlagsUndefinedZeroTrailerIdentifier(t *testing.T) {
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
 pipeline P {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         try {
             var data = { seen: undeclared_name }
         } catch (e) {
@@ -43,7 +43,7 @@ pipeline P {
     input project_id: string
     var greeting = "hi"
     mem counter = 0
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         log.info("${project_id} ${greeting} ${counter}")
     }
     step Only { log.info("running") }
@@ -63,7 +63,7 @@ func TestHookBodyDoesNotFlagSelf(t *testing.T) {
 	write(t, main, `
 pipeline P {
     input project_id: string
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         log.info(self.project_id)
     }
     step Only { log.info("running") }
@@ -82,7 +82,7 @@ func TestHookBodyDoesNotFlagCatchBinding(t *testing.T) {
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
 pipeline P {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         try {
             fail("boom")
         } catch (e) {
@@ -104,7 +104,7 @@ func TestHookBodyDoesNotFlagLocallyDeclaredNames(t *testing.T) {
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
 pipeline P {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         var total = 0
         for (var n in [1, 2, 3]) {
             total = total + n
@@ -128,7 +128,7 @@ func TestHookBodyDoesNotFlagNameofTarget(t *testing.T) {
 	write(t, main, `
 agent Billing { command: "echo" }
 pipeline P {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         log.info(nameof(Billing))
     }
     step Only { log.info("running") }
@@ -146,7 +146,7 @@ func TestHookBodyChecksInsideMatchAndWith(t *testing.T) {
 	cases := map[string]string{
 		"match arm": `
 pipeline P {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         var x = match ctx.step { _ -> bogus_one }
     }
     step Only { log.info("running") }
@@ -154,7 +154,7 @@ pipeline P {
 `,
 		"with override": `
 pipeline P {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         var base = { a: 1 }
         var x = base with { b: bogus_two }
     }
@@ -185,7 +185,7 @@ func TestHookBodyDoesNotDescendIntoNestedLambdas(t *testing.T) {
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
 pipeline P {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         var mapped = [1, 2, 3].map((n) -> n + genuinely_undefined)
     }
     step Only { log.info("running") }
@@ -204,7 +204,7 @@ func TestHookBodyDoesNotFlagCallOrMemberTargets(t *testing.T) {
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
 pipeline P {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         log.info(SomeUndeclaredThing.method())
     }
     step Only { log.info("running") }
@@ -225,7 +225,7 @@ func TestHookBodySkipsIncompletePartialWorkflow(t *testing.T) {
 	main := filepath.Join(dir, "main.mh")
 	write(t, main, `
 partial workflow P {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         log.info(self.project_id)
     }
 }

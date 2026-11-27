@@ -133,7 +133,7 @@ func Inspect(req Request) (*Inspection, error) {
 		},
 	}
 	if pipeline.Checkpoint.TTL > 0 {
-		ins.Checkpoint.TTL = humanDuration(pipeline.Checkpoint.TTL)
+		ins.Checkpoint.TTL = HumanDuration(pipeline.Checkpoint.TTL)
 	}
 	ins.Goto = collectPipelineGotos(prog, pipeline.Decl)
 	ins.NamedStages = pipeline.NamedStages()
@@ -144,7 +144,7 @@ func Inspect(req Request) (*Inspection, error) {
 		if ins.StepTimeouts == nil {
 			ins.StepTimeouts = map[string]string{}
 		}
-		ins.StepTimeouts[name] = d.String()
+		ins.StepTimeouts[name] = HumanDuration(d)
 	}
 	for _, in := range pipeline.Inputs {
 		_, supplied := req.Inputs[in.Name]
@@ -183,19 +183,26 @@ func pipelineKindLabel(prog *ast.Program, name string) string {
 	return "pipeline"
 }
 
-// humanDuration renders a duration the way a `.mh` author would write it —
-// whole days as "7d", whole hours as "12h" — falling back to the Go form.
-func humanDuration(d time.Duration) string {
-	switch {
-	case d%(24*time.Hour) == 0:
-		return fmt.Sprintf("%dd", d/(24*time.Hour))
-	case d%time.Hour == 0:
-		return fmt.Sprintf("%dh", d/time.Hour)
-	case d%time.Minute == 0:
-		return fmt.Sprintf("%dm", d/time.Minute)
-	default:
-		return d.String()
+// HumanDuration renders a duration as a `.mh` duration literal — one integer
+// in the largest unit that divides it exactly: "30d", "12h", "3m", "90s",
+// "500ms". Only a sub-millisecond remainder (which no literal can express)
+// falls back to the Go form. The `--dry-run` plan and the MCP workflow
+// manifest both use it.
+func HumanDuration(d time.Duration) string {
+	if d == 0 {
+		return "0s"
 	}
+	for _, u := range []struct {
+		unit   time.Duration
+		suffix string
+	}{
+		{24 * time.Hour, "d"}, {time.Hour, "h"}, {time.Minute, "m"}, {time.Second, "s"}, {time.Millisecond, "ms"},
+	} {
+		if d%u.unit == 0 {
+			return fmt.Sprintf("%d%s", d/u.unit, u.suffix)
+		}
+	}
+	return d.String()
 }
 
 // collectPipelineGotos walks the named pipeline's step bodies (recursing into

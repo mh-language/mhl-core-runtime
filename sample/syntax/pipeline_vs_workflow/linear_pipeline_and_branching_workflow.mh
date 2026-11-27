@@ -1,16 +1,15 @@
 // `pipeline` and `workflow` share one grammar and one execution model —
-// typed `input`, pipeline-scoped `var`/`mem`, `checkpoint`/`repeat` config,
+// typed `input`, pipeline-scoped `var`/`mem`, body properties,
 // ordered `step`s, `parallel` groups. The only difference is static:
 //
 //   pipeline  — steps run in declared order, each once. `goto` is a lint error.
 //   workflow  — `goto <step>` is allowed (forward or backward), so the step
 //               sequence is an explicitly branching state machine.
 //
-// Both take the optional `loop` prefix (`loop pipeline` / `loop workflow`)
-// and the same `repeat: { stop_when, max_iterations }` policy. A `max <N>`
-// header clause — `loop workflow Refine max 3 { ... }` — is shorthand for
-// `repeat: { max_iterations: N }` when a fixed iteration ceiling is all the
-// loop needs; writing both is a lint error (the `repeat` block wins).
+// Both take the optional `loop` prefix (`loop pipeline` / `loop workflow`):
+// the body repeats until a step runs `break "reason"`, or until the
+// `max <N>` header clause's ceiling — `loop workflow Refine max 3 { ... }`.
+// (The old `repeat: { stop_when, max_iterations }` block is deprecated.)
 //
 // A `step` (or a `parallel` group) may carry a `timeout <duration>` header
 // clause: the runtime caps that step's wall-clock at the given duration and
@@ -50,7 +49,6 @@ workflow ReviewLoop {
 }
 
 // `max <N>` header clause: a fixed-ceiling loop with no stop condition.
-// Equivalent to `loop workflow Refine { repeat: { max_iterations: 3 } }`.
 loop workflow Refine max 3 {
     input draft: string
 

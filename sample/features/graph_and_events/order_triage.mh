@@ -24,9 +24,8 @@ tool Pricing {
     }
 }
 
+/// Routes an order to the right handling path.
 workflow OrderTriage {
-    description: "Routes an order to the right handling path."
-
     input kind: string = "small"
     input approved: bool = false
 

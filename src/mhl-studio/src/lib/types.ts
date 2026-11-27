@@ -208,6 +208,8 @@ export interface Workflow {
   internal?: boolean;
   max?: string;
   description?: string;
+  /** The `///` block above the declaration (the description's source); absent when there is none. */
+  docSpan?: Span;
   param?: { name: string; type: string };
   returns?: string;
   span: Span;

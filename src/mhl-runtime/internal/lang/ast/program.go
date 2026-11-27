@@ -235,4 +235,12 @@ type Property struct {
 	EndPos lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
 	Name   string         `parser:"@Ident ':'"`
 	Value  *Expr          `parser:"@@"`
+	// On marks a pipeline/workflow lifecycle hook written as `on <event>
+	// [(param)] { ... }` (PipelineHook), which the parser rewrites into this
+	// property — Value then is that lambda. Lint uses it to tell the two
+	// spellings apart; the digest does not (both hash alike).
+	On bool `parser:"" digest:"-"`
+	// OnParams is the parameter list as an `on` hook wrote it (nil when it
+	// wrote none), kept for lint: Value's lambda always has exactly one.
+	OnParams []*Param `parser:"" digest:"-"`
 }

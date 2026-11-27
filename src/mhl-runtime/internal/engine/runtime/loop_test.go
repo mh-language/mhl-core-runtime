@@ -26,7 +26,7 @@ func TestLoopStopsOnStopWhen(t *testing.T) {
 	res, err := lr.Run(context.Background(), oneStepPipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		calls++
 		return nil
-	}, func(string) (bool, error) {
+	}, func(map[string]any) (bool, error) {
 		return calls >= 3, nil
 	}, false)
 	if err != nil {
@@ -50,7 +50,7 @@ func TestLoopStopsOnMaxIterations(t *testing.T) {
 
 	res, err := lr.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		return nil
-	}, func(string) (bool, error) {
+	}, func(map[string]any) (bool, error) {
 		return false, nil // never satisfied on its own
 	}, false)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestLoopStopsOnBreakBeforeEvaluatingStopWhen(t *testing.T) {
 	stopWhenCalls := 0
 	res, err := lr.Run(context.Background(), p, nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		return &runtime.BreakSignal{Reason: "gave up"}
-	}, func(string) (bool, error) {
+	}, func(map[string]any) (bool, error) {
 		stopWhenCalls++
 		return false, nil
 	}, false)
@@ -98,7 +98,7 @@ func TestLoopPropagatesGenuineErrors(t *testing.T) {
 	boom := errSimulatedCrash
 	_, err := lr.Run(context.Background(), oneStepPipeline(), nil, func(_ context.Context, step string, ctx *runtime.RunContext) error {
 		return boom
-	}, func(string) (bool, error) {
+	}, func(map[string]any) (bool, error) {
 		return false, nil
 	}, false)
 	if err == nil {
@@ -122,7 +122,7 @@ func TestLoopPauseIsResumable(t *testing.T) {
 			}
 			return nil
 		},
-		func(string) (bool, error) { return false, nil }, false)
+		func(map[string]any) (bool, error) { return false, nil }, false)
 	if err != nil {
 		t.Fatalf("leg1: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestLoopPauseIsResumable(t *testing.T) {
 			ran++
 			return nil
 		},
-		func(string) (bool, error) { return true, nil }, true) // stop after one resumed iteration
+		func(map[string]any) (bool, error) { return true, nil }, true) // stop after one resumed iteration
 	if err != nil {
 		t.Fatalf("leg2: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestLoopResumeContinuesAtNextIteration(t *testing.T) {
 			return errSimulatedCrash // "crash" during the 3rd iteration
 		}
 		return nil
-	}, func(string) (bool, error) {
+	}, func(map[string]any) (bool, error) {
 		return false, nil // never stops on its own — only the crash ends this run
 	}, false)
 	if err == nil {
@@ -180,7 +180,7 @@ func TestLoopResumeContinuesAtNextIteration(t *testing.T) {
 		iteration++
 		resumedIterationStarts = append(resumedIterationStarts, iteration)
 		return nil
-	}, func(string) (bool, error) {
+	}, func(map[string]any) (bool, error) {
 		return iteration >= 1, nil // stop right after the first resumed iteration
 	}, true)
 	if err != nil {

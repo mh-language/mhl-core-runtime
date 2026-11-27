@@ -2,7 +2,10 @@ package lint
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
+
+	"github.com/alecthomas/participle/v2/lexer"
 
 	"github.com/mh-language/mhl-core-runtime/internal/lang/ast"
 )
@@ -70,4 +73,35 @@ func validContextSource(s string) bool {
 		return true
 	}
 	return strings.HasPrefix(s, "session:") && strings.TrimSpace(s[len("session:"):]) != ""
+}
+
+// checkContextVarsDeprecated warns on the deprecated way of reading a prior
+// run's state: the `context: { source, require }` block, and every
+// `context.vars` read (steps, hooks, `output:`, `mem` initializers). A run
+// does not read another run's state; `mem` keeps what one session needs
+// (across loop iterations and --resume). The run metadata
+// (`context.session_id`, `.started_at`, `.resumed`, `.principal`) needs no
+// block and is not deprecated. Both still work as before.
+func checkContextVarsDeprecated(file string, prog *ast.Program) []Finding {
+	var findings []Finding
+	for _, decl := range prog.Decls {
+		p := decl.Pipeline
+		if p == nil {
+			continue
+		}
+		for _, m := range p.Body {
+			if m.Prop != nil && m.Prop.Name == "context" {
+				findings = append(findings, Finding{File: fileAt(file, m.Prop.Pos), Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column, Severity: SeverityWarning,
+					Message: fmt.Sprintf("%s %q: `context: { ... }` is deprecated — a run does not read another run's state; keep what this run needs in a `mem` variable (`mem build = 0`, kept across loop iterations and --resume); context.session_id, .started_at, .resumed and .principal need no block", pipelineKind(p), p.Name)})
+			}
+		}
+		walkPostfixesIn(reflect.ValueOf(p), p.Pos, func(pf *ast.Postfix, pos lexer.Position) {
+			if pf.Primary == nil || pf.Primary.Ident != "context" || len(pf.Ops) == 0 || pf.Ops[0].Member != "vars" {
+				return
+			}
+			findings = append(findings, Finding{File: fileAt(file, pos), Line: pos.Line, Column: pos.Column, Severity: SeverityWarning,
+				Message: "`context.vars` is deprecated — a run does not read another run's state; keep what this run needs in a `mem` variable (kept across loop iterations and --resume)"})
+		})
+	}
+	return findings
 }

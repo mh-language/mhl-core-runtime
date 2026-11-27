@@ -21,8 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -393,8 +393,6 @@ func Run(req Request) (*Result, error) {
 			return nil, &DecisionError{Msg: "a decision answers a suspended run: resume it"}
 		case pipeline.Loop:
 			return nil, &DecisionError{Msg: fmt.Sprintf("%q is a loop %s: answering a gate on resume is not supported there yet", pipeline.Name, pipeline.Kind)}
-		case !pipeline.Checkpoint.Enabled:
-			return nil, &DecisionError{Msg: fmt.Sprintf("%q has checkpointing disabled, so its run cannot be resumed", pipeline.Name)}
 		}
 	}
 	if req.From != "" {
@@ -405,8 +403,6 @@ func Run(req Request) (*Result, error) {
 			return nil, &ResumeFromError{Msg: "a decision answers the gate the run waits at, while redoing a stage drops that gate — pass one or the other"}
 		case pipeline.Loop:
 			return nil, &ResumeFromError{Msg: fmt.Sprintf("%q is a loop %s: redoing a stage on resume is not supported there yet", pipeline.Name, pipeline.Kind)}
-		case !pipeline.Checkpoint.Enabled:
-			return nil, &ResumeFromError{Msg: fmt.Sprintf("%q has checkpointing disabled, so its run cannot be resumed", pipeline.Name)}
 		}
 		if _, ok := pipeline.StageEntry[req.From]; !ok {
 			names := make([]string, 0, len(pipeline.StageEntry))
@@ -436,7 +432,7 @@ func Run(req Request) (*Result, error) {
 	// The checkpoint a resume continues from, if any: an input refused below
 	// leaves it as it was.
 	var resumeFrom *runtime.Checkpoint
-	if req.Decision != nil || req.From != "" || (req.Resume && !pipeline.Loop && pipeline.Checkpoint.Enabled) {
+	if req.Decision != nil || req.From != "" || (req.Resume && !pipeline.Loop) {
 		peek := runtime.NewRunner(base).Session(sessionID)
 		if req.StateStore != nil {
 			peek.WithStateStore(req.StateStore)
@@ -530,11 +526,11 @@ func Run(req Request) (*Result, error) {
 	// against the projection — on a normal finish and on `break` alike: a
 	// caller gets exactly the shape the pipeline advertises, or an
 	// *runtime.OutputContractError, never a partial result.
-	projectVars := func(finalVars map[string]any, instanceID string) (map[string]any, error) {
+	projectVars := func(finalVars map[string]any) (map[string]any, error) {
 		if pipeline.Output == nil {
 			return publicVars(finalVars)
 		}
-		mem := memContextFor(memInit, pipeline.Name, instanceID)
+		mem := memContextFor(memInit)
 		projected, err := interpreter.EvalOutputs(runCtx, prog, pipeline.Output, file, out, store, jsonStore, mem, contextView, finalVars)
 		if err != nil {
 			return nil, err
@@ -560,20 +556,20 @@ func Run(req Request) (*Result, error) {
 
 	// runHook evaluates one of the pipeline's optional lifecycle hooks —
 	// session_start, session_end, step_start, step_end, stop_failure — a
-	// no-op when the pipeline declares none. instanceID picks which `mem`
-	// namespace the hook body sees: "default" for a plain pipeline, the
-	// loop's resolved instance for a `loop pipeline` (see startInstance /
-	// loopInstance below). hookOut is the writer the hook's log()/step
+	// no-op when the pipeline declares none. memVars is the run variable map
+	// the hook's `mem` reads and writes (the step's own vars for step_start/
+	// step_end, so a hook's mem write is the run's); nil gives it a scratch
+	// map, where each mem reads as its initializer. hookOut is the writer the hook's log()/step
 	// output goes to — callers running inside a `parallel` branch MUST pass
 	// that branch's own stepOut, never the shared, run-wide out: a
 	// step_start/step_end hook fired concurrently by sibling branches onto
 	// one unsynchronized writer is a data race (confirmed by
 	// TestPipelineStepHooksFireForEachParallelBranch under -race).
-	runHook := func(hookExpr *ast.Expr, hookName string, arg map[string]any, instanceID string, vars map[string]any, hookOut io.Writer) error {
+	runHook := func(hookExpr *ast.Expr, hookName string, arg map[string]any, memVars, vars map[string]any, hookOut io.Writer) error {
 		if hookExpr == nil {
 			return nil
 		}
-		mem := memContextFor(memInit, pipeline.Name, instanceID)
+		mem := memContextFor(memInit).Bind(memVars)
 		return interpreter.RunPipelineHook(runCtx, prog, pipeline.Decl, hookName, hookExpr, arg, file, hookOut, store, jsonStore, mem, contextView, vars)
 	}
 
@@ -584,7 +580,12 @@ func Run(req Request) (*Result, error) {
 	// checkpoint I/O error, an `output:`/context persistence failure). It
 	// always returns err unchanged: a hook error here is only ever logged,
 	// never allowed to mask the failure that triggered it.
-	stopFailure := func(err error, instanceID string) error {
+	//
+	// Its `mem` is the run's as the failure left it (rootVars: the run's own
+	// vars, as last handed to a step) — what a resume would roll back to the
+	// last completed step.
+	var rootVars map[string]any
+	stopFailure := func(err error) error {
 		arg := map[string]any{"pipeline": pipeline.Name, "kind": pipeline.Kind, "step": "", "reason": "runtime_error", "error": err.Error()}
 		var stepErr *runtime.StepError
 		if errors.As(err, &stepErr) {
@@ -592,7 +593,7 @@ func Run(req Request) (*Result, error) {
 			arg["reason"] = stepErr.Kind
 			arg["error"] = stepErr.Unwrap().Error()
 		}
-		if hookErr := runHook(pipeline.StopFailure, "stop_failure", arg, instanceID, nil, out); hookErr != nil {
+		if hookErr := runHook(pipeline.StopFailure, "stop_failure", arg, rootVars, nil, out); hookErr != nil {
 			fmt.Fprintf(out, "warning: %s.stop_failure: %v\n", pipeline.Name, hookErr)
 		}
 		return err
@@ -601,6 +602,9 @@ func Run(req Request) (*Result, error) {
 	exec := func(stepCtx context.Context, step string, ctx *runtime.RunContext) error {
 		pipeline.BindInputs(ctx.Vars, coercedInputs)
 		ctx.Vars["__last_step"] = step
+		if !ctx.Branch {
+			rootVars = ctx.Vars
+		}
 		stepOut := out
 		if ctx.Out != nil {
 			stepOut = ctx.Out
@@ -615,10 +619,10 @@ func Run(req Request) (*Result, error) {
 		if err := runHook(pipeline.StepStart, "step_start", map[string]any{
 			"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal), "error": nil,
 			"stage": pipeline.StageNameOf(step),
-		}, ctx.InstanceID, ctx.Vars, stepOut); err != nil {
+		}, ctx.Vars, ctx.Vars, stepOut); err != nil {
 			return err
 		}
-		mem := memContextFor(memInit, pipeline.Name, ctx.InstanceID)
+		mem := memContextFor(memInit)
 		stepStarted := time.Now()
 		if answer != nil && answer.Step == step && !answer.Used {
 			stepCtx = interpreter.WithGateAnswer(stepCtx, answer)
@@ -652,7 +656,7 @@ func Run(req Request) (*Result, error) {
 			if hookErr := runHook(pipeline.StepEnd, "step_end", map[string]any{
 				"pipeline": pipeline.Name, "step": step, "index": float64(index), "total": float64(stepTotal), "error": hookErrVal,
 				"stage": pipeline.StageNameOf(step),
-			}, ctx.InstanceID, ctx.Vars, stepOut); hookErr != nil {
+			}, ctx.Vars, ctx.Vars, stepOut); hookErr != nil {
 				return hookErr
 			}
 		}
@@ -677,7 +681,7 @@ func Run(req Request) (*Result, error) {
 		if rc.Out != nil {
 			groupOut = rc.Out
 		}
-		return interpreter.EvalGroupVars(goctx, prog, pipeline.Decl, group, file, groupOut, store, jsonStore, rc.Vars, memContextFor(memInit, pipeline.Name, rc.InstanceID), contextView)
+		return interpreter.EvalGroupVars(goctx, prog, pipeline.Decl, group, file, groupOut, store, jsonStore, rc.Vars, memContextFor(memInit), contextView)
 	}
 
 	// Bind every checkpoint this run writes to the structure of the pipeline
@@ -697,16 +701,26 @@ func Run(req Request) (*Result, error) {
 	// the hook's `mem` and the loop's very first iteration share the same
 	// instance — see LoopRunner.Run's doc comment for why it trusts a
 	// pre-set InstanceID instead of re-resolving a fresh one.
-	startInstance := "default"
+	//
+	// The hook reads the `mem` the run starts from: the stopped run's when
+	// resuming (its checkpoint, or the loop's), each initializer otherwise.
+	// It reads a copy: a mem write there does not reach the run.
+	var startMem map[string]any
+	if resumeFrom != nil {
+		startMem = maps.Clone(runtime.MemVars(resumeFrom.Variables))
+	}
 	if pipeline.Loop {
 		lr := runtime.NewLoopRunner(base).Session(sessionID)
 		lr.Runner.WithDefinition(defDigest).WithForceResume(req.ForceResume)
-		id, _, err := lr.ResolveInstanceID(pipeline.Name, req.Resume)
+		if req.LoopStateStore != nil {
+			lr.WithLoopStateStore(req.LoopStateStore)
+		}
+		id, mem, _, err := lr.ResolveInstanceID(pipeline.Name, req.Resume)
 		if err != nil {
 			return nil, err
 		}
 		pipeline.InstanceID = id
-		startInstance = id
+		startMem = maps.Clone(mem)
 	}
 	// Every SessionContext field is emitted on every firing (nil where this
 	// one has nothing to say) so the single declared SessionContext type
@@ -716,7 +730,7 @@ func Run(req Request) (*Result, error) {
 		"pipeline": pipeline.Name, "kind": pipeline.Kind, "session_id": sessionID,
 		"resumed": req.Resume, "inputs": coercedInputs,
 		"vars": nil, "broke": nil, "break_reason": nil, "iterations": nil,
-	}, startInstance, nil, out); err != nil {
+	}, startMem, nil, out); err != nil {
 		return nil, err
 	}
 
@@ -732,7 +746,7 @@ func Run(req Request) (*Result, error) {
 		}
 		res, err := runner.Run(runCtx, pipeline, init, exec, req.Resume)
 		if err != nil {
-			return nil, stopFailure(err, "default")
+			return nil, stopFailure(err)
 		}
 		// A paused run is suspended, not finished — don't overwrite the
 		// session's "last completed run" result.json for a `context:` reader,
@@ -744,16 +758,16 @@ func Run(req Request) (*Result, error) {
 		vars := pausedVars(res.FinalVars)
 		if !res.Paused {
 			if err := persistContextResult(resultSink, pipeline, res.FinalVars); err != nil {
-				return nil, stopFailure(err, "default")
+				return nil, stopFailure(err)
 			}
-			if vars, err = projectVars(res.FinalVars, "default"); err != nil {
-				return nil, stopFailure(err, "default")
+			if vars, err = projectVars(res.FinalVars); err != nil {
+				return nil, stopFailure(err)
 			}
 			if err := runHook(pipeline.SessionEnd, "session_end", map[string]any{
 				"pipeline": pipeline.Name, "kind": pipeline.Kind, "session_id": sessionID,
 				"resumed": nil, "inputs": nil,
 				"vars": vars, "broke": res.Broke, "break_reason": res.BreakReason, "iterations": nil,
-			}, "default", res.FinalVars, out); err != nil {
+			}, res.FinalVars, res.FinalVars, out); err != nil {
 				return nil, err
 			}
 		}
@@ -773,11 +787,11 @@ func Run(req Request) (*Result, error) {
 		}, nil
 	}
 
-	evalStopWhen := func(instanceID string) (bool, error) {
+	evalStopWhen := func(vars map[string]any) (bool, error) {
 		if pipeline.StopWhen == nil {
 			return false, nil
 		}
-		mem := memContextFor(memInit, pipeline.Name, instanceID)
+		mem := memContextFor(memInit).Bind(vars)
 		return interpreter.EvalCondition(prog, pipeline.StopWhen, file, out, store, jsonStore, mem, contextView)
 	}
 	loopRunner := runtime.NewLoopRunner(base).Session(sessionID)
@@ -793,29 +807,25 @@ func Run(req Request) (*Result, error) {
 	}
 	res, err := loopRunner.Run(runCtx, pipeline, init, exec, evalStopWhen, req.Resume)
 	if err != nil {
-		return nil, stopFailure(err, pipeline.InstanceID)
+		return nil, stopFailure(err)
 	}
 	paused := res.TerminalReason == "pause"
-	loopInstance := res.InstanceID
-	if loopInstance == "" {
-		loopInstance = "default"
-	}
 	// As in the non-loop path: a paused loop reports its partial state, not the
 	// `output:` projection, which is evaluated only once the run terminates.
 	vars := pausedVars(res.FinalVars)
 	if !paused {
 		if err := persistContextResult(loopResultSink, pipeline, res.FinalVars); err != nil {
-			return nil, stopFailure(err, loopInstance)
+			return nil, stopFailure(err)
 		}
-		if vars, err = projectVars(res.FinalVars, loopInstance); err != nil {
-			return nil, stopFailure(err, loopInstance)
+		if vars, err = projectVars(res.FinalVars); err != nil {
+			return nil, stopFailure(err)
 		}
 		if err := runHook(pipeline.SessionEnd, "session_end", map[string]any{
 			"pipeline": pipeline.Name, "kind": pipeline.Kind, "session_id": sessionID,
 			"resumed": nil, "inputs": nil,
 			"vars": vars, "broke": res.TerminalReason == "break", "break_reason": res.BreakReason,
 			"iterations": float64(res.Iterations),
-		}, loopInstance, res.FinalVars, out); err != nil {
+		}, res.FinalVars, res.FinalVars, out); err != nil {
 			return nil, err
 		}
 	}
@@ -904,16 +914,18 @@ func persistContextResult(store runtime.StateStore, pipeline runtime.Pipeline, f
 	return store.WriteResult(pipeline.Name, clean)
 }
 
-// memContextFor builds the interpreter.MemContext backing pipelineName's
-// `mem` declarations for one run instance, or nil when the pipeline declares
-// no `mem`. The backing file is isolated per instance under
-// .mhl/state/mem/<pipeline>/<instanceID>.json.
-func memContextFor(init map[string]*ast.Expr, pipelineName, instanceID string) *interpreter.MemContext {
+// memContextFor builds the interpreter.MemContext for a pipeline's `mem`
+// declarations, or nil when the pipeline declares none. It holds no values:
+// each call it is handed to binds it to the run variables it works on
+// (interpreter.MemContext.Bind), where every `mem` lives under
+// runtime.MemVarPrefix. So `mem` is the run's state, kept exactly where the
+// checkpoint is — the session directory, or an `extension state` shared by
+// replicas — isolated per session, resumed with `--resume`, rolled back with
+// a failed step, gone with a throwaway BaseDir (a synchronous MCP
+// tools/call), and carried across a loop's iterations (runtime.LoopRunner).
+func memContextFor(init map[string]*ast.Expr) *interpreter.MemContext {
 	if len(init) == 0 {
 		return nil
 	}
-	return &interpreter.MemContext{
-		Path: filepath.Join(runtime.StateDirName, "mem", pipelineName, instanceID+".json"),
-		Init: init,
-	}
+	return &interpreter.MemContext{Init: init}
 }

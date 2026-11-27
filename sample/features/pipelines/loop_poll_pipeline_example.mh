@@ -1,29 +1,19 @@
-// Minimal case for a `loop pipeline`: repeat a pipeline until a
-// `memory`-backed condition is met (or a max_iterations ceiling is hit). Run
-// with:
+// Minimal case for a `loop pipeline`: repeat a pipeline until a step decides
+// it is done, with a `max <N>` header clause as the safety ceiling. Run with:
 //
 //   mhl run sample/features/pipelines/loop_poll_pipeline_example.mh
 //
-// stop_when runs in its own environment, outside any step, so state it needs
-// to see across iterations has to go through memory -- a step-local `var`
-// would not be visible there.
+// The step ends the whole loop with `break "reason"` once the condition
+// holds — it sees every variable, like any step code. (`complete()` would
+// only end the current iteration.) Without the marker file, the loop stops
+// at the ceiling: terminal_reason "max_iterations".
 
-memory poll {
-    type: "kv"
-    store: "memory"
-}
-
-loop pipeline PollForReady {
-    repeat: {
-        stop_when: poll.get("status", "pending") == "done"
-        max_iterations: 5
-    }
-
+loop pipeline PollForReady max 5 {
     step Check {
         log.info("[poll] checking readiness marker...")
         var ready = fs.exists(".mhl/ready.marker")
         var status = if (ready) "done" else "pending"
-        poll.set("status", status)
         log.info("[poll] status: ${status}")
+        if (ready) break "ready"
     }
 }

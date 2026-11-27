@@ -156,7 +156,7 @@ func workflowManifest(w execsvc.Workflow) map[string]any {
 	if len(p.StepTimeouts) > 0 {
 		to := make(map[string]any, len(p.StepTimeouts))
 		for k, v := range p.StepTimeouts {
-			to[k] = v.String()
+			to[k] = execsvc.HumanDuration(v)
 		}
 		m["stepTimeouts"] = to
 	}
@@ -164,7 +164,7 @@ func workflowManifest(w execsvc.Workflow) map[string]any {
 	if p.Checkpoint.Enabled {
 		cp := map[string]any{"strategy": p.Checkpoint.Strategy}
 		if p.Checkpoint.TTL > 0 {
-			cp["ttl"] = p.Checkpoint.TTL.String()
+			cp["ttl"] = execsvc.HumanDuration(p.Checkpoint.TTL)
 		}
 		if p.Checkpoint.Storage != "" {
 			cp["storage"] = p.Checkpoint.Storage

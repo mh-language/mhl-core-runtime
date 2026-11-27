@@ -22,6 +22,13 @@ func TestPipelinePropertyItemsMatchTheSharedAllowList(t *testing.T) {
 	want := map[string]bool{}
 	for _, p := range ast.PipelineBodyProperties {
 		want[p.Name] = true
+		if p.ParamType != "" {
+			// A lifecycle hook is also offered as its `on <event>` handler.
+			want["on "+p.Name] = true
+			if !seen["on "+p.Name] {
+				t.Errorf("hook %q missing its `on %s` item", p.Name, p.Name)
+			}
+		}
 		if p.LoopOnly {
 			if !loopSeen[p.Name] {
 				t.Errorf("LoopOnly property %q missing from loopPipelineExtraPropertyItems", p.Name)

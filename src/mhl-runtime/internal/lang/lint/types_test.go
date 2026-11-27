@@ -450,7 +450,7 @@ loop pipeline P {
     }
 }
 `)
-	findings := lint.File(main)
+	findings := withoutDeprecations(lint.File(main)) // repeat: is deprecated but still checked
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
 	}

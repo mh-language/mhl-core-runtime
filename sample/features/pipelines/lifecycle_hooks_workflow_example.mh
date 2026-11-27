@@ -1,0 +1,57 @@
+// Lifecycle hooks observe a run without taking part in it. Each one is an
+// event handler, `on <event>(param) { ... }`, and the parameter is optional:
+// leave it out when the body doesn't read it (`on step_start` below).
+//
+//   on session_start(session)  once, before the first step (again on --resume)
+//   on session_end(session)    once, on a normal finish or a `break`
+//   on step_start(step)        before every step (each parallel branch too)
+//   on step_end(step)          after every step; step.error is set when it failed
+//   on stop_failure(failure)   once, when the run fails for real
+//
+// The parameter's type is fixed by the event (SessionContext, StepContext,
+// FailureContext), so an editor completes `session.`, `step.` and `failure.`
+// with no annotation. A hook may write a `mem` from step_start/step_end — a
+// step counter here — but can't change what the run does, and returning a
+// value is an error. Each event has one handler at most.
+//
+// (The older spelling, `step_end: (step) -> { ... }`, still works, with a
+// `mhl lint` warning.)
+//
+// Run it, then make the Build step fail:
+//
+//   mhl run sample/features/pipelines/lifecycle_hooks_workflow_example.mh
+//   mhl run sample/features/pipelines/lifecycle_hooks_workflow_example.mh --input broken=true
+
+workflow Release {
+    input broken: bool = false
+    mem steps_done = 0
+
+    on session_start(session) {
+        log("[hook] start ${session.pipeline} (resumed: ${session.resumed})")
+    }
+    on step_start {
+        log("[hook] a step begins")
+    }
+    on step_end(step) {
+        if (step.error == null) {
+            steps_done = steps_done + 1
+        } else {
+            log("[hook] ${step.step} failed: ${step.error}")
+        }
+    }
+    on session_end(session) {
+        log("[hook] done after ${steps_done} step(s), broke: ${session.broke}")
+    }
+    on stop_failure(failure) {
+        log("[hook] run failed at ${failure.step} (${failure.reason})")
+    }
+
+    step Build {
+        if (broken) { fail("compiler error") }
+        log("built")
+    }
+
+    step Publish {
+        log("published")
+    }
+}

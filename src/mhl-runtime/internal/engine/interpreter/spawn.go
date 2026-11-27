@@ -192,6 +192,7 @@ func (r *spawnRegistry) spawn(ctx *evalCtx, agentName string, agent *ast.Agent, 
 	hctx := *ctx
 	hctx.env = snapshot
 	hctx.pipelineEnv = nil
+	hctx.mem = ctx.mem.snapshot()
 	hctx.out = h.buf
 	hctx.goctx = childCtx
 	hctx.inSpawn = true

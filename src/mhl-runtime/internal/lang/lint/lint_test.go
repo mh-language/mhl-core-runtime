@@ -11,6 +11,20 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/lang/lint"
 )
 
+// withoutDeprecations drops the deprecation warnings of still-honoured
+// syntax (`repeat:`, `checkpoint:`, `spawn:`), so a test of a check on that
+// syntax still sees only the findings it is about.
+func withoutDeprecations(findings []lint.Finding) []lint.Finding {
+	var out []lint.Finding
+	for _, f := range findings {
+		if f.Severity == lint.SeverityWarning && strings.Contains(f.Message, "is deprecated") {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 func write(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -2100,7 +2114,7 @@ pipeline MainPipeline {
     }
 }
 `)
-	findings := lint.File(main)
+	findings := withoutDeprecations(lint.File(main))
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
 	}
@@ -2123,7 +2137,7 @@ pipeline MainPipeline {
     }
 }
 `)
-	findings := lint.File(main)
+	findings := withoutDeprecations(lint.File(main))
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
 	}
@@ -2146,7 +2160,7 @@ pipeline MainPipeline {
     }
 }
 `)
-	if findings := lint.File(main); len(findings) != 0 {
+	if findings := withoutDeprecations(lint.File(main)); len(findings) != 0 {
 		t.Fatalf("expected no findings for source: \"session:<id>\", got: %+v", findings)
 	}
 }
@@ -2166,7 +2180,7 @@ pipeline MainPipeline {
     }
 }
 `)
-	if findings := lint.File(main); len(findings) != 0 {
+	if findings := withoutDeprecations(lint.File(main)); len(findings) != 0 {
 		t.Fatalf("expected no findings for a step reading context.*, got: %+v", findings)
 	}
 }
@@ -2203,7 +2217,7 @@ loop pipeline MainPipeline {
     }
 }
 `)
-	findings := lint.File(main)
+	findings := withoutDeprecations(lint.File(main)) // repeat: is deprecated but still checked
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
 	}
@@ -2228,7 +2242,7 @@ loop pipeline MainPipeline {
     }
 }
 `)
-	findings := lint.File(main)
+	findings := withoutDeprecations(lint.File(main)) // repeat: is deprecated but still checked
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d: %+v", len(findings), findings)
 	}
@@ -2257,7 +2271,7 @@ loop pipeline MainPipeline {
     }
 }
 `)
-	findings := lint.File(main)
+	findings := withoutDeprecations(lint.File(main)) // repeat: is deprecated but still checked
 	if len(findings) != 0 {
 		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
 	}
@@ -2301,7 +2315,7 @@ loop pipeline MainPipeline {
     }
 }
 `)
-	findings := lint.File(main)
+	findings := withoutDeprecations(lint.File(main)) // repeat: is deprecated but still checked
 	if len(findings) != 0 {
 		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
 	}
@@ -2326,7 +2340,7 @@ loop pipeline MainPipeline {
     }
 }
 `)
-	findings := lint.File(main)
+	findings := withoutDeprecations(lint.File(main)) // repeat: is deprecated but still checked
 	if len(findings) != 0 {
 		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
 	}
@@ -2602,7 +2616,7 @@ loop pipeline MainPipeline {
     }
 }
 `)
-	findings := lint.File(main)
+	findings := withoutDeprecations(lint.File(main)) // repeat: is deprecated but still checked
 	if len(findings) != 0 {
 		t.Errorf("expected 0 findings, got %d: %+v", len(findings), findings)
 	}

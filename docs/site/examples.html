@@ -77,9 +77,8 @@
 <div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>workflow.mh</span><button class="copy-button" type="button" data-copy="workflow-code" data-pt="Copiar">Copy</button></div>
 <pre><code id="workflow-code" class="language-mhl">enum ArtifactKind { Brief, Adr }
 
+/// Choose a brief or an architecture decision record.
 workflow CreateArtifact {
-    description: "Choose a brief or an architecture decision record."
-
     input artifact: ArtifactKind = ArtifactKind.Brief
 
     entry route Generate(artifact: ArtifactKind) {
@@ -112,13 +111,12 @@ workflow CreateArtifact {
 <h2 id="tab-limits-title" data-pt="Limite o número de rodadas">Limit the number of rounds</h2>
 <p data-pt="loop pipeline repete as etapas na ordem declarada. O exemplo usa mem para acumular revisões e break para encerrar a execução na segunda rodada.">A loop pipeline repeats its steps in declaration order. This example uses mem to accumulate revisions and break to stop the run on the second round.</p>
 <dl><div><dt>max 3</dt><dd data-pt="Define um teto de três iterações.">Sets a ceiling of three iterations.</dd></div><div><dt>mem</dt><dd data-pt="Preserva valores entre iterações e retomadas da mesma sessão.">Retains values across iterations and resumes in the same session.</dd></div><div><dt>break</dt><dd data-pt="Encerra toda a execução antecipadamente.">Ends the entire execution early.</dd></div></dl>
-<p class="requirement" data-pt="Para avaliar uma condição entre rodadas, use repeat com stop_when e max_iterations.">To check a condition between rounds, use repeat with stop_when and max_iterations.</p>
+<p class="requirement" data-pt="Para parar quando uma condição for atendida, use break num passo: if (pronto) break &quot;motivo&quot;. complete() só encerra a rodada atual.">To stop once a condition holds, use break in a step: if (ready) break "reason". complete() only ends the current round.</p>
 <a class="text-link" data-playground href="playground-en.html#loop-max"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
 </div>
 <div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>limits.mh</span><button class="copy-button" type="button" data-copy="limits-code" data-pt="Copiar">Copy</button></div>
-<pre><code id="limits-code" class="language-mhl">loop pipeline RevisionRounds max 3 {
-    description: "Run up to three local revision rounds."
-
+<pre><code id="limits-code" class="language-mhl">/// Run up to three local revision rounds.
+loop pipeline RevisionRounds max 3 {
     mem round = 0
     mem draft = "first draft"
 
@@ -156,9 +154,8 @@ round 2</samp></div>
     args: ["${prompt}"]
 }
 
+/// Check each file with up to two concurrent agent calls.
 pipeline ReviewFiles {
-    description: "Check each file with up to two concurrent agent calls."
-
     step FanOut timeout 5s {
         const files = ["api.go", "auth.go", "cli.go"]
 
@@ -188,9 +185,8 @@ check cli.go</samp></div>
 <a class="text-link" data-playground href="playground-en.html#parallel"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
 </div>
 <div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>parallel.mh</span><button class="copy-button" type="button" data-copy="parallel-code" data-pt="Copiar">Copy</button></div>
-<pre><code id="parallel-code" class="language-mhl">pipeline Enrich {
-    description: "Gather documentation and test status in parallel."
-
+<pre><code id="parallel-code" class="language-mhl">/// Gather documentation and test status in parallel.
+pipeline Enrich {
     var summary = ""
 
     output: { summary }
@@ -229,11 +225,8 @@ check cli.go</samp></div>
 <a class="text-link" data-playground href="playground-en.html#retomada"><span data-pt="Lição relacionada no playground">Related playground lesson</span><span aria-hidden="true">↗</span></a>
 </div>
 <div class="code-window"><div class="window-bar"><span class="file-mark" aria-hidden="true">mh</span><span>approval.mh</span><button class="copy-button" type="button" data-copy="approval-code" data-pt="Copiar">Copy</button></div>
-<pre><code id="approval-code" class="language-mhl">workflow Approval {
-    description: "Wait for a decision and log the outcome."
-
-    checkpoint: { ttl: 7d }
-
+<pre><code id="approval-code" class="language-mhl">/// Wait for a decision and log the outcome.
+workflow Approval {
     step Gate {
         /// true approves the proposal, false rejects it.
         var approved = pause("Approve this proposal?", decision: bool)
@@ -278,9 +271,8 @@ prompt Greeting(name: string) {
     "Hello, ${name}!"
 }
 
+/// Render a greeting for the requested name.
 pipeline Greet(request: GreetingInput): GreetingOutput {
-    description: "Render a greeting for the requested name."
-
     var message = ""
 
     output: { message }
@@ -342,9 +334,8 @@ prompt Review(draft: string, lens: string) {
     """
 }
 
+/// Refine a draft over at most three rounds of parallel review.
 loop pipeline Refine max 3 {
-    description: "Refine a draft over at most three rounds of parallel review."
-
     mem draft = "A first draft."
     mem feedback = ""
 

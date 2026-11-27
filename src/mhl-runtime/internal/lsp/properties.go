@@ -11,6 +11,16 @@ func propertyItem(name, detail string) completionItem {
 	return completionItem{Label: name, Kind: kindProperty, Detail: detail, InsertText: name + ": "}
 }
 
+// completionTagDeprecated is LSP's CompletionItemTag.Deprecated.
+const completionTagDeprecated = 1
+
+// deprecatedItem marks it struck through and sorts it after the others.
+func deprecatedItem(it completionItem) completionItem {
+	it.Tags = []int{completionTagDeprecated}
+	it.SortText = "~" + it.Label
+	return it
+}
+
 // pipelinePropertyItems/loopPipelineExtraPropertyItems are what's valid
 // directly inside a `pipeline { ... }` body beyond the Step/PipelineInput/
 // VarDecl keywords already in the `keywords` list (input/var/step). Both are
@@ -20,38 +30,62 @@ func propertyItem(name, detail string) completionItem {
 // `loop` pipeline, where it actually takes effect.
 var pipelinePropertyItems, loopPipelineExtraPropertyItems = func() (base, loopOnly []completionItem) {
 	for _, p := range ast.PipelineBodyProperties {
+		if p.ParamType != "" {
+			base = append(base, onHookItem(p))
+		}
+		it := propertyItem(p.Name, p.Doc)
+		if p.Deprecated {
+			it = deprecatedItem(it)
+		}
 		if p.LoopOnly {
-			loopOnly = append(loopOnly, propertyItem(p.Name, p.Doc))
+			loopOnly = append(loopOnly, it)
 		} else {
-			base = append(base, propertyItem(p.Name, p.Doc))
+			base = append(base, it)
 		}
 	}
 	return base, loopOnly
 }()
 
-// spawnFieldItems mirrors runtime.spawnConfigFromExpr's field switch.
-var spawnFieldItems = []completionItem{
-	propertyItem("max_concurrency", "deprecated — prefer `spawn xs concurrency N = ...`; integer > 0, run-wide ceiling (default 4)"),
+// onHookItem is the `on <event>(param) { ... }` snippet for one lifecycle
+// hook (ast.PipelineHook) — the current spelling; its `<event>: (param) ->`
+// property item is offered struck through beside it.
+func onHookItem(p ast.PipelineBodyProperty) completionItem {
+	param := map[string]string{"SessionContext": "session", "StepContext": "step", "FailureContext": "failure"}[p.ParamType]
+	return completionItem{
+		Label:            "on " + p.Name,
+		Kind:             kindSnippet,
+		Detail:           p.Doc,
+		InsertText:       "on " + p.Name + "(${1:" + param + "}) {\n\t$0\n}",
+		InsertTextFormat: insertTextFormatSnippet,
+	}
 }
 
-// checkpointFieldItems mirrors runtime.checkpointFromExpr's field switch.
+// spawnFieldItems mirrors runtime.spawnConfigFromExpr's field switch.
+var spawnFieldItems = []completionItem{
+	deprecatedItem(propertyItem("max_concurrency", "deprecated — prefer `spawn xs concurrency N = ...`; integer > 0, run-wide ceiling (default 4)")),
+}
+
+// checkpointFieldItems are the fields the deprecated `checkpoint: { ... }`
+// block used to read. The runtime ignores them all now (every run is
+// checkpointed per step, resumable for 30 days); they are still offered,
+// struck through, so an existing block completes and explains itself.
 var checkpointFieldItems = []completionItem{
-	propertyItem("enabled", "boolean; default true — set false to disable checkpointing"),
-	propertyItem("strategy", `e.g. "per_step" (the default)`),
-	propertyItem("storage", `e.g. "file"`),
-	propertyItem("ttl", "duration, e.g. 7d"),
+	deprecatedItem(propertyItem("enabled", "ignored — checkpointing can no longer be turned off")),
+	deprecatedItem(propertyItem("strategy", `ignored — always "per_step"`)),
+	deprecatedItem(propertyItem("storage", "ignored")),
+	deprecatedItem(propertyItem("ttl", "ignored — a stopped run stays resumable for 30 days")),
 }
 
 // repeatFieldItems mirrors runtime.repeatConfigFromExpr's field switch.
 var repeatFieldItems = []completionItem{
-	propertyItem("stop_when", "condition expression, re-evaluated after every iteration"),
-	propertyItem("max_iterations", "integer ceiling"),
+	deprecatedItem(propertyItem("stop_when", "deprecated — end the loop with `break` in a step")),
+	deprecatedItem(propertyItem("max_iterations", "deprecated — write `loop workflow X max N`")),
 }
 
 // contextFieldItems mirrors runtime.contextConfigFromExpr's field switch.
 var contextFieldItems = []completionItem{
-	propertyItem("source", `"latest" (default) or "session:<id>" — which prior run context.vars is read from`),
-	propertyItem("require", "boolean: fail the run when source resolves to no stored state"),
+	deprecatedItem(propertyItem("source", `deprecated — "latest" (default) or "session:<id>": which prior run context.vars is read from`)),
+	deprecatedItem(propertyItem("require", "deprecated — boolean: fail the run when source resolves to no stored state")),
 }
 
 // agentPropertyItems lists only what internal/engine/interpreter/agent.go

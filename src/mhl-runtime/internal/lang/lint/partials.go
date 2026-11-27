@@ -138,6 +138,14 @@ func mergePartialGroup(file, name, kind string, frags []*ast.Pipeline) (*ast.Pip
 				out.Param, out.Returns = f.Param, f.Returns
 			}
 		}
+		if f.Doc != "" {
+			if out.Doc != "" {
+				findings = append(findings, Finding{File: fileAt(file, f.Pos), Line: f.Pos.Line, Column: f.Pos.Column,
+					Message: fmt.Sprintf("partial %s %q: a `///` description is written above more than one fragment — keep it on one (use `//` for notes on the others)", kind, name)})
+			} else {
+				out.Doc = f.Doc
+			}
+		}
 		out.Body = append(out.Body, f.Body...)
 		for _, m := range f.Body {
 			if m.Step != nil && m.Step.Entry {

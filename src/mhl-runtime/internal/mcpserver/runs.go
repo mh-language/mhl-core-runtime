@@ -604,9 +604,6 @@ func (h *httpServer) runResume(sess *session, msg rpcMsg) *rpcMsg {
 			return errMsg(msg.ID, -32602, err.Error())
 		}
 	}
-	if !paused && !rn.tool.Pipeline.Checkpoint.Enabled {
-		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q's workflow declares checkpoint: { enabled: false } — nothing to resume", p.RunID))
-	}
 	if !h.cps.Exists(rn.id) {
 		return errMsg(msg.ID, -32602, fmt.Sprintf("run %q has no checkpoint on disk to resume from", p.RunID))
 	}
@@ -724,6 +721,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	h.publishRunStatus(rn)
 
 	var stateStore runtime.StateStore
+	var loopStore runtime.LoopStateStore
 	if h.store != nil {
 		// Fence checkpoint writes on the execution lease: a replica that stalled
 		// past its lease and was taken over fails its checkpoint writes rather
@@ -753,7 +751,8 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 				},
 			}
 		}
-		stateStore = newExtStateStore(h.store, rn.id, fence) // checkpoints go to the extension, not disk
+		ext := newExtStateStore(h.store, rn.id, fence) // checkpoints go to the extension, not disk
+		stateStore, loopStore = ext, extLoopStateStore{ext}
 	}
 	// The decision run/resume handed this leg answers the gate once.
 	rn.mu.Lock()
@@ -773,6 +772,8 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 		From:       from,
 		Principal:  rn.principal,
 		StateStore: stateStore,
+		// A loop's iteration checkpoint (and the `mem` it carries) too.
+		LoopStateStore: loopStore,
 		// Tee step/log() output to this run's own bounded buffer (for
 		// run/logs) and to the shared diagnostics sink (stderr / kubectl logs).
 		Out: io.MultiWriter(rn.logs, h.srv.logw),
@@ -836,7 +837,7 @@ func (h *httpServer) execRun(ctx context.Context, rn *asyncRun, resume bool) {
 	if rn.state == RunStatePaused {
 		rn.resumable = h.cps.Exists(rn.id)
 	} else {
-		rn.resumable = rn.state != RunStateCompleted && w.Pipeline.Checkpoint.Enabled && h.cps.Exists(rn.id)
+		rn.resumable = rn.state != RunStateCompleted && h.cps.Exists(rn.id)
 	}
 	terminal := rn.state
 	steps := len(rn.reached)

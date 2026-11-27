@@ -171,3 +171,43 @@ pipeline P {
 		}
 	}
 }
+
+// Inside an `on <event>(param) { ... }` handler, `param.` completes that
+// hook's context fields, as inside the property spelling.
+func TestHookParamCompletionInOnHandler(t *testing.T) {
+	cases := []struct{ header, target, field string }{
+		{"on session_start(s)", "s", "session_id"},
+		{"on step_end(step: StepContext)", "step", "error"},
+		{"on stop_failure(f)", "f", "reason"},
+	}
+	for _, c := range cases {
+		t.Run(c.header, func(t *testing.T) {
+			src, pos := posAtMarker(t, "workflow P {\n    "+c.header+" {\n        if (true) { log("+c.target+".§) }\n    }\n    step S {}\n}\n")
+			if items := completionAt("main.mh", src, pos); !hasLabel(items, c.field) {
+				t.Errorf("missing field %q in %v", c.field, items)
+			}
+		})
+	}
+}
+
+// A workflow body offers each hook as an `on <event>` handler, and its
+// property spelling struck through.
+func TestPipelineBodyOffersOnHandlers(t *testing.T) {
+	src, pos := posAtMarker(t, "workflow P {\n    §\n    step S {}\n}\n")
+	items := completionAt("main.mh", src, pos)
+	for _, it := range items {
+		switch it.Label {
+		case "on step_end":
+			if it.InsertText != "on step_end(${1:step}) {\n\t$0\n}" {
+				t.Errorf("on step_end inserts %q", it.InsertText)
+			}
+		case "step_end":
+			if len(it.Tags) != 1 || it.Tags[0] != completionTagDeprecated {
+				t.Errorf("step_end property should be deprecated, tags %v", it.Tags)
+			}
+		}
+	}
+	if !hasLabel(items, "on step_end") || !hasLabel(items, "on session_start") {
+		t.Errorf("missing on handlers in %v", items)
+	}
+}

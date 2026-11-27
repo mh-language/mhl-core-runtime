@@ -12,7 +12,7 @@ var keywords = []string{
 	"agent", "router", "memory", "tool", "prompt", "schema", "internal", "pipeline", "workflow", "extension", "extensible", "loop", "partial",
 	"import", "from", "as", "export", "input", "step", "entry", "test", "describe",
 	"var", "const", "type", "enum", "match", "if", "else", "while", "for", "in", "try", "catch", "finally",
-	"return", "break", "goto", "route", "spawn", "concurrency", "wait", "collect", "parallel", "merge", "stage", "timeout", "max", "ref", "with", "true", "false", "null",
+	"return", "break", "goto", "route", "on", "spawn", "concurrency", "wait", "collect", "parallel", "merge", "stage", "timeout", "max", "ref", "with", "true", "false", "null",
 	"kind", "manifest", "properties",
 }
 
@@ -143,36 +143,29 @@ var declarationSnippets = map[string][]declarationSnippet{
 		},
 		{
 			label:  "pipeline (full)",
-			detail: `pipeline Name { input, context (resume state), checkpoint, output, lifecycle hooks, steps }`,
-			body: "pipeline ${1:Name} {\n" +
+			detail: `pipeline Name { input, mem (state kept across iterations and --resume), output, lifecycle hooks, steps }`,
+			body: "/// ${7:What this pipeline does, as callers see it.}\n" +
+				"pipeline ${1:Name} {\n" +
 				"\tinput ${2:target}: string\n\n" +
-				"\tcontext: {\n" +
-				"\t\tsource: \"latest\"\n" +
-				"\t\trequire: false\n" +
-				"\t}\n" +
-				"\tcheckpoint: { ttl: ${3:30d} }\n\n" +
-				"\tvar ${4:result} = null\n\n" +
+				"\tmem ${3:result} = null\n\n" +
 				"\toutput: {\n" +
-				"\t\t${4:result}: ${4:result}\n" +
+				"\t\t${3:result}: ${3:result}\n" +
 				"\t}\n\n" +
-				"\tsession_start: (session) -> {\n" +
+				"\ton session_start(session) {\n" +
 				"\t\tlog.info(\"start \" + session.session_id)\n" +
 				"\t}\n" +
-				"\tsession_end: (session) -> {\n" +
+				"\ton session_end(session) {\n" +
 				"\t\tlog.info(\"end broke=\" + json.stringify(session.broke))\n" +
 				"\t}\n" +
-				"\tstep_start: (step) -> { log.info(\"-> \" + step.step) }\n" +
-				"\tstep_end: (step) -> { log.info(\"<- \" + step.step) }\n" +
-				"\tstop_failure: (failure) -> {\n" +
+				"\ton step_start(step) { log.info(\"-> \" + step.step) }\n" +
+				"\ton step_end(step) { log.info(\"<- \" + step.step) }\n" +
+				"\ton stop_failure(failure) {\n" +
 				"\t\tlog.error(failure.step + \": \" + failure.error)\n" +
 				"\t}\n\n" +
-				"\tstep ${5:First} {\n" +
-				"\t\tif (context.vars.keys().contains(\"${4:result}\")) {\n" +
-				"\t\t\t${4:result} = context.vars[\"${4:result}\"]\n" +
-				"\t\t}\n" +
-				"\t\t${6:log.info(\"running\")}\n" +
+				"\tstep ${4:First} {\n" +
+				"\t\t${5:log.info(\"running\")}\n" +
 				"\t}\n\n" +
-				"\tstep ${7:Second} {\n" +
+				"\tstep ${6:Second} {\n" +
 				"\t\t$0\n" +
 				"\t}\n" +
 				"}",
@@ -189,32 +182,32 @@ var declarationSnippets = map[string][]declarationSnippet{
 		},
 		{
 			label:  "workflow (full)",
-			detail: `workflow Name { input, checkpoint, output, lifecycle hooks, goto between steps }`,
-			body: "workflow ${1:Name} {\n" +
+			detail: `workflow Name { input, output, lifecycle hooks, goto between steps }`,
+			body: "/// ${7:What this workflow does, as callers see it.}\n" +
+				"workflow ${1:Name} {\n" +
 				"\tinput ${2:environment}: string\n\n" +
 				"\tvar ${3:approved} = false\n\n" +
-				"\tcheckpoint: { ttl: ${4:30d} }\n\n" +
 				"\toutput: {\n" +
 				"\t\t${3:approved}: ${3:approved}\n" +
 				"\t}\n\n" +
-				"\tsession_start: (session) -> {\n" +
+				"\ton session_start(session) {\n" +
 				"\t\tlog.info(\"start \" + session.session_id)\n" +
 				"\t}\n" +
-				"\tsession_end: (session) -> {\n" +
+				"\ton session_end(session) {\n" +
 				"\t\tlog.info(\"end broke=\" + json.stringify(session.broke))\n" +
 				"\t}\n" +
-				"\tstep_start: (step) -> { log.info(\"-> \" + step.step) }\n" +
-				"\tstep_end: (step) -> { log.info(\"<- \" + step.step) }\n" +
-				"\tstop_failure: (failure) -> {\n" +
+				"\ton step_start(step) { log.info(\"-> \" + step.step) }\n" +
+				"\ton step_end(step) { log.info(\"<- \" + step.step) }\n" +
+				"\ton stop_failure(failure) {\n" +
 				"\t\tlog.error(failure.step + \": \" + failure.error)\n" +
 				"\t}\n\n" +
-				"\tstep ${5:Validate} {\n" +
-				"\t\t${6:var result = cmd.exec([\"go\", \"test\", \"./...\"], timeout: 2m)}\n" +
+				"\tstep ${4:Validate} {\n" +
+				"\t\t${5:var result = cmd.exec([\"go\", \"test\", \"./...\"], timeout: 2m)}\n" +
 				"\t\tif (result.exit_code != 0) fail(result.stderr)\n" +
 				"\t\t${3:approved} = true\n" +
 				"\t}\n\n" +
-				"\tstep ${7:Publish} {\n" +
-				"\t\tif (!${3:approved}) goto ${5:Validate}\n" +
+				"\tstep ${6:Publish} {\n" +
+				"\t\tif (!${3:approved}) goto ${4:Validate}\n" +
 				"\t\tlog.info(\"publishing to \" + ${2:environment})\n" +
 				"\t\t$0\n" +
 				"\t}\n" +

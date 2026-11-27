@@ -25,8 +25,8 @@ import { graphOf, MHL } from "./testutil";
 const SRC = `// Order handling — ünïcödé comment stays put
 agent Writer { engine: "cli/claude" }
 
+/// Handles orders
 workflow Orders {
-    description: "Handles orders"
     input kind: string = "small"
 
     // the first step
@@ -219,10 +219,27 @@ describe.skipIf(!MHL)("edits round-trip through mhl graph", () => {
     expect(out.wf.inputs.map((i) => `${i.name}:${i.type}=${i.default}`)).toEqual(["kind:string=\"small\"", "approved:bool=false"]);
     out = apply(out.doc, removeInput(out.doc, "Orders", "kind"));
     expect(out.wf.inputs.map((i) => i.name)).toEqual(["approved"]);
+    expect(out.wf.description).toBe("Handles orders");
     out = apply(out.doc, setDescription(out.doc, "Orders", 'Says "hi"'));
     expect(out.wf.description).toBe('Says "hi"');
+    expect(out.src).toContain('\n/// Says "hi"\nworkflow Orders {\n    input approved');
+    out = apply(out.doc, setDescription(out.doc, "Orders", "Handles orders.\n\nNever ships twice."));
+    expect(out.wf.description).toBe("Handles orders.\n\nNever ships twice.");
+    expect(out.src).toContain("/// Handles orders.\n///\n/// Never ships twice.\nworkflow Orders {");
     out = apply(out.doc, setDescription(out.doc, "Orders", ""));
     expect(out.wf.description).toBeUndefined();
+    expect(out.src).not.toContain("///");
+    expect(out.src).toContain('agent Writer { engine: "cli/claude" }\n\nworkflow Orders {');
+  });
+
+  it("moves an old description: property to the /// block", () => {
+    const d = doc(SRC.replace("/// Handles orders\nworkflow Orders {\n", 'workflow Orders {\n    description: "Handles orders"\n'));
+    expect(d.workflow("Orders").description).toBe("Handles orders");
+    const out = apply(d, setDescription(d, "Orders", "Handles orders."));
+    expect(out.wf.description).toBe("Handles orders.");
+    expect(out.src).toContain("\n/// Handles orders.\nworkflow Orders {\n    input kind");
+    expect(out.src).not.toContain("description:");
+    expect(out.g.diagnostics).toEqual([]);
   });
 
   it("adds a new workflow to the file", () => {

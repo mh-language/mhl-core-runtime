@@ -91,8 +91,9 @@ mhl version    # or --version / -v
 The "serve" adapters share `internal/execsvc` (the reusable run core: `execsvc.Run(Request) →
 Result`, `execsvc.Load(dir)` for a directory of workflows). `internal/mcpserver` puts one MCP
 tool per pipeline/workflow on top (`tools/call` → `execsvc.Run`, `inputSchema` ←
-`runtime.Pipeline.InputSchema()`, `description` ← the optional `description: "..."` body
-property, else generic); its `server.dispatch(ctx, *session, rpcMsg) *rpcMsg` is
+`runtime.Pipeline.InputSchema()`, `description` ← the `///` lines above the declaration
+(`parser/decldocs.go` → `ast.Pipeline.Doc`/`PipelineAlias.Doc`, `digest:"-"`; `ast.Pipeline.Description()`
+falls back to the deprecated `description: "..."` property, `lint/description.go`), else generic); its `server.dispatch(ctx, *session, rpcMsg) *rpcMsg` is
 transport-independent — `Serve` (stdio, `server.go`) and `ServeHTTP` (Streamable HTTP,
 `http.go`: `POST /mcp` — plus `POST /mcp/<method>` thin wrappers so an external policy
 engine can gate one method, body `method` still authoritative — JSON responses only,
@@ -444,8 +445,12 @@ name.
 A pipeline/workflow (and `loop pipeline`/`loop workflow`) has its own, unrelated set of five
 lifecycle hooks — `session_start`, `session_end`, `step_start`, `step_end`, `stop_failure`
 (`internal/engine/interpreter/pipeline_hooks.go`'s `RunPipelineHook`, wired in
-`internal/execsvc/execsvc.go`) — each a single-parameter lambda body property
-(`ast.PipelineBodyProperties`), unlike agent `before`/`after`'s zero parameters. They are
+`internal/execsvc/execsvc.go`) — written `on <event>[(param)] { ... }` (`ast.PipelineHook`),
+which `parser/hooks.go`'s `expandHooks` rewrites right after parsing into the older
+single-parameter lambda body property (`ast.PipelineBodyProperties`, `Property.On` set, a
+param named `_` when omitted), so everything downstream — and `DefinitionDigest` — sees only
+the property; `lint/hooks.go` checks the event name, ≤1 param, one handler per event, and warns
+on the deprecated property spelling. Unlike agent `before`/`after`'s zero parameters. They are
 observation-only: a non-nil return is a runtime error, and a failure inside any of them aborts
 the run like any other error, *except* a failure inside `stop_failure` itself, which is only ever
 logged, never allowed to replace the failure it was reporting. `stop_failure`'s `reason` comes

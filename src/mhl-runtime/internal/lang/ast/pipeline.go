@@ -79,6 +79,27 @@ type Pipeline struct {
 	// it (at most one; none on a merged partial — its members carry their
 	// stage), kept for its span and member order.
 	Stages []*Stage `parser:"" digest:"-"`
+	// Doc is the declaration's documentation: the `///` lines right above
+	// it (parser.attachDeclDocs), what `mhl serve` publishes as the MCP tool
+	// / A2A skill description. Not part of the definition — editing it never
+	// invalidates a checkpoint. "" when it has none.
+	Doc string `parser:"" digest:"-"`
+}
+
+// Description is the pipeline's published summary: its `///` doc, else the
+// deprecated `description: "..."` body property, else "".
+func (p *Pipeline) Description() string {
+	if p.Doc != "" {
+		return p.Doc
+	}
+	for _, m := range p.Body {
+		if m.Prop != nil && m.Prop.Name == "description" {
+			if s, ok := StringValue(m.Prop.Value); ok {
+				return s
+			}
+		}
+	}
+	return ""
 }
 
 // Stage is a fragment's header stage (Pipeline.Stage): a named phase of a
@@ -163,6 +184,12 @@ type PipelineBodyProperty struct {
 	Name string
 	// Doc is the one-line detail shown in editor completion.
 	Doc string
+	// Deprecated marks a property that still parses but should not be
+	// written (lint warns on it); completion shows it struck through. The
+	// five lifecycle hooks (ParamType set) are deprecated only as `name:
+	// lambda` properties: written `on <name>(param) { ... }` (PipelineHook)
+	// they are current.
+	Deprecated bool
 	// LoopOnly marks a property that only takes effect on a `loop`
 	// pipeline/workflow (today: repeat) — lint still accepts it on a plain
 	// pipeline, but completion only offers it under `loop`.
@@ -183,17 +210,17 @@ type PipelineBodyProperty struct {
 // PipelineBodyProperties is the allow-list of pipeline/workflow body
 // properties. Keep runtime.PipelineFromAST's Prop.Name switch in step with it.
 var PipelineBodyProperties = []PipelineBodyProperty{
-	{Name: "description", Doc: `"..." — human-readable summary; surfaced as the MCP tool / A2A skill description by "mhl serve"`},
-	{Name: "checkpoint", Doc: "{ enabled, strategy, storage, ttl } — optional; per-step checkpointing is on by default, declare enabled: false to opt out"},
-	{Name: "spawn", Doc: "{ max_concurrency } — deprecated: put the limit on the statement instead (`spawn xs concurrency N = ...`); still a run-wide ceiling on concurrent spawned agent calls"},
-	{Name: "context", Doc: "{ source, require } — populate context.vars from a prior run (context.session_id / .started_at / .resumed / .principal need no block)"},
+	{Name: "description", Deprecated: true, Doc: `"..." — deprecated: write the summary as /// lines right above the declaration; surfaced as the MCP tool / A2A skill description by "mhl serve"`},
+	{Name: "checkpoint", Deprecated: true, Doc: "deprecated and ignored — every run is checkpointed after each step and stays resumable with --resume for 30 days"},
+	{Name: "spawn", Deprecated: true, Doc: "{ max_concurrency } — deprecated: put the limit on the statement instead (`spawn xs concurrency N = ...`); still a run-wide ceiling on concurrent spawned agent calls"},
+	{Name: "context", Deprecated: true, Doc: "{ source, require } — deprecated: a run does not read another run's state — use `mem` for this run's state (context.session_id / .started_at / .resumed / .principal need no block)"},
 	{Name: "output", Doc: "{ name: expr, ... } — explicit result projection; with it declared, only these keys are returned to a caller (and over MCP / A2A) instead of every var"},
-	{Name: "repeat", Doc: "{ stop_when, max_iterations } — the `max <N>` header clause is shorthand for just max_iterations", LoopOnly: true},
-	{Name: "session_start", Doc: "(session: SessionContext) -> { ... } — runs once at the very start of the run, before its first step (fires again with session.resumed=true on --resume)", ParamType: "SessionContext"},
-	{Name: "session_end", Doc: "(session: SessionContext) -> { ... } — runs once when the run completes normally, via complete(), or via break (session.iterations only on a loop) — not on pause() or on a genuine failure (see stop_failure)", ParamType: "SessionContext"},
-	{Name: "step_start", Doc: "(step: StepContext) -> { ... } — runs before every step execution, including each parallel branch and each loop iteration", ParamType: "StepContext"},
-	{Name: "step_end", Doc: `(step: StepContext) -> { ... } — runs after every step execution; step.error is the failure message, or null on success/break/pause()/complete()/goto`, ParamType: "StepContext"},
-	{Name: "stop_failure", Doc: `(failure: FailureContext) -> { ... } — runs once on a genuine failure; failure.reason is "failed"|"timeout"|"cancelled"|"max_step_visits"|"runtime_error" — never on a soft loop stop like max_iterations`, ParamType: "FailureContext"},
+	{Name: "repeat", Deprecated: true, Doc: "{ stop_when, max_iterations } — deprecated: cap a loop with `loop workflow X max N` and end it with `break` in a step", LoopOnly: true},
+	{Name: "session_start", Deprecated: true, Doc: "on session_start(session) { ... } — runs once at the very start of the run, before its first step (fires again with session.resumed=true on --resume)", ParamType: "SessionContext"},
+	{Name: "session_end", Deprecated: true, Doc: "on session_end(session) { ... } — runs once when the run completes normally, via complete(), or via break (session.iterations only on a loop) — not on pause() or on a genuine failure (see stop_failure)", ParamType: "SessionContext"},
+	{Name: "step_start", Deprecated: true, Doc: "on step_start(step) { ... } — runs before every step execution, including each parallel branch and each loop iteration", ParamType: "StepContext"},
+	{Name: "step_end", Deprecated: true, Doc: `on step_end(step) { ... } — runs after every step execution; step.error is the failure message, or null on success/break/pause()/complete()/goto`, ParamType: "StepContext"},
+	{Name: "stop_failure", Deprecated: true, Doc: `on stop_failure(failure) { ... } — runs once on a genuine failure; failure.reason is "failed"|"timeout"|"cancelled"|"max_step_visits"|"runtime_error" — never on a soft loop stop like max_iterations`, ParamType: "FailureContext"},
 }
 
 // PipelineBodyPropertyNames returns the allow-list as a set, for a membership
@@ -233,8 +260,35 @@ type PipelineMember struct {
 	Parallel *ParallelGroup `parser:"| @@"`
 	Route    *WorkflowRoute `parser:"| @@"`
 	Step     *Step          `parser:"| @@"`
+	Hook     *PipelineHook  `parser:"| @@" digest:"omitzero"`
 	Prop     *Property      `parser:"| @@ )"`
 }
+
+// PipelineHook is a lifecycle hook written as an event handler:
+//
+//	on session_start(session) { log("start ${session.pipeline}") }
+//	on step_end { log("a step ended") }
+//
+// Event names one of the hook properties of PipelineBodyProperties (those
+// with a ParamType); the parameter is optional. It is pure syntax:
+// parser.expandHooks rewrites it, right after parsing, into the Property the
+// older spelling produces — `session_start: (session) -> { ... }`, with the
+// parameter named "_" when it was omitted — marked Property.On, and clears
+// Hook. So runtime, interpreter, lint, flow and DefinitionDigest only ever
+// see the property (Property.On is digest:"-": both spellings hash alike,
+// and rewriting one into the other keeps a checkpoint resumable). Params is
+// a list only so lint can name the mistake when more than one is written.
+type PipelineHook struct {
+	Pos    lexer.Position
+	EndPos lexer.Position `parser:"" digest:"-"` // set by the parser; read only by internal/lang/flow
+	Event  string         `parser:"'on' @Ident"`
+	Params []*Param       `parser:"( '(' ( @@ ( ',' @@ )* )? ')' )?"`
+	Block  []*Statement   `parser:"'{' @@* '}'"`
+}
+
+// HookParamOmitted is the parameter name parser.expandHooks gives the lambda
+// of an `on <event> { ... }` hook written without one.
+const HookParamOmitted = "_"
 
 // WorkflowRoute is a reusable, statically checked step dispatch table.
 //
@@ -347,7 +401,8 @@ func (pg *ParallelGroup) MergeStep() *Step {
 }
 
 // MemDecl declares and initializes a pipeline-scoped persistent variable:
-// `mem x = expr`. Grammar mirrors VarDecl exactly, just with the 'mem'
+// `mem x = expr`. It is kept per session — across loop iterations and
+// `--resume`, never shared with another run (execsvc.memContextFor). Grammar mirrors VarDecl exactly, just with the 'mem'
 // keyword instead of 'var' — kept as a separate type (rather than reusing
 // VarDecl) so PipelineMember.Mem and PipelineMember.Var are distinguishable
 // without inspecting which keyword matched.
@@ -697,17 +752,17 @@ type ExprStmt struct {
 // PipelineAlias publishes an existing pipeline/workflow under another name,
 // with some of its inputs fixed:
 //
-//	workflow Delivery = ArtifactFlow with { level: Level.delivery } {
-//	    description: "Artifacts for a Feature or a standalone Story."
-//	}
+//	/// Artifacts for a Feature or a standalone Story.
+//	workflow Delivery = ArtifactFlow with { level: Level.delivery }
 //
 // The alias runs Target's steps unchanged. It is a separate entry point
 // everywhere a pipeline is one — its own MCP tool / A2A skill (with its own
 // description), its own `mhl run` target, sessions, checkpoints and `mem`
 // state — and its input contract is Target's minus the Bound inputs, which
 // a caller can no longer pass. Bound values are literals or enum values
-// (`Level.delivery`), checked against the input's declared type. Props may
-// only set `description` (inherited from Target when absent).
+// (`Level.delivery`), checked against the input's declared type. Its
+// description is its own `///` doc (inherited from Target when absent);
+// Props, the older spelling, may only set `description`.
 type PipelineAlias struct {
 	Pos lexer.Position
 	// Internal hides the alias the way it hides a pipeline (Pipeline.Internal).
@@ -717,10 +772,17 @@ type PipelineAlias struct {
 	Target   string      `parser:"@Ident"`
 	Bound    *Object     `parser:"( 'with' @@ )?"`
 	Props    []*Property `parser:"( '{' @@* '}' )?"`
+	// Doc is the alias's own `///` documentation (parser.attachDeclDocs),
+	// published instead of its target's. "" when it has none.
+	Doc string `parser:"" digest:"-"`
 }
 
-// Description is the alias's own `description:` property, "" when absent.
+// Description is the alias's own summary — its `///` doc, else its
+// deprecated `description:` property — "" when it has neither.
 func (a *PipelineAlias) Description() string {
+	if a.Doc != "" {
+		return a.Doc
+	}
 	for _, p := range a.Props {
 		if p.Name == "description" {
 			if s, ok := StringValue(p.Value); ok {

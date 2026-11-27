@@ -52,9 +52,8 @@ workflow Deploy {
 func TestDryRunListsGotoEdgesAndPrettyTTL(t *testing.T) {
 	out, err := dryRun(t, `
 workflow Review {
-    checkpoint: { ttl: 7d }
     var approved = false
-    step Do { approved = true }
+    step Do timeout 90s { approved = true }
     step Gate {
         if (!approved) goto Do
     }
@@ -66,8 +65,12 @@ workflow Review {
 	if !strings.Contains(out, "Gate -> Do") {
 		t.Errorf("goto edge not listed:\n%s", out)
 	}
-	if !strings.Contains(out, "ttl 7d") {
-		t.Errorf("ttl not pretty-printed (want 7d):\n%s", out)
+	// The TTL is fixed by the language (runtime.CheckpointTTL).
+	if !strings.Contains(out, "ttl 30d") {
+		t.Errorf("ttl not pretty-printed (want 30d):\n%s", out)
+	}
+	if !strings.Contains(out, "90s") || strings.Contains(out, "1m30s") {
+		t.Errorf("step timeout not printed as the .mh literal (want 90s):\n%s", out)
 	}
 }
 

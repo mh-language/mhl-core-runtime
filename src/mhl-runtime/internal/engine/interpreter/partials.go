@@ -117,6 +117,9 @@ func mergePartialGroup(name, kind string, frags []*ast.Pipeline) (*ast.Pipeline,
 			}
 			out.Param, out.Returns = f.Param, f.Returns
 		}
+		if out.Doc == "" {
+			out.Doc = f.Doc // more than one documented fragment is a lint error
+		}
 		out.Body = append(out.Body, f.Body...)
 		for _, m := range f.Body {
 			if m.Parallel != nil {

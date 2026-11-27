@@ -1,13 +1,15 @@
 // A workflow alias publishes an existing workflow under another name with
 // some inputs fixed. It runs the target's steps unchanged, but is its own
 // entry point (MCP tool, `mhl run`, `.run()` here, sessions, checkpoints);
-// a bound input is no longer part of its input contract. The shared flow is
+// a bound input is no longer part of its input contract, and its description
+// is the `///` line above it (Discovery, with none, inherits the target's —
+// "Shared artifact flow"). The shared flow is
 // `internal`: not an entry point itself (`mhl serve` publishes only the two
 // aliases, `mhl run` picks Delivery), though a test can still run it.
 enum Level { discovery, delivery }
 
+/// Shared artifact flow
 internal workflow ArtifactFlow {
-    description: "Shared artifact flow"
     input level: Level
     input artifact: string
     var result = ""
@@ -17,9 +19,8 @@ internal workflow ArtifactFlow {
     }
 }
 
-workflow Delivery = ArtifactFlow with { level: Level.delivery } {
-    description: "Artifacts for a Feature or a standalone Story"
-}
+/// Artifacts for a Feature or a standalone Story
+workflow Delivery = ArtifactFlow with { level: Level.delivery }
 
 workflow Discovery = ArtifactFlow with { level: "discovery" }
 

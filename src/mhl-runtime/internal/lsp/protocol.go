@@ -109,6 +109,9 @@ type completionItem struct {
 	InsertText       string         `json:"insertText,omitempty"`
 	InsertTextFormat int            `json:"insertTextFormat,omitempty"`
 	SortText         string         `json:"sortText,omitempty"`
+	// Tags holds LSP CompletionItemTag values; completionTagDeprecated
+	// makes the client strike the item through.
+	Tags []int `json:"tags,omitempty"`
 	// TextEdit, when set, replaces Range with NewText instead of the
 	// client's own word-based guess — needed where the text being completed
 	// contains characters the editor treats as word separators (a dotted

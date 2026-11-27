@@ -63,7 +63,7 @@ este índice cobre apenas o que tem exemplo executável aqui.
 
 - **`cache`** (agent) — cache de respostas (`strategy: "exact"`).
   → [agent_retry_cache_rate_limit_reject_unimplemented_values.mh](features/agents/agent_retry_cache_rate_limit_reject_unimplemented_values.mh)
-- **`checkpoint`** — persistência por step para `--resume` (ligada por padrão; `ttl`, opt-out).
+- **`checkpoint`** — persistência por step para `--resume`, sempre ligada; uma execução parada pode ser retomada por 30 dias. O bloco `checkpoint: { ... }` está depreciado e é ignorado.
   → [context_pipeline_example.mh](features/pipelines/context_pipeline_example.mh) ·
   [linear_pipeline_and_branching_workflow.mh](syntax/pipeline_vs_workflow/linear_pipeline_and_branching_workflow.mh) ·
   [time_checkpoint_expiry_uses_add_and_compare.mh](features/time/time_checkpoint_expiry_uses_add_and_compare.mh)
@@ -87,7 +87,7 @@ este índice cobre apenas o que tem exemplo executável aqui.
   [const_is_available_to_every_method.mh](syntax/tool_scope/const_is_available_to_every_method.mh)
 - **`.contains()`** — em strings e arrays. → [contains_on_string.mh](syntax/string_methods/contains_on_string.mh) ·
   [contains_on_array.mh](syntax/string_methods/contains_on_array.mh)
-- **`context`** — acessor somente leitura (`session_id`, `started_at`, `resumed`, `vars`).
+- **`context`** — acessor somente leitura (`session_id`, `started_at`, `resumed`, `principal`), sem bloco. O bloco `context: { ... }` e o `context.vars` estão depreciados: use `mem`.
   → [context_pipeline_example.mh](features/pipelines/context_pipeline_example.mh)
 - **`cwd`** (agent) — diretório de trabalho do processo, avaliado por chamada.
   → [agent_runs_a_cli_without_a_wrapper.mh](features/agents/agent_runs_a_cli_without_a_wrapper.mh)
@@ -97,8 +97,12 @@ este índice cobre apenas o que tem exemplo executável aqui.
 - **`decider`** (router) — agent comum que decide quando `select` é inconclusivo.
   → [router_cascades_to_llm_decision_when_select_is_inconclusive.mh](features/router/router_cascades_to_llm_decision_when_select_is_inconclusive.mh)
 - **`.delegate()`** (router) — escolhe e executa o agent. → [features/router/](features/router/README.md)
-- **`description:`** — descrição de um pipeline/workflow (vira a descrição da tool MCP).
-  → [order_triage.mh](features/graph_and_events/order_triage.mh)
+- **Descrição (`///`)** — as linhas `///` logo acima de um pipeline/workflow (ou alias) são
+  a descrição dele: vira a descrição da tool MCP / skill A2A, sai no `mhl graph` e no hover.
+  Uma linha `///` vazia separa parágrafos. Editar a descrição não invalida checkpoint. A
+  propriedade `description: "..."` está depreciada, e declarar as duas é erro.
+  → [doc_comment_description_workflow_example.mh](features/pipelines/doc_comment_description_workflow_example.mh) ·
+  [order_triage.mh](features/graph_and_events/order_triage.mh)
 - **Desestruturação** — `var {a, b: n} = r`, `{a} = r`, `self.{a} = r`.
   → [syntax/destructuring/](syntax/destructuring/README.md)
 - **`dir.clear`** — cria ou esvazia um diretório. → [dir_clear_empties_a_directory.mh](features/fs/dir_clear_empties_a_directory.mh)
@@ -217,7 +221,11 @@ este índice cobre apenas o que tem exemplo executável aqui.
 - **`log_mode`** (agent) — `"truncate"` para reiniciar o log a cada tentativa.
   → [agent_runs_a_cli_without_a_wrapper.mh](features/agents/agent_runs_a_cli_without_a_wrapper.mh)
 - **Lógicos** (`&&`, `||`). → [syntax/logical_operations/](syntax/logical_operations/README.md)
-- **`loop pipeline` / `loop workflow`** — repete o corpo até `stop_when` ou `max_iterations`.
+- **Hooks de ciclo de vida** — `on session_start(session) { ... }`, `on session_end`,
+  `on step_start`, `on step_end`, `on stop_failure`; o parâmetro é opcional. Só observam o
+  run (podem gravar `mem` em `step_start`/`step_end`). A forma antiga `step_end: (step) -> { ... }`
+  está depreciada. → [lifecycle_hooks_workflow_example.mh](features/pipelines/lifecycle_hooks_workflow_example.mh)
+- **`loop pipeline` / `loop workflow`** — repete o corpo até um step rodar `break "motivo"`, ou até o teto `max N`. Sem nenhum dos dois, o lint avisa que o loop não para.
   → [loop_poll_pipeline_example.mh](features/pipelines/loop_poll_pipeline_example.mh) ·
   [linear_pipeline_and_branching_workflow.mh](syntax/pipeline_vs_workflow/linear_pipeline_and_branching_workflow.mh)
 
@@ -231,10 +239,15 @@ este índice cobre apenas o que tem exemplo executável aqui.
   → [linear_pipeline_and_branching_workflow.mh](syntax/pipeline_vs_workflow/linear_pipeline_and_branching_workflow.mh)
 - **`max_concurrency`** (`spawn: { ... }`) — *depreciado*: teto global de chamadas em segundo plano; prefira `spawn xs concurrency N = ...`.
   → [concurrent_agents_pipeline_example.mh](features/pipelines/concurrent_agents_pipeline_example.mh)
-- **`max_iterations`** (`repeat: { ... }`). → [loop_poll_pipeline_example.mh](features/pipelines/loop_poll_pipeline_example.mh)
+- **`max_iterations`** (`repeat: { ... }`) — *depreciado*: use `max N` no cabeçalho. → [loop_poll_pipeline_example.mh](features/pipelines/loop_poll_pipeline_example.mh)
 - **`mcp`** (extension) — cliente MCP stdio/http: `.call()`, `.list_tools()`, `.discover()`.
   → [features/mcp/](features/mcp/README.md)
+- **`mem`** — variável do pipeline salva no checkpoint do run junto com as `var`: sobrevive
+  às iterações do loop e ao `--resume`, vai para a `extension state` compartilhada pelas
+  réplicas, e um step que falha não deixa a escrita. Em `parallel`, é mesclada como uma `var`.
+  → [mem_run_state_workflow_example.mh](features/pipelines/mem_run_state_workflow_example.mh)
 - **`memory`** — stores `json` (chave/valor) e `append_log`; `path:` interpolado por sessão.
+  Local a um processo: réplicas não compartilham.
   → [features/memory/](features/memory/README.md) ·
   [session_scoped_memory_pipeline_example.mh](features/pipelines/session_scoped_memory_pipeline_example.mh)
 - **`merge`** — junção explícita de um grupo `parallel`.
@@ -306,7 +319,7 @@ este índice cobre apenas o que tem exemplo executável aqui.
 - **`.remove()` / `.remove_content()` / `.replace()`** — edição de strings.
   → [remove.mh](syntax/string_methods/remove.mh) · [remove_content.mh](syntax/string_methods/remove_content.mh) ·
   [replace.mh](syntax/string_methods/replace.mh)
-- **`repeat`** — política de repetição de `loop pipeline` (`stop_when`, `max_iterations`).
+- **`repeat`** — *depreciado*: use `max N` no cabeçalho e `break` num step.
   → [loop_poll_pipeline_example.mh](features/pipelines/loop_poll_pipeline_example.mh)
 - **`--resume`** — continua de um checkpoint/pausa.
   → [syntax/pipeline_vs_workflow/](syntax/pipeline_vs_workflow/README.md) ·
@@ -352,7 +365,7 @@ este índice cobre apenas o que tem exemplo executável aqui.
 - **`stdin`** (agent) — entrega o prompt pela entrada padrão, fora do argv.
   → [agent_stdin_keeps_large_content_out_of_argv.mh](features/agents/agent_stdin_keeps_large_content_out_of_argv.mh)
 - **`step`** — unidade de trabalho de um pipeline. → [agent_pipeline_example.mh](features/pipelines/agent_pipeline_example.mh)
-- **`stop_when`** — condição de parada de `loop pipeline`. → [loop_poll_pipeline_example.mh](features/pipelines/loop_poll_pipeline_example.mh)
+- **`stop_when`** — *depreciado*: encerre o loop com `break` num step. → [loop_poll_pipeline_example.mh](features/pipelines/loop_poll_pipeline_example.mh)
 - **Strings** — métodos embutidos. → [syntax/string_methods/](syntax/string_methods/README.md)
 
 ## T
@@ -409,6 +422,3 @@ este índice cobre apenas o que tem exemplo executável aqui.
 
 ## Recursos ainda sem exemplo aqui
 
-- **Hooks de ciclo de vida de pipeline/workflow** — `session_start`, `session_end`,
-  `step_start`, `step_end`, `stop_failure` (tipos `SessionContext`, `StepContext`,
-  `FailureContext`). Ver [Docs-Reference.dc.html](../docs/site/Docs-Reference.dc.html).

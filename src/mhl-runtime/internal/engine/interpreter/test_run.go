@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -172,10 +171,7 @@ func runWorkflowForTest(ctx *evalCtx, name string, inputs map[string]any, decisi
 	}
 	var mem *MemContext
 	if len(memInit) > 0 {
-		mem = &MemContext{
-			Path: filepath.Join(tmpDir, runtime.StateDirName, "mem", pipeline.Name, "default.json"),
-			Init: memInit,
-		}
+		mem = &MemContext{Init: memInit}
 	}
 
 	sessionID := runtime.NewSessionID()

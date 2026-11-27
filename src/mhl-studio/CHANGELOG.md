@@ -4,6 +4,18 @@ mhl studio is versioned and released on its own `studio-vX.Y.Z` tags, independen
 the language (`vX.Y.Z`). `release.sh` refuses to tag a version without a `## X.Y.Z`
 section here, and the release workflow uses that section as the release notes.
 
+## Unreleased
+
+### Changed
+
+- **The inspector writes a workflow's description as `///` lines above it.** This is the
+  form the language now reads (`description: "..."` is deprecated). Editing the
+  description of a workflow that still has the old property moves the text into the
+  `///` lines and removes the property; clearing it removes the lines. A new workflow
+  starts with a `/// TODO: what this workflow does` line, and the MCP panel's hint for a
+  tool without a description says the same. A description written above another fragment
+  of a `partial` workflow is edited in that fragment's file.
+
 ## 0.8.0
 
 ### Added

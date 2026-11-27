@@ -53,12 +53,14 @@ func RunPipelineHook(goctx context.Context, prog *ast.Program, pipelineName, hoo
 		// to shadow (a hook has no step body of its own), so the same map
 		// serves both fields safely.
 		pipelineEnv: env,
-		mem:         mem,
-		cctx:        cctx,
-		file:        file,
-		goctx:       goctx,
-		aliasTypes:  aliasTypesFor(prog),
-		prompts:     rootPrompts(goctx),
+		// A mem lives in the run's own vars, not env's copy: a hook that
+		// assigns one (a step_end counter) writes the run's value.
+		mem:        mem.Bind(vars),
+		cctx:       cctx,
+		file:       file,
+		goctx:      goctx,
+		aliasTypes: aliasTypesFor(prog),
+		prompts:    rootPrompts(goctx),
 	}
 	v, err := evalExpr(ctx, expr)
 	if err != nil {

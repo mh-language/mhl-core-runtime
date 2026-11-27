@@ -33,7 +33,7 @@ workflow W {
 			name: "unknown enum-like receiver inside a hook object literal",
 			src: `
 workflow W {
-    step_end: (ctx: StepContext) -> {
+    on step_end(ctx: StepContext) {
         try {
             var d = { status: Statuz.Ok }
         } catch (e) {
@@ -125,8 +125,8 @@ workflow W { step A { var r = Echo.run(prompt: "got ${fetched}") } }`,
 func TestHookParamTypeMismatch(t *testing.T) {
 	got := messages(lintSrc(t, `
 workflow W {
-    step_end: (ctx: SessionContext) -> { log.info("x") }
-    session_end: (s: SessionContext) -> { log.info("y") }
+    on step_end(ctx: SessionContext) { log.info("x") }
+    on session_end(s: SessionContext) { log.info("y") }
     step A { log.info("z") }
 }`))
 	if len(got) != 1 || !strings.Contains(got[0], "step_end hook parameter is bound to a StepContext, not a SessionContext") {

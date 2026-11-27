@@ -108,13 +108,18 @@ func short(s string) string {
 }
 
 // Expired reports whether the checkpoint is older than its TTL as of now. A
-// non-positive TTL means the checkpoint never expires.
+// non-positive TTL (a checkpoint saved before the TTL was fixed, or by a
+// zero-config Pipeline) means CheckpointTTL, so no stopped run stays
+// resumable — or on disk — forever.
 func (c *Checkpoint) Expired(now time.Time) bool {
-	if c.TTLSeconds <= 0 {
-		return false
+	if c.SavedAt.IsZero() {
+		return false // no save time recorded: nothing to measure the TTL from
 	}
-	deadline := c.SavedAt.Add(time.Duration(c.TTLSeconds) * time.Second)
-	return now.After(deadline)
+	ttl := time.Duration(c.TTLSeconds) * time.Second
+	if ttl <= 0 {
+		ttl = CheckpointTTL
+	}
+	return now.After(c.SavedAt.Add(ttl))
 }
 
 // StateStore is the checkpoint persistence a Runner performs: load/save/clear

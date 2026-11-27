@@ -122,21 +122,26 @@ type Workflow struct {
 	// (`mhl graph --merged`, BuildMerged) rather than from this file's
 	// fragment alone. Its members then carry File when they come from
 	// another fragment; the workflow's own spans stay this file's.
-	Merged      bool    `json:"merged,omitempty"`
-	Internal    bool    `json:"internal,omitempty"`
-	Max         string  `json:"max,omitempty"`
-	Description string  `json:"description,omitempty"`
-	Param       *Param  `json:"param,omitempty"`
-	Returns     string  `json:"returns,omitempty"`
-	Span        Span    `json:"span"`
-	HeaderSpan  Span    `json:"headerSpan"`
-	NameSpan    Span    `json:"nameSpan"`
-	BodyOpen    int     `json:"bodyOpen"`
-	BodyClose   int     `json:"bodyClose"`
-	Inputs      []Input `json:"inputs"`
-	Vars        []Var   `json:"vars"`
-	Props       []Prop  `json:"props"`
-	Routes      []Route `json:"routes"`
+	Merged      bool   `json:"merged,omitempty"`
+	Internal    bool   `json:"internal,omitempty"`
+	Max         string `json:"max,omitempty"`
+	Description string `json:"description,omitempty"`
+	// DocSpan is the `///` block right above the declaration — the
+	// description's source when it has one — from the first `///` to the end
+	// of the last line; absent when there is no such block. An editor
+	// rewrites the description by replacing these lines.
+	DocSpan    *Span   `json:"docSpan,omitempty"`
+	Param      *Param  `json:"param,omitempty"`
+	Returns    string  `json:"returns,omitempty"`
+	Span       Span    `json:"span"`
+	HeaderSpan Span    `json:"headerSpan"`
+	NameSpan   Span    `json:"nameSpan"`
+	BodyOpen   int     `json:"bodyOpen"`
+	BodyClose  int     `json:"bodyClose"`
+	Inputs     []Input `json:"inputs"`
+	Vars       []Var   `json:"vars"`
+	Props      []Prop  `json:"props"`
+	Routes     []Route `json:"routes"`
 	// Stages are the workflow's stages, in order — each the header stage of
 	// one of its fragments (all of them in a Merged workflow, else this
 	// file's): the named phases its steps and parallel groups belong to (each
@@ -401,6 +406,9 @@ func BuildMerged(frags []Fragment) (Workflow, error) {
 		if w.Max == "" {
 			w.Max = p.Max
 		}
+		if w.Description == "" {
+			w.Description = p.Doc
+		}
 		merged.Body = append(merged.Body, p.Body...)
 		nodes := len(w.Nodes)
 		routes := len(w.Routes)
@@ -628,6 +636,31 @@ func bodyBrace(ts []parser.Token) int {
 	return -1
 }
 
+// docSpan is the span of the `///` lines directly above the line holding
+// offset (a declaration's start), nil when there are none — the block
+// parser.attachDeclDocs reads the description from.
+func (b *builder) docSpan(offset int) *Span {
+	lineStart := strings.LastIndexByte(b.src[:offset], '\n') + 1
+	start, end := -1, -1
+	for lineStart > 0 {
+		prev := strings.LastIndexByte(b.src[:lineStart-1], '\n') + 1
+		line := b.src[prev : lineStart-1]
+		t := strings.TrimSpace(line)
+		if !strings.HasPrefix(t, "///") || strings.HasPrefix(t, "////") {
+			break
+		}
+		if end < 0 {
+			end = prev + len(strings.TrimRight(line, " \t\r"))
+		}
+		start = prev + strings.Index(line, "///")
+		lineStart = prev
+	}
+	if start < 0 {
+		return nil
+	}
+	return &Span{start, end}
+}
+
 // closeOf returns the last token of span — the closing brace of a block.
 func (b *builder) closeOf(s Span) int {
 	ts := b.in(s)
@@ -651,6 +684,7 @@ func (b *builder) header(d *ast.Declaration) Workflow {
 	p := d.Pipeline
 	w := Workflow{
 		Name: p.Name, Kind: p.Kind, Loop: p.Loop, Partial: p.Partial, Internal: p.Internal, Max: p.Max,
+		Description: p.Doc, DocSpan: b.docSpan(d.Pos.Offset),
 		Span:   declSpan(d),
 		Inputs: []Input{}, Vars: []Var{}, Props: []Prop{}, Routes: []Route{}, Nodes: []Node{}, Edges: []Edge{},
 	}

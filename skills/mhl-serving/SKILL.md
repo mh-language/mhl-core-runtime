@@ -25,9 +25,8 @@ tool Rules {
 }
 
 // The description is all a calling model sees, so state what the tool does.
+/// Classifies an incoming issue and explains the priority.
 workflow TriageIssue(req: TriageInput): TriageOutput {
-    description: "Classifies an incoming issue and explains the priority."
-
     var priority = "normal"
 
     step Classify {
@@ -51,7 +50,7 @@ test triage_issue {
 
 | Declared | Becomes |
 |---|---|
-| `description: "..."` | tool description; otherwise a generic `Runs the mhl workflow "X".` |
+| `///` lines above the declaration | tool description; otherwise a generic `Runs the mhl workflow "X".` |
 | typed signature or `input x: T` | `inputSchema`, unknown inputs rejected |
 | `x?:` field, or `input x: T = default` | optional in `inputSchema` |
 | `enum` type | `"enum": [...]` list, so callers see legal values |
@@ -62,7 +61,8 @@ Then shape the surface:
 
 - Mark helpers `internal workflow`. Publish only what callers should invoke.
 - Use aliases to publish one flow as several narrow tools:
-  `workflow Delivery = ArtifactFlow with { level: Level.delivery } { description: "..." }`.
+  `/// Artifacts for a delivery.` above `workflow Delivery = ArtifactFlow with { level: Level.delivery }`.
+  An alias without its own `///` publishes its target's description.
 - Always declare `output:` on a served workflow. It keeps intermediate state, prompts and
   tokens out of responses.
 - A workflow imported by several files is published once, by its declaring file.

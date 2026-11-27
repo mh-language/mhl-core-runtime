@@ -121,16 +121,16 @@ html { scroll-behavior:smooth; }
           </div>
         </section>
 
-        <section class="feature doc-section" id="overview" data-title="one tool per workflow input schema description body property final variable state execsvc throwaway state directory no carry-over what mhl serve does model transports">
+        <section class="feature doc-section" id="overview" data-title="one tool per workflow input schema description doc comment body property final variable state execsvc throwaway state directory no carry-over what mhl serve does model transports">
           <div class="feature-head"><h2><span class="feature-num">01</span>The serve model</h2><span class="status status-full">Executable</span></div>
-          <p class="feature-lede">Every transport publishes <strong>one tool / skill per declaration</strong> found under the directory (default <code>.</code>) — a pipeline, workflow, or workflow alias, each published by the file that declares it (a workflow a file only imports is not published again from there). A declaration marked <code>internal</code> is not published at all. Each derives its input contract from the workflow's <code>input name: Type</code> declarations — every input required, unknown inputs rejected — and its description from an optional <code>description: "..."</code> body property. A call runs the workflow through the same engine as <code>mhl run</code> and returns its final variable state.</p>
+          <p class="feature-lede">Every transport publishes <strong>one tool / skill per declaration</strong> found under the directory (default <code>.</code>) — a pipeline, workflow, or workflow alias, each published by the file that declares it (a workflow a file only imports is not published again from there). A declaration marked <code>internal</code> is not published at all. Each derives its input contract from the workflow's <code>input name: Type</code> declarations — every input required, unknown inputs rejected — and its description from the <code>///</code> lines right above the declaration (the older <code>description: "..."</code> body property still works, deprecated). A call runs the workflow through the same engine as <code>mhl run</code> and returns its final variable state.</p>
           <div class="reference-table">
             <div class="table-row table-head"><span>Transport</span><span>Command</span><span>Shape</span></div>
             <div class="table-row"><span>stdio</span><span><code>mhl serve mcp &lt;dir&gt;</code></span><span>newline-delimited JSON-RPC 2.0 on stdin/stdout — the form an MCP client uses when it <em>spawns</em> the server</span></div>
             <div class="table-row"><span>Streamable HTTP</span><span><code>mhl serve mcp --http &lt;dir&gt;</code></span><span>one JSON-RPC message per <code>POST /mcp</code>, JSON responses only (no SSE) — the form a networked MCP client uses</span></div>
             <div class="table-row"><span>A2A</span><span><code>mhl serve a2a &lt;dir&gt;</code></span><span>JSON-RPC 2.0 over HTTP with an Agent Card at <code>/.well-known/agent-card.json</code></span></div>
           </div>
-          <div class="tip-row"><span>ISOLATION</span><p>A synchronous <code>tools/call</code> runs in its own throwaway state directory — no checkpoint or <code>context.vars</code> carry-over between calls. The async path (<code>mhl_run_*</code> tools, below) keeps state so a run can be resumed.</p></div>
+          <div class="tip-row"><span>ISOLATION</span><p>A synchronous <code>tools/call</code> runs in its own throwaway state directory — no checkpoint or <code>mem</code> value carries over between calls. The async path (<code>mhl_run_*</code> tools, below) keeps state so a run can be resumed.</p></div>
         </section>
 
         <section class="feature doc-section" id="quickstart" data-title="quickstart sample serve directory summarize triage report approval clone try example workflows">
@@ -144,8 +144,8 @@ agent Writer {
     args: ["${prompt}"]
 }
 
+/// Summarize a topic in at most `max_words` words.
 workflow Summarize {
-    description: "Summarize a topic in at most `max_words` words."
     input topic: string
     input max_words: number
     var summary = ""
@@ -153,8 +153,8 @@ workflow Summarize {
 }
 
 // workflows/triage.mh
+/// Classify an incoming issue as normal or urgent.
 workflow Triage {
-    description: "Classify an incoming issue as normal or urgent."
     input title: string
     input body: string
     var priority = "normal"
@@ -164,8 +164,8 @@ workflow Triage {
 }
 
 // workflows/report.mh — four ~1s steps, so run/status visibly advances
+/// Four-step report pipeline (gather, analyze, summarize, publish).
 workflow Report {
-    description: "Four-step report pipeline (gather, analyze, summarize, publish)."
     input topic: string
     var gathered = ""
     var analysis = ""
@@ -178,8 +178,8 @@ workflow Report {
 }
 
 // workflows/approval.mh — the human-in-the-loop gate
+/// Prepare, wait for human approval, then finish.
 workflow Approval {
-    description: "Prepare, wait for human approval, then finish."
     input request: string
     input approved: string          // "no" on start, "yes" on resume
     var summary = ""
@@ -313,9 +313,8 @@ curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-S
           <p class="block-label">Approval workflow</p>
           <div class="code-wrap workflow-example">
             <button class="copy-button" type="button" data-copy="copy">Copy</button>
-            <pre class="code-block"><code class="language-mhl">workflow Approval {
-    description: "Prepare, wait for human approval, then finish."
-
+            <pre class="code-block"><code class="language-mhl">/// Prepare, wait for human approval, then finish.
+workflow Approval {
     input request: string
     input approved: string   // "no" on mhl_run_start, "yes" on mhl_run_resume
 
@@ -351,6 +350,7 @@ curl -s -X POST localhost:8711/mcp -H 'content-type: application/json' -H "Mcp-S
           </div>
           <div class="tip-row"><span>PAUSED UNDER TOOLS/CALL</span><p>A plain <code>tools/call</code> of a workflow that reaches <code>pause()</code> returns at once with <code>isError: false</code> and the partial vars in <code>structuredContent</code>. The reply is marked paused: <code>_meta["mhl.run"]</code> carries <code>{"state":"paused","reason":…,"step":…,"resumable":false,"hint":…}</code>, and a second <code>content</code> text block says the same for a client that only reads text. That run cannot be resumed, because a synchronous call keeps no run state. A workflow with an approval gate should be started with <code>mhl_run_start</code> / <code>run/start</code> (HTTP). To tell such a workflow apart before calling it, each per-workflow <code>tools/list</code> entry of one that may pause carries <code>_meta["mhl.run"].pauses</code>: <code>{"steps": [...], "stages": [...]}</code>, the steps that call <code>pause()</code> (a conditional one counts) and the stages whose inputs have no default (the run stops on entering them to ask). The key is absent for a workflow that never pauses.</p></div>
           <div class="tip-row"><span>ACROSS A RESTART</span><p>Start the server with <code>--state-dir &lt;dir&gt;</code> (or <code>MHL_SERVE_STATE_DIR</code>) and a later process pointed at the same directory can <code>mhl_run_status</code> / <code>mhl_run_resume</code> a <code>runId</code> it never started — the first caller to name the (unguessable) id reclaims it. Without it, run state is per-process and lost on restart. Checkpoints are one small JSON file per completed step, sized by the pipeline's variable state; <code>mhl_run_status</code> on a live run stays a pure in-memory read.</p></div>
+          <div class="tip-row"><span>WHAT THE STORE HOLDS</span><p>An <code>extension state</code> receives everything a run needs to continue on any replica: its per-step checkpoint — the <code>var</code>s <em>and</em> the <code>mem</code> values, rolled back together to the last completed step — a <code>loop</code> workflow's iteration checkpoint (<code>run/&lt;id&gt;/loop/&lt;name&gt;</code>, with the <code>mem</code> it carries between iterations), the run's owner, its status and its lock, plus the MCP sessions. A <code>memory</code> store is <em>not</em> in it: a <code>kv</code> store lives in one process and a <code>json</code>/<code>jsonl</code>/<code>append_log</code> store in a local file, so replicas don't see each other's. For data replicas share on purpose (a cache, a queue, a counter across runs), call an <code>extension</code> that talks to your database.</p></div>
           <div class="tip-row"><span>MULTIPLE REPLICAS</span><p>When several server processes share one <strong><code>extension state</code></strong> that advertises the <code>cas</code> capability (atomic compare-and-swap), each run is guarded by a short-lived lock in the store: exactly one replica executes or resumes a given <code>runId</code> at a time, renewed on a heartbeat (~1/3 of the lease TTL). The lease TTL defaults to 45&nbsp;s; widen it with <code>MHL_SERVE_RUN_LOCK_TTL</code> on a CPU-contended host so a slow renew is not mistaken for a dead replica. Each acquisition is tagged with a token, so a replica whose lease lapsed and was taken over cannot renew or release the successor's lock. A confirmed lease is required to start: if the store cannot be reached to take the lock the run <code>fail</code>s (<em>"could not acquire run execution lease"</em>) rather than running uncoordinated, and a <code>run/resume</code> whose lock state can't be read is refused. If a replica dies, its lock lapses after the lease TTL and <code>run/status</code> reports the run <code>failed</code> with <code>resumable: true</code> — recovery is an explicit <code>run/resume</code> on a live replica, never automatic; the running replica also cancels its own work if its renewals fail for long enough that the lease is about to expire. A store <em>without</em> <code>cas</code> makes the server <strong>refuse to start</strong> unless you pass <code>--single-replica</code> (or set <code>MHL_SERVE_SINGLE_REPLICA</code>) to acknowledge a one-writer deployment; a plain <code>--state-dir</code> with no <code>extension state</code> is unaffected. This lock stops two replicas from <em>starting</em> work on the same run, and checkpoint writes are fenced on the lease — with a store that advertises <code>fence</code> (e.g. PostgreSQL) a checkpoint write is one atomic statement conditioned on the lease still being this replica's, so a replica taken over after a stall has the write <em>rejected by the store</em>; without it, a check-then-write with a narrow race. Each replica also runs a periodic housekeeping sweep (every 60&nbsp;s) that reaps idle sessions and, on a shared store, deletes the records of runs that finished more than <code>MHL_SERVE_TERMINAL_RUN_TTL</code> ago — so the store does not grow without bound. A store that advertises the <code>scan</code> capability serves the durable-intake reconcile/sweep scans and the <code>mhl_serve_runs_pending</code> gauge from a single indexed query instead of a per-run read.</p></div>
         </section>
 

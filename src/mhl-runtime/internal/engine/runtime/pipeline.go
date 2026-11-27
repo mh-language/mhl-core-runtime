@@ -11,29 +11,34 @@ import (
 	"github.com/mh-language/mhl-core-runtime/internal/lang/types"
 )
 
-// CheckpointConfig is the resolved `checkpoint: { ... }` block of a pipeline.
+// CheckpointConfig is how a Runner persists a pipeline's progress for
+// `mhl run --resume` / `run/resume`.
 //
-// The block is optional: a pipeline/workflow that declares none (or an empty
-// `checkpoint: {}`) is projected with DefaultCheckpointConfig — per-step
-// checkpointing on — so `mhl run --resume` / `run/resume` can always continue
-// an interrupted run. Declare `checkpoint: { enabled: false }` to opt out, or
-// `checkpoint: { ttl: ... }` to tune retention while keeping the default
-// strategy. This default is applied in PipelineFromAST only; a Pipeline value
-// built directly (tests, literal construction) still starts from the zero
-// CheckpointConfig{} — Enabled false — unchanged.
+// A .mh program does not configure it: PipelineFromAST always projects
+// DefaultCheckpointConfig — per-step checkpoints that expire after
+// CheckpointTTL — so every run is resumable. (The `checkpoint: { ... }` body
+// property is deprecated and ignored; lint warns on it.) The fields remain
+// for a Pipeline built directly in Go, which starts from the zero
+// CheckpointConfig{} — Enabled false — so tests and literal construction
+// keep their behaviour.
 type CheckpointConfig struct {
 	Enabled  bool
-	Strategy string        // e.g. "per_step"
-	Storage  string        // e.g. "file"
-	TTL      time.Duration // e.g. 7d
+	Strategy string        // "per_step" saves after every step; anything else only on cancel
+	Storage  string        // informational only
+	TTL      time.Duration // how long a stopped run stays resumable
 }
 
-// DefaultCheckpointConfig is the checkpoint configuration a pipeline/workflow
-// receives from PipelineFromAST when it declares no `checkpoint: { ... }` block,
-// or an empty one: per-step checkpointing enabled, so an interrupted run is
-// always resumable without the author having to opt in.
+// CheckpointTTL is how long a stopped run (failed, cancelled, timed out or
+// paused) stays resumable. It is fixed by the language. A checkpoint
+// saved without a TTL (one written before the TTL was fixed, or by a
+// zero-config Pipeline) expires after it too (Checkpoint.Expired).
+const CheckpointTTL = 30 * 24 * time.Hour
+
+// DefaultCheckpointConfig is the checkpoint configuration every
+// pipeline/workflow receives from PipelineFromAST: per-step checkpointing,
+// expiring after CheckpointTTL.
 func DefaultCheckpointConfig() CheckpointConfig {
-	return CheckpointConfig{Enabled: true, Strategy: "per_step"}
+	return CheckpointConfig{Enabled: true, Strategy: "per_step", TTL: CheckpointTTL}
 }
 
 // ContextConfig is the resolved `context: { ... }` block of a pipeline: it
@@ -116,7 +121,8 @@ type Pipeline struct {
 	// as session.kind so a hook shared across many declarations can tell
 	// them apart.
 	Kind string
-	// Description is the optional `description: "..."` body property — a
+	// Description is the declaration's `///` doc (ast.Pipeline.Description;
+	// the deprecated `description: "..."` property when it has none) — a
 	// human-readable summary surfaced as the MCP tool / A2A skill description
 	// by the serve adapters. Empty when the pipeline declares none.
 	Description string
@@ -154,8 +160,9 @@ type Pipeline struct {
 	// sets it. It's a runtime-only field LoopRunner.Run fills in (resolved
 	// or freshly generated from its own LoopCheckpoint, see loop.go) right
 	// before each iteration's Runner.Run call, so Run can thread it into
-	// RunContext.InstanceID for cli.go's `mem` support. Left empty for a
-	// plain (non-`loop`) pipeline — Run treats that as instance "default".
+	// RunContext.InstanceID. Left empty for a plain (non-`loop`) pipeline —
+	// Run treats that as instance "default". (`mem` values live in the run's
+	// vars under MemVarPrefix, not under this id.)
 	InstanceID string
 	// GroupVarsInit seeds a parallel group's own vars (Stage.Vars) as it
 	// starts. Like InstanceID, never set by PipelineFromAST: the caller that
@@ -289,16 +296,15 @@ func (p Pipeline) MissingStageInputs(stage string, vars map[string]any) []string
 // InputSchema; a nil prog just means an enum-typed input carries no
 // EnumVariants, the same as before this existed.
 //
-// Checkpoint starts at DefaultCheckpointConfig (per-step, enabled) and is
-// only replaced when a `checkpoint: { ... }` block is present, so omitting the
-// block leaves a pipeline resumable rather than un-resumable.
+// Checkpoint is always DefaultCheckpointConfig: the deprecated
+// `checkpoint: { ... }` block is not read.
 //
 // The `m.Prop.Name` cases below must stay a subset of
 // ast.PipelineBodyProperties (the shared allow-list lint and the LSP also
 // read); adding a body property means adding both its entry there and its
 // case here.
 func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.Program) Pipeline {
-	out := Pipeline{Name: p.Name, Decl: p.Name, Kind: p.Kind, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig()}
+	out := Pipeline{Name: p.Name, Decl: p.Name, Kind: p.Kind, Loop: p.Loop, Checkpoint: DefaultCheckpointConfig(), Description: p.Description()}
 	entryStage := -1
 	// `max <N>` header clause — shorthand for `repeat { max_iterations: N }`.
 	// Read first so an explicit `repeat` block below still wins (both being
@@ -384,8 +390,6 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 			}
 			out.Stages = append(out.Stages, stage)
 			out.setStepTimeout(m.Parallel.Name, m.Parallel.Timeout)
-		case m.Prop != nil && m.Prop.Name == "checkpoint":
-			out.Checkpoint = checkpointFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "spawn":
 			out.Spawn = spawnConfigFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "repeat":
@@ -401,8 +405,6 @@ func PipelineFromAST(p *ast.Pipeline, aliases map[string]types.Type, prog *ast.P
 			out.Context = contextConfigFromExpr(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "output":
 			out.Output = m.Prop.Value
-		case m.Prop != nil && m.Prop.Name == "description":
-			out.Description, _ = ast.StringValue(m.Prop.Value)
 		case m.Prop != nil && m.Prop.Name == "session_start":
 			out.SessionStart = m.Prop.Value
 		case m.Prop != nil && m.Prop.Name == "session_end":
@@ -646,14 +648,6 @@ func repeatConfigFromExpr(e *ast.Expr) (stopWhen *ast.Expr, maxIterations int) {
 	return stopWhen, maxIterations
 }
 
-// checkpointFromExpr reads a `checkpoint: { ... }` property's object literal
-// via the shared ast literal readers (internal/lang/ast/literal.go) — the
-// same readers internal/engine/interpreter uses for agent/memory config —
-// rather than keeping its own copy of "what counts as a bare literal".
-//
-// It starts from DefaultCheckpointConfig, so an empty `checkpoint: {}` matches
-// the no-block default and a partial block (e.g. just `ttl:`) keeps per-step
-// checkpointing on; only `enabled: false` turns it off.
 // spawnConfigFromExpr reads a `spawn { max_concurrency: N }` block. An
 // absent, non-numeric, or non-positive value leaves MaxConcurrency at 0,
 // which the interpreter reads as "use the default".
@@ -682,7 +676,7 @@ func spawnConfigFromExpr(e *ast.Expr) SpawnConfig {
 
 // contextConfigFromExpr reads a `context: { source, require }` property's
 // object literal via the shared ast literal readers, the same way
-// checkpointFromExpr/spawnConfigFromExpr do. A bare `context: {}` (or an
+// spawnConfigFromExpr does. A bare `context: {}` (or an
 // unreadable value) still returns a non-nil config with Source defaulting to
 // "latest" — the block's mere presence is what opts the pipeline into the
 // `context.*` accessor.
@@ -708,42 +702,6 @@ func contextConfigFromExpr(e *ast.Expr) *ContextConfig {
 		case "require":
 			if b, ok := ast.BoolValue(f.Value); ok {
 				cfg.Require = b
-			}
-		}
-	}
-	return cfg
-}
-
-func checkpointFromExpr(e *ast.Expr) CheckpointConfig {
-	cfg := DefaultCheckpointConfig()
-	obj := ast.BareObject(e)
-	if obj == nil {
-		return cfg
-	}
-	for _, f := range obj.Fields {
-		key := ""
-		switch {
-		case f.KeyIdent != nil:
-			key = *f.KeyIdent
-		case f.KeyStr != nil:
-			key = *f.KeyStr
-		}
-		switch key {
-		case "enabled":
-			if b, ok := ast.BoolValue(f.Value); ok {
-				cfg.Enabled = b
-			}
-		case "strategy":
-			if s, ok := ast.StringValue(f.Value); ok {
-				cfg.Strategy = s
-			}
-		case "storage":
-			if s, ok := ast.StringValue(f.Value); ok {
-				cfg.Storage = s
-			}
-		case "ttl":
-			if d, ok := ast.DurationValue(f.Value); ok {
-				cfg.TTL = d
 			}
 		}
 	}

@@ -475,11 +475,26 @@ func checkPipelineProperties(file string, prog *ast.Program) []Finding {
 			continue
 		}
 		for _, m := range decl.Pipeline.Body {
+			if m.Prop != nil && m.Prop.Name == "checkpoint" {
+				msg := "`checkpoint: { ... }` is deprecated and ignored — every run is checkpointed after each step and stays resumable with --resume for 30 days"
+				if checkpointDisabled(m.Prop.Value) {
+					msg = "`checkpoint: { enabled: false }` no longer turns checkpointing off — every run is checkpointed after each step (resumable with --resume for 30 days); remove the block"
+				}
+				findings = append(findings, Finding{File: fileAt(file, m.Prop.Pos), Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column, Severity: SeverityWarning,
+					Message: fmt.Sprintf("%s %q: %s", pipelineKind(decl.Pipeline), decl.Pipeline.Name, msg)})
+			}
+			if m.Prop != nil && m.Prop.Name == "repeat" {
+				findings = append(findings, Finding{File: fileAt(file, m.Prop.Pos), Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column, Severity: SeverityWarning,
+					Message: fmt.Sprintf("%s %q: %s", pipelineKind(decl.Pipeline), decl.Pipeline.Name, repeatDeprecation(m.Prop.Value))})
+			}
 			if m.Prop != nil && m.Prop.Name == "spawn" {
 				findings = append(findings, Finding{File: fileAt(file, m.Prop.Pos), Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column, Severity: SeverityWarning,
 					Message: fmt.Sprintf("%s %q: `spawn: { max_concurrency }` is deprecated — put the limit on the statement: `spawn xs concurrency N = Agent.run(...) for item in items`", pipelineKind(decl.Pipeline), decl.Pipeline.Name)})
 			}
-			if m.Prop == nil || knownPipelineProperties[m.Prop.Name] {
+			if m.Prop != nil {
+				findings = append(findings, checkHookSpelling(file, decl.Pipeline, m.Prop)...)
+			}
+			if m.Prop == nil || m.Prop.On || knownPipelineProperties[m.Prop.Name] {
 				continue
 			}
 			findings = append(findings, Finding{File: fileAt(file, m.Prop.Pos), Line: m.Prop.Pos.Line, Column: m.Prop.Pos.Column,
@@ -487,6 +502,24 @@ func checkPipelineProperties(file string, prog *ast.Program) []Finding {
 		}
 	}
 	return findings
+}
+
+// checkpointDisabled reports whether a `checkpoint: { ... }` literal says
+// `enabled: false` — the one spelling whose meaning changed when the block
+// was deprecated, so its warning names it.
+func checkpointDisabled(e *ast.Expr) bool {
+	obj := ast.BareObject(e)
+	if obj == nil {
+		return false
+	}
+	for _, f := range obj.Fields {
+		if f.KeyIdent != nil && *f.KeyIdent == "enabled" || f.KeyStr != nil && *f.KeyStr == "enabled" {
+			if b, ok := ast.BoolValue(f.Value); ok && !b {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // pipelineKind is "workflow" or "pipeline" for a diagnostic prefix.

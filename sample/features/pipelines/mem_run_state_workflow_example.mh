@@ -1,0 +1,77 @@
+// A `mem` is part of the run's state: it is saved in the run's checkpoint
+// after every step, together with the `var`s. So it goes wherever the
+// checkpoint goes — the session's directory, or the `extension state` that
+// replicas of `mhl serve` share — and a run resumed on another replica has
+// the same `mem`.
+//
+// It also behaves like a `var` where the two could differ:
+//   - a step that fails after writing a `mem` leaves no trace of the write:
+//     `--resume` runs the step again from the last completed step's value,
+//     so the increment in Count below happens once, never twice;
+//   - each branch of a `parallel` group works on its own copy, merged back
+//     after the barrier: branches writing different `mem`s both survive
+//     (Review), and branches setting one `mem` to different values must
+//     reconcile it in the group's `merge`, where `branches.<Step>.<name>`
+//     holds each branch's value (Score).
+//
+// What a `mem` adds over a `var` is the loop: it is carried into the next
+// iteration, where a `var` starts over (see loop_poll_pipeline_example.mh).
+//
+// `memory` stores are different: a `kv` store lives in one process and a
+// `json`/`jsonl`/`append_log` store in a local file, so replicas don't see
+// each other's. Data that several runs or replicas share on purpose belongs
+// in an `extension` backed by a database.
+//
+// Run it, or check it with `mhl test`:
+//
+//   mhl run sample/features/pipelines/mem_run_state_workflow_example.mh
+//   mhl run sample/features/pipelines/mem_run_state_workflow_example.mh --input crash=true
+//   mhl run sample/features/pipelines/mem_run_state_workflow_example.mh --resume
+
+workflow Review {
+    input crash: bool = false
+    mem visits = 0
+    mem lint_findings = 0
+    mem test_failures = 0
+    mem score = 0
+
+    output: { visits: visits, lint: lint_findings, tests: test_failures, score: score }
+
+    step Count {
+        visits = visits + 1
+        log("visit ${visits}")
+        if (crash) { fail("simulated crash after the write; resume with --resume") }
+    }
+
+    parallel Checks {
+        step Lint { lint_findings = 2 }
+        step Tests { test_failures = 1 }
+    }
+
+    parallel Score {
+        step Strict { score = 10 - 3 * lint_findings }
+        step Lenient { score = 10 - test_failures }
+        merge (branches) {
+            var strict = branches.Strict.score
+            var lenient = branches.Lenient.score
+            score = if (strict < lenient) strict else lenient
+        }
+    }
+}
+
+test mem_run_state {
+    describe branches_writing_different_mems_both_survive {
+        var result = Review.run()
+        is_true(result.ok)
+        are_equal(result.output.lint, 2)
+        are_equal(result.output.tests, 1)
+    }
+    describe the_merge_reconciles_one_mem_two_branches_set {
+        var result = Review.run()
+        are_equal(result.output.score, 4)
+    }
+    describe a_new_run_starts_from_the_initializer {
+        are_equal(Review.run().output.visits, 1)
+        are_equal(Review.run().output.visits, 1)
+    }
+}

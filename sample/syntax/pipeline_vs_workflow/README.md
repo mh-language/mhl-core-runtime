@@ -2,14 +2,14 @@
 
 `pipeline` and `workflow` are the two execution-unit keywords. They parse into
 the same node and run the same way — typed `input`, pipeline-scoped `var`/`mem`,
-`checkpoint`/`repeat` config, ordered `step`s, `parallel` groups, and the
+body properties, ordered `step`s, `parallel` groups, and the
 optional `loop` prefix. The difference is a single static rule:
 
 | | `pipeline` | `workflow` |
 | --- | --- | --- |
 | Steps run in declared order, each once | ✅ | ✅ |
 | `parallel`, `spawn`/`wait` | ✅ | ✅ |
-| `loop` prefix + `repeat: { ... }` | ✅ | ✅ |
+| `loop` prefix + `max <N>` / `break` | ✅ | ✅ |
 | `goto <step>` and `goto match` | ❌ `mhl lint` rejects them | ✅ forward or backward |
 | Reading guarantee | "runs top to bottom" | "may branch — read the `goto`s" |
 
