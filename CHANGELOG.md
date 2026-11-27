@@ -33,6 +33,11 @@ Per-tag release notes are also generated automatically on the
   than one fragment. An alias without its own `///` keeps publishing its target's
   description. The editor's hover no longer shows a stray `/` for a `///` comment above
   any declaration.
+- **`mhl run --state-dir <path>`.** It keeps the run's state (checkpoints, sessions)
+  under `<path>/.mhl/state` instead of `./.mhl/state`, like `mhl serve --state-dir`.
+  Checkpointing stays on; resume that run with the same `--state-dir`. It is the way to
+  run something without leaving a resume point in the working directory, now that
+  `checkpoint: { enabled: false }` no longer turns checkpointing off.
 - **`mhl lint` warns on a loop that never stops.** A `loop pipeline`/`loop workflow` with
   no `max N` in its header and no `break` in its steps runs until it is cancelled. It is
   now a warning. `complete()` doesn't count as a way out: inside a loop it only ends the

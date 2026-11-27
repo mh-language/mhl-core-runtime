@@ -45,6 +45,7 @@ Flags for "run":
   --input key=value          Bind a pipeline input (repeatable)
   --resume [--force]         Resume from the last checkpoint; --force ignores a shape change
   --session <id>             Reuse a named session for durable state
+  --state-dir <path>         Keep the run's checkpoints under <path>/.mhl/state (default .)
   --format text|json|jsonl   Output format (default "text"); jsonl streams step events
   --dry-run                  Validate and print the static plan without executing
   --no-cache                 Call every agent again instead of reusing a cached reply
@@ -128,6 +129,9 @@ Flags:
                         it at its first step, with the variables as of the stop
                         (nothing rolled back) and any pending gate dropped.
   --session <id>        Reuse a named session for durable state
+  --state-dir <path>    Keep the run's state (checkpoints, sessions) under
+                        <path>/.mhl/state instead of ./.mhl/state; a --resume
+                        of that run passes the same --state-dir
   --format text|json|jsonl
                         Output format (default "text"); json emits one typed
                         object at the end, jsonl streams one event per line

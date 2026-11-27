@@ -115,11 +115,12 @@ pub async fn inspect(
 ///
 /// ```text
 /// import "<path, relative to the temp file>"
-/// workflow __mhl_studio_eval { checkpoint: { enabled: false } ... }
+/// workflow __mhl_studio_eval { var result ... step call { ... } }
 /// ```
 ///
 /// in a fresh temp directory (imports only resolve relative paths, hence the
-/// relative import), with checkpointing off so nothing is written to `cwd`.
+/// relative import), run from `cwd` with `--state-dir` set to that temp
+/// directory, so the checkpoint every run keeps is never written to `cwd`.
 #[tauri::command]
 pub async fn evaluate(cwd: String, path: String, expr: String) -> Result<Value, String> {
     let target = std::fs::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
@@ -156,6 +157,9 @@ pub async fn evaluate(cwd: String, path: String, expr: String) -> Result<Value, 
         .map_err(|e| format!("writing {}: {e}", program.display()))?;
 
     let program_arg = program.to_string_lossy().to_string();
+    // Every run is checkpointed, and a failed call leaves its resume point:
+    // keep that state in the throwaway dir, never in the workspace's .mhl.
+    let state_arg = tmp_dir.to_string_lossy().to_string();
     let mut cmd = sidecar::command([
         "run",
         program_arg.as_str(),
@@ -163,6 +167,8 @@ pub async fn evaluate(cwd: String, path: String, expr: String) -> Result<Value, 
         EVAL_WORKFLOW,
         "--format",
         "json",
+        "--state-dir",
+        state_arg.as_str(),
     ])?;
     cmd.current_dir(&cwd);
     let out = tokio::time::timeout(std::time::Duration::from_secs(120), cmd.output())
@@ -184,7 +190,7 @@ const EVAL_WORKFLOW: &str = "__mhl_studio_eval";
 fn eval_program(import: &str, expr: &str) -> String {
     let path = serde_json::to_string(import).unwrap_or_default();
     format!(
-        "import {path}\n\nworkflow {EVAL_WORKFLOW} {{\n    checkpoint: {{ enabled: false }}\n    var result = null\n    step call {{\n        self.result = {expr}\n    }}\n}}\n"
+        "import {path}\n\nworkflow {EVAL_WORKFLOW} {{\n    var result = null\n    step call {{\n        self.result = {expr}\n    }}\n}}\n"
     )
 }
 
@@ -290,6 +296,6 @@ mod tests {
         let p = eval_program("../dir \"q\"/a.mh", "T.m(1)");
         assert!(p.starts_with("import \"../dir \\\"q\\\"/a.mh\"\n"));
         assert!(p.contains("self.result = T.m(1)"));
-        assert!(p.contains("checkpoint: { enabled: false }"));
+        assert!(!p.contains("checkpoint"), "the block is deprecated and ignored");
     }
 }

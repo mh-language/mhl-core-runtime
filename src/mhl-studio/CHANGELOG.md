@@ -6,6 +6,14 @@ section here, and the release workflow uses that section as the release notes.
 
 ## Unreleased
 
+### Fixed
+
+- **Evaluating a tool method no longer writes `.mhl/` into the workspace.** The evaluation
+  program turned checkpointing off with `checkpoint: { enabled: false }`, which the
+  language now ignores, so a call that failed left a resume point in the workspace's
+  `.mhl/state`. The evaluation now runs with `mhl run --state-dir` pointed at its own
+  temporary directory, removed when it ends. This needs a runtime with `--state-dir`.
+
 ### Changed
 
 - **The inspector writes a workflow's description as `///` lines above it.** This is the

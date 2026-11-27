@@ -158,6 +158,7 @@ func runPipeline(args []string, out io.Writer) error {
 	format := "text"
 	sessionFlag := ""
 	workflow := ""
+	stateDir := "."
 	var decision any
 	from := ""
 	inputs := map[string]any{}
@@ -186,6 +187,12 @@ func runPipeline(args []string, out io.Writer) error {
 			}
 			i++
 			workflow = args[i]
+		case "--state-dir":
+			if i+1 >= len(args) || args[i+1] == "" {
+				return fmt.Errorf("--state-dir requires a directory")
+			}
+			i++
+			stateDir = args[i]
 		case "--session":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--session requires an id argument")
@@ -265,7 +272,7 @@ func runPipeline(args []string, out io.Writer) error {
 		Source:      file,
 		Workflow:    workflow,
 		Inputs:      inputs,
-		BaseDir:     ".",
+		BaseDir:     stateDir, // the root of the run's .mhl/state
 		Session:     sessionFlag,
 		Resume:      resume,
 		ForceResume: force,
