@@ -6,6 +6,8 @@ section here, and the release workflow uses that section as the release notes.
 
 ## Unreleased
 
+## 0.9.0
+
 ### Fixed
 
 - **Evaluating a tool method no longer writes `.mhl/` into the workspace.** The evaluation
