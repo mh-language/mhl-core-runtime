@@ -119,6 +119,7 @@ tool Api {
 | Carried across loop iterations and a `--resume` (one run) | `mem x = init` |
 | Named store with keys, or a file another tool reads | `memory` declaration |
 | Audit trail | `memory` with `type: "append_log"` or `"jsonl"` |
+| Shared across runs or `mhl serve` replicas | an `extension` backed by a database |
 
 ```mh
 memory Scratch {
@@ -166,7 +167,9 @@ test scratch {
 | `append_log` (`path:`) | `append` (text line) | yes |
 | `jsonl` (`path:`) | `append` (any value, stamped `{value, ts}`) | yes |
 
-Scope a `path:` with `${context.session_id}` so concurrent runs never share a file. Any
+A `memory` store is local to one process: a `kv` store lives in memory and the others in a
+local file, so replicas of `mhl serve` don't see each other's. Scope a `path:` with
+`${context.session_id}` so concurrent runs never share a file. Any
 caller-controlled value in a path needs `path_guard: "no_traversal"`; interpolation does
 not sanitize `..` on its own.
 

@@ -225,7 +225,8 @@ testable only from the declaring file. Add `.mhl/` to `.gitignore`.
 |---|---|
 | `undefined variable "y"` in a step | Assigned without declaring it in the pipeline |
 | `assignment target must be a plain variable or an array index` | `o.a = v`; use `o["a"] = v` |
-| `stop_when references var` | State for `stop_when` must be `mem` |
+| `repeat: { ... }` is deprecated | Cap the loop with `loop workflow X max N` and end it with `break` in a step |
+| `loop workflow "W" has no way to stop` | Neither `max N` nor a `break`; add one |
 | `args contains ${prompt}, which is never substituted` | Placeholder must be a whole `args:` element |
 | `duration values are not supported in expressions` | Move the literal to its use site |
 | `pipeline variable is not checkpointable` | A closure or handle is in a pipeline `var` |

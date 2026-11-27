@@ -1,6 +1,6 @@
 ---
 name: mhl-workflows
-description: Design mhl pipeline and workflow declarations. Use for step structure, pipeline vs workflow, goto and route, loop and repeat, parallel, spawn and wait, pause and resume, checkpoints, typed signatures, output projection and lifecycle hooks.
+description: Design mhl pipeline and workflow declarations. Use for step structure, pipeline vs workflow, goto and route, loops with max and break, parallel, spawn and wait, pause and resume, checkpoints, typed signatures, output projection and lifecycle hooks.
 ---
 
 # mhl workflows
