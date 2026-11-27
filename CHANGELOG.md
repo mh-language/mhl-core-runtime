@@ -10,6 +10,8 @@ Per-tag release notes are also generated automatically on the
 
 ## Unreleased
 
+## 2.0.0 — 2026-11-27
+
 ### Added
 
 - **Lifecycle hooks as event handlers: `on <event>(param) { ... }`.** A pipeline/workflow
